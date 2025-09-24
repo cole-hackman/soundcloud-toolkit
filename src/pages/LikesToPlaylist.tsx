@@ -4,7 +4,7 @@ import { emitToast } from '../lib/toast';
 import { ArrowLeft, Heart, Play, Check } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
-const API_BASE = 'http://localhost:3011';
+const API_BASE = (import.meta as any).env?.VITE_API_BASE || '';
 
 function LikesToPlaylist() {
   const [playlistTitle, setPlaylistTitle] = useState('My Liked Songs');

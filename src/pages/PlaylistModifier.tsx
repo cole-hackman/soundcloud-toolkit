@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { emitToast } from '../lib/toast';
 import { Link } from 'react-router-dom';
 
-const API_BASE = 'http://localhost:3011';
+const API_BASE = (import.meta as any).env?.VITE_API_BASE || '';
 
 type PlaylistLite = { id: number; title: string; coverUrl?: string };
 type Track = { id: number; title: string; duration?: number; artwork_url?: string; user?: { username?: string }; bpm?: number };

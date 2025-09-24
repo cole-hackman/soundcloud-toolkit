@@ -15,11 +15,12 @@ function LinkResolver() {
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
 
+  const API_BASE = (import.meta as any).env?.VITE_API_BASE || '';
   const handleResolve = async () => {
     if (!inputUrl.trim()) return;
     setIsResolving(true); setError(''); setResolvedContent(null);
     try {
-      const res = await fetch(`/api/resolve`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ url: inputUrl.trim() }) });
+      const res = await fetch(`${API_BASE}/api/resolve`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ url: inputUrl.trim() }) });
       if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error || 'Failed to resolve URL'); }
       const data = await res.json(); setResolvedContent(data as ResolvedContent);
     } catch (e) { setError((e as Error).message); } finally { setIsResolving(false); }

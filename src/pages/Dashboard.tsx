@@ -4,7 +4,7 @@ import { motion } from 'framer-motion';
 import { Combine, Heart, Link as LinkIcon, ArrowRight, Shuffle } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
-const API_BASE = '';
+const API_BASE = (import.meta as any).env?.VITE_API_BASE || '';
 
 interface FeatureCard {
   id: string;

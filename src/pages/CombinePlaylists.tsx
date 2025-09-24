@@ -4,7 +4,7 @@ import { ArrowLeft, Plus, X, Combine, Check } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { emitToast } from '../lib/toast';
 
-const API_BASE = '';
+const API_BASE = (import.meta as any).env?.VITE_API_BASE || '';
 
 interface Playlist {
   id: number;

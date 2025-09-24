@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, Search, Trash2, Check, AlertTriangle } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
-const API_BASE = '';
+const API_BASE = (import.meta as any).env?.VITE_API_BASE || '';
 
 interface Track {
   id: string;

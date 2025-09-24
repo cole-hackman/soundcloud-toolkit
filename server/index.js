@@ -26,14 +26,23 @@ const allowedOrigins = (
   .map(o => o.trim())
   .filter(Boolean);
 
+// Also allow by hostname to be resilient to protocol/canonical differences
+const allowedHostnames = allowedOrigins
+  .map((o) => {
+    try { return new URL(o).hostname; } catch { return null; }
+  })
+  .filter(Boolean);
+
 app.use(cors({
   origin: (origin, callback) => {
     if (!origin) return callback(null, true);
     try {
       const u = new URL(origin);
-      if (u.hostname === 'localhost') return callback(null, true);
+      const host = u.hostname;
+      if (host === 'localhost') return callback(null, true);
+      if (allowedOrigins.includes(origin)) return callback(null, true);
+      if (allowedHostnames.includes(host)) return callback(null, true);
     } catch {}
-    if (allowedOrigins.includes(origin)) return callback(null, true);
     return callback(new Error('Not allowed by CORS'));
   },
   credentials: true

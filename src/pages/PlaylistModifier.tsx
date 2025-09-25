@@ -68,7 +68,12 @@ function PlaylistModifier() {
     setLoading(true);
     try {
       const res = await fetch(`${API_BASE}/api/playlists/${pid}`, { credentials: 'include' });
-      if (!res.ok) return; const data = await res.json();
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({} as any));
+        emitToast({ message: err?.error || 'Failed to load playlist. Please try again.', variant: 'error' });
+        return;
+      }
+      const data = await res.json();
       const list: Track[] = Array.isArray(data.tracks) ? data.tracks.filter(Boolean) : [];
       setTracks(list);
       setViewTracks(list.map((t, i) => ({ ...t, originalIndex: i })));

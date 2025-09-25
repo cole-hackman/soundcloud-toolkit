@@ -24,7 +24,11 @@ function Layout({ children }: LayoutProps) {
         <div className="container mx-auto px-4 py-3">
           <div className="flex items-center justify-between">
             <Link to="/dashboard" className="flex items-center space-x-2">
-              <img src={logoUrl} alt="SoundCloud Tools" className="h-10 w-auto object-contain" />
+              <picture>
+                {/* If a WebP is added later at the same path, modern browsers will use it automatically */}
+                <source srcSet={String(logoUrl).replace('.png', '.webp')} type="image/webp" />
+                <img src={logoUrl} alt="SoundCloud Tools" className="h-10 w-auto object-contain" loading="lazy" decoding="async" />
+              </picture>
             </Link>
 
             <div className="flex items-center space-x-4 relative">
@@ -55,7 +59,7 @@ function ProfileMenu({ user, onLogout }: { user: { name: string; avatar: string 
   return (
     <div className="relative">
       <button onClick={() => setOpen(o => !o)} className="flex items-center gap-2 p-1 rounded sc-focus">
-        <img src={user.avatar} alt={user.name} className="w-8 h-8 rounded-full" style={{ border: '2px solid var(--sc-orange)' }} />
+        <img src={user.avatar} alt={user.name} className="w-8 h-8 rounded-full" loading="lazy" decoding="async" style={{ border: '2px solid var(--sc-orange)' }} />
         <span className="text-sm hidden sm:block" style={{ color: 'var(--sc-text-light)' }}>{user.name}</span>
       </button>
       {open && (

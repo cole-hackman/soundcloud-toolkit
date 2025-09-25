@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
-import session from 'express-session';
+import compression from 'compression';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import dotenv from 'dotenv';
@@ -48,19 +48,22 @@ app.use(cors({
   credentials: true
 }));
 
+// Response compression
+app.use(compression());
+
+// Lightweight request timing logger (helps spot slow endpoints)
+app.use((req, res, next) => {
+  const startedAtMs = Date.now();
+  res.on('finish', () => {
+    const durationMs = Date.now() - startedAtMs;
+    // Keep logs concise in production
+    console.log(`[${res.statusCode}] ${req.method} ${req.originalUrl} ${durationMs}ms`);
+  });
+  next();
+});
+
 app.use(express.json());
 app.use(cookieParser());
-
-app.use(session({
-  secret: process.env.SESSION_SECRET || 'fallback-secret',
-  resave: false,
-  saveUninitialized: false,
-  cookie: {
-    secure: process.env.NODE_ENV === 'production',
-    httpOnly: true,
-    maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
-  }
-}));
 
 // Import routes
 import authRoutes from './routes/auth.js';

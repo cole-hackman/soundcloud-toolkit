@@ -5,7 +5,10 @@ import { LogOut, Home } from 'lucide-react';
 // Bundle logos so preview serves hashed assets reliably
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore
-import logoUrl from '/sc toolkit transparent .png';
+import logoPng from '/sc toolkit transparent .png';
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore
+import logoWebp from '/sc toolkit transparent.webp';
 import { useAuth } from '../contexts/AuthContext';
 import ToastHost from './ToastHost';
 
@@ -25,9 +28,8 @@ function Layout({ children }: LayoutProps) {
           <div className="flex items-center justify-between">
             <Link to="/dashboard" className="flex items-center space-x-2">
               <picture>
-                {/* If a WebP is added later at the same path, modern browsers will use it automatically */}
-                <source srcSet={String(logoUrl).replace('.png', '.webp')} type="image/webp" />
-                <img src={logoUrl} alt="SoundCloud Tools" className="h-10 w-auto object-contain" loading="lazy" decoding="async" />
+                <source srcSet={logoWebp} type="image/webp" />
+                <img src={logoPng} alt="SoundCloud Tools" className="h-10 w-auto object-contain" loading="lazy" decoding="async" />
               </picture>
             </Link>
 

@@ -63,8 +63,8 @@ function Dashboard() {
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="text-center mb-12">
         <div className="flex items-center justify-center mb-4">
           <div className="text-center">
-            <h1 className="text-3xl font-semibold" style={{ color: 'var(--sc-text-dark)' }}>Welcome back, {user?.display_name}!</h1>
-            <p style={{ color: 'var(--sc-text-light)' }}>Choose a tool to enhance your SoundCloud experience</p>
+            <h1 className="text-4xl md:text-5xl font-semibold" style={{ color: 'var(--sc-text-dark)' }}>Welcome back, {user?.display_name}!</h1>
+            <p className="mt-2 text-lg md:text-xl" style={{ color: 'var(--sc-text-light)' }}>Choose a tool to enhance your SoundCloud experience</p>
           </div>
         </div>
       </motion.div>

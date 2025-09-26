@@ -29,7 +29,7 @@ function Layout({ children }: LayoutProps) {
             <Link to="/dashboard" className="flex items-center space-x-2">
               <picture>
                 <source srcSet={logoWebp} type="image/webp" />
-                <img src={logoPng} alt="SoundCloud Tools" className="h-12 md:h-14 w-auto object-contain" loading="lazy" decoding="async" />
+                <img src={logoPng} alt="SoundCloud Tools" className="h-16 md:h-18 w-auto object-contain" loading="lazy" decoding="async" />
               </picture>
             </Link>
 

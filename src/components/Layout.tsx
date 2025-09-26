@@ -27,10 +27,12 @@ function Layout({ children }: LayoutProps) {
         <div className="container mx-auto px-4 py-3">
           <div className="flex items-center justify-between">
             <Link to="/dashboard" className="flex items-center space-x-2">
-              <picture>
-                <source srcSet={logoWebp} type="image/webp" />
-                <img src={logoPng} alt="SoundCloud Tools" className="h-16 md:h-18 w-auto object-contain" loading="lazy" decoding="async" />
-              </picture>
+              <div className="h-12 md:h-14 overflow-hidden flex items-center">
+                <picture>
+                  <source srcSet={logoWebp} type="image/webp" />
+                  <img src={logoPng} alt="SoundCloud Tools" className="h-24 md:h-28 w-auto object-contain -my-6 md:-my-7" loading="lazy" decoding="async" />
+                </picture>
+              </div>
             </Link>
 
             <div className="flex items-center space-x-4 relative">

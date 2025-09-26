@@ -10,6 +10,25 @@ import { useAuth } from '../contexts/AuthContext';
 function Login() {
   const { login } = useAuth();
 
+  // Pre-warm API before redirecting to reduce cold-start hiccups
+  const prewarmAndLogin = async () => {
+    const API_BASE = (import.meta as any).env?.VITE_API_BASE || '';
+    try {
+      await Promise.race([
+        fetch(`${API_BASE}/health`, { credentials: 'include' }),
+        new Promise((resolve) => setTimeout(resolve, 1200))
+      ]);
+    } catch {}
+    try {
+      // one retry if it was asleep
+      await Promise.race([
+        fetch(`${API_BASE}/health`, { credentials: 'include' }),
+        new Promise((resolve) => setTimeout(resolve, 1200))
+      ]);
+    } catch {}
+    login();
+  };
+
   const features = [
     { icon: Layers, title: 'Combine Playlists', desc: 'Merge and remove duplicates instantly.' },
     { icon: Heart, title: 'Likes → Playlist', desc: 'Turn favorites into organized collections.' },
@@ -49,7 +68,7 @@ function Login() {
 
           {/* Login Button */}
           <div className="flex justify-center">
-            <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={login} className="w-full sm:w-[280px] sc-primary-button mx-auto flex items-center justify-center rounded bg-gradient-to-r from-[#FF5500] to-[#E64A00] hover:brightness-95 hover:shadow-orange-200 text-white py-3">
+            <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={prewarmAndLogin} className="w-full sm:w-[280px] sc-primary-button mx-auto flex items-center justify-center rounded bg-gradient-to-r from-[#FF5500] to-[#E64A00] hover:brightness-95 hover:shadow-orange-200 text-white py-3">
               <span className="whitespace-nowrap">Continue with SoundCloud</span>
             </motion.button>
           </div>
@@ -64,7 +83,7 @@ function Login() {
       </motion.div>
       {/* Sticky mobile CTA */}
       <div className="sm:hidden fixed bottom-0 left-0 right-0 bg-white/80 backdrop-blur border-t border-gray-200 p-3">
-        <motion.button whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.99 }} onClick={login} className="w-full flex items-center justify-center rounded bg-gradient-to-r from-[#FF5500] to-[#E64A00] hover:brightness-95 hover:shadow-orange-200 text-white py-3">
+        <motion.button whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.99 }} onClick={prewarmAndLogin} className="w-full flex items-center justify-center rounded bg-gradient-to-r from-[#FF5500] to-[#E64A00] hover:brightness-95 hover:shadow-orange-200 text-white py-3">
           <span className="whitespace-nowrap">Continue with SoundCloud</span>
         </motion.button>
       </div>

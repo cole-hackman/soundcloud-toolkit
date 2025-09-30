@@ -66,8 +66,8 @@ function Login() {
             ))}
           </div>
 
-          {/* Login Button */}
-          <div className="flex justify-center">
+          {/* Login Button (hidden on mobile; mobile has sticky CTA below) */}
+          <div className="hidden sm:flex justify-center">
             <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={prewarmAndLogin} className="w-full sm:w-[280px] sc-primary-button mx-auto flex items-center justify-center rounded bg-gradient-to-r from-[#FF5500] to-[#E64A00] hover:brightness-95 hover:shadow-orange-200 text-white py-3">
               <span className="whitespace-nowrap">Continue with SoundCloud</span>
             </motion.button>

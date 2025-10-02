@@ -9,6 +9,7 @@ const SmartDeduplication = React.lazy(() => import('./pages/SmartDeduplication')
 const LinkResolver = React.lazy(() => import('./pages/LinkResolver'));
 import Layout from './components/Layout';
 import ErrorBoundary from './components/ErrorBoundary';
+import { Analytics } from '@vercel/analytics/react';
 const PlaylistModifier = React.lazy(() => import('./pages/PlaylistModifier'));
 const About = React.lazy(() => import('./pages/About'));
 const Privacy = React.lazy(() => import('./pages/Privacy'));
@@ -100,6 +101,7 @@ function App() {
           <ErrorBoundary>
             <AppRoutes />
           </ErrorBoundary>
+          <Analytics />
         </div>
       </Router>
     </AuthProvider>

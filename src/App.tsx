@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import Login from './pages/Login';
+const Home = React.lazy(() => import('./pages/Home'));
 const Dashboard = React.lazy(() => import('./pages/Dashboard'));
 const CombinePlaylists = React.lazy(() => import('./pages/CombinePlaylists'));
 const LikesToPlaylist = React.lazy(() => import('./pages/LikesToPlaylist'));
@@ -45,6 +46,11 @@ function AppRoutes() {
   
   return (
     <Routes>
+      <Route path="/" element={
+        <React.Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" /></div>}>
+          <Home />
+        </React.Suspense>
+      } />
       <Route path="/login" element={
         isAuthenticated ? <Navigate to="/dashboard" replace /> : <Login />
       } />
@@ -88,7 +94,6 @@ function AppRoutes() {
       } />
       <Route path="/about" element={<React.Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" /></div>}><About /></React.Suspense>} />
       <Route path="/privacy" element={<React.Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" /></div>}><Privacy /></React.Suspense>} />
-      <Route path="/" element={<Navigate to="/dashboard" replace />} />
     </Routes>
   );
 }

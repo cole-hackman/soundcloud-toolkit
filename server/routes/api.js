@@ -408,89 +408,197 @@ router.post('/playlists/merge', authenticateUser, async (req, res) => {
     }
 
     const uniqueBeforeCap = trackIdSet.size;
-    const cap = Math.min(uniqueBeforeCap, 500);
-    const trackIdsArray = Array.from(trackIdSet).slice(0, cap);
+    const trackIdsArray = Array.from(trackIdSet);
+    const baseTitle = title || `Merged Playlist - ${new Date().toLocaleDateString()}`;
 
-    // Create playlist with initial batch up to 200 tracks
-    const playlistTitle = title || `Merged Playlist - ${new Date().toLocaleDateString()}`;
-    const initialCount = Math.min(trackIdsArray.length, 200);
-    const initialBatch = trackIdsArray.slice(0, initialCount);
-    const newPlaylist = await soundcloudClient.createPlaylist(
-      req.accessToken,
-      req.refreshToken,
-      playlistTitle,
-      `Merged from ${sourcePlaylistIds.length} playlists`,
-      initialBatch
-    );
+    // If tracks exceed 500, split into multiple playlists
+    if (trackIdsArray.length > 500) {
+      const numPlaylists = Math.ceil(trackIdsArray.length / 500);
+      const createdPlaylists = [];
 
-    console.log('[merge] created playlist', { id: newPlaylist.id, initialCount });
-    await sleep(500);
+      for (let i = 0; i < numPlaylists; i++) {
+        const startIdx = i * 500;
+        const endIdx = Math.min(startIdx + 500, trackIdsArray.length);
+        const batch = trackIdsArray.slice(startIdx, endIdx);
+        
+        const playlistTitle = numPlaylists > 1 
+          ? `${baseTitle} (${i + 1}/${numPlaylists})`
+          : baseTitle;
 
-    // If more remain, set the full list at once (overwrite semantics)
-    let finalUpdateSucceeded = false;
-    let finalCount = initialBatch.length;
-    if (trackIdsArray.length > initialBatch.length) {
-      const fullList = trackIdsArray; // capped to 500
-      const attemptUpdate = async (attempt) => {
+        // Create playlist with initial batch up to 200 tracks
+        const initialCount = Math.min(batch.length, 200);
+        const initialBatch = batch.slice(0, initialCount);
+        const newPlaylist = await soundcloudClient.createPlaylist(
+          req.accessToken,
+          req.refreshToken,
+          playlistTitle,
+          `Merged from ${sourcePlaylistIds.length} playlists${numPlaylists > 1 ? ` - Part ${i + 1} of ${numPlaylists}` : ''}`,
+          initialBatch
+        );
+
+        console.log(`[merge] created playlist ${i + 1}/${numPlaylists}`, { id: newPlaylist.id, initialCount });
+        await sleep(500);
+
+        // If more remain, set the full list at once (overwrite semantics)
+        let finalUpdateSucceeded = false;
+        let finalCount = initialBatch.length;
+        if (batch.length > initialBatch.length) {
+          const attemptUpdate = async (attempt) => {
+            try {
+              const updated = await soundcloudClient.addTracksToPlaylist(
+                req.accessToken,
+                req.refreshToken,
+                newPlaylist.id,
+                batch
+              );
+              finalCount = Array.isArray(updated.tracks) ? updated.tracks.length : (updated.track_count || batch.length);
+              finalUpdateSucceeded = true;
+            } catch (e) {
+              console.error(`[merge] playlist ${i + 1} final set attempt ${attempt} failed:`, e?.message || e);
+              throw e;
+            }
+          };
+
+          try {
+            await attemptUpdate(1);
+          } catch {
+            await sleep(800);
+            await attemptUpdate(2);
+          }
+        }
+
+        // Verify current count if possible
+        let verifiedCount = finalCount;
         try {
-          const updated = await soundcloudClient.addTracksToPlaylist(
+          const verified = await soundcloudClient.getPlaylistWithTracks(
             req.accessToken,
             req.refreshToken,
-            newPlaylist.id,
-            fullList
+            newPlaylist.id
           );
-          finalCount = Array.isArray(updated.tracks) ? updated.tracks.length : (updated.track_count || fullList.length);
-          finalUpdateSucceeded = true;
-        } catch (e) {
-          console.error(`[merge] final set attempt ${attempt} failed:`, e?.message || e);
-          throw e;
+          verifiedCount = Array.isArray(verified.tracks) ? verified.tracks.length : (verified.track_count || verifiedCount);
+        } catch {}
+
+        createdPlaylists.push({
+          playlist: newPlaylist,
+          trackCount: verifiedCount,
+          partNumber: i + 1
+        });
+
+        // Small delay between creating multiple playlists
+        if (i < numPlaylists - 1) {
+          await sleep(500);
         }
-      };
-
-      try {
-        await attemptUpdate(1);
-      } catch {
-        await sleep(800);
-        await attemptUpdate(2);
       }
-    }
 
-    // Verify current count if possible
-    let verifiedCount = finalCount;
-    try {
-      const verified = await soundcloudClient.getPlaylistWithTracks(
-        req.accessToken,
-        req.refreshToken,
-        newPlaylist.id
-      );
-      verifiedCount = Array.isArray(verified.tracks) ? verified.tracks.length : (verified.track_count || verifiedCount);
-    } catch {}
-
-    console.log('[merge] summary', {
-      sourceCount: sourcePlaylistIds.length,
-      fetchedTotal,
-      acceptedTotal,
-      uniqueBeforeCap,
-      cappedTo: cap,
-      createdId: newPlaylist.id,
-      finalUpdateSucceeded,
-      verifiedCount
-    });
-
-    res.json({
-      playlist: newPlaylist,
-      stats: {
-        sourcePlaylists: sourcePlaylistIds.length,
-        perPlaylistCounts,
+      console.log('[merge] summary (multiple playlists)', {
+        sourceCount: sourcePlaylistIds.length,
         fetchedTotal,
         acceptedTotal,
         uniqueBeforeCap,
-        cappedTo: cap,
-        initialCount,
-        finalUpdateSucceeded,
-        finalCount: verifiedCount
+        totalTracks: trackIdsArray.length,
+        numPlaylistsCreated: numPlaylists,
+        playlists: createdPlaylists.map(p => ({ id: p.playlist.id, count: p.trackCount }))
+      });
+
+      res.json({
+        playlists: createdPlaylists.map(p => p.playlist),
+        stats: {
+          sourcePlaylists: sourcePlaylistIds.length,
+          perPlaylistCounts,
+          fetchedTotal,
+          acceptedTotal,
+          uniqueBeforeCap,
+          totalTracks: trackIdsArray.length,
+          numPlaylistsCreated: numPlaylists,
+          playlistsCreated: createdPlaylists.map(p => ({
+            id: p.playlist.id,
+            title: p.playlist.title,
+            trackCount: p.trackCount,
+            partNumber: p.partNumber
+          }))
+        }
+      });
+    } else {
+      // Original single playlist logic (when <= 500 tracks)
+      
+      // Create playlist with initial batch up to 200 tracks
+      const playlistTitle = baseTitle;
+      const initialCount = Math.min(trackIdsArray.length, 200);
+      const initialBatch = trackIdsArray.slice(0, initialCount);
+      const newPlaylist = await soundcloudClient.createPlaylist(
+        req.accessToken,
+        req.refreshToken,
+        playlistTitle,
+        `Merged from ${sourcePlaylistIds.length} playlists`,
+        initialBatch
+      );
+
+      console.log('[merge] created playlist', { id: newPlaylist.id, initialCount });
+      await sleep(500);
+
+      // If more remain, set the full list at once (overwrite semantics)
+      let finalUpdateSucceeded = false;
+      let finalCount = initialBatch.length;
+      if (trackIdsArray.length > initialBatch.length) {
+        const attemptUpdate = async (attempt) => {
+          try {
+            const updated = await soundcloudClient.addTracksToPlaylist(
+              req.accessToken,
+              req.refreshToken,
+              newPlaylist.id,
+              trackIdsArray
+            );
+            finalCount = Array.isArray(updated.tracks) ? updated.tracks.length : (updated.track_count || trackIdsArray.length);
+            finalUpdateSucceeded = true;
+          } catch (e) {
+            console.error(`[merge] final set attempt ${attempt} failed:`, e?.message || e);
+            throw e;
+          }
+        };
+
+        try {
+          await attemptUpdate(1);
+        } catch {
+          await sleep(800);
+          await attemptUpdate(2);
+        }
       }
-    });
+
+      // Verify current count if possible
+      let verifiedCount = finalCount;
+      try {
+        const verified = await soundcloudClient.getPlaylistWithTracks(
+          req.accessToken,
+          req.refreshToken,
+          newPlaylist.id
+        );
+        verifiedCount = Array.isArray(verified.tracks) ? verified.tracks.length : (verified.track_count || verifiedCount);
+      } catch {}
+
+      console.log('[merge] summary', {
+        sourceCount: sourcePlaylistIds.length,
+        fetchedTotal,
+        acceptedTotal,
+        uniqueBeforeCap,
+        totalTracks: trackIdsArray.length,
+        createdId: newPlaylist.id,
+        finalUpdateSucceeded,
+        verifiedCount
+      });
+
+      res.json({
+        playlist: newPlaylist,
+        stats: {
+          sourcePlaylists: sourcePlaylistIds.length,
+          perPlaylistCounts,
+          fetchedTotal,
+          acceptedTotal,
+          uniqueBeforeCap,
+          totalTracks: trackIdsArray.length,
+          finalCount: verifiedCount
+        }
+      });
+    }
   } catch (error) {
     console.error('Merge playlists error:', error);
     res.status(500).json({ error: 'Failed to merge playlists' });

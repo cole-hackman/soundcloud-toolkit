@@ -47,25 +47,64 @@ function CombinePlaylists() {
     setIsProcessing(true);
     try {
       const response = await fetch(`${API_BASE}/api/playlists/merge`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ sourcePlaylistIds: selectedPlaylists.map(p => p.id), title: newPlaylistTitle }) });
-      if (response.ok) { const data = await response.json(); setResult(data); setIsComplete(true); emitToast({ message: 'Playlist created from merge', variant: 'success' }); } else { const error = await response.json(); console.error('Failed to merge playlists:', error); emitToast({ message: 'Failed to merge playlists', variant: 'error' }); }
+      if (response.ok) { 
+        const data = await response.json(); 
+        setResult(data); 
+        setIsComplete(true); 
+        const numPlaylists = data.playlists ? data.playlists.length : 1;
+        const message = numPlaylists > 1 
+          ? `${numPlaylists} playlists created from merge` 
+          : 'Playlist created from merge';
+        emitToast({ message, variant: 'success' }); 
+      } else { 
+        const error = await response.json(); 
+        console.error('Failed to merge playlists:', error); 
+        emitToast({ message: 'Failed to merge playlists', variant: 'error' }); 
+      }
     } catch (error) { console.error('Error merging playlists:', error); emitToast({ message: 'An error occurred. Please try again.', variant: 'error' }); } finally { setIsProcessing(false); }
   };
 
   const totalTracks = selectedPlaylists.reduce((sum, playlist) => sum + (playlist.track_count || 0), 0);
 
   if (isComplete) {
+    const playlists = result?.playlists || (result?.playlist ? [result.playlist] : []);
+    const numPlaylists = playlists.length;
+    const totalTracksCreated = result?.stats?.totalTracks || result?.stats?.finalCount || result?.totalTracks || 0;
+    const uniqueTracks = result?.stats?.uniqueBeforeCap || totalTracksCreated;
+
     return (
       <div className="container mx-auto px-4 py-8 max-w-2xl">
         <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="text-center sc-card p-8">
           <div className="w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6" style={{ background: '#22c55e' }}>
             <Check className="w-10 h-10 text-white" />
           </div>
-          <h1 className="text-3xl font-semibold" style={{ color: 'var(--sc-text-dark)' }}>Playlist Created!</h1>
+          <h1 className="text-3xl font-semibold" style={{ color: 'var(--sc-text-dark)' }}>
+            {numPlaylists > 1 ? `${numPlaylists} Playlists Created!` : 'Playlist Created!'}
+          </h1>
           <p className="mt-3" style={{ color: 'var(--sc-text-light)' }}>
-            "{result?.playlist?.title || newPlaylistTitle}" has been created with {result?.totalTracks || totalTracks} tracks (duplicates removed)
+            {numPlaylists > 1 ? (
+              <>
+                {uniqueTracks} unique tracks found after deduplication. Split into {numPlaylists} playlists (500 tracks each).
+              </>
+            ) : (
+              <>
+                "{playlists[0]?.title || newPlaylistTitle}" has been created with {totalTracksCreated} tracks (duplicates removed)
+              </>
+            )}
           </p>
           <div className="space-y-3 mt-6">
-            <button onClick={() => { const url = result?.playlist?.permalink_url || result?.permalink_url; if (url) window.open(url, '_blank'); }} className="w-full sc-primary-button">Open in SoundCloud</button>
+            {playlists.map((playlist: any, index: number) => (
+              <button 
+                key={playlist.id || index}
+                onClick={() => { 
+                  const url = playlist.permalink_url; 
+                  if (url) window.open(url, '_blank'); 
+                }} 
+                className="w-full sc-primary-button"
+              >
+                {numPlaylists > 1 ? `Open Playlist ${index + 1} (${playlist.title || `${newPlaylistTitle} (${index + 1}/${numPlaylists})`})` : 'Open in SoundCloud'}
+              </button>
+            ))}
             <Link to="/dashboard" className="block w-full text-center px-4 py-3 rounded" style={{ background: 'var(--sc-light-gray)', color: 'var(--sc-text-dark)' }}>Back to Dashboard</Link>
           </div>
         </motion.div>
@@ -155,6 +194,12 @@ function CombinePlaylists() {
               <div className="p-4 sc-card">
                 <div className="flex justify-between text-sm"><span style={{ color: 'var(--sc-text-light)' }}>Total tracks:</span><span style={{ color: 'var(--sc-text-dark)' }}>{totalTracks}</span></div>
                 <div className="flex justify-between text-sm mt-1"><span style={{ color: 'var(--sc-text-light)' }}>Estimated after deduplication:</span><span style={{ color: '#22c55e' }}>{Math.floor(totalTracks * 0.85)}</span></div>
+                {Math.floor(totalTracks * 0.85) > 500 && (
+                  <div className="flex justify-between text-sm mt-2 pt-2 border-t" style={{ borderColor: 'var(--sc-light-gray)' }}>
+                    <span style={{ color: 'var(--sc-text-light)' }}>Note:</span>
+                    <span style={{ color: 'var(--sc-orange)' }}>Will create {Math.ceil(Math.floor(totalTracks * 0.85) / 500)} playlist(s)</span>
+                  </div>
+                )}
               </div>
               <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} disabled={!newPlaylistTitle.trim() || isProcessing} onClick={handleCombine} className="w-full sc-primary-button">
                 {isProcessing ? (<><div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin inline-block mr-2" /><span>Processing...</span></>) : (<><Combine className="w-5 h-5 mr-2" /><span>Combine Playlists</span></>)}

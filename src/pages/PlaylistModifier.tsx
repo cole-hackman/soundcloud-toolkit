@@ -138,6 +138,17 @@ function PlaylistModifier() {
     const m = title.match(/(\b|\D)(\d{2,3})\s?bpm\b/i) || title.match(/[-\s](\d{2,3})(?:\s*[-)]|$)/);
     if (!m) return undefined; const v = Number(m[2] || m[1]); return v >= 60 && v <= 220 ? v : undefined;
   }
+  function formatDuration(ms?: number): string {
+    if (ms == null || ms === 0) return '—';
+    const totalSeconds = Math.floor(ms / 1000);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    if (hours > 0) {
+      return `${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+    }
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  }
 
   // Apply sorting to on-screen list (viewTracks) with small debounce
   useEffect(() => {

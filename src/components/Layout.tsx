@@ -5,10 +5,10 @@ import { LogOut, Home } from 'lucide-react';
 // Bundle logos so preview serves hashed assets reliably
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore
-import logoPng from '/sc toolkit transparent .png';
+import logoPng from '/public/sc toolkit transparent .png';
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore
-import logoWebp from '/sc toolkit transparent.webp';
+import logoWebp from '/public/sc toolkit transparent.webp';
 import { useAuth } from '../contexts/AuthContext';
 import ToastHost from './ToastHost';
 

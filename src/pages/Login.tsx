@@ -4,7 +4,7 @@ import { Music, Play, Users, Zap, Layers, Heart, ListChecks, Link as LinkIcon } 
 import { Link } from 'react-router-dom';
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore
-import scLogo from '/sc toolkit transparent .png';
+import scLogo from '/public/sc toolkit transparent .png';
 import { useAuth } from '../contexts/AuthContext';
 
 function Login() {

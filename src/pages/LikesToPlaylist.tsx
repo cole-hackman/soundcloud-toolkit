@@ -288,7 +288,6 @@ function LikesToPlaylist() {
         </motion.div>
       </div>
     </div>
-    </div>
   );
 }
 

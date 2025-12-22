@@ -308,7 +308,6 @@ function CombinePlaylists() {
         </div>
       </div>
     </div>
-    </div>
   );
 }
 

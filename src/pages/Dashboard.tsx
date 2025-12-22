@@ -58,58 +58,95 @@ function Dashboard() {
   ];
 
   return (
-    <div className="container mx-auto px-4 py-8 max-w-6xl">
-      {/* Welcome Section */}
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="text-center mb-12">
-        <div className="flex items-center justify-center mb-4">
-          <div className="text-center">
-            <h1 className="text-4xl md:text-5xl font-semibold" style={{ color: 'var(--sc-text-dark)' }}>Welcome back, {user?.display_name}!</h1>
-            <p className="mt-2 text-lg md:text-xl" style={{ color: 'var(--sc-text-light)' }}>Choose a tool to enhance your SoundCloud experience</p>
-          </div>
-        </div>
-      </motion.div>
+    <div className="min-h-screen bg-[#F2F2F2]">
+      <div className="container mx-auto px-6 py-12 md:py-16 max-w-7xl">
+        {/* Welcome Section */}
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }} 
+          animate={{ opacity: 1, y: 0 }} 
+          transition={{ duration: 0.6 }}
+          className="text-center mb-16"
+        >
+          <h1 className="text-5xl md:text-6xl font-bold mb-4 text-[#333333]">
+            Welcome back, <span className="bg-gradient-to-r from-[#FF5500] to-[#E64A00] bg-clip-text text-transparent">{user?.display_name}</span>!
+          </h1>
+          <p className="text-lg md:text-xl text-[#666666] max-w-2xl mx-auto leading-relaxed">
+            Choose a tool to enhance your SoundCloud experience
+          </p>
+        </motion.div>
 
-      {/* Feature Cards Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {features.map((feature, index) => (
-          <motion.div key={feature.id} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: index * 0.1 }} whileHover={{ scale: 1.02 }} className="group sc-hover-card sc-card">
-            <Link to={feature.path} className="block p-6">
-              <div className="flex items-start justify-between mb-4">
-                <div className="w-12 h-12 rounded flex items-center justify-center" style={{ background: 'var(--sc-orange)' }}>
-                  <feature.icon className="w-6 h-6 text-white" />
+        {/* Feature Cards Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-16">
+          {features.map((feature, index) => (
+            <motion.div
+              key={feature.id}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: index * 0.1 }}
+              whileHover={{ y: -4, scale: 1.02 }}
+              className="group bg-white border-2 border-gray-200 rounded-2xl p-10 hover:border-[#FF5500] hover:shadow-2xl transition-all duration-300"
+            >
+              <Link to={feature.path} className="block">
+                <div className="flex items-start justify-between mb-6">
+                  <div className="w-20 h-20 rounded-full bg-gradient-to-br from-[#FF5500] to-[#E64A00] flex items-center justify-center text-white shadow-lg">
+                    <feature.icon className="w-10 h-10" />
+                  </div>
+                  <ArrowRight className="w-6 h-6 text-[#FF5500] opacity-0 group-hover:opacity-100 transition-opacity" />
                 </div>
-                <ArrowRight className="w-5 h-5" style={{ color: 'var(--sc-orange)' }} />
-              </div>
-              <h3 className="text-xl font-semibold mb-2" style={{ color: 'var(--sc-text-dark)' }}>{feature.title}</h3>
-              <p className="text-sm" style={{ color: 'var(--sc-text-light)' }}>{feature.description}</p>
-            </Link>
-          </motion.div>
-        ))}
-      </div>
+                <h3 className="text-2xl font-bold mb-4 text-[#333333] group-hover:text-[#FF5500] transition">
+                  {feature.title}
+                </h3>
+                <p className="text-[#666666] leading-relaxed text-lg">
+                  {feature.description}
+                </p>
+              </Link>
+            </motion.div>
+          ))}
+        </div>
 
-      {/* Stats Section */}
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5 }} className="mt-12 grid grid-cols-2 md:grid-cols-4 gap-4">
-        {loading ? (
-          Array.from({ length: 4 }).map((_, index) => (
-            <div key={index} className="sc-stat">
-              <div className="w-8 h-8 rounded mx-auto mb-2 sc-skeleton" />
-              <div className="w-16 h-4 rounded mx-auto sc-skeleton" />
-            </div>
-          ))
-        ) : (
-          [
-            { label: 'Playlists', value: stats?.playlist_count?.toString() || '0' },
-            { label: 'Liked Tracks', value: stats?.public_favorites_count?.toString() || '0' },
-            { label: 'Following', value: stats?.followings_count?.toString() || '0' },
-            { label: 'Followers', value: stats?.followers_count?.toString() || '0' }
-          ].map((stat, index) => (
-            <div key={index} className="sc-stat">
-              <div className="text-2xl font-semibold" style={{ color: 'var(--sc-text-dark)' }}>{stat.value}</div>
-              <div className="text-sm" style={{ color: 'var(--sc-text-light)' }}>{stat.label}</div>
-            </div>
-          ))
-        )}
-      </motion.div>
+        {/* Stats Section */}
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.6, duration: 0.6 }}
+          className="grid grid-cols-2 md:grid-cols-4 gap-6"
+        >
+          {loading ? (
+            Array.from({ length: 4 }).map((_, index) => (
+              <motion.div
+                key={index}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.7 + index * 0.1 }}
+                className="bg-white border-2 border-gray-200 rounded-xl p-6 text-center"
+              >
+                <div className="w-12 h-12 rounded-lg mx-auto mb-3 sc-skeleton" />
+                <div className="w-20 h-5 rounded mx-auto sc-skeleton" />
+              </motion.div>
+            ))
+          ) : (
+            [
+              { label: 'Playlists', value: stats?.playlist_count?.toString() || '0', icon: '📋' },
+              { label: 'Liked Tracks', value: stats?.public_favorites_count?.toString() || '0', icon: '❤️' },
+              { label: 'Following', value: stats?.followings_count?.toString() || '0', icon: '👥' },
+              { label: 'Followers', value: stats?.followers_count?.toString() || '0', icon: '⭐' }
+            ].map((stat, index) => (
+              <motion.div
+                key={index}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.7 + index * 0.1, duration: 0.5 }}
+                whileHover={{ y: -2, scale: 1.02 }}
+                className="bg-white border-2 border-gray-200 rounded-xl p-6 text-center hover:border-[#FF5500] hover:shadow-lg transition-all duration-300"
+              >
+                <div className="text-3xl mb-2">{stat.icon}</div>
+                <div className="text-3xl md:text-4xl font-bold mb-2 text-[#333333]">{stat.value}</div>
+                <div className="text-sm font-medium text-[#666666]">{stat.label}</div>
+              </motion.div>
+            ))
+          )}
+        </motion.div>
+      </div>
     </div>
   );
 }

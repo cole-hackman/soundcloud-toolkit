@@ -215,187 +215,374 @@ function PlaylistModifier() {
   }
 
   return (
-    <div className="container mx-auto px-4 py-8 max-w-5xl pb-24">
-      <div className="flex items-center mb-3">
-        <Link to="/dashboard" className="mr-3"><button className="p-2 rounded sc-focus" style={{ color: 'var(--sc-text-light)' }}><ArrowLeft className="w-5 h-5" /></button></Link>
-        <h1 className="text-2xl font-semibold" style={{ color: 'var(--sc-text-dark)' }}>Playlist Modifier</h1>
-      </div>
-
-      {/* Header picker condensed */}
-      <div className="rounded-xl border bg-white shadow-sm p-3 mb-4">
-        <div className="flex items-center gap-3" ref={selectorRef}>
-          {(() => { const p = playlists.find(x => String(x.id) === String(selectedPlaylistId)); return p?.coverUrl ? <img src={p.coverUrl} className="w-10 h-10 rounded object-cover" /> : <div className="w-10 h-10 rounded" style={{ background: 'var(--sc-light-gray)' }} /> })()}
-          <div className="relative flex-1">
-            <button type="button" onClick={() => setIsSelectorOpen(v => !v)} className="sc-input sc-focus px-3 py-2 text-sm w-full flex items-center justify-between">
-              <span className="truncate">{playlists.find(x => String(x.id) === String(selectedPlaylistId))?.title || 'Select a playlist…'}</span>
-              <ChevronDown className="w-4 h-4" />
-            </button>
-            {isSelectorOpen && (
-              <div className="absolute z-10 mt-2 w-full max-h-64 overflow-auto sc-card p-1" style={{ borderColor: 'var(--sc-light-gray)' }}>
-                {playlists.map(p => (
-                  <button key={p.id} onClick={() => handleSelect(p)} className="w-full flex items-center gap-3 px-3 py-2 rounded sc-focus hover:bg-gray-100 text-left">
-                    {p.coverUrl ? <img src={p.coverUrl} className="w-8 h-8 rounded object-cover" /> : <div className="w-8 h-8 rounded" style={{ background: 'var(--sc-light-gray)' }} />}
-                    <span className="flex-1 text-sm truncate" style={{ color: 'var(--sc-text-dark)' }}>{p.title}</span>
-                    {String(p.id) === String(selectedPlaylistId) && <Check className="w-4 h-4" style={{ color: 'var(--sc-orange)' }} />}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-          <button title="Refresh" onClick={() => { const idNum = Number(selectedPlaylistId); if (!Number.isNaN(idNum)) loadTracks(idNum); }} className="p-2 rounded sc-focus" style={{ color: 'var(--sc-text-light)' }}>
-            ↻
-          </button>
-        </div>
-      </div>
-
-      {/* Sort Bar */}
-      <div className="sticky top-0 z-10">
-        <div className="rounded-lg border bg-white px-3 py-2 shadow-sm mb-4 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            {/* Segmented quick choices */}
-            <div className="flex items-center rounded border overflow-hidden" role="tablist" aria-label="Sort">
-              {([
-                ['manual','Manual'],
-                ['title-asc','Title'],
-                ['artist-asc','Artist'],
-                ['bpm-low','BPM'],
-              ] as [SortKey,string][]).map(([key,label]) => (
-                <button key={key} onClick={() => setSortKey(key)} role="tab" aria-selected={sortKey===key} className={`px-3 py-1.5 text-sm ${sortKey===key ? 'bg-[var(--sc-orange)] text-white' : ''}`}>{label}</button>
-              ))}
-            </div>
-            <div className="relative" ref={sortRef}>
-              <button type="button" onClick={() => setIsSortOpen(v => !v)} className="sc-input sc-focus px-3 py-2 text-sm w-48 flex items-center justify-between">
-                <span>{(() => {
-                  const map: Record<SortKey, string> = {
-                    'manual': 'Manual',
-                    'title-asc': 'Title · A→Z',
-                    'title-desc': 'Title · Z→A',
-                    'artist-asc': 'Artist · A→Z',
-                    'artist-desc': 'Artist · Z→A',
-                    'date-new': 'Date added · Newest',
-                    'date-old': 'Date added · Oldest',
-                    'dur-short': 'Duration · Short→Long',
-                    'dur-long': 'Duration · Long→Short',
-                    'bpm-low': 'BPM · Low→High',
-                    'bpm-high': 'BPM · High→Low',
-                  } as const;
-                  return map[sortKey];
-                })()}</span>
-                <ChevronDown className="w-4 h-4" />
+    <div className="min-h-screen bg-[#F2F2F2]">
+      <div className="container mx-auto px-6 py-12 max-w-7xl pb-32">
+        {/* Header */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mb-8"
+        >
+          <div className="flex items-center mb-4">
+            <Link to="/dashboard" className="mr-4">
+              <button className="p-2 rounded-lg sc-focus hover:bg-white transition-colors" style={{ color: 'var(--sc-text-light)' }}>
+                <ArrowLeft className="w-6 h-6" />
               </button>
-              {isSortOpen && (
-                <div className="absolute z-10 mt-2 w-64 max-h-64 overflow-auto sc-card p-1" style={{ borderColor: 'var(--sc-light-gray)' }}>
-                  {([
-                    ['manual','Manual'],
-                    ['title-asc','Title · A→Z'],
-                    ['title-desc','Title · Z→A'],
-                    ['artist-asc','Artist · A→Z'],
-                    ['artist-desc','Artist · Z→A'],
-                    ['date-new','Date added · Newest'],
-                    ['date-old','Date added · Oldest'],
-                    ['dur-short','Duration · Short→Long'],
-                    ['dur-long','Duration · Long→Short'],
-                    ['bpm-low','BPM · Low→High'],
-                    ['bpm-high','BPM · High→Low'],
-                  ] as [SortKey,string][]).map(([key,label]) => (
-                    <button key={key} onClick={() => { setSortKey(key); setIsSortOpen(false); }} className="w-full flex items-center gap-3 px-3 py-2 rounded sc-focus hover:bg-gray-100 text-left">
-                      <span className="flex-1 text-sm" style={{ color: 'var(--sc-text-dark)' }}>{label}</span>
-                      {sortKey === key && <Check className="w-4 h-4" style={{ color: 'var(--sc-orange)' }} />}
+            </Link>
+          </div>
+          <h1 className="text-4xl md:text-5xl font-bold mb-3 text-[#333333]">Playlist Modifier</h1>
+          <p className="text-lg text-[#666666]">Reorder and remove tracks in your playlists</p>
+        </motion.div>
+
+        {/* Playlist Selector */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+          className="bg-white border-2 border-gray-200 rounded-xl p-4 mb-6 shadow-lg"
+        >
+          <div className="flex items-center gap-4" ref={selectorRef}>
+            {(() => {
+              const p = playlists.find(x => String(x.id) === String(selectedPlaylistId));
+              return p?.coverUrl ? (
+                <img src={p.coverUrl} className="w-14 h-14 rounded-lg object-cover shadow-md" />
+              ) : (
+                <div className="w-14 h-14 rounded-lg" style={{ background: 'var(--sc-light-gray)' }} />
+              );
+            })()}
+            <div className="relative flex-1">
+              <button
+                type="button"
+                onClick={() => setIsSelectorOpen(v => !v)}
+                className="w-full px-4 py-3 bg-white border-2 border-gray-200 rounded-xl sc-focus hover:border-[#FF5500] transition-all flex items-center justify-between text-left"
+              >
+                <span className="truncate font-medium text-[#333333]">
+                  {playlists.find(x => String(x.id) === String(selectedPlaylistId))?.title || 'Select a playlist…'}
+                </span>
+                <ChevronDown className="w-5 h-5 text-[#666666]" />
+              </button>
+              {isSelectorOpen && (
+                <div className="absolute z-10 mt-2 w-full max-h-64 overflow-auto bg-white border-2 border-gray-200 rounded-xl p-2 shadow-xl">
+                  {playlists.map(p => (
+                    <button
+                      key={p.id}
+                      onClick={() => handleSelect(p)}
+                      className="w-full flex items-center gap-3 px-4 py-3 rounded-lg sc-focus hover:bg-gray-50 text-left transition-colors"
+                    >
+                      {p.coverUrl ? (
+                        <img src={p.coverUrl} className="w-10 h-10 rounded-lg object-cover" />
+                      ) : (
+                        <div className="w-10 h-10 rounded-lg" style={{ background: 'var(--sc-light-gray)' }} />
+                      )}
+                      <span className="flex-1 text-base truncate text-[#333333]">{p.title}</span>
+                      {String(p.id) === String(selectedPlaylistId) && (
+                        <Check className="w-5 h-5 text-[#FF5500]" />
+                      )}
                     </button>
                   ))}
                 </div>
               )}
             </div>
-            <div className="mx-2 w-px h-5" style={{ background: 'var(--sc-light-gray)' }} />
-            <input id="applyMode" title="Push current on-screen order to SoundCloud." type="checkbox" checked={applyMode} onChange={(e) => setApplyMode(e.target.checked)} className="sc-focus" />
-            <label htmlFor="applyMode" className="text-sm" style={{ color: 'var(--sc-text-light)' }}>Apply to playlist order</label>
+            <button
+              title="Refresh"
+              onClick={() => {
+                const idNum = Number(selectedPlaylistId);
+                if (!Number.isNaN(idNum)) loadTracks(idNum);
+              }}
+              className="p-3 rounded-lg sc-focus hover:bg-gray-100 transition-colors"
+              style={{ color: 'var(--sc-text-light)' }}
+            >
+              ↻
+            </button>
           </div>
-          <div className="flex items-center gap-2">
-            <button title="Revert to last order." onClick={() => { if (!lastAppliedOrder) return; undoApply(); }} disabled={!lastAppliedOrder || saving} className="px-3 py-2 rounded" style={{ background: 'var(--sc-light-gray)', color: 'var(--sc-text-dark)' }}><Undo className="w-4 h-4 inline mr-1" />Undo</button>
-            <button onClick={applyOrder} disabled={!applyMode || sortKey === 'manual' || saving} className="sc-primary-button flex items-center gap-2"><ArrowUpDown className="w-4 h-4" />Apply Order</button>
-          </div>
-        </div>
-        <div aria-live="polite" className="sr-only">{ariaMsg}</div>
-      </div>
+        </motion.div>
 
-      <div className={`sc-card ${draggingIndex !== null ? 'sc-dragging' : ''}`}>
-        {loading ? (
-          <div className="p-6 space-y-3">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded sc-skeleton" />
-                <div className="flex-1">
-                  <div className="h-3 w-1/2 rounded sc-skeleton mb-2" />
-                  <div className="h-3 w-1/3 rounded sc-skeleton" />
-                </div>
+        {/* Sort Bar */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+          className="sticky top-0 z-10 mb-6"
+        >
+          <div className="bg-white border-2 border-gray-200 rounded-xl px-6 py-4 shadow-lg flex flex-wrap items-center justify-between gap-4">
+            <div className="flex items-center gap-4 flex-wrap">
+              {/* Segmented quick choices */}
+              <div className="flex items-center rounded-lg border-2 border-gray-200 overflow-hidden" role="tablist" aria-label="Sort">
+                {([
+                  ['manual', 'Manual'],
+                  ['title-asc', 'Title'],
+                  ['artist-asc', 'Artist'],
+                  ['bpm-low', 'BPM'],
+                ] as [SortKey, string][]).map(([key, label]) => (
+                  <button
+                    key={key}
+                    onClick={() => setSortKey(key)}
+                    role="tab"
+                    aria-selected={sortKey === key}
+                    className={`px-4 py-2 text-sm font-medium transition-all ${
+                      sortKey === key
+                        ? 'bg-gradient-to-r from-[#FF5500] to-[#E64A00] text-white'
+                        : 'bg-white text-[#666666] hover:bg-gray-50'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
               </div>
-            ))}
-          </div>
-        ) : tracks.length === 0 ? (
-          <div className="p-6 text-center" style={{ color: 'var(--sc-text-light)' }}>No tracks in this playlist.</div>
-        ) : (
-          <ul>
-            {viewTracks.map((t, idx) => {
-              const selected = selectedIds.has(t.id);
-              return (
-                <motion.li
-                  key={t.id}
-                  className={`grid grid-cols-[auto_auto_1fr_auto_auto_auto] items-center gap-3 px-3 py-2.5 border-b hover:bg-gray-50`}
-                  style={{ borderColor: 'var(--sc-light-gray)', background: selected ? 'var(--sc-light-gray)' : '#FFFFFF' }}
-                  layout
-                  draggable
-                  onDragStart={(e) => onDragStartItem(idx, e)}
-                  onDragOver={(e) => onDragOverItem(idx, e)}
-                  onDrop={(e) => onDropItem(idx, e)}
-                  onDragEnd={onDragEndItem}
+              <div className="relative" ref={sortRef}>
+                <button
+                  type="button"
+                  onClick={() => setIsSortOpen(v => !v)}
+                  className="px-4 py-2 bg-white border-2 border-gray-200 rounded-xl sc-focus hover:border-[#FF5500] transition-all text-sm w-56 flex items-center justify-between"
                 >
-                  <span className="cursor-grab active:cursor-grabbing" style={{ color: 'var(--sc-text-light)' }}><GripVertical className="w-4 h-4" /></span>
-                  <span className="text-xs px-2 py-1 rounded" style={{ background: 'var(--sc-light-gray)', color: 'var(--sc-text-light)' }}>{idx + 1}</span>
-                  {t.artwork_url ? <img src={t.artwork_url} className="w-12 h-12 rounded object-cover" /> : <div className="w-12 h-12 rounded" style={{ background: 'var(--sc-light-gray)' }} />}
-                  <div className="min-w-0">
-                    <div className="text-sm truncate" title={t.title || 'Untitled'} style={{ color: 'var(--sc-text-dark)' }}>{t.title || 'Untitled'}</div>
-                    <div className="text-xs truncate" title={t.user?.username || 'Unknown'} style={{ color: 'var(--sc-text-light)' }}>{t.user?.username || 'Unknown'}</div>
+                  <span className="font-medium text-[#333333]">
+                    {(() => {
+                      const map: Record<SortKey, string> = {
+                        'manual': 'Manual',
+                        'title-asc': 'Title · A→Z',
+                        'title-desc': 'Title · Z→A',
+                        'artist-asc': 'Artist · A→Z',
+                        'artist-desc': 'Artist · Z→A',
+                        'date-new': 'Date added · Newest',
+                        'date-old': 'Date added · Oldest',
+                        'dur-short': 'Duration · Short→Long',
+                        'dur-long': 'Duration · Long→Short',
+                        'bpm-low': 'BPM · Low→High',
+                        'bpm-high': 'BPM · High→Low',
+                      } as const;
+                      return map[sortKey];
+                    })()}
+                  </span>
+                  <ChevronDown className="w-5 h-5 text-[#666666]" />
+                </button>
+                {isSortOpen && (
+                  <div className="absolute z-10 mt-2 w-64 max-h-64 overflow-auto bg-white border-2 border-gray-200 rounded-xl p-2 shadow-xl">
+                    {([
+                      ['manual', 'Manual'],
+                      ['title-asc', 'Title · A→Z'],
+                      ['title-desc', 'Title · Z→A'],
+                      ['artist-asc', 'Artist · A→Z'],
+                      ['artist-desc', 'Artist · Z→A'],
+                      ['date-new', 'Date added · Newest'],
+                      ['date-old', 'Date added · Oldest'],
+                      ['dur-short', 'Duration · Short→Long'],
+                      ['dur-long', 'Duration · Long→Short'],
+                      ['bpm-low', 'BPM · Low→High'],
+                      ['bpm-high', 'BPM · High→Low'],
+                    ] as [SortKey, string][]).map(([key, label]) => (
+                      <button
+                        key={key}
+                        onClick={() => {
+                          setSortKey(key);
+                          setIsSortOpen(false);
+                        }}
+                        className="w-full flex items-center gap-3 px-4 py-3 rounded-lg sc-focus hover:bg-gray-50 text-left transition-colors"
+                      >
+                        <span className="flex-1 text-sm text-[#333333]">{label}</span>
+                        {sortKey === key && <Check className="w-5 h-5 text-[#FF5500]" />}
+                      </button>
+                    ))}
                   </div>
-                  <div className="text-right">
-                    <span className="inline-block text-xs px-2 py-0.5 rounded text-center w-12" style={{ background: 'var(--sc-light-gray)', color: 'var(--sc-text-light)' }}>{formatDuration(t.duration)}</span>
-                  </div>
-                  <div className="text-right">
-                    {(() => { const bpm = parsedBpm(t); const inferred = bpm != null && t.bpm == null; return (
-                      <span className="inline-block text-xs px-2 py-0.5 rounded text-center w-14" title={inferred ? 'BPM inferred from track title.' : ''} style={{ background: 'var(--sc-light-gray)', color: 'var(--sc-text-light)' }}>
-                        BPM {bpm != null ? `${bpm}${inferred ? ' ≈' : ''}` : '—'}
-                      </span>
-                    ); })()}
-                  </div>
-                  <div className="flex items-center gap-2 justify-end">
-                    <input type="checkbox" checked={selected} onChange={() => setSelectedIds(prev => { const next = new Set(prev); if (next.has(t.id)) next.delete(t.id); else next.add(t.id); return next; })} className="sc-focus" />
-                    <button onClick={() => setTracks(prev => prev.filter(x => x.id !== t.id))} className="p-2 rounded" style={{ color: '#ef4444', opacity: 0.7 }} onMouseOver={(e)=>{(e.currentTarget as HTMLButtonElement).style.opacity='1';}} onMouseOut={(e)=>{(e.currentTarget as HTMLButtonElement).style.opacity='0.7';}}><Trash2 className="w-4 h-4" /></button>
-                  </div>
-                </motion.li>
-              );
-            })}
-          </ul>
-        )}
-      </div>
-
-      {/* Sticky Save Bar - visible only when selection or changes */}
-      {(selectedIds.size > 0 || hasChanges) && (
-        <div className="fixed left-0 right-0 bottom-0 z-40" style={{ background: 'var(--sc-white)', borderTop: '1px solid var(--sc-light-gray)' }}>
-          <div className="container mx-auto px-4 py-3 max-w-5xl flex items-center justify-between">
-            <div className="text-sm" style={{ color: 'var(--sc-text-light)' }}>
-              Selected {selectedIds.size}
+                )}
+              </div>
+              <div className="mx-2 w-px h-8" style={{ background: 'var(--sc-light-gray)' }} />
+              <div className="flex items-center gap-3">
+                <input
+                  id="applyMode"
+                  title="Push current on-screen order to SoundCloud."
+                  type="checkbox"
+                  checked={applyMode}
+                  onChange={(e) => setApplyMode(e.target.checked)}
+                  className="w-5 h-5 sc-focus"
+                />
+                <label htmlFor="applyMode" className="text-sm font-medium text-[#666666] cursor-pointer">
+                  Apply to playlist order
+                </label>
+              </div>
             </div>
             <div className="flex items-center gap-3">
-              <button onClick={removeSelected} disabled={selectedIds.size === 0} className="rounded font-semibold px-4" style={{ height: '48px', minWidth: '160px', background: selectedIds.size === 0 ? 'var(--sc-light-gray)' : '#ef4444', color: 'white' }}>
-                Remove Selected ({selectedIds.size})
-              </button>
-              <button onClick={save} disabled={!hasChanges || saving} className="sc-primary-button flex items-center gap-2">
-                {saving ? (<div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />) : (<Save className="w-4 h-4" />)}
-                <span>{saving ? 'Saving…' : 'Save Changes'}</span>
-              </button>
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                title="Revert to last order."
+                onClick={() => {
+                  if (!lastAppliedOrder) return;
+                  undoApply();
+                }}
+                disabled={!lastAppliedOrder || saving}
+                className="px-4 py-2 rounded-lg border-2 border-gray-200 hover:border-[#FF5500] transition-all font-medium text-[#333333] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                <Undo className="w-4 h-4" />
+                Undo
+              </motion.button>
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={applyOrder}
+                disabled={!applyMode || sortKey === 'manual' || saving}
+                className="px-6 py-2 bg-gradient-to-r from-[#FF5500] to-[#E64A00] text-white font-semibold rounded-lg hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                <ArrowUpDown className="w-5 h-5" />
+                Apply Order
+              </motion.button>
             </div>
           </div>
-        </div>
-      )}
+          <div aria-live="polite" className="sr-only">{ariaMsg}</div>
+        </motion.div>
+
+        {/* Track List */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3 }}
+          className={`bg-white border-2 border-gray-200 rounded-xl overflow-hidden shadow-lg ${draggingIndex !== null ? 'sc-dragging' : ''}`}
+        >
+          {loading ? (
+            <div className="p-8 space-y-4">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="flex items-center gap-4">
+                  <div className="w-16 h-16 rounded-lg sc-skeleton" />
+                  <div className="flex-1">
+                    <div className="h-4 w-1/2 rounded sc-skeleton mb-2" />
+                    <div className="h-3 w-1/3 rounded sc-skeleton" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : tracks.length === 0 ? (
+            <div className="p-12 text-center">
+              <p className="text-lg text-[#666666]">No tracks in this playlist.</p>
+            </div>
+          ) : (
+            <ul>
+              {viewTracks.map((t, idx) => {
+                const selected = selectedIds.has(t.id);
+                return (
+                  <motion.li
+                    key={t.id}
+                    className={`grid grid-cols-[auto_auto_1fr_auto_auto_auto] items-center gap-4 px-6 py-4 border-b transition-all ${
+                      selected ? 'bg-orange-50' : 'bg-white hover:bg-gray-50'
+                    }`}
+                    style={{ borderColor: 'var(--sc-light-gray)' }}
+                    layout
+                    draggable
+                    onDragStart={(e) => onDragStartItem(idx, e)}
+                    onDragOver={(e) => onDragOverItem(idx, e)}
+                    onDrop={(e) => onDropItem(idx, e)}
+                    onDragEnd={onDragEndItem}
+                  >
+                    <span className="cursor-grab active:cursor-grabbing text-[#666666] hover:text-[#FF5500] transition-colors">
+                      <GripVertical className="w-5 h-5" />
+                    </span>
+                    <span className="text-sm px-3 py-1 rounded-lg font-semibold bg-gray-100 text-[#666666] w-10 text-center">
+                      {idx + 1}
+                    </span>
+                    {t.artwork_url ? (
+                      <img src={t.artwork_url} className="w-16 h-16 rounded-lg object-cover shadow-md" />
+                    ) : (
+                      <div className="w-16 h-16 rounded-lg" style={{ background: 'var(--sc-light-gray)' }} />
+                    )}
+                    <div className="min-w-0">
+                      <div className="text-base font-semibold truncate mb-1 text-[#333333]" title={t.title || 'Untitled'}>
+                        {t.title || 'Untitled'}
+                      </div>
+                      <div className="text-sm truncate text-[#666666]" title={t.user?.username || 'Unknown'}>
+                        {t.user?.username || 'Unknown'}
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <span className="inline-block text-sm px-3 py-1 rounded-lg font-medium bg-gray-100 text-[#666666]">
+                        {formatDuration(t.duration)}
+                      </span>
+                    </div>
+                    <div className="text-right">
+                      {(() => {
+                        const bpm = parsedBpm(t);
+                        const inferred = bpm != null && t.bpm == null;
+                        return (
+                          <span
+                            className="inline-block text-sm px-3 py-1 rounded-lg font-medium bg-gray-100 text-[#666666]"
+                            title={inferred ? 'BPM inferred from track title.' : ''}
+                          >
+                            BPM {bpm != null ? `${bpm}${inferred ? ' ≈' : ''}` : '—'}
+                          </span>
+                        );
+                      })()}
+                    </div>
+                    <div className="flex items-center gap-3 justify-end">
+                      <input
+                        type="checkbox"
+                        checked={selected}
+                        onChange={() =>
+                          setSelectedIds(prev => {
+                            const next = new Set(prev);
+                            if (next.has(t.id)) next.delete(t.id);
+                            else next.add(t.id);
+                            return next;
+                          })
+                        }
+                        className="w-5 h-5 sc-focus"
+                      />
+                      <button
+                        onClick={() => setTracks(prev => prev.filter(x => x.id !== t.id))}
+                        className="p-2 rounded-lg hover:bg-red-50 transition-colors"
+                        style={{ color: '#ef4444' }}
+                      >
+                        <Trash2 className="w-5 h-5" />
+                      </button>
+                    </div>
+                  </motion.li>
+                );
+              })}
+            </ul>
+          )}
+        </motion.div>
+
+        {/* Sticky Save Bar */}
+        {(selectedIds.size > 0 || hasChanges) && (
+          <div className="fixed left-0 right-0 bottom-0 z-40 bg-white border-t-2 border-gray-200 shadow-2xl">
+            <div className="container mx-auto px-6 py-4 max-w-7xl flex items-center justify-between">
+              <div className="text-lg font-semibold text-[#333333]">
+                {selectedIds.size > 0 && `Selected ${selectedIds.size}`}
+                {hasChanges && selectedIds.size === 0 && 'Unsaved changes'}
+              </div>
+              <div className="flex items-center gap-4">
+                {selectedIds.size > 0 && (
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={removeSelected}
+                    disabled={selectedIds.size === 0}
+                    className="px-6 py-3 rounded-lg font-semibold text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    style={{ background: selectedIds.size === 0 ? 'var(--sc-light-gray)' : '#ef4444' }}
+                  >
+                    Remove Selected ({selectedIds.size})
+                  </motion.button>
+                )}
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={save}
+                  disabled={!hasChanges || saving}
+                  className="px-8 py-3 bg-gradient-to-r from-[#FF5500] to-[#E64A00] text-white font-semibold rounded-lg hover:shadow-xl hover:shadow-orange-500/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-3"
+                >
+                  {saving ? (
+                    <>
+                      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <span>Saving…</span>
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-5 h-5" />
+                      <span>Save Changes</span>
+                    </>
+                  )}
+                </motion.button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

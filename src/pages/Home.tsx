@@ -5,7 +5,7 @@ import { Layers, Heart, ArrowUpDown, Link as LinkIcon, Shield, LogIn, Settings, 
 import { useAuth } from '../contexts/AuthContext';
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore
-import scLogo from '/public/sc toolkit transparent .png';
+import scLogo from '/sc toolkit transparent .png';
 
 function Home() {
   const { isAuthenticated, loading } = useAuth();

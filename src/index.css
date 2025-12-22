@@ -12,6 +12,16 @@
   --sc-text-light: #666666;
 }
 
+/* Dark mode variables */
+.dark {
+  --sc-orange: #FF5500;
+  --sc-dark-gray: #1a1a1a;
+  --sc-light-gray: #0f0f0f;
+  --sc-white: #1a1a1a;
+  --sc-text-dark: #e5e5e5;
+  --sc-text-light: #a0a0a0;
+}
+
 html {
   scroll-behavior: smooth;
 }

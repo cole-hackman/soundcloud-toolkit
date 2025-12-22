@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { LogOut, Home } from 'lucide-react';
+import { LogOut, Home, Moon, Sun } from 'lucide-react';
 // Bundle logos so preview serves hashed assets reliably
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore
@@ -10,6 +10,7 @@ import logoPng from '/sc toolkit transparent .png';
 // @ts-ignore
 import logoWebp from '/sc toolkit transparent.webp';
 import { useAuth } from '../contexts/AuthContext';
+import { useTheme } from '../contexts/ThemeContext';
 import ToastHost from './ToastHost';
 
 interface LayoutProps {
@@ -60,14 +61,50 @@ export default Layout;
 
 function ProfileMenu({ user, onLogout }: { user: { name: string; avatar: string }; onLogout: () => void }) {
   const [open, setOpen] = useState(false);
+  const { theme, toggleTheme } = useTheme();
+  
+  // Close menu when clicking outside
+  React.useEffect(() => {
+    if (!open) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest('.profile-menu-container')) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, [open]);
+  
   return (
-    <div className="relative">
+    <div className="relative profile-menu-container">
       <button onClick={() => setOpen(o => !o)} className="flex items-center gap-2 p-1 rounded sc-focus">
         <img src={user.avatar} alt={user.name} className="w-8 h-8 rounded-full" loading="lazy" decoding="async" style={{ border: '2px solid var(--sc-orange)' }} />
         <span className="text-sm hidden sm:block" style={{ color: 'var(--sc-text-light)' }}>{user.name}</span>
       </button>
       {open && (
-        <div className="absolute right-0 mt-2 w-40 sc-card p-1" style={{ background: 'var(--sc-white)' }}>
+        <div className="absolute right-0 mt-2 w-48 sc-card p-1 shadow-lg z-50" style={{ background: 'var(--sc-white)' }}>
+          <button 
+            onClick={() => {
+              toggleTheme();
+              setOpen(false);
+            }}
+            className="w-full text-left px-3 py-2 rounded sc-focus sc-hover-card flex items-center gap-2" 
+            style={{ color: 'var(--sc-text-dark)' }}
+          >
+            {theme === 'dark' ? (
+              <>
+                <Sun className="w-4 h-4" />
+                <span>Light Mode</span>
+              </>
+            ) : (
+              <>
+                <Moon className="w-4 h-4" />
+                <span>Dark Mode</span>
+              </>
+            )}
+          </button>
+          <div className="border-t my-1" style={{ borderColor: 'var(--sc-light-gray)' }} />
           <button disabled className="w-full text-left px-3 py-2 rounded opacity-60 cursor-not-allowed" style={{ color: 'var(--sc-text-light)' }}>Profile</button>
           <button onClick={onLogout} className="w-full text-left px-3 py-2 rounded sc-focus sc-hover-card" style={{ color: 'var(--sc-text-dark)' }}>Logout</button>
         </div>

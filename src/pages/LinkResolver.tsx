@@ -31,83 +31,194 @@ function LinkResolver() {
   const exampleUrls = ['https://soundcloud.com/artist/track-name','https://soundcloud.com/user/sets/playlist-name','https://soundcloud.com/username'];
 
   return (
-    <div className="container mx-auto px-4 py-8 max-w-3xl">
-      {/* Header */}
-      <div className="flex items-center mb-6">
-        <Link to="/dashboard" className="mr-4"><button className="p-2 rounded sc-focus" style={{ color: 'var(--sc-text-light)' }}><ArrowLeft className="w-5 h-5" /></button></Link>
-        <div>
-          <h1 className="text-3xl font-semibold" style={{ color: 'var(--sc-text-dark)' }}>Link Resolver</h1>
-          <p style={{ color: 'var(--sc-text-light)' }}>Get detailed information from any SoundCloud link</p>
-        </div>
+    <div className="min-h-screen bg-[#F2F2F2]">
+      <div className="container mx-auto px-6 py-12 max-w-4xl">
+        {/* Header */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mb-12"
+        >
+          <div className="flex items-center mb-4">
+            <Link to="/dashboard" className="mr-4">
+              <button className="p-2 rounded-lg sc-focus hover:bg-white transition-colors" style={{ color: 'var(--sc-text-light)' }}>
+                <ArrowLeft className="w-6 h-6" />
+              </button>
+            </Link>
+          </div>
+          <h1 className="text-4xl md:text-5xl font-bold mb-3 text-[#333333]">Link Resolver</h1>
+          <p className="text-lg text-[#666666]">Get detailed information from any SoundCloud link</p>
+        </motion.div>
+
+        {/* Input Section */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+          className="bg-white border-2 border-gray-200 rounded-2xl p-8 mb-6 shadow-lg"
+        >
+          <label className="block text-base font-semibold mb-4 text-[#333333]">SoundCloud URL</label>
+          <div className="flex space-x-4">
+            <div className="flex-1 relative">
+              <input
+                type="url"
+                value={inputUrl}
+                onChange={(e) => setInputUrl(e.target.value)}
+                placeholder="Paste SoundCloud URL here..."
+                className="w-full px-5 py-4 pl-14 text-lg bg-white border-2 border-gray-200 rounded-xl sc-focus hover:border-[#FF5500] transition-all"
+                onKeyDown={(e) => e.key === 'Enter' && handleResolve()}
+              />
+              <LinkIcon className="absolute left-5 top-1/2 transform -translate-y-1/2 w-5 h-5 text-[#666666]" />
+            </div>
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              disabled={!inputUrl.trim() || isResolving}
+              onClick={handleResolve}
+              className={`px-8 py-4 rounded-xl font-semibold sc-focus transition-all ${
+                inputUrl.trim() && !isResolving
+                  ? 'bg-gradient-to-r from-[#FF5500] to-[#E64A00] text-white hover:shadow-xl hover:shadow-orange-500/30'
+                  : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+              }`}
+            >
+              {isResolving ? (
+                <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <Search className="w-6 h-6" />
+              )}
+            </motion.button>
+          </div>
+          {/* Example URLs */}
+          <div className="mt-6 pt-6 border-t border-gray-200">
+            <p className="text-sm font-medium mb-3 text-[#666666]">Example URLs:</p>
+            <div className="space-y-2">
+              {exampleUrls.map((url, index) => (
+                <button
+                  key={index}
+                  onClick={() => setInputUrl(url)}
+                  className="block text-sm text-[#FF5500] hover:text-[#E64A00] transition-colors text-left"
+                >
+                  {url}
+                </button>
+              ))}
+            </div>
+          </div>
+        </motion.div>
+
+        {/* Error */}
+        {error && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-white border-2 border-red-200 rounded-xl p-6 mb-6"
+            style={{ background: '#fef2f2' }}
+          >
+            <p className="text-base font-medium text-red-600">{error}</p>
+          </motion.div>
+        )}
+
+        {/* Empty */}
+        {!error && !resolvedContent && !isResolving && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="bg-white border-2 border-gray-200 rounded-xl p-12 text-center"
+          >
+            <LinkIcon className="w-16 h-16 mx-auto mb-4 text-[#666666] opacity-50" />
+            <p className="text-lg text-[#666666]">Enter a SoundCloud link above to get started.</p>
+          </motion.div>
+        )}
+
+        {/* Result */}
+        {resolvedContent && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-white border-2 border-gray-200 rounded-2xl overflow-hidden shadow-xl"
+          >
+            <div className="p-8">
+              <div className="flex items-start space-x-6">
+                <img
+                  src={(resolvedContent as any).artwork_url || (resolvedContent as any).avatar_url || 'https://via.placeholder.com/150?text=No+Image'}
+                  alt={(resolvedContent as any).title || (resolvedContent as any).username}
+                  className="w-24 h-24 rounded-xl object-cover shadow-lg"
+                  onError={(e) => {
+                    (e.currentTarget as HTMLImageElement).src = 'https://via.placeholder.com/150?text=No+Image';
+                  }}
+                />
+                <div className="flex-1">
+                  <div className="flex items-center space-x-3 mb-3">
+                    <span
+                      className={`px-3 py-1 rounded-lg text-sm font-semibold ${
+                        resolvedContent.type === 'track'
+                          ? 'bg-green-100 text-green-700'
+                          : resolvedContent.type === 'playlist'
+                          ? 'bg-blue-100 text-blue-700'
+                          : 'bg-purple-100 text-purple-700'
+                      }`}
+                    >
+                      {resolvedContent.type.toUpperCase()}
+                    </span>
+                  </div>
+                  <h3 className="text-2xl font-bold mb-2 text-[#333333]">
+                    {resolvedContent.type === 'user'
+                      ? (resolvedContent as ResolvedUser).username
+                      : (resolvedContent as any).title}
+                  </h3>
+                  {resolvedContent.type !== 'user' && (
+                    <p className="text-lg text-[#666666] mb-4">{(resolvedContent as any).user?.username}</p>
+                  )}
+                  <div className="flex items-center space-x-6 text-base text-[#666666]">
+                    {resolvedContent.type === 'track' && (
+                      <span>
+                        Duration:{' '}
+                        {Math.floor(((resolvedContent as ResolvedTrack).duration_ms || 0) / 60000)}:
+                        {String(Math.floor((((resolvedContent as ResolvedTrack).duration_ms || 0) % 60000) / 1000)).padStart(2, '0')}
+                      </span>
+                    )}
+                    {resolvedContent.type === 'playlist' && (
+                      <span className="font-semibold">{(resolvedContent as ResolvedPlaylist).track_count} tracks</span>
+                    )}
+                    {resolvedContent.type === 'user' &&
+                      (resolvedContent as ResolvedUser).followers_count != null && (
+                        <span className="font-semibold">
+                          {(resolvedContent as ResolvedUser).followers_count!.toLocaleString()} followers
+                        </span>
+                      )}
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="border-t-2 border-gray-200 p-6 bg-gray-50">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-3 text-sm text-[#666666] flex-1 min-w-0">
+                  <LinkIcon className="w-5 h-5 flex-shrink-0" />
+                  <span className="truncate">{(resolvedContent as any).permalink_url}</span>
+                </div>
+                <div className="flex items-center space-x-3 ml-4">
+                  <motion.button
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    onClick={() => handleCopy((resolvedContent as any).permalink_url)}
+                    className="px-4 py-2 rounded-lg border-2 border-gray-200 hover:border-[#FF5500] transition-all bg-white"
+                  >
+                    {copied ? <Check className="w-5 h-5 text-green-600" /> : <Copy className="w-5 h-5 text-[#666666]" />}
+                  </motion.button>
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={() => window.open((resolvedContent as any).permalink_url, '_blank')}
+                    className="px-6 py-2 bg-gradient-to-r from-[#FF5500] to-[#E64A00] text-white font-semibold rounded-lg hover:shadow-lg transition-all flex items-center gap-2"
+                  >
+                    <ExternalLink className="w-5 h-5" />
+                    Open
+                  </motion.button>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
       </div>
-
-      {/* Input Section */}
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="sc-card p-6 mb-6">
-        <label className="block text-sm font-medium mb-3" style={{ color: 'var(--sc-text-dark)' }}>SoundCloud URL</label>
-        <div className="flex space-x-3">
-          <div className="flex-1 relative">
-            <input type="url" value={inputUrl} onChange={(e) => setInputUrl(e.target.value)} placeholder="Paste SoundCloud URL here..." className="w-full px-4 py-3 pl-12 sc-input sc-focus" />
-            <LinkIcon className="absolute left-4 top-1/2 transform -translate-y-1/2 w-4 h-4" style={{ color: 'var(--sc-text-light)' }} />
-          </div>
-          <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} disabled={!inputUrl.trim() || isResolving} onClick={handleResolve} className={`px-6 py-3 rounded font-semibold sc-focus ${inputUrl.trim() && !isResolving ? 'sc-primary-button' : ''}`} style={!inputUrl.trim() || isResolving ? { background: 'var(--sc-light-gray)', color: 'var(--sc-text-light)' } : {}}>
-            {isResolving ? (<div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />) : (<Search className="w-5 h-5 text-white" />)}
-          </motion.button>
-        </div>
-        {/* Example URLs */}
-        <div className="mt-4">
-          <p className="text-xs mb-2" style={{ color: 'var(--sc-text-light)' }}>Example URLs:</p>
-          <div className="space-y-1">
-            {exampleUrls.map((url, index) => (<button key={index} onClick={() => setInputUrl(url)} className="block text-xs" style={{ color: 'var(--sc-orange)' }}>{url}</button>))}
-          </div>
-        </div>
-      </motion.div>
-
-      {/* Error */}
-      {error && (<motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="sc-card p-4" style={{ borderColor: '#fecaca' }}><p style={{ color: '#ef4444' }} className="text-sm">{error}</p></motion.div>)}
-
-      {/* Empty */}
-      {!error && !resolvedContent && !isResolving && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="sc-card p-6 text-center" style={{ color: 'var(--sc-text-light)' }}>
-          Enter a SoundCloud link above to get started.
-        </motion.div>
-      )}
-
-      {/* Result */}
-      {resolvedContent && (
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="sc-card overflow-hidden">
-          <div className="p-6">
-            <div className="flex items-start space-x-4">
-              <img src={(resolvedContent as any).artwork_url || (resolvedContent as any).avatar_url || 'https://via.placeholder.com/150?text=No+Image'} alt={(resolvedContent as any).title || (resolvedContent as any).username} className="w-20 h-20 rounded object-cover" onError={(e) => { (e.currentTarget as HTMLImageElement).src = 'https://via.placeholder.com/150?text=No+Image'; }} />
-              <div className="flex-1">
-                <div className="flex items-center space-x-2 mb-2">
-                  <span className={`px-2 py-1 rounded text-xs font-medium ${resolvedContent.type === 'track' ? 'bg-green-100 text-green-700' : resolvedContent.type === 'playlist' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'}`}>{resolvedContent.type.toUpperCase()}</span>
-                </div>
-                <h3 className="text-xl font-semibold mb-1" style={{ color: 'var(--sc-text-dark)' }}>{resolvedContent.type === 'user' ? (resolvedContent as ResolvedUser).username : (resolvedContent as any).title}</h3>
-                <p className="text-sm mb-3" style={{ color: 'var(--sc-text-light)' }}>{resolvedContent.type !== 'user' ? (resolvedContent as any).user?.username : ''}</p>
-                <div className="flex items-center space-x-4 text-sm" style={{ color: 'var(--sc-text-light)' }}>
-                  {resolvedContent.type === 'track' && (<span>Duration: {Math.floor(((resolvedContent as ResolvedTrack).duration_ms||0)/60000)}:{String(Math.floor((((resolvedContent as ResolvedTrack).duration_ms||0)%60000)/1000)).padStart(2,'0')}</span>)}
-                  {resolvedContent.type === 'playlist' && (<span>{(resolvedContent as ResolvedPlaylist).track_count} tracks</span>)}
-                  {resolvedContent.type === 'user' && (resolvedContent as ResolvedUser).followers_count != null && (<span>{(resolvedContent as ResolvedUser).followers_count!.toLocaleString()} followers</span>)}
-                </div>
-              </div>
-            </div>
-          </div>
-          <div className="border-t p-4" style={{ borderColor: 'var(--sc-light-gray)', background: 'var(--sc-white)' }}>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2 text-sm" style={{ color: 'var(--sc-text-light)' }}>
-                <LinkIcon className="w-4 h-4" />
-                <span className="truncate max-w-md">{(resolvedContent as any).permalink_url}</span>
-              </div>
-              <div className="flex items-center space-x-2">
-                <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => handleCopy((resolvedContent as any).permalink_url)} className="px-3 py-2 rounded sc-focus" style={{ background: 'var(--sc-light-gray)', color: 'var(--sc-text-dark)' }}>
-                  {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                </motion.button>
-                <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => window.open((resolvedContent as any).permalink_url, '_blank')} className="px-3 py-2 sc-primary-button">Open</motion.button>
-              </div>
-            </div>
-          </div>
-        </motion.div>
-      )}
     </div>
   );
 }

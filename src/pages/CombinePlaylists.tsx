@@ -73,21 +73,22 @@ function CombinePlaylists() {
     const uniqueTracks = result?.stats?.uniqueBeforeCap || totalTracksCreated;
 
     return (
-      <div className="min-h-screen bg-[#F2F2F2] flex items-center justify-center px-6 py-12">
+      <div className="min-h-screen flex items-center justify-center px-6 py-12" style={{ background: 'var(--sc-light-gray)' }}>
         <div className="max-w-2xl w-full">
           <motion.div 
             initial={{ scale: 0.9, opacity: 0 }} 
             animate={{ scale: 1, opacity: 1 }}
             transition={{ duration: 0.5 }}
-            className="text-center bg-white border-2 border-gray-200 rounded-2xl p-10 shadow-xl"
+            className="text-center rounded-2xl p-10 shadow-xl border-2"
+            style={{ background: 'var(--sc-white)', borderColor: 'var(--sc-light-gray)' }}
           >
             <div className="w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-6 bg-gradient-to-br from-[#22c55e] to-[#16a34a] shadow-lg">
               <Check className="w-12 h-12 text-white" />
             </div>
-            <h1 className="text-4xl md:text-5xl font-bold mb-4 text-[#333333]">
+            <h1 className="text-4xl md:text-5xl font-bold mb-4" style={{ color: 'var(--sc-text-dark)' }}>
               {numPlaylists > 1 ? `${numPlaylists} Playlists Created!` : 'Playlist Created!'}
             </h1>
-            <p className="text-lg text-[#666666] mb-8 leading-relaxed">
+            <p className="text-lg mb-8 leading-relaxed" style={{ color: 'var(--sc-text-light)' }}>
               {numPlaylists > 1 ? (
                 <>
                   {uniqueTracks} unique tracks found after deduplication. Split into {numPlaylists} playlists (500 tracks each).
@@ -113,7 +114,7 @@ function CombinePlaylists() {
                   {numPlaylists > 1 ? `Open Playlist ${index + 1} (${playlist.title || `${newPlaylistTitle} (${index + 1}/${numPlaylists})`})` : 'Open in SoundCloud'}
                 </motion.button>
               ))}
-              <Link to="/dashboard" className="block w-full text-center px-6 py-3 rounded-lg border-2 border-gray-200 hover:border-[#FF5500] transition-all" style={{ background: 'white', color: 'var(--sc-text-dark)' }}>Back to Dashboard</Link>
+              <Link to="/dashboard" className="block w-full text-center px-6 py-3 rounded-lg border-2 hover:border-[#FF5500] transition-all" style={{ background: 'var(--sc-white)', color: 'var(--sc-text-dark)', borderColor: 'var(--sc-light-gray)' }}>Back to Dashboard</Link>
             </div>
           </motion.div>
         </div>
@@ -122,7 +123,7 @@ function CombinePlaylists() {
   }
 
   return (
-    <div className="min-h-screen bg-[#F2F2F2]">
+    <div className="min-h-screen" style={{ background: 'var(--sc-light-gray)' }}>
       <div className="container mx-auto px-6 py-12 max-w-7xl">
         {/* Header */}
         <motion.div 
@@ -132,13 +133,13 @@ function CombinePlaylists() {
         >
           <div className="flex items-center mb-4">
             <Link to="/dashboard" className="mr-4">
-              <button className="p-2 rounded-lg sc-focus hover:bg-white transition-colors" style={{ color: 'var(--sc-text-light)' }}>
+              <button className="p-2 rounded-lg sc-focus transition-colors" style={{ color: 'var(--sc-text-light)' }} onMouseEnter={(e) => e.currentTarget.style.background = 'var(--sc-white)'} onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}>
                 <ArrowLeft className="w-6 h-6" />
               </button>
             </Link>
           </div>
-          <h1 className="text-4xl md:text-5xl font-bold mb-3 text-[#333333]">Combine Playlists</h1>
-          <p className="text-lg text-[#666666]">Merge multiple playlists and remove duplicates automatically</p>
+          <h1 className="text-4xl md:text-5xl font-bold mb-3" style={{ color: 'var(--sc-text-dark)' }}>Combine Playlists</h1>
+          <p className="text-lg" style={{ color: 'var(--sc-text-light)' }}>Merge multiple playlists and remove duplicates automatically</p>
         </motion.div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -148,11 +149,11 @@ function CombinePlaylists() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 }}
           >
-            <h2 className="text-2xl font-bold mb-6 text-[#333333]">Select Playlists</h2>
+            <h2 className="text-2xl font-bold mb-6" style={{ color: 'var(--sc-text-dark)' }}>Select Playlists</h2>
             {loading ? (
               <div className="space-y-4">
                 {Array.from({ length: 4 }).map((_, index) => (
-                  <div key={index} className="p-6 bg-white border-2 border-gray-200 rounded-xl animate-pulse">
+                  <div key={index} className="p-6 rounded-xl animate-pulse border-2" style={{ background: 'var(--sc-white)', borderColor: 'var(--sc-light-gray)' }}>
                     <div className="flex items-center space-x-4">
                       <div className="w-16 h-16 rounded-lg" style={{ background: 'var(--sc-light-gray)' }} />
                       <div className="flex-1">
@@ -164,7 +165,7 @@ function CombinePlaylists() {
                 ))}
               </div>
             ) : userPlaylists.length === 0 ? (
-              <div className="bg-white border-2 border-gray-200 rounded-xl p-8 text-center" style={{ color: 'var(--sc-text-light)' }}>
+              <div className="rounded-xl p-8 text-center border-2" style={{ background: 'var(--sc-white)', borderColor: 'var(--sc-light-gray)', color: 'var(--sc-text-light)' }}>
                 <p className="text-lg">No playlists yet. Create some on SoundCloud!</p>
               </div>
             ) : (
@@ -180,9 +181,10 @@ function CombinePlaylists() {
                       whileHover={{ y: -2, scale: 1.01 }}
                       whileTap={{ scale: 0.99 }}
                       onClick={() => handlePlaylistToggle(playlist)}
-                      className={`p-6 bg-white border-2 rounded-xl cursor-pointer transition-all duration-300 ${
-                        isSelected ? 'border-[#FF5500] shadow-lg' : 'border-gray-200 hover:border-[#FF5500]'
+                      className={`p-6 border-2 rounded-xl cursor-pointer transition-all duration-300 ${
+                        isSelected ? 'border-[#FF5500] shadow-lg' : 'hover:border-[#FF5500]'
                       }`}
+                      style={{ background: 'var(--sc-white)', borderColor: isSelected ? '#FF5500' : 'var(--sc-light-gray)' }}
                     >
                       <div className="flex items-center space-x-4">
                         <img 
@@ -192,8 +194,8 @@ function CombinePlaylists() {
                           onError={(e) => { (e.currentTarget as HTMLImageElement).src = 'https://via.placeholder.com/96?text=Playlist'; }} 
                         />
                         <div className="flex-1">
-                          <h3 className="text-lg font-semibold mb-1 text-[#333333]">{playlist.title}</h3>
-                          <p className="text-sm text-[#666666]">{playlist.track_count} tracks</p>
+                          <h3 className="text-lg font-semibold mb-1" style={{ color: 'var(--sc-text-dark)' }}>{playlist.title}</h3>
+                          <p className="text-sm" style={{ color: 'var(--sc-text-light)' }}>{playlist.track_count} tracks</p>
                         </div>
                         {isSelected && (
                           <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#FF5500] to-[#E64A00] flex items-center justify-center shadow-lg">
@@ -214,7 +216,7 @@ function CombinePlaylists() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2 }}
           >
-            <h2 className="text-2xl font-bold mb-6 text-[#333333]">Selected ({selectedPlaylists.length})</h2>
+            <h2 className="text-2xl font-bold mb-6" style={{ color: 'var(--sc-text-dark)' }}>Selected ({selectedPlaylists.length})</h2>
             <div className="space-y-3 mb-8">
               <AnimatePresence>
                 {selectedPlaylists.map(playlist => (
@@ -223,7 +225,8 @@ function CombinePlaylists() {
                     initial={{ opacity: 0, x: 20 }}
                     animate={{ opacity: 1, x: 0 }}
                     exit={{ opacity: 0, x: -20 }}
-                    className="p-4 bg-white border-2 border-gray-200 rounded-xl flex items-center justify-between hover:border-[#FF5500] transition-all"
+                    className="p-4 border-2 rounded-xl flex items-center justify-between hover:border-[#FF5500] transition-all"
+                    style={{ background: 'var(--sc-white)', borderColor: 'var(--sc-light-gray)' }}
                   >
                     <div className="flex items-center space-x-3">
                       <img
@@ -232,7 +235,7 @@ function CombinePlaylists() {
                         className="w-12 h-12 rounded-lg object-cover"
                         onError={(e) => { (e.currentTarget as HTMLImageElement).src = 'https://via.placeholder.com/64?text=Playlist'; }}
                       />
-                      <span className="font-medium text-[#333333]">{playlist.title}</span>
+                      <span className="font-medium" style={{ color: 'var(--sc-text-dark)' }}>{playlist.title}</span>
                     </div>
                     <button
                       onClick={() => handlePlaylistToggle(playlist)}
@@ -253,27 +256,28 @@ function CombinePlaylists() {
                 className="space-y-6"
               >
                 <div>
-                  <label className="block text-base font-semibold mb-3 text-[#333333]">New Playlist Name</label>
+                  <label className="block text-base font-semibold mb-3" style={{ color: 'var(--sc-text-dark)' }}>New Playlist Name</label>
                   <input
                     type="text"
                     value={newPlaylistTitle}
                     onChange={(e) => setNewPlaylistTitle(e.target.value)}
                     placeholder="Enter playlist name..."
-                    className="w-full px-5 py-4 text-lg bg-white border-2 border-gray-200 rounded-xl sc-focus hover:border-[#FF5500] transition-all"
+                    className="w-full px-5 py-4 text-lg rounded-xl sc-focus hover:border-[#FF5500] transition-all border-2"
+                    style={{ background: 'var(--sc-white)', borderColor: 'var(--sc-light-gray)', color: 'var(--sc-text-dark)' }}
                   />
                 </div>
-                <div className="p-6 bg-white border-2 border-gray-200 rounded-xl">
+                <div className="p-6 rounded-xl border-2" style={{ background: 'var(--sc-white)', borderColor: 'var(--sc-light-gray)' }}>
                   <div className="flex justify-between text-base mb-2">
-                    <span className="text-[#666666]">Total tracks:</span>
-                    <span className="font-semibold text-[#333333]">{totalTracks}</span>
+                    <span style={{ color: 'var(--sc-text-light)' }}>Total tracks:</span>
+                    <span className="font-semibold" style={{ color: 'var(--sc-text-dark)' }}>{totalTracks}</span>
                   </div>
                   <div className="flex justify-between text-base mb-2">
-                    <span className="text-[#666666]">Estimated after deduplication:</span>
+                    <span style={{ color: 'var(--sc-text-light)' }}>Estimated after deduplication:</span>
                     <span className="font-semibold" style={{ color: '#22c55e' }}>{Math.floor(totalTracks * 0.85)}</span>
                   </div>
                   {Math.floor(totalTracks * 0.85) > 500 && (
                     <div className="flex justify-between text-sm mt-4 pt-4 border-t" style={{ borderColor: 'var(--sc-light-gray)' }}>
-                      <span className="text-[#666666]">Note:</span>
+                      <span style={{ color: 'var(--sc-text-light)' }}>Note:</span>
                       <span className="font-semibold text-[#FF5500]">Will create {Math.ceil(Math.floor(totalTracks * 0.85) / 500)} playlist(s)</span>
                     </div>
                   )}
@@ -300,8 +304,8 @@ function CombinePlaylists() {
               </motion.div>
             )}
             {selectedPlaylists.length === 1 && (
-              <div className="p-6 bg-white border-2 border-gray-200 rounded-xl text-center">
-                <p className="text-[#666666]">Select at least 2 playlists to combine</p>
+              <div className="p-6 rounded-xl text-center border-2" style={{ background: 'var(--sc-white)', borderColor: 'var(--sc-light-gray)' }}>
+                <p style={{ color: 'var(--sc-text-light)' }}>Select at least 2 playlists to combine</p>
               </div>
             )}
           </motion.div>

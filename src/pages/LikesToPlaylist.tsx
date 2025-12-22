@@ -64,19 +64,20 @@ function LikesToPlaylist() {
 
   if (isComplete) {
     return (
-      <div className="min-h-screen bg-[#F2F2F2] flex items-center justify-center px-6 py-12">
+      <div className="min-h-screen flex items-center justify-center px-6 py-12" style={{ background: 'var(--sc-light-gray)' }}>
         <div className="max-w-2xl w-full">
           <motion.div
             initial={{ scale: 0.9, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             transition={{ duration: 0.5 }}
-            className="text-center bg-white border-2 border-gray-200 rounded-2xl p-10 shadow-xl"
+            className="text-center rounded-2xl p-10 shadow-xl border-2"
+            style={{ background: 'var(--sc-white)', borderColor: 'var(--sc-light-gray)' }}
           >
             <div className="w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-6 bg-gradient-to-br from-[#22c55e] to-[#16a34a] shadow-lg">
               <Check className="w-12 h-12 text-white" />
             </div>
-            <h1 className="text-4xl md:text-5xl font-bold mb-4 text-[#333333]">Playlist Created!</h1>
-            <p className="text-lg text-[#666666] mb-8 leading-relaxed">
+            <h1 className="text-4xl md:text-5xl font-bold mb-4" style={{ color: 'var(--sc-text-dark)' }}>Playlist Created!</h1>
+            <p className="text-lg mb-8 leading-relaxed" style={{ color: 'var(--sc-text-light)' }}>
               "{result?.playlist?.title || playlistTitle}" has been created with {result?.totalTracks || likedTracksCount} tracks
             </p>
             <div className="space-y-4">
@@ -93,8 +94,8 @@ function LikesToPlaylist() {
               </motion.button>
               <Link
                 to="/dashboard"
-                className="block w-full text-center px-6 py-3 rounded-lg border-2 border-gray-200 hover:border-[#FF5500] transition-all"
-                style={{ background: 'white', color: 'var(--sc-text-dark)' }}
+                className="block w-full text-center px-6 py-3 rounded-lg border-2 hover:border-[#FF5500] transition-all"
+                style={{ background: 'var(--sc-white)', color: 'var(--sc-text-dark)', borderColor: 'var(--sc-light-gray)' }}
               >
                 Back to Dashboard
               </Link>
@@ -106,23 +107,23 @@ function LikesToPlaylist() {
   }
 
   return (
-    <div className="min-h-screen bg-[#F2F2F2]">
+    <div className="min-h-screen" style={{ background: 'var(--sc-light-gray)' }}>
       <div className="container mx-auto px-6 py-12 max-w-4xl">
         {/* Header */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }} 
           animate={{ opacity: 1, y: 0 }}
           className="mb-12"
         >
           <div className="flex items-center mb-4">
             <Link to="/dashboard" className="mr-4">
-              <button className="p-2 rounded-lg sc-focus hover:bg-white transition-colors" style={{ color: 'var(--sc-text-light)' }}>
+              <button className="p-2 rounded-lg sc-focus transition-colors" style={{ color: 'var(--sc-text-light)' }} onMouseEnter={(e) => e.currentTarget.style.background = 'var(--sc-white)'} onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}>
                 <ArrowLeft className="w-6 h-6" />
               </button>
             </Link>
           </div>
-          <h1 className="text-4xl md:text-5xl font-bold mb-3 text-[#333333]">Likes → Playlist</h1>
-          <p className="text-lg text-[#666666]">Convert your liked tracks into an organized playlist</p>
+          <h1 className="text-4xl md:text-5xl font-bold mb-3" style={{ color: 'var(--sc-text-dark)' }}>Likes → Playlist</h1>
+          <p className="text-lg" style={{ color: 'var(--sc-text-light)' }}>Convert your liked tracks into an organized playlist</p>
         </motion.div>
 
         <motion.div
@@ -131,15 +132,15 @@ function LikesToPlaylist() {
           className="space-y-8 pb-32"
         >
           {/* Liked Tracks */}
-          <div className="bg-white border-2 border-gray-200 rounded-2xl p-8 shadow-lg">
+          <div className="rounded-2xl p-8 shadow-lg border-2" style={{ background: 'var(--sc-white)', borderColor: 'var(--sc-light-gray)' }}>
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center space-x-4">
                 <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[#FF5500] to-[#E64A00] flex items-center justify-center shadow-lg">
                   <Heart className="w-8 h-8 text-white" />
                 </div>
                 <div>
-                  <h2 className="text-2xl font-bold text-[#333333]">Your Liked Tracks</h2>
-                  <p className="text-lg text-[#666666]">{likedTracksCount} tracks</p>
+                  <h2 className="text-2xl font-bold" style={{ color: 'var(--sc-text-dark)' }}>Your Liked Tracks</h2>
+                  <p className="text-lg" style={{ color: 'var(--sc-text-light)' }}>{likedTracksCount} tracks</p>
                 </div>
               </div>
               <Play className="w-8 h-8 text-[#FF5500]" />
@@ -147,8 +148,8 @@ function LikesToPlaylist() {
 
             <div className="space-y-3 mb-6">
               {!loadingPage && likes.length === 0 && (
-                <div className="bg-white border-2 border-gray-200 rounded-xl p-8 text-center">
-                  <p className="text-lg text-[#666666]">No liked tracks yet. Start liking tracks on SoundCloud to see them here.</p>
+                <div className="rounded-xl p-8 text-center border-2" style={{ background: 'var(--sc-white)', borderColor: 'var(--sc-light-gray)' }}>
+                  <p className="text-lg" style={{ color: 'var(--sc-text-light)' }}>No liked tracks yet. Start liking tracks on SoundCloud to see them here.</p>
                 </div>
               )}
               {likes.map((item: any, index: number) => {
@@ -164,8 +165,12 @@ function LikesToPlaylist() {
                     transition={{ delay: index * 0.02 }}
                     whileHover={{ scale: 1.01 }}
                     className={`flex items-center space-x-4 p-4 rounded-xl cursor-pointer transition-all border-2 ${
-                      isChecked ? 'border-[#FF5500] bg-orange-50' : 'border-gray-200 bg-white hover:border-[#FF5500]'
+                      isChecked ? 'border-[#FF5500]' : 'hover:border-[#FF5500]'
                     }`}
+                    style={{ 
+                      background: isChecked ? 'rgba(255, 85, 0, 0.1)' : 'var(--sc-white)', 
+                      borderColor: isChecked ? '#FF5500' : 'var(--sc-light-gray)' 
+                    }}
                   >
                     <input
                       type="checkbox"
@@ -193,15 +198,15 @@ function LikesToPlaylist() {
                         <div className="w-14 h-14 rounded-lg" style={{ background: 'var(--sc-light-gray)' }} />
                       )}
                       <div className="flex-1">
-                        <div className="text-base font-semibold text-[#333333]">{t?.title || 'Untitled'}</div>
-                        <div className="text-sm text-[#666666]">{t?.user?.username || 'Unknown'}</div>
+                        <div className="text-base font-semibold" style={{ color: 'var(--sc-text-dark)' }}>{t?.title || 'Untitled'}</div>
+                        <div className="text-sm" style={{ color: 'var(--sc-text-light)' }}>{t?.user?.username || 'Unknown'}</div>
                       </div>
                     </div>
                   </motion.label>
                 );
               })}
             </div>
-            <div className="flex justify-between items-center pt-4 border-t border-gray-200 text-sm">
+            <div className="flex justify-between items-center pt-4 border-t text-sm" style={{ borderColor: 'var(--sc-light-gray)' }}>
               <button
                 onClick={() => {
                   setSelected(prev => {
@@ -226,7 +231,7 @@ function LikesToPlaylist() {
               >
                 Refresh
               </button>
-              <span className="font-semibold text-[#333333]">Selected {selected.size} / {MAX}</span>
+              <span className="font-semibold" style={{ color: 'var(--sc-text-dark)' }}>Selected {selected.size} / {MAX}</span>
             </div>
             {nextHref && (
               <div className="mt-4">
@@ -235,7 +240,8 @@ function LikesToPlaylist() {
                   whileTap={{ scale: 0.98 }}
                   disabled={loadingPage}
                   onClick={fetchNextPage}
-                  className="w-full px-6 py-3 rounded-xl border-2 border-gray-200 hover:border-[#FF5500] transition-all font-medium text-[#333333] disabled:opacity-50"
+                  className="w-full px-6 py-3 rounded-xl border-2 hover:border-[#FF5500] transition-all font-medium disabled:opacity-50"
+                  style={{ borderColor: 'var(--sc-light-gray)', color: 'var(--sc-text-dark)' }}
                 >
                   {loadingPage ? 'Loading…' : 'Load More Tracks'}
                 </motion.button>
@@ -244,24 +250,25 @@ function LikesToPlaylist() {
           </div>
 
           {/* Settings */}
-          <div className="bg-white border-2 border-gray-200 rounded-2xl p-8 shadow-lg">
-            <h3 className="text-2xl font-bold mb-6 text-[#333333]">Playlist Settings</h3>
+          <div className="rounded-2xl p-8 shadow-lg border-2" style={{ background: 'var(--sc-white)', borderColor: 'var(--sc-light-gray)' }}>
+            <h3 className="text-2xl font-bold mb-6" style={{ color: 'var(--sc-text-dark)' }}>Playlist Settings</h3>
             <div>
-              <label className="block text-base font-semibold mb-3 text-[#333333]">Playlist Name</label>
+              <label className="block text-base font-semibold mb-3" style={{ color: 'var(--sc-text-dark)' }}>Playlist Name</label>
               <input
                 type="text"
                 value={playlistTitle}
                 onChange={(e) => setPlaylistTitle(e.target.value)}
-                className="w-full px-5 py-4 text-lg bg-white border-2 border-gray-200 rounded-xl sc-focus hover:border-[#FF5500] transition-all"
+                className="w-full px-5 py-4 text-lg rounded-xl sc-focus hover:border-[#FF5500] transition-all border-2"
+                style={{ background: 'var(--sc-white)', borderColor: 'var(--sc-light-gray)', color: 'var(--sc-text-dark)' }}
                 placeholder="My Liked Songs"
               />
             </div>
           </div>
 
           {/* Sticky Action Bar */}
-          <div className="fixed left-0 right-0 bottom-0 z-40 bg-white border-t-2 border-gray-200 shadow-2xl">
+          <div className="fixed left-0 right-0 bottom-0 z-40 border-t-2 shadow-2xl" style={{ background: 'var(--sc-white)', borderColor: 'var(--sc-light-gray)' }}>
             <div className="container mx-auto px-6 py-4 max-w-4xl flex items-center justify-between">
-              <div className="text-lg font-semibold text-[#333333]">
+              <div className="text-lg font-semibold" style={{ color: 'var(--sc-text-dark)' }}>
                 Selected <span className="text-[#FF5500]">{selected.size}</span> / {MAX}
               </div>
               <motion.button

@@ -215,7 +215,7 @@ function PlaylistModifier() {
   }
 
   return (
-    <div className="min-h-screen bg-[#F2F2F2]">
+    <div className="min-h-screen" style={{ background: 'var(--sc-light-gray)' }}>
       <div className="container mx-auto px-6 py-12 max-w-7xl pb-32">
         {/* Header */}
         <motion.div
@@ -225,13 +225,13 @@ function PlaylistModifier() {
         >
           <div className="flex items-center mb-4">
             <Link to="/dashboard" className="mr-4">
-              <button className="p-2 rounded-lg sc-focus hover:bg-white transition-colors" style={{ color: 'var(--sc-text-light)' }}>
+              <button className="p-2 rounded-lg sc-focus transition-colors" style={{ color: 'var(--sc-text-light)' }} onMouseEnter={(e) => e.currentTarget.style.background = 'var(--sc-white)'} onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}>
                 <ArrowLeft className="w-6 h-6" />
               </button>
             </Link>
           </div>
-          <h1 className="text-4xl md:text-5xl font-bold mb-3 text-[#333333]">Playlist Modifier</h1>
-          <p className="text-lg text-[#666666]">Reorder and remove tracks in your playlists</p>
+          <h1 className="text-4xl md:text-5xl font-bold mb-3" style={{ color: 'var(--sc-text-dark)' }}>Playlist Modifier</h1>
+          <p className="text-lg" style={{ color: 'var(--sc-text-light)' }}>Reorder and remove tracks in your playlists</p>
         </motion.div>
 
         {/* Playlist Selector */}
@@ -239,7 +239,8 @@ function PlaylistModifier() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
-          className="bg-white border-2 border-gray-200 rounded-xl p-4 mb-6 shadow-lg"
+          className="rounded-xl p-4 mb-6 shadow-lg border-2"
+          style={{ background: 'var(--sc-white)', borderColor: 'var(--sc-light-gray)' }}
         >
           <div className="flex items-center gap-4" ref={selectorRef}>
             {(() => {

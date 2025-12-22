@@ -31,7 +31,7 @@ function LinkResolver() {
   const exampleUrls = ['https://soundcloud.com/artist/track-name','https://soundcloud.com/user/sets/playlist-name','https://soundcloud.com/username'];
 
   return (
-    <div className="min-h-screen bg-[#F2F2F2]">
+    <div className="min-h-screen" style={{ background: 'var(--sc-light-gray)' }}>
       <div className="container mx-auto px-6 py-12 max-w-4xl">
         {/* Header */}
         <motion.div
@@ -41,13 +41,13 @@ function LinkResolver() {
         >
           <div className="flex items-center mb-4">
             <Link to="/dashboard" className="mr-4">
-              <button className="p-2 rounded-lg sc-focus hover:bg-white transition-colors" style={{ color: 'var(--sc-text-light)' }}>
+              <button className="p-2 rounded-lg sc-focus transition-colors" style={{ color: 'var(--sc-text-light)' }} onMouseEnter={(e) => e.currentTarget.style.background = 'var(--sc-white)'} onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}>
                 <ArrowLeft className="w-6 h-6" />
               </button>
             </Link>
           </div>
-          <h1 className="text-4xl md:text-5xl font-bold mb-3 text-[#333333]">Link Resolver</h1>
-          <p className="text-lg text-[#666666]">Get detailed information from any SoundCloud link</p>
+          <h1 className="text-4xl md:text-5xl font-bold mb-3" style={{ color: 'var(--sc-text-dark)' }}>Link Resolver</h1>
+          <p className="text-lg" style={{ color: 'var(--sc-text-light)' }}>Get detailed information from any SoundCloud link</p>
         </motion.div>
 
         {/* Input Section */}
@@ -55,9 +55,10 @@ function LinkResolver() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
-          className="bg-white border-2 border-gray-200 rounded-2xl p-8 mb-6 shadow-lg"
+          className="rounded-2xl p-8 mb-6 shadow-lg border-2"
+          style={{ background: 'var(--sc-white)', borderColor: 'var(--sc-light-gray)' }}
         >
-          <label className="block text-base font-semibold mb-4 text-[#333333]">SoundCloud URL</label>
+          <label className="block text-base font-semibold mb-4" style={{ color: 'var(--sc-text-dark)' }}>SoundCloud URL</label>
           <div className="flex space-x-4">
             <div className="flex-1 relative">
               <input
@@ -65,7 +66,8 @@ function LinkResolver() {
                 value={inputUrl}
                 onChange={(e) => setInputUrl(e.target.value)}
                 placeholder="Paste SoundCloud URL here..."
-                className="w-full px-5 py-4 pl-14 text-lg bg-white border-2 border-gray-200 rounded-xl sc-focus hover:border-[#FF5500] transition-all"
+                className="w-full px-5 py-4 pl-14 text-lg rounded-xl sc-focus hover:border-[#FF5500] transition-all border-2"
+                style={{ background: 'var(--sc-white)', borderColor: 'var(--sc-light-gray)', color: 'var(--sc-text-dark)' }}
                 onKeyDown={(e) => e.key === 'Enter' && handleResolve()}
               />
               <LinkIcon className="absolute left-5 top-1/2 transform -translate-y-1/2 w-5 h-5 text-[#666666]" />
@@ -89,8 +91,8 @@ function LinkResolver() {
             </motion.button>
           </div>
           {/* Example URLs */}
-          <div className="mt-6 pt-6 border-t border-gray-200">
-            <p className="text-sm font-medium mb-3 text-[#666666]">Example URLs:</p>
+          <div className="mt-6 pt-6 border-t" style={{ borderColor: 'var(--sc-light-gray)' }}>
+            <p className="text-sm font-medium mb-3" style={{ color: 'var(--sc-text-light)' }}>Example URLs:</p>
             <div className="space-y-2">
               {exampleUrls.map((url, index) => (
                 <button

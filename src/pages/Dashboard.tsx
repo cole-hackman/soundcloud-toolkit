@@ -58,7 +58,7 @@ function Dashboard() {
   ];
 
   return (
-    <div className="min-h-screen bg-[#F2F2F2]">
+    <div className="min-h-screen" style={{ background: 'var(--sc-light-gray)' }}>
       <div className="container mx-auto px-6 py-12 md:py-16 max-w-7xl">
         {/* Welcome Section */}
         <motion.div 
@@ -67,10 +67,10 @@ function Dashboard() {
           transition={{ duration: 0.6 }}
           className="text-center mb-16"
         >
-          <h1 className="text-5xl md:text-6xl font-bold mb-4 text-[#333333]">
+          <h1 className="text-5xl md:text-6xl font-bold mb-4" style={{ color: 'var(--sc-text-dark)' }}>
             Welcome back, <span className="bg-gradient-to-r from-[#FF5500] to-[#E64A00] bg-clip-text text-transparent">{user?.display_name}</span>!
           </h1>
-          <p className="text-lg md:text-xl text-[#666666] max-w-2xl mx-auto leading-relaxed">
+          <p className="text-lg md:text-xl max-w-2xl mx-auto leading-relaxed" style={{ color: 'var(--sc-text-light)' }}>
             Choose a tool to enhance your SoundCloud experience
           </p>
         </motion.div>
@@ -84,7 +84,8 @@ function Dashboard() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5, delay: index * 0.1 }}
               whileHover={{ y: -4, scale: 1.02 }}
-              className="group bg-white border-2 border-gray-200 rounded-2xl p-10 hover:border-[#FF5500] hover:shadow-2xl transition-all duration-300"
+              className="group rounded-2xl p-10 hover:border-[#FF5500] hover:shadow-2xl transition-all duration-300 border-2"
+              style={{ background: 'var(--sc-white)', borderColor: 'var(--sc-light-gray)' }}
             >
               <Link to={feature.path} className="block">
                 <div className="flex items-start justify-between mb-6">
@@ -93,10 +94,10 @@ function Dashboard() {
                   </div>
                   <ArrowRight className="w-6 h-6 text-[#FF5500] opacity-0 group-hover:opacity-100 transition-opacity" />
                 </div>
-                <h3 className="text-2xl font-bold mb-4 text-[#333333] group-hover:text-[#FF5500] transition">
+                <h3 className="text-2xl font-bold mb-4 group-hover:text-[#FF5500] transition" style={{ color: 'var(--sc-text-dark)' }}>
                   {feature.title}
                 </h3>
-                <p className="text-[#666666] leading-relaxed text-lg">
+                <p className="leading-relaxed text-lg" style={{ color: 'var(--sc-text-light)' }}>
                   {feature.description}
                 </p>
               </Link>
@@ -118,7 +119,8 @@ function Dashboard() {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ delay: 0.7 + index * 0.1 }}
-                className="bg-white border-2 border-gray-200 rounded-xl p-6 text-center"
+                className="rounded-xl p-6 text-center border-2"
+                style={{ background: 'var(--sc-white)', borderColor: 'var(--sc-light-gray)' }}
               >
                 <div className="w-12 h-12 rounded-lg mx-auto mb-3 sc-skeleton" />
                 <div className="w-20 h-5 rounded mx-auto sc-skeleton" />
@@ -137,11 +139,12 @@ function Dashboard() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.7 + index * 0.1, duration: 0.5 }}
                 whileHover={{ y: -2, scale: 1.02 }}
-                className="bg-white border-2 border-gray-200 rounded-xl p-6 text-center hover:border-[#FF5500] hover:shadow-lg transition-all duration-300"
+                className="rounded-xl p-6 text-center border-2 hover:border-[#FF5500] hover:shadow-lg transition-all duration-300"
+                style={{ background: 'var(--sc-white)', borderColor: 'var(--sc-light-gray)' }}
               >
                 <div className="text-3xl mb-2">{stat.icon}</div>
-                <div className="text-3xl md:text-4xl font-bold mb-2 text-[#333333]">{stat.value}</div>
-                <div className="text-sm font-medium text-[#666666]">{stat.label}</div>
+                <div className="text-3xl md:text-4xl font-bold mb-2" style={{ color: 'var(--sc-text-dark)' }}>{stat.value}</div>
+                <div className="text-sm font-medium" style={{ color: 'var(--sc-text-light)' }}>{stat.label}</div>
               </motion.div>
             ))
           )}

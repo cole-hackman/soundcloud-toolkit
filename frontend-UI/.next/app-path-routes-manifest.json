@@ -1,0 +1,12 @@
+{
+  "/_not-found/page": "/_not-found",
+  "/combine/page": "/combine",
+  "/dashboard/page": "/dashboard",
+  "/likes-to-playlist/page": "/likes-to-playlist",
+  "/link-resolver/page": "/link-resolver",
+  "/login/page": "/login",
+  "/page": "/",
+  "/playlist-modifier/page": "/playlist-modifier",
+  "/privacy/page": "/privacy",
+  "/about/page": "/about"
+}

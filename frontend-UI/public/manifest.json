@@ -1,0 +1,18 @@
+{
+  "name": "SC Toolkit",
+  "short_name": "SC Toolkit",
+  "description": "Organize, merge, and clean your SoundCloud playlists",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F2F2F2",
+  "theme_color": "#FF5500",
+  "icons": [
+    {
+      "src": "/SC Toolkit Icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
+

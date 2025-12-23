@@ -1,0 +1,18 @@
+# robots.txt for SC Toolkit
+# https://www.soundcloudtoolkit.com
+
+User-agent: *
+Allow: /
+
+# Sitemap location
+Sitemap: https://www.soundcloudtoolkit.com/sitemap.xml
+
+# Disallow authenticated routes from indexing
+Disallow: /dashboard
+Disallow: /combine
+Disallow: /likes-to-playlist
+Disallow: /playlist-modifier
+Disallow: /link-resolver
+Disallow: /login
+Disallow: /api/
+

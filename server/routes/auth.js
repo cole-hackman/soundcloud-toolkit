@@ -4,6 +4,7 @@ import { signSession, unsignSession, parseSessionData, createSessionCookieOption
 import { encrypt } from '../lib/crypto.js';
 import { soundcloudClient } from '../lib/soundcloud-client.js';
 import prisma from '../lib/prisma.js';
+import logger from '../lib/logger.js';
 
 const router = express.Router();
 
@@ -53,7 +54,7 @@ router.get('/login', async (req, res) => {
 
     res.redirect(authUrl.toString());
   } catch (error) {
-    console.error('Login error:', error);
+    logger.error('Login error:', error);
     res.status(500).json({ error: 'Failed to initiate login' });
   }
 });
@@ -70,7 +71,7 @@ router.get('/callback', async (req, res) => {
     const appUrl = appUrlCookie || process.env.APP_URL;
 
     if (error) {
-      console.error('OAuth error:', error);
+      logger.error('OAuth error:', error);
       res.clearCookie('pkce_verifier');
       res.clearCookie('app_url');
       return res.redirect(`${appUrl}/login?error=${encodeURIComponent(error)}`);
@@ -149,7 +150,7 @@ router.get('/callback', async (req, res) => {
     // Redirect to dashboard
     res.redirect(`${appUrl}/dashboard`);
   } catch (error) {
-    console.error('Callback error:', error);
+    logger.error('Callback error:', error);
     const appUrl = req.cookies.app_url || process.env.APP_URL;
     res.clearCookie('pkce_verifier');
     res.clearCookie('app_url');
@@ -168,7 +169,7 @@ router.post('/logout', async (req, res) => {
     
     res.json({ success: true });
   } catch (error) {
-    console.error('Logout error:', error);
+    logger.error('Logout error:', error);
     res.status(500).json({ error: 'Failed to logout' });
   }
 });
@@ -197,7 +198,7 @@ router.get('/me', async (req, res) => {
 
     res.json(sessionData);
   } catch (error) {
-    console.error('Me error:', error);
+    logger.error('Me error:', error);
     res.status(500).json({ error: 'Failed to get user info' });
   }
 });

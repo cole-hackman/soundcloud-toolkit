@@ -2,6 +2,7 @@ import fetch from 'node-fetch';
 import dotenv from 'dotenv';
 dotenv.config();
 import { encrypt, decrypt } from './crypto.js';
+import logger from './logger.js';
 
 class SoundCloudClient {
   constructor() {
@@ -38,8 +39,12 @@ class SoundCloudClient {
     });
 
     if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`Token exchange failed: ${response.status} ${error}`);
+      const errorText = await response.text();
+      // Sanitize error - don't include full response body which might contain tokens
+      const sanitizedError = errorText.length > 200 
+        ? errorText.substring(0, 200) + '...' 
+        : errorText;
+      throw new Error(`Token exchange failed: ${response.status}`);
     }
 
     return response.json();
@@ -65,8 +70,9 @@ class SoundCloudClient {
     });
 
     if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`Token refresh failed: ${response.status} ${error}`);
+      const errorText = await response.text();
+      // Sanitize error - don't include full response body
+      throw new Error(`Token refresh failed: ${response.status}`);
     }
 
     return response.json();
@@ -105,12 +111,14 @@ class SoundCloudClient {
         });
 
         if (!retryResponse.ok) {
+          // Don't include response body in error message
           throw new Error(`API request failed after token refresh: ${retryResponse.status}`);
         }
 
         return retryResponse.json();
       } catch (refreshError) {
-        throw new Error(`Token refresh failed: ${refreshError}`);
+        // Don't expose refresh error details
+        throw new Error(`Token refresh failed`);
       }
     }
 
@@ -124,8 +132,8 @@ class SoundCloudClient {
     }
 
     if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`API request failed: ${response.status} ${error}`);
+      // Don't include response body in error message to prevent secret leakage
+      throw new Error(`API request failed: ${response.status}`);
     }
 
     return response.json();
@@ -205,8 +213,8 @@ class SoundCloudClient {
       }
 
       if (!res.ok) {
-        const txt = await res.text();
-        throw new Error(`API request failed: ${res.status} ${txt}`);
+        // Don't include response body in error message
+        throw new Error(`API request failed: ${res.status}`);
       }
 
       const data = await res.json();
@@ -295,14 +303,14 @@ class SoundCloudClient {
           }
         });
         if (!res2.ok) {
-          const txt = await res2.text();
-          throw new Error(`Resolve follow error ${res2.status}: ${txt}`);
+          // Don't include response body in error message
+          throw new Error(`Resolve follow error: ${res2.status}`);
         }
         return res2.json();
       }
       if (!res.ok) {
-        const txt = await res.text();
-        throw new Error(`Resolve error ${res.status}: ${txt}`);
+        // Don't include response body in error message
+        throw new Error(`Resolve error: ${res.status}`);
       }
       return res.json();
     };
@@ -331,14 +339,14 @@ class SoundCloudClient {
       if (!location) throw new Error('Resolve redirect missing location');
       const res2 = await fetch(location, { headers: { 'Accept': 'application/json' } });
       if (!res2.ok) {
-        const txt = await res2.text();
-        throw new Error(`Resolve follow error ${res2.status}: ${txt}`);
+        // Don't include response body in error message
+        throw new Error(`Resolve follow error: ${res2.status}`);
       }
       return res2.json();
     }
     if (!res.ok) {
-      const txt = await res.text();
-      throw new Error(`Resolve error ${res.status}: ${txt}`);
+      // Don't include response body in error message
+      throw new Error(`Resolve error: ${res.status}`);
     }
     return res.json();
   }

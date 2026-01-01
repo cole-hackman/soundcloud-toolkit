@@ -3,6 +3,17 @@ import { unsignSession, parseSessionData } from '../lib/session.js';
 import { decrypt } from '../lib/crypto.js';
 import { soundcloudClient } from '../lib/soundcloud-client.js';
 import prisma from '../lib/prisma.js';
+import { heavyOperationRateLimiter } from '../middleware/rateLimiter.js';
+import logger from '../lib/logger.js';
+import {
+  validatePlaylistId,
+  validatePagination,
+  validateResolve,
+  validateMergePlaylists,
+  validateUpdatePlaylist,
+  validateCreateFromLikes,
+  validateLikesPagination,
+} from '../middleware/validation.js';
 
 const router = express.Router();
 
@@ -130,7 +141,7 @@ async function authenticateUser(req, res, next) {
     
     next();
   } catch (error) {
-    console.error('Authentication error:', error);
+    logger.error('Authentication error:', error);
     res.status(401).json({ error: 'Authentication failed' });
   }
 }
@@ -144,7 +155,7 @@ router.get('/me', authenticateUser, async (req, res) => {
     const userInfo = await soundcloudClient.getMe(req.accessToken, req.refreshToken);
     res.json(userInfo);
   } catch (error) {
-    console.error('Get me error:', error);
+    logger.error('Get me error:', error);
     res.status(500).json({ error: 'Failed to get user info' });
   }
 });
@@ -153,7 +164,7 @@ router.get('/me', authenticateUser, async (req, res) => {
  * GET /api/playlists
  * Get user's playlists
  */
-router.get('/playlists', authenticateUser, async (req, res) => {
+router.get('/playlists', authenticateUser, validatePagination, async (req, res) => {
   try {
     const { limit = 50, offset = 0 } = req.query;
     const playlists = await soundcloudClient.getPlaylists(
@@ -180,7 +191,7 @@ router.get('/playlists', authenticateUser, async (req, res) => {
     }));
     res.json(withCovers);
   } catch (error) {
-    console.error('Get playlists error:', error);
+    logger.error('Get playlists error:', error);
     res.status(500).json({ error: 'Failed to get playlists' });
   }
 });
@@ -189,10 +200,9 @@ router.get('/playlists', authenticateUser, async (req, res) => {
  * GET /api/playlists/:id
  * Return single playlist with tracks included
  */
-router.get('/playlists/:id', authenticateUser, async (req, res) => {
+router.get('/playlists/:id', authenticateUser, validatePlaylistId, async (req, res) => {
   try {
-    const id = parseInt(req.params.id, 10);
-    if (Number.isNaN(id)) return res.status(400).json({ error: 'Invalid playlist id' });
+    const id = req.params.id; // Already validated and converted to int by middleware
     const playlist = await soundcloudClient.getPlaylistWithTracks(
       req.accessToken,
       req.refreshToken,
@@ -200,7 +210,7 @@ router.get('/playlists/:id', authenticateUser, async (req, res) => {
     );
     res.json(playlist);
   } catch (error) {
-    console.error('Get playlist with tracks error:', error);
+    logger.error('Get playlist with tracks error:', error);
     res.status(500).json({ error: 'Failed to get playlist' });
   }
 });
@@ -210,13 +220,10 @@ router.get('/playlists/:id', authenticateUser, async (req, res) => {
  * Update playlist order/title by sending full track list
  * Body: { tracks: number[]; title?: string }
  */
-router.put('/playlists/:id', authenticateUser, async (req, res) => {
+router.put('/playlists/:id', authenticateUser, validateUpdatePlaylist, async (req, res) => {
   try {
-    const id = parseInt(req.params.id, 10);
-    if (Number.isNaN(id)) return res.status(400).json({ error: 'Invalid playlist id' });
+    const id = req.params.id; // Already validated and converted to int by middleware
     const { tracks, title } = req.body || {};
-    if (!Array.isArray(tracks)) return res.status(400).json({ error: 'tracks must be an array' });
-    if (tracks.length > 500) return res.status(400).json({ error: 'Max 500 tracks' });
 
     // Reuse addTracksToPlaylist to overwrite order by sending full list
     const updated = await soundcloudClient.addTracksToPlaylist(
@@ -240,7 +247,7 @@ router.put('/playlists/:id', authenticateUser, async (req, res) => {
 
     res.json(updated);
   } catch (error) {
-    console.error('Update playlist error:', error);
+    logger.error('Update playlist error:', error);
     res.status(500).json({ error: 'Failed to update playlist' });
   }
 });
@@ -265,7 +272,7 @@ router.get('/likes', authenticateUser, async (req, res) => {
     ));
     res.json({ collection: items, total_results: items.length });
   } catch (error) {
-    console.error('Get likes error:', error);
+    logger.error('Get likes error:', error);
     res.status(500).json({ error: 'Failed to get likes' });
   }
 });
@@ -275,7 +282,7 @@ router.get('/likes', authenticateUser, async (req, res) => {
  * Returns one page of likes with cursor-based pagination
  * Query: limit (default 50), next (optional next_href from previous page)
  */
-router.get('/likes/paged', authenticateUser, async (req, res) => {
+router.get('/likes/paged', authenticateUser, validateLikesPagination, async (req, res) => {
   try {
     const { limit = 50, next } = req.query;
     let endpoint;
@@ -301,7 +308,7 @@ router.get('/likes/paged', authenticateUser, async (req, res) => {
       total: page.total_results || undefined
     });
   } catch (error) {
-    console.error('Get likes paged error:', error);
+    logger.error('Get likes paged error:', error);
     res.status(500).json({ error: 'Failed to get likes page' });
   }
 });
@@ -313,6 +320,7 @@ router.get('/likes/paged', authenticateUser, async (req, res) => {
 async function handleResolve(req, res) {
   try {
     const rawUrl = req.method === 'GET' ? req.query?.url : req.body?.url;
+    // Validation middleware already checked the URL format
     const cleaned = sanitizeUrl(rawUrl);
     if (!cleaned) return res.status(400).json({ error: 'Invalid SoundCloud URL' });
 
@@ -358,7 +366,7 @@ async function handleResolve(req, res) {
     resolveCache.set(cleaned, { data: normalized, expiresAt: now + RESOLVE_CACHE_TTL_MS });
     res.json(normalized);
   } catch (error) {
-    console.error('Resolve error:', error);
+    logger.error('Resolve error:', error);
     const msg = String(error?.message || '').toLowerCase();
     if (msg.includes('invalid_grant')) return res.status(401).json({ error: 'Session expired. Please log in again.' });
     if (msg.includes('401')) return res.status(401).json({ error: 'Unauthorized to resolve this URL. Sign in and try again.' });
@@ -367,20 +375,17 @@ async function handleResolve(req, res) {
   }
 }
 
-router.post('/resolve', authenticateUser, handleResolve);
-router.get('/resolve', authenticateUser, handleResolve);
+router.post('/resolve', authenticateUser, heavyOperationRateLimiter, validateResolve, handleResolve);
+router.get('/resolve', authenticateUser, heavyOperationRateLimiter, validateResolve, handleResolve);
 
 /**
  * POST /api/playlists/merge
  * Merge multiple playlists
  */
-router.post('/playlists/merge', authenticateUser, async (req, res) => {
+router.post('/playlists/merge', authenticateUser, heavyOperationRateLimiter, validateMergePlaylists, async (req, res) => {
   try {
     const { sourcePlaylistIds, title } = req.body;
-    
-    if (!sourcePlaylistIds || !Array.isArray(sourcePlaylistIds) || sourcePlaylistIds.length < 2) {
-      return res.status(400).json({ error: 'At least 2 playlist IDs are required' });
-    }
+    // Validation middleware already checked the input
 
     // Helper to slow down between API calls
     const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -436,7 +441,7 @@ router.post('/playlists/merge', authenticateUser, async (req, res) => {
           initialBatch
         );
 
-        console.log(`[merge] created playlist ${i + 1}/${numPlaylists}`, { id: newPlaylist.id, initialCount });
+        logger.info(`[merge] created playlist ${i + 1}/${numPlaylists}`, { id: newPlaylist.id, initialCount });
         await sleep(500);
 
         // If more remain, set the full list at once (overwrite semantics)
@@ -454,7 +459,7 @@ router.post('/playlists/merge', authenticateUser, async (req, res) => {
               finalCount = Array.isArray(updated.tracks) ? updated.tracks.length : (updated.track_count || batch.length);
               finalUpdateSucceeded = true;
             } catch (e) {
-              console.error(`[merge] playlist ${i + 1} final set attempt ${attempt} failed:`, e?.message || e);
+              logger.error(`[merge] playlist ${i + 1} final set attempt ${attempt} failed:`, e);
               throw e;
             }
           };
@@ -490,7 +495,7 @@ router.post('/playlists/merge', authenticateUser, async (req, res) => {
         }
       }
 
-      console.log('[merge] summary (multiple playlists)', {
+      logger.info('[merge] summary (multiple playlists)', {
         sourceCount: sourcePlaylistIds.length,
         fetchedTotal,
         acceptedTotal,
@@ -533,7 +538,7 @@ router.post('/playlists/merge', authenticateUser, async (req, res) => {
         initialBatch
       );
 
-      console.log('[merge] created playlist', { id: newPlaylist.id, initialCount });
+      logger.info('[merge] created playlist', { id: newPlaylist.id, initialCount });
       await sleep(500);
 
       // If more remain, set the full list at once (overwrite semantics)
@@ -551,7 +556,7 @@ router.post('/playlists/merge', authenticateUser, async (req, res) => {
             finalCount = Array.isArray(updated.tracks) ? updated.tracks.length : (updated.track_count || trackIdsArray.length);
             finalUpdateSucceeded = true;
           } catch (e) {
-            console.error(`[merge] final set attempt ${attempt} failed:`, e?.message || e);
+            logger.error(`[merge] final set attempt ${attempt} failed:`, e);
             throw e;
           }
         };
@@ -575,7 +580,7 @@ router.post('/playlists/merge', authenticateUser, async (req, res) => {
         verifiedCount = Array.isArray(verified.tracks) ? verified.tracks.length : (verified.track_count || verifiedCount);
       } catch {}
 
-      console.log('[merge] summary', {
+      logger.info('[merge] summary', {
         sourceCount: sourcePlaylistIds.length,
         fetchedTotal,
         acceptedTotal,
@@ -600,7 +605,7 @@ router.post('/playlists/merge', authenticateUser, async (req, res) => {
       });
     }
   } catch (error) {
-    console.error('Merge playlists error:', error);
+    logger.error('Merge playlists error:', error);
     res.status(500).json({ error: 'Failed to merge playlists' });
   }
 });
@@ -609,15 +614,10 @@ router.post('/playlists/merge', authenticateUser, async (req, res) => {
  * POST /api/playlists/from-likes
  * Create playlist from liked tracks
  */
-router.post('/playlists/from-likes', authenticateUser, async (req, res) => {
+router.post('/playlists/from-likes', authenticateUser, heavyOperationRateLimiter, validateCreateFromLikes, async (req, res) => {
   try {
     const { title, trackIds } = req.body;
-    if (!Array.isArray(trackIds) || trackIds.length === 0) {
-      return res.status(400).json({ error: 'No tracks selected' });
-    }
-    if (trackIds.length > 500) {
-      return res.status(400).json({ error: 'Max 500 tracks per playlist' });
-    }
+    // Validation middleware already checked the input
 
     const playlistTitle = title || `My Liked Tracks - ${new Date().toLocaleDateString()}`;
     const initialBatch = trackIds.slice(0, 200);
@@ -643,7 +643,7 @@ router.post('/playlists/from-likes', authenticateUser, async (req, res) => {
 
     res.json({ playlistId: newPlaylist.id, permalink_url: newPlaylist.permalink_url, totalTracks: trackIds.length });
   } catch (error) {
-    console.error('Create playlist from likes error:', error);
+    logger.error('Create playlist from likes error:', error);
     res.status(500).json({ error: 'Failed to create playlist from likes' });
   }
 });

@@ -3,10 +3,7 @@
   "outputDirectory": "frontend-UI/out",
   "installCommand": "npm install",
   "framework": null,
-  "rewrites": [
-    { "source": "/google9c64ef8f09c632fb.html", "destination": "/google9c64ef8f09c632fb.html" },
-    { "source": "/(.*)", "destination": "/index.html" }
-  ]
+  "trailingSlash": true
 }
 
 

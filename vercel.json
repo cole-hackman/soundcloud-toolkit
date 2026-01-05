@@ -1,4 +1,6 @@
 {
+  "buildCommand": "npm run build",
+  "outputDirectory": "frontend-UI/out",
   "rewrites": [
     { "source": "/google9c64ef8f09c632fb.html", "destination": "/google9c64ef8f09c632fb.html" },
     { "source": "/(.*)", "destination": "/index.html" }

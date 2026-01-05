@@ -3,6 +3,9 @@ const nextConfig = {
   // Enable static export
   output: 'export',
   
+  // Add trailing slash for proper static file routing
+  trailingSlash: true,
+  
   // Image optimization (disabled for static export)
   images: {
     unoptimized: true,

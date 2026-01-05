@@ -1,7 +1,11 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Image optimization
+  // Enable static export
+  output: 'export',
+  
+  // Image optimization (disabled for static export)
   images: {
+    unoptimized: true,
     remotePatterns: [
       {
         protocol: "https",

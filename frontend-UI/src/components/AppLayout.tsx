@@ -39,16 +39,16 @@ export function AppLayout({ children }: AppLayoutProps) {
     <div className="min-h-screen flex flex-col bg-[#F2F2F2]">
       {/* Header */}
       <header className="sticky top-0 z-50 bg-white border-b border-gray-200">
-        <div className="container mx-auto px-4 py-3">
+        <div className="container mx-auto px-3 sm:px-4 py-2 sm:py-3">
           <div className="flex items-center justify-between">
             <Link href="/dashboard" className="flex items-center space-x-2">
-              <div className="h-12 md:h-14 overflow-hidden flex items-center">
+              <div className="h-8 sm:h-10 md:h-12 overflow-hidden flex items-center">
                 <Image
                   src="/sc toolkit transparent .png"
                   alt="SC Toolkit"
-                  width={160}
-                  height={56}
-                  className="h-24 md:h-28 w-auto object-contain -my-6 md:-my-7"
+                  width={120}
+                  height={40}
+                  className="h-full w-auto object-contain"
                   priority
                 />
               </div>

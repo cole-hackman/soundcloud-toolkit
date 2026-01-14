@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { StructuredData } from "@/components/StructuredData";
+import { Layers, Heart, ArrowUpDown, Link2, Check, Lock, Zap, RefreshCw, Globe, Shield } from "lucide-react";
 
 // FAQ data - used for both display and structured data
 const faqs = [
@@ -49,25 +50,25 @@ const faqs = [
 // Features data
 const features = [
   {
-    icon: "⊞",
+    icon: Layers,
     title: "Combine Playlists",
     description:
       "Merge multiple playlists into one unified collection. Automatically detect and remove duplicate tracks across all sources. Perfect for consolidating your music library or creating mega-playlists from your favorite collections.",
   },
   {
-    icon: "♥",
+    icon: Heart,
     title: "Likes to Playlist",
     description:
       "Transform your liked tracks into organized playlists. Select from thousands of favorites and batch-create playlists with custom names. Never lose track of your favorite discoveries again.",
   },
   {
-    icon: "⇅",
+    icon: ArrowUpDown,
     title: "Playlist Modifier",
     description:
       "Take full control of your playlists. Reorder tracks with drag-and-drop, remove unwanted songs, and apply smart sorting by title, artist, date, duration, or BPM. Your playlists, your way.",
   },
   {
-    icon: "🔗",
+    icon: Link2,
     title: "Link Resolver",
     description:
       "Get instant metadata from any SoundCloud URL. Resolve tracks, playlists, and user profiles to extract detailed information. Perfect for research, organization, and discovery.",
@@ -139,9 +140,9 @@ export default function Home() {
 
       <div className="min-h-screen bg-[#F2F2F2] text-[#333333]">
         {/* Navigation */}
-        <nav className="fixed top-0 left-0 right-0 z-50 flex items-center justify-center pt-6">
-          <div className="max-w-5xl mx-auto px-6 w-full">
-            <div className="bg-white/90 backdrop-blur-sm rounded-full border border-gray-200 shadow-lg px-6 py-3 flex items-center justify-between">
+        <nav className="fixed top-0 left-0 right-0 z-50 flex items-center justify-center pt-4 sm:pt-6">
+          <div className="max-w-5xl mx-auto px-4 sm:px-6 w-full">
+            <div className="bg-white/90 backdrop-blur-sm rounded-full border border-gray-200 shadow-lg px-4 sm:px-6 py-2 sm:py-3 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Image
                   src="/sc toolkit transparent .png"
@@ -178,7 +179,7 @@ export default function Home() {
               <div className="flex items-center">
                 <Link
                   href="/login"
-                  className="px-6 py-2 text-sm bg-gradient-to-r from-[#FF5500] to-[#E64A00] text-white rounded-full hover:shadow-lg transition-all font-semibold"
+                  className="px-4 sm:px-6 py-1.5 sm:py-2 text-xs sm:text-sm bg-gradient-to-r from-[#FF5500] to-[#E64A00] text-white rounded-full hover:shadow-lg transition-all font-semibold"
                 >
                   Login
                 </Link>
@@ -188,23 +189,23 @@ export default function Home() {
         </nav>
 
         {/* Hero Section */}
-        <section className="pt-40 pb-32 px-6 relative overflow-hidden bg-gradient-to-b from-[#FF5500]/5 to-transparent">
+        <section className="pt-24 sm:pt-32 md:pt-40 pb-16 sm:pb-24 md:pb-32 px-4 sm:px-6 relative overflow-hidden bg-gradient-to-b from-[#FF5500]/5 to-transparent">
           <div className="max-w-4xl mx-auto text-center relative z-10">
-            <h1 className="text-5xl md:text-6xl lg:text-7xl font-bold mb-6 leading-tight text-[#333333]">
+            <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold mb-4 sm:mb-6 leading-tight text-[#333333]">
               Smarter SoundCloud Playlist Management
             </h1>
-            <p className="text-lg md:text-xl text-[#666666] mb-10 max-w-2xl mx-auto leading-relaxed">
+            <p className="text-base sm:text-lg md:text-xl text-[#666666] mb-8 sm:mb-10 max-w-2xl mx-auto leading-relaxed px-4">
               SC Toolkit helps SoundCloud power users organize, merge, and clean
               playlists. Remove duplicates, manage thousands of tracks, and
               build better playlists faster than the native app allows.
             </p>
             <Link
               href="/login"
-              className="inline-block px-10 py-4 bg-gradient-to-r from-[#FF5500] to-[#E64A00] text-white font-semibold rounded-lg hover:shadow-xl hover:shadow-orange-500/30 transition-all text-lg"
+              className="inline-block px-8 sm:px-10 py-3 sm:py-4 bg-gradient-to-r from-[#FF5500] to-[#E64A00] text-white font-semibold rounded-lg hover:shadow-xl hover:shadow-orange-500/30 transition-all text-base sm:text-lg"
             >
               Login with SoundCloud
             </Link>
-            <p className="mt-4 text-sm text-[#999999]">
+            <p className="mt-4 text-xs sm:text-sm text-[#999999]">
               Free to use. No credit card required.
             </p>
           </div>
@@ -241,22 +242,25 @@ export default function Home() {
               Key Features
             </h2>
             <div className="grid md:grid-cols-2 gap-8">
-              {features.map((feature, i) => (
-                <article
-                  key={i}
-                  className="group bg-white border-2 border-gray-200 rounded-2xl p-10 hover:border-[#FF5500] hover:shadow-2xl hover:-translate-y-1 transition-all duration-300"
-                >
-                  <div className="w-20 h-20 rounded-full bg-gradient-to-br from-[#FF5500] to-[#E64A00] flex items-center justify-center text-white text-4xl mb-6">
-                    {feature.icon}
-                  </div>
-                  <h3 className="text-2xl font-bold mb-4 text-[#333333] group-hover:text-[#FF5500] transition">
-                    {feature.title}
-                  </h3>
-                  <p className="text-[#666666] leading-relaxed text-lg">
-                    {feature.description}
-                  </p>
-                </article>
-              ))}
+              {features.map((feature, i) => {
+                const IconComponent = feature.icon;
+                return (
+                  <article
+                    key={i}
+                    className="group bg-white border-2 border-gray-200 rounded-2xl p-10 hover:border-[#FF5500] hover:shadow-2xl hover:-translate-y-1 transition-all duration-300"
+                  >
+                    <div className="w-20 h-20 rounded-full bg-gradient-to-br from-[#FF5500] to-[#E64A00] flex items-center justify-center text-white mb-6">
+                      <IconComponent className="w-10 h-10" strokeWidth={2} />
+                    </div>
+                    <h3 className="text-2xl font-bold mb-4 text-[#333333] group-hover:text-[#FF5500] transition">
+                      {feature.title}
+                    </h3>
+                    <p className="text-[#666666] leading-relaxed text-lg">
+                      {feature.description}
+                    </p>
+                  </article>
+                );
+              })}
             </div>
           </div>
         </section>
@@ -359,41 +363,48 @@ export default function Home() {
               {[
                 {
                   step: "1",
-                  icon: "🔐",
+                  icon: Lock,
                   title: "Connect",
                   description:
                     "Sign in securely with your SoundCloud account using official OAuth authentication. We never see your password.",
                 },
                 {
                   step: "2",
-                  icon: "⚙️",
+                  icon: Layers,
                   title: "Organize",
                   description:
                     "Use our powerful tools to merge playlists, sort tracks, remove duplicates, and convert your likes into playlists.",
                 },
                 {
                   step: "3",
-                  icon: "🎵",
+                  icon: Check,
                   title: "Enjoy",
                   description:
                     "Your organized playlists sync directly back to SoundCloud. Enjoy your perfectly curated music library.",
                 },
-              ].map((item, i) => (
-                <article key={i} className="relative text-center">
-                  <div className="mb-6">
-                    <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-[#FF5500] text-white font-bold text-2xl mb-4">
-                      {item.step}
+              ].map((item, i) => {
+                const IconComponent = item.icon;
+                return (
+                  <article key={i} className="relative text-center">
+                    <div className="mb-6">
+                      <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-[#FF5500] text-white font-bold text-2xl mb-4">
+                        {item.step}
+                      </div>
                     </div>
-                  </div>
-                  <div className="text-6xl mb-4">{item.icon}</div>
-                  <h3 className="text-2xl font-bold mb-3 text-[#333333]">
-                    {item.title}
-                  </h3>
-                  <p className="text-[#666666] text-lg leading-relaxed">
-                    {item.description}
-                  </p>
-                </article>
-              ))}
+                    <div className="flex justify-center mb-4">
+                      <div className="w-16 h-16 rounded-full bg-[#F2F2F2] border-2 border-gray-200 flex items-center justify-center">
+                        <IconComponent className="w-8 h-8 text-[#FF5500]" strokeWidth={2} />
+                      </div>
+                    </div>
+                    <h3 className="text-2xl font-bold mb-3 text-[#333333]">
+                      {item.title}
+                    </h3>
+                    <p className="text-[#666666] text-lg leading-relaxed">
+                      {item.description}
+                    </p>
+                  </article>
+                );
+              })}
             </div>
           </div>
         </section>
@@ -402,8 +413,8 @@ export default function Home() {
         <section className="py-24 px-6 bg-white">
           <div className="max-w-3xl mx-auto">
             <div className="bg-[#F2F2F2] rounded-3xl p-12 text-center border-2 border-gray-200">
-              <div className="w-20 h-20 rounded-full bg-gradient-to-br from-[#FF5500] to-[#E64A00] flex items-center justify-center text-white text-4xl mx-auto mb-6">
-                🛡️
+              <div className="w-20 h-20 rounded-full bg-gradient-to-br from-[#FF5500] to-[#E64A00] flex items-center justify-center text-white mx-auto mb-6">
+                <Shield className="w-10 h-10" strokeWidth={2} />
               </div>
               <h2 className="text-3xl font-bold mb-4 text-[#333333]">
                 Security & Privacy
@@ -416,14 +427,14 @@ export default function Home() {
                 secure.
               </p>
               <div className="flex flex-wrap justify-center gap-4 text-sm text-[#666666] mb-6">
-                <span className="bg-white px-4 py-2 rounded-full border border-gray-200">
-                  🔒 OAuth 2.0 + PKCE
+                <span className="bg-white px-4 py-2 rounded-full border border-gray-200 flex items-center gap-2">
+                  <Lock className="w-4 h-4 text-[#FF5500]" /> OAuth 2.0 + PKCE
                 </span>
-                <span className="bg-white px-4 py-2 rounded-full border border-gray-200">
-                  🔐 AES-256-GCM Encryption
+                <span className="bg-white px-4 py-2 rounded-full border border-gray-200 flex items-center gap-2">
+                  <Shield className="w-4 h-4 text-[#FF5500]" /> AES-256-GCM Encryption
                 </span>
-                <span className="bg-white px-4 py-2 rounded-full border border-gray-200">
-                  ✓ No Password Storage
+                <span className="bg-white px-4 py-2 rounded-full border border-gray-200 flex items-center gap-2">
+                  <Check className="w-4 h-4 text-[#FF5500]" /> No Password Storage
                 </span>
               </div>
               <Link
@@ -448,7 +459,11 @@ export default function Home() {
             </p>
             <div className="grid md:grid-cols-3 gap-6">
               <article className="bg-white p-6 rounded-xl border border-gray-200 text-center">
-                <div className="text-4xl mb-4">⚡</div>
+                <div className="flex justify-center mb-4">
+                  <div className="w-14 h-14 rounded-full bg-[#FF5500]/10 flex items-center justify-center">
+                    <Zap className="w-7 h-7 text-[#FF5500]" strokeWidth={2} />
+                  </div>
+                </div>
                 <h3 className="font-bold text-[#333333] mb-2">
                   Batch Operations
                 </h3>
@@ -458,7 +473,11 @@ export default function Home() {
                 </p>
               </article>
               <article className="bg-white p-6 rounded-xl border border-gray-200 text-center">
-                <div className="text-4xl mb-4">🔄</div>
+                <div className="flex justify-center mb-4">
+                  <div className="w-14 h-14 rounded-full bg-[#FF5500]/10 flex items-center justify-center">
+                    <RefreshCw className="w-7 h-7 text-[#FF5500]" strokeWidth={2} />
+                  </div>
+                </div>
                 <h3 className="font-bold text-[#333333] mb-2">
                   Respectful API Usage
                 </h3>
@@ -468,7 +487,11 @@ export default function Home() {
                 </p>
               </article>
               <article className="bg-white p-6 rounded-xl border border-gray-200 text-center">
-                <div className="text-4xl mb-4">🌐</div>
+                <div className="flex justify-center mb-4">
+                  <div className="w-14 h-14 rounded-full bg-[#FF5500]/10 flex items-center justify-center">
+                    <Globe className="w-7 h-7 text-[#FF5500]" strokeWidth={2} />
+                  </div>
+                </div>
                 <h3 className="font-bold text-[#333333] mb-2">
                   Works Everywhere
                 </h3>

@@ -216,22 +216,22 @@ function PlaylistModifier() {
 
   return (
     <div className="min-h-screen" style={{ background: 'var(--sc-light-gray)' }}>
-      <div className="container mx-auto px-6 py-12 max-w-7xl pb-32">
+      <div className="container mx-auto px-4 sm:px-6 py-8 sm:py-12 max-w-7xl pb-32 sm:pb-32">
         {/* Header */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="mb-8"
+          className="mb-6 sm:mb-8"
         >
-          <div className="flex items-center mb-4">
-            <Link to="/dashboard" className="mr-4">
+          <div className="flex items-center mb-3 sm:mb-4">
+            <Link to="/dashboard" className="mr-3 sm:mr-4">
               <button className="p-2 rounded-lg sc-focus transition-colors" style={{ color: 'var(--sc-text-light)' }} onMouseEnter={(e) => e.currentTarget.style.background = 'var(--sc-white)'} onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}>
-                <ArrowLeft className="w-6 h-6" />
+                <ArrowLeft className="w-5 h-5 sm:w-6 sm:h-6" />
               </button>
             </Link>
           </div>
-          <h1 className="text-4xl md:text-5xl font-bold mb-3" style={{ color: 'var(--sc-text-dark)' }}>Playlist Modifier</h1>
-          <p className="text-lg" style={{ color: 'var(--sc-text-light)' }}>Reorder and remove tracks in your playlists</p>
+          <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-2 sm:mb-3" style={{ color: 'var(--sc-text-dark)' }}>Playlist Modifier</h1>
+          <p className="text-base sm:text-lg" style={{ color: 'var(--sc-text-light)' }}>Reorder and remove tracks in your playlists</p>
         </motion.div>
 
         {/* Playlist Selector */}
@@ -239,10 +239,10 @@ function PlaylistModifier() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
-          className="rounded-xl p-4 mb-6 shadow-lg border-2"
+          className="rounded-xl p-3 sm:p-4 mb-4 sm:mb-6 shadow-lg border-2"
           style={{ background: 'var(--sc-white)', borderColor: 'var(--sc-light-gray)' }}
         >
-          <div className="flex items-center gap-4" ref={selectorRef}>
+          <div className="flex items-center gap-2 sm:gap-4" ref={selectorRef}>
             {(() => {
               const p = playlists.find(x => String(x.id) === String(selectedPlaylistId));
               return p?.coverUrl ? (
@@ -303,12 +303,12 @@ function PlaylistModifier() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
-          className="sticky top-0 z-10 mb-6"
+          className="sticky top-0 z-10 mb-4 sm:mb-6"
         >
-          <div className="bg-white border-2 border-gray-200 rounded-xl px-6 py-4 shadow-lg flex flex-wrap items-center justify-between gap-4">
-            <div className="flex items-center gap-4 flex-wrap">
+          <div className="bg-white border-2 border-gray-200 rounded-xl px-3 sm:px-4 md:px-6 py-3 sm:py-4 shadow-lg flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 sm:gap-4">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:gap-4 flex-1">
               {/* Segmented quick choices */}
-              <div className="flex items-center rounded-lg border-2 border-gray-200 overflow-hidden" role="tablist" aria-label="Sort">
+              <div className="flex items-center rounded-lg border-2 border-gray-200 overflow-hidden flex-1 sm:flex-none" role="tablist" aria-label="Sort">
                 {([
                   ['manual', 'Manual'],
                   ['title-asc', 'Title'],
@@ -320,7 +320,7 @@ function PlaylistModifier() {
                     onClick={() => setSortKey(key)}
                     role="tab"
                     aria-selected={sortKey === key}
-                    className={`px-4 py-2 text-sm font-medium transition-all ${
+                    className={`flex-1 sm:flex-none px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium transition-all ${
                       sortKey === key
                         ? 'bg-gradient-to-r from-[#FF5500] to-[#E64A00] text-white'
                         : 'bg-white text-[#666666] hover:bg-gray-50'
@@ -330,11 +330,11 @@ function PlaylistModifier() {
                   </button>
                 ))}
               </div>
-              <div className="relative" ref={sortRef}>
+              <div className="relative flex-1 sm:flex-none" ref={sortRef}>
                 <button
                   type="button"
                   onClick={() => setIsSortOpen(v => !v)}
-                  className="px-4 py-2 bg-white border-2 border-gray-200 rounded-xl sc-focus hover:border-[#FF5500] transition-all text-sm w-56 flex items-center justify-between"
+                  className="w-full sm:w-56 px-3 sm:px-4 py-1.5 sm:py-2 bg-white border-2 border-gray-200 rounded-xl sc-focus hover:border-[#FF5500] transition-all text-xs sm:text-sm flex items-center justify-between"
                 >
                   <span className="font-medium text-[#333333]">
                     {(() => {
@@ -386,22 +386,22 @@ function PlaylistModifier() {
                   </div>
                 )}
               </div>
-              <div className="mx-2 w-px h-8" style={{ background: 'var(--sc-light-gray)' }} />
-              <div className="flex items-center gap-3">
+              <div className="hidden sm:block mx-2 w-px h-8" style={{ background: 'var(--sc-light-gray)' }} />
+              <div className="flex items-center gap-2 sm:gap-3">
                 <input
                   id="applyMode"
                   title="Push current on-screen order to SoundCloud."
                   type="checkbox"
                   checked={applyMode}
                   onChange={(e) => setApplyMode(e.target.checked)}
-                  className="w-5 h-5 sc-focus"
+                  className="w-4 h-4 sm:w-5 sm:h-5 sc-focus"
                 />
-                <label htmlFor="applyMode" className="text-sm font-medium text-[#666666] cursor-pointer">
+                <label htmlFor="applyMode" className="text-xs sm:text-sm font-medium text-[#666666] cursor-pointer">
                   Apply to playlist order
                 </label>
               </div>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
               <motion.button
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
@@ -411,9 +411,9 @@ function PlaylistModifier() {
                   undoApply();
                 }}
                 disabled={!lastAppliedOrder || saving}
-                className="px-4 py-2 rounded-lg border-2 border-gray-200 hover:border-[#FF5500] transition-all font-medium text-[#333333] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                className="px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg border-2 border-gray-200 hover:border-[#FF5500] transition-all font-medium text-[#333333] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm"
               >
-                <Undo className="w-4 h-4" />
+                <Undo className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                 Undo
               </motion.button>
               <motion.button
@@ -421,9 +421,9 @@ function PlaylistModifier() {
                 whileTap={{ scale: 0.98 }}
                 onClick={applyOrder}
                 disabled={!applyMode || sortKey === 'manual' || saving}
-                className="px-6 py-2 bg-gradient-to-r from-[#FF5500] to-[#E64A00] text-white font-semibold rounded-lg hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                className="px-4 sm:px-6 py-1.5 sm:py-2 bg-gradient-to-r from-[#FF5500] to-[#E64A00] text-white font-semibold rounded-lg hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm"
               >
-                <ArrowUpDown className="w-5 h-5" />
+                <ArrowUpDown className="w-4 h-4 sm:w-5 sm:h-5" />
                 Apply Order
               </motion.button>
             </div>
@@ -461,7 +461,7 @@ function PlaylistModifier() {
                 return (
                   <motion.li
                     key={t.id}
-                    className={`grid grid-cols-[auto_auto_1fr_auto_auto_auto] items-center gap-4 px-6 py-4 border-b transition-all ${
+                    className={`grid grid-cols-[auto_1fr_auto] sm:grid-cols-[auto_auto_1fr_auto_auto_auto] items-center gap-2 sm:gap-4 px-3 sm:px-6 py-3 sm:py-4 border-b transition-all ${
                       selected ? 'bg-orange-50' : 'bg-white hover:bg-gray-50'
                     }`}
                     style={{ borderColor: 'var(--sc-light-gray)' }}
@@ -472,31 +472,51 @@ function PlaylistModifier() {
                     onDrop={(e) => onDropItem(idx, e)}
                     onDragEnd={onDragEndItem}
                   >
-                    <span className="cursor-grab active:cursor-grabbing text-[#666666] hover:text-[#FF5500] transition-colors">
-                      <GripVertical className="w-5 h-5" />
-                    </span>
-                    <span className="text-sm px-3 py-1 rounded-lg font-semibold bg-gray-100 text-[#666666] w-10 text-center">
-                      {idx + 1}
-                    </span>
-                    {t.artwork_url ? (
-                      <img src={t.artwork_url} className="w-16 h-16 rounded-lg object-cover shadow-md" />
-                    ) : (
-                      <div className="w-16 h-16 rounded-lg" style={{ background: 'var(--sc-light-gray)' }} />
-                    )}
-                    <div className="min-w-0">
-                      <div className="text-base font-semibold truncate mb-1 text-[#333333]" title={t.title || 'Untitled'}>
-                        {t.title || 'Untitled'}
+                    <div className="flex items-center gap-2 sm:gap-4 col-span-1">
+                      <span className="cursor-grab active:cursor-grabbing text-[#666666] hover:text-[#FF5500] transition-colors">
+                        <GripVertical className="w-4 h-4 sm:w-5 sm:h-5" />
+                      </span>
+                      <span className="hidden sm:inline text-sm px-2 sm:px-3 py-1 rounded-lg font-semibold bg-gray-100 text-[#666666] w-8 sm:w-10 text-center">
+                        {idx + 1}
+                      </span>
+                      {t.artwork_url ? (
+                        <img src={t.artwork_url} className="w-12 h-12 sm:w-16 sm:h-16 rounded-lg object-cover shadow-md flex-shrink-0" />
+                      ) : (
+                        <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-lg flex-shrink-0" style={{ background: 'var(--sc-light-gray)' }} />
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="sm:hidden text-xs px-2 py-0.5 rounded font-semibold bg-gray-100 text-[#666666]">
+                          {idx + 1}
+                        </span>
+                        <div className="text-sm sm:text-base font-semibold truncate text-[#333333]" title={t.title || 'Untitled'}>
+                          {t.title || 'Untitled'}
+                        </div>
                       </div>
-                      <div className="text-sm truncate text-[#666666]" title={t.user?.username || 'Unknown'}>
+                      <div className="text-xs sm:text-sm truncate text-[#666666]" title={t.user?.username || 'Unknown'}>
                         {t.user?.username || 'Unknown'}
                       </div>
+                      <div className="flex items-center gap-2 mt-1 sm:hidden">
+                        <span className="text-xs px-2 py-0.5 rounded font-medium bg-gray-100 text-[#666666]">
+                          {formatDuration(t.duration)}
+                        </span>
+                        {(() => {
+                          const bpm = parsedBpm(t);
+                          return bpm != null ? (
+                            <span className="text-xs px-2 py-0.5 rounded font-medium bg-gray-100 text-[#666666]">
+                              BPM {bpm}
+                            </span>
+                          ) : null;
+                        })()}
+                      </div>
                     </div>
-                    <div className="text-right">
+                    <div className="hidden sm:block text-right">
                       <span className="inline-block text-sm px-3 py-1 rounded-lg font-medium bg-gray-100 text-[#666666]">
                         {formatDuration(t.duration)}
                       </span>
                     </div>
-                    <div className="text-right">
+                    <div className="hidden sm:block text-right">
                       {(() => {
                         const bpm = parsedBpm(t);
                         const inferred = bpm != null && t.bpm == null;
@@ -510,7 +530,7 @@ function PlaylistModifier() {
                         );
                       })()}
                     </div>
-                    <div className="flex items-center gap-3 justify-end">
+                    <div className="flex items-center gap-2 sm:gap-3 justify-end">
                       <input
                         type="checkbox"
                         checked={selected}
@@ -522,14 +542,14 @@ function PlaylistModifier() {
                             return next;
                           })
                         }
-                        className="w-5 h-5 sc-focus"
+                        className="w-4 h-4 sm:w-5 sm:h-5 sc-focus"
                       />
                       <button
                         onClick={() => setTracks(prev => prev.filter(x => x.id !== t.id))}
-                        className="p-2 rounded-lg hover:bg-red-50 transition-colors"
+                        className="p-1.5 sm:p-2 rounded-lg hover:bg-red-50 transition-colors"
                         style={{ color: '#ef4444' }}
                       >
-                        <Trash2 className="w-5 h-5" />
+                        <Trash2 className="w-4 h-4 sm:w-5 sm:h-5" />
                       </button>
                     </div>
                   </motion.li>
@@ -542,19 +562,19 @@ function PlaylistModifier() {
         {/* Sticky Save Bar */}
         {(selectedIds.size > 0 || hasChanges) && (
           <div className="fixed left-0 right-0 bottom-0 z-40 bg-white border-t-2 border-gray-200 shadow-2xl">
-            <div className="container mx-auto px-6 py-4 max-w-7xl flex items-center justify-between">
-              <div className="text-lg font-semibold text-[#333333]">
+            <div className="container mx-auto px-4 sm:px-6 py-3 sm:py-4 max-w-7xl flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 sm:gap-4">
+              <div className="text-base sm:text-lg font-semibold text-[#333333]">
                 {selectedIds.size > 0 && `Selected ${selectedIds.size}`}
                 {hasChanges && selectedIds.size === 0 && 'Unsaved changes'}
               </div>
-              <div className="flex items-center gap-4">
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-4">
                 {selectedIds.size > 0 && (
                   <motion.button
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
                     onClick={removeSelected}
                     disabled={selectedIds.size === 0}
-                    className="px-6 py-3 rounded-lg font-semibold text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="px-4 sm:px-6 py-2.5 sm:py-3 rounded-lg font-semibold text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed text-sm sm:text-base"
                     style={{ background: selectedIds.size === 0 ? 'var(--sc-light-gray)' : '#ef4444' }}
                   >
                     Remove Selected ({selectedIds.size})
@@ -565,16 +585,16 @@ function PlaylistModifier() {
                   whileTap={{ scale: 0.98 }}
                   onClick={save}
                   disabled={!hasChanges || saving}
-                  className="px-8 py-3 bg-gradient-to-r from-[#FF5500] to-[#E64A00] text-white font-semibold rounded-lg hover:shadow-xl hover:shadow-orange-500/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-3"
+                  className="px-6 sm:px-8 py-2.5 sm:py-3 bg-gradient-to-r from-[#FF5500] to-[#E64A00] text-white font-semibold rounded-lg hover:shadow-xl hover:shadow-orange-500/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 sm:gap-3 text-sm sm:text-base"
                 >
                   {saving ? (
                     <>
-                      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <div className="w-4 h-4 sm:w-5 sm:h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
                       <span>Saving…</span>
                     </>
                   ) : (
                     <>
-                      <Save className="w-5 h-5" />
+                      <Save className="w-4 h-4 sm:w-5 sm:h-5" />
                       <span>Save Changes</span>
                     </>
                   )}

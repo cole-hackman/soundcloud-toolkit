@@ -138,9 +138,9 @@ function Home() {
   return (
     <div className="min-h-screen bg-[#F2F2F2] text-[#333333]">
       {/* Navigation */}
-      <nav className="fixed top-0 left-0 right-0 z-50 flex items-center justify-center pt-6">
-        <div className="max-w-5xl mx-auto px-6 w-full">
-          <div className="bg-white/90 backdrop-blur-sm rounded-full border border-gray-200 shadow-lg px-6 py-3 flex items-center justify-between">
+      <nav className="fixed top-0 left-0 right-0 z-50 flex items-center justify-center pt-4 sm:pt-6">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 w-full">
+          <div className="bg-white/90 backdrop-blur-sm rounded-full border border-gray-200 shadow-lg px-4 sm:px-6 py-2 sm:py-3 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <img src={scLogo} alt="SC Toolkit" className="h-8 sm:h-10 object-contain" />
             </div>
@@ -153,7 +153,7 @@ function Home() {
             <div className="flex items-center">
               <button 
                 onClick={handleCTAClick}
-                className="px-6 py-2 text-sm bg-gradient-to-r from-[#FF5500] to-[#E64A00] text-white rounded-full hover:shadow-lg transition-all font-semibold"
+                className="px-4 sm:px-6 py-1.5 sm:py-2 text-xs sm:text-sm bg-gradient-to-r from-[#FF5500] to-[#E64A00] text-white rounded-full hover:shadow-lg transition-all font-semibold"
               >
                 {isAuthenticated ? 'Dashboard' : 'Login'}
               </button>
@@ -163,13 +163,13 @@ function Home() {
       </nav>
 
       {/* Hero Section */}
-      <section className="pt-40 pb-32 px-6 relative overflow-hidden bg-gradient-to-b from-[#FF5500]/5 to-transparent">
+      <section className="pt-24 sm:pt-32 md:pt-40 pb-16 sm:pb-24 md:pb-32 px-4 sm:px-6 relative overflow-hidden bg-gradient-to-b from-[#FF5500]/5 to-transparent">
         <div className="max-w-4xl mx-auto text-center relative z-10">
           <motion.h1 
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.2 }}
-            className="text-6xl md:text-7xl lg:text-8xl font-bold mb-6 leading-tight text-[#333333]"
+            className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl xl:text-8xl font-bold mb-4 sm:mb-6 leading-tight text-[#333333]"
           >
             Smarter SoundCloud
             <br />
@@ -181,7 +181,7 @@ function Home() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.3 }}
-            className="text-lg md:text-xl text-[#666666] mb-10 max-w-2xl mx-auto leading-relaxed"
+            className="text-base sm:text-lg md:text-xl text-[#666666] mb-8 sm:mb-10 max-w-2xl mx-auto leading-relaxed px-4"
           >
             Organize, merge, and clean your SoundCloud music in ways the native app can't. Powerful tools for power users.
           </motion.p>

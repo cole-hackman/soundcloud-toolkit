@@ -25,13 +25,13 @@ function Layout({ children }: LayoutProps) {
     <div className="min-h-screen flex flex-col" style={{ background: 'var(--sc-light-gray)' }}>
       {/* Header */}
       <motion.header initial={{ y: -20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="sticky top-0 z-50" style={{ background: 'var(--sc-white)', borderBottom: '1px solid var(--sc-light-gray)' }}>
-        <div className="container mx-auto px-4 py-3">
+        <div className="container mx-auto px-3 sm:px-4 py-2 sm:py-3">
           <div className="flex items-center justify-between">
             <Link to="/dashboard" className="flex items-center space-x-2">
-              <div className="h-12 md:h-14 overflow-hidden flex items-center">
+              <div className="h-8 sm:h-10 md:h-12 overflow-hidden flex items-center">
                 <picture>
                   <source srcSet={logoWebp} type="image/webp" />
-                  <img src={logoPng} alt="SoundCloud Tools" className="h-24 md:h-28 w-auto object-contain -my-6 md:-my-7" loading="lazy" decoding="async" />
+                  <img src={logoPng} alt="SoundCloud Tools" className="h-full w-auto object-contain" loading="lazy" decoding="async" />
                 </picture>
               </div>
             </Link>

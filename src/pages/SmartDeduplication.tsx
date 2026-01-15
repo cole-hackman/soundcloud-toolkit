@@ -182,8 +182,8 @@ function SmartDeduplication() {
           <div className="w-20 h-20 bg-green-500 rounded-full flex items-center justify-center mx-auto mb-6">
             <Check className="w-10 h-10 text-white" />
           </div>
-          <h1 className="text-3xl font-bold text-white mb-4">Duplicates Removed!</h1>
-          <p className="text-slate-400 mb-8">
+          <h1 className="text-3xl font-bold text-[var(--sc-text-dark)] mb-4">Duplicates Removed!</h1>
+          <p className="text-[var(--sc-text-light)] mb-8">
             Successfully removed {result?.duplicateCount || selectedDuplicates.length} duplicate tracks from "{selectedPlaylist?.title}"
           </p>
           <div className="space-y-4">
@@ -192,7 +192,7 @@ function SmartDeduplication() {
             </button>
             <Link 
               to="/dashboard"
-              className="block w-full bg-slate-700 hover:bg-slate-600 text-white font-semibold py-3 rounded-xl transition-colors text-center"
+              className="block w-full bg-slate-700 dark:bg-slate-700 hover:bg-slate-600 dark:hover:bg-slate-600 text-white font-semibold py-3 rounded-xl transition-colors text-center"
             >
               Back to Dashboard
             </Link>
@@ -207,29 +207,29 @@ function SmartDeduplication() {
       {/* Header */}
       <div className="flex items-center mb-8">
         <Link to="/dashboard" className="mr-4">
-          <button className="p-2 text-slate-400 hover:text-white hover:bg-slate-700 rounded-lg transition-colors">
+          <button className="p-2 text-[var(--sc-text-light)] hover:text-[var(--sc-text-dark)] hover:bg-[var(--sc-light-gray)] rounded-lg transition-colors">
             <ArrowLeft className="w-5 h-5" />
           </button>
         </Link>
         <div>
-          <h1 className="text-3xl font-bold text-white">Smart Deduplication</h1>
-          <p className="text-slate-400">Find and remove duplicate tracks from your playlists</p>
+          <h1 className="text-3xl font-bold text-[var(--sc-text-dark)]">Smart Deduplication</h1>
+          <p className="text-[var(--sc-text-light)]">Find and remove duplicate tracks from your playlists</p>
         </div>
       </div>
 
       {!selectedPlaylist ? (
         /* Playlist Selection */
         <div>
-          <h2 className="text-xl font-semibold text-white mb-4">Select a Playlist to Scan</h2>
+          <h2 className="text-xl font-semibold text-[var(--sc-text-dark)] mb-4">Select a Playlist to Scan</h2>
           {loading ? (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {Array.from({ length: 4 }).map((_, index) => (
-                <div key={index} className="p-6 bg-slate-800/50 rounded-xl border border-slate-700 animate-pulse">
+                <div key={index} className="p-6 bg-[var(--sc-white)] dark:bg-slate-800/50 rounded-xl border border-[var(--sc-light-gray)] dark:border-slate-700 animate-pulse">
                   <div className="flex items-center space-x-4">
-                    <div className="w-16 h-16 bg-slate-700 rounded-lg" />
+                    <div className="w-16 h-16 bg-[var(--sc-light-gray)] dark:bg-slate-700 rounded-lg" />
                     <div className="flex-1">
-                      <div className="h-4 bg-slate-700 rounded w-3/4 mb-2" />
-                      <div className="h-3 bg-slate-700 rounded w-1/2" />
+                      <div className="h-4 bg-[var(--sc-light-gray)] dark:bg-slate-700 rounded w-3/4 mb-2" />
+                      <div className="h-3 bg-[var(--sc-light-gray)] dark:bg-slate-700 rounded w-1/2" />
                     </div>
                   </div>
                 </div>
@@ -243,7 +243,7 @@ function SmartDeduplication() {
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
                 onClick={() => handleScanPlaylist(playlist)}
-                className="p-6 bg-slate-800/50 backdrop-blur-sm rounded-xl border border-slate-700/50 hover:border-blue-500/50 transition-all text-left"
+                className="p-6 bg-[var(--sc-white)] dark:bg-slate-800/50 backdrop-blur-sm rounded-xl border border-[var(--sc-light-gray)] dark:border-slate-700/50 hover:border-blue-500/50 transition-all text-left"
               >
                 <div className="flex items-center space-x-4">
                   <img
@@ -252,8 +252,8 @@ function SmartDeduplication() {
                     className="w-16 h-16 rounded-lg"
                   />
                   <div>
-                    <h3 className="text-lg font-semibold text-white">{playlist.title}</h3>
-                    <p className="text-slate-400">{playlist.track_count} tracks</p>
+                    <h3 className="text-lg font-semibold text-[var(--sc-text-dark)]">{playlist.title}</h3>
+                    <p className="text-[var(--sc-text-light)]">{playlist.track_count} tracks</p>
                   </div>
                   <Search className="w-6 h-6 text-blue-400 ml-auto" />
                 </div>
@@ -270,22 +270,22 @@ function SmartDeduplication() {
             transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
             className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full mx-auto mb-6"
           />
-          <h2 className="text-2xl font-bold text-white mb-2">Scanning for Duplicates</h2>
-          <p className="text-slate-400">Analyzing "{selectedPlaylist.title}"...</p>
+          <h2 className="text-2xl font-bold text-[var(--sc-text-dark)] mb-2">Scanning for Duplicates</h2>
+          <p className="text-[var(--sc-text-light)]">Analyzing "{selectedPlaylist.title}"...</p>
         </div>
       ) : (
         /* Results */
         <div>
           <div className="flex items-center justify-between mb-6">
             <div>
-              <h2 className="text-xl font-semibold text-white">Duplicates Found</h2>
-              <p className="text-slate-400">
+              <h2 className="text-xl font-semibold text-[var(--sc-text-dark)]">Duplicates Found</h2>
+              <p className="text-[var(--sc-text-light)]">
                 Found {duplicates.length} potential duplicates in "{selectedPlaylist.title}"
               </p>
             </div>
             <button
               onClick={() => setSelectedPlaylist(null)}
-              className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-colors"
+              className="px-4 py-2 bg-slate-700 dark:bg-slate-700 hover:bg-slate-600 dark:hover:bg-slate-600 text-white rounded-lg transition-colors"
             >
               Scan Different Playlist
             </button>
@@ -296,8 +296,8 @@ function SmartDeduplication() {
               <div className="w-16 h-16 bg-green-500 rounded-full flex items-center justify-center mx-auto mb-4">
                 <Check className="w-8 h-8 text-white" />
               </div>
-              <h3 className="text-lg font-semibold text-white mb-2">No Duplicates Found!</h3>
-              <p className="text-slate-400">Your playlist is already clean.</p>
+              <h3 className="text-lg font-semibold text-[var(--sc-text-dark)] mb-2">No Duplicates Found!</h3>
+              <p className="text-[var(--sc-text-light)]">Your playlist is already clean.</p>
             </div>
           ) : (
             <>
@@ -306,10 +306,10 @@ function SmartDeduplication() {
                 {['group1', 'group2'].map(group => {
                   const groupTracks = duplicates.filter(track => track.duplicate_group === group);
                   return (
-                    <div key={group} className="bg-slate-800/30 rounded-xl p-4">
+                    <div key={group} className="bg-[var(--sc-white)] dark:bg-slate-800/30 rounded-xl p-4 border border-[var(--sc-light-gray)] dark:border-slate-700">
                       <div className="flex items-center space-x-2 mb-3">
                         <AlertTriangle className="w-5 h-5 text-yellow-400" />
-                        <span className="text-white font-medium">Duplicate Group</span>
+                        <span className="text-[var(--sc-text-dark)] font-medium">Duplicate Group</span>
                       </div>
                       <div className="space-y-2">
                         {groupTracks.map(track => (
@@ -318,7 +318,7 @@ function SmartDeduplication() {
                             className={`flex items-center space-x-4 p-3 rounded-lg cursor-pointer transition-all ${
                               selectedDuplicates.includes(track.id)
                                 ? 'bg-red-500/20 border border-red-500/50'
-                                : 'bg-slate-700/30 hover:bg-slate-700/50'
+                                : 'bg-[var(--sc-light-gray)] dark:bg-slate-700/30 hover:bg-[var(--sc-white)] dark:hover:bg-slate-700/50'
                             }`}
                             onClick={() => toggleDuplicate(track.id)}
                           >
@@ -328,13 +328,13 @@ function SmartDeduplication() {
                               className="w-12 h-12 rounded-lg"
                             />
                             <div className="flex-1">
-                              <h4 className="text-white font-medium">{track.title}</h4>
-                              <p className="text-slate-400 text-sm">{track.artist} • {track.duration}</p>
+                              <h4 className="text-[var(--sc-text-dark)] font-medium">{track.title}</h4>
+                              <p className="text-[var(--sc-text-light)] text-sm">{track.artist} • {track.duration}</p>
                             </div>
                             <div className={`w-5 h-5 rounded border-2 flex items-center justify-center ${
                               selectedDuplicates.includes(track.id)
                                 ? 'bg-red-500 border-red-500'
-                                : 'border-slate-400'
+                                : 'border-[var(--sc-text-light)]'
                             }`}>
                               {selectedDuplicates.includes(track.id) && (
                                 <Check className="w-3 h-3 text-white" />
@@ -357,7 +357,7 @@ function SmartDeduplication() {
                 className={`w-full py-4 rounded-xl font-semibold transition-all flex items-center justify-center space-x-2 ${
                   selectedDuplicates.length > 0
                     ? 'bg-red-600 hover:bg-red-700 text-white'
-                    : 'bg-slate-700 text-slate-400 cursor-not-allowed'
+                    : 'bg-slate-700 dark:bg-slate-700 text-slate-400 dark:text-slate-400 cursor-not-allowed'
                 }`}
               >
                 <Trash2 className="w-5 h-5" />

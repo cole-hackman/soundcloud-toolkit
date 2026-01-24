@@ -110,7 +110,10 @@ npm run preview
 ### Deployment Pattern (example)
 
 - **Frontend:** Vercel (Vite preset). Set `VITE_API_BASE` to your API origin.
-- **Backend:** Render Web Service (`node server/index.js`). Set server env vars.
+- **Backend:** 
+  - **DigitalOcean App Platform** (recommended, see `.do/app.yaml` and `DIGITALOCEAN_MIGRATION.md`)
+  - **Render Web Service** (`node server/index.js`). Set server env vars.
+  - **Railway/Fly.io** (alternative options)
 - **DB:** Neon (pooled connection string recommended).
 - **Domains:**
   - Frontend → `www.yourdomain.com`

@@ -1,0 +1,46 @@
+name: soundcloud-toolkit-api
+region: nyc
+
+services:
+  - name: api
+    github:
+      repo: cole-hackman/soundcloud-toolkit
+      branch: main
+      deploy_on_push: true
+    
+    # Build configuration
+    build_command: npm install && npm run prisma:generate
+    run_command: npm start
+    
+    # Environment
+    environment_slug: node-js
+    instance_count: 1
+    instance_size_slug: basic-xxs  # $5/month - can upgrade if needed
+    
+    # Health check
+    health_check:
+      http_path: /health
+      initial_delay_seconds: 10
+      period_seconds: 10
+      timeout_seconds: 5
+      success_threshold: 1
+      failure_threshold: 3
+    
+    # HTTP settings
+    # DigitalOcean will automatically set PORT environment variable
+    http_port: 8080
+    routes:
+      - path: /
+    
+    # Environment variables (set these in DigitalOcean dashboard)
+    # Required:
+    # - NODE_ENV=production
+    # - PORT (automatically set by DigitalOcean, don't override)
+    # - DATABASE_URL=postgres://...
+    # - SOUNDCLOUD_CLIENT_ID=...
+    # - SOUNDCLOUD_CLIENT_SECRET=...
+    # - SOUNDCLOUD_REDIRECT_URI=https://your-api-domain.com/api/auth/callback
+    # - SESSION_SECRET=...
+    # - ENCRYPTION_KEY=...
+    # - APP_URL=https://your-frontend-domain.com
+    # - APP_URLS=https://your-frontend-domain.com,https://your-api-domain.com

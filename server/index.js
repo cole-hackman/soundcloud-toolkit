@@ -148,6 +148,21 @@ if (existsSync(FRONTEND_BUILD_PATH)) {
   });
 } else {
   logger.info(`Frontend build not found at ${FRONTEND_BUILD_PATH} - API only mode`);
+  
+  // Root route for API-only mode
+  app.get('/', (req, res) => {
+    res.json({
+      service: 'SoundCloud Toolkit API',
+      status: 'running',
+      version: '1.0.0',
+      endpoints: {
+        health: '/health',
+        api: '/api',
+        auth: '/api/auth'
+      },
+      documentation: 'This is an API-only deployment. Frontend is hosted separately.'
+    });
+  });
 }
 
 // Error handling middleware

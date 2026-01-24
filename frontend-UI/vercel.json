@@ -2,7 +2,7 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://soundcloud-tool-api.vercel.app/api/:path*"
+      "destination": "https://api.soundcloudtoolkit.com/api/:path*"
     }
   ],
   "headers": [

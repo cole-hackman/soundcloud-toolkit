@@ -29,7 +29,12 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   }, [theme]);
 
   const toggleTheme = () => {
-    setTheme(prev => prev === 'light' ? 'dark' : 'light');
+    console.log('ThemeContext: toggleTheme called. Current:', theme);
+    setTheme(prev => {
+      const next = prev === 'light' ? 'dark' : 'light';
+      console.log('ThemeContext: Setting theme to', next);
+      return next;
+    });
   };
 
   return (

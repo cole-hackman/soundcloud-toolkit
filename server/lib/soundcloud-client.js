@@ -350,6 +350,41 @@ class SoundCloudClient {
     }
     return res.json();
   }
+
+  /**
+   * Get the user's activity/stream feed
+   */
+  async getActivities(accessToken, refreshToken, limit = 50) {
+    return this.paginate('/me/activities', accessToken, refreshToken, limit);
+  }
+
+  /**
+   * Unlike a track by its ID
+   */
+  async unlikeTrack(accessToken, refreshToken, trackId) {
+    return this.scRequest(`/likes/tracks/${trackId}`, accessToken, refreshToken, { method: 'DELETE' });
+  }
+
+  /**
+   * Get the user's followings list
+   */
+  async getFollowings(accessToken, refreshToken, limit = 50) {
+    return this.paginate('/me/followings', accessToken, refreshToken, limit);
+  }
+
+  /**
+   * Get the user's followers list
+   */
+  async getFollowers(accessToken, refreshToken, limit = 50) {
+    return this.paginate('/me/followers', accessToken, refreshToken, limit);
+  }
+
+  /**
+   * Unfollow a user by their ID
+   */
+  async unfollowUser(accessToken, refreshToken, userId) {
+    return this.scRequest(`/me/followings/${userId}`, accessToken, refreshToken, { method: 'DELETE' });
+  }
 }
 
 export const soundcloudClient = new SoundCloudClient();

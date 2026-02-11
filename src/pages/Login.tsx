@@ -37,7 +37,7 @@ function Login() {
   ];
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-b from-orange-50 to-white">
+    <div className="min-h-screen flex items-center justify-center p-4 transition-colors duration-200" style={{ background: 'var(--sc-light-gray)' }}>
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }} className="w-full max-w-[480px]">
         <div className="sc-card p-8 relative">
           {/* Logo */}
@@ -60,7 +60,7 @@ function Login() {
                 </div>
                 <div>
                   <div className="text-lg font-semibold" style={{ color: 'var(--sc-text-dark)' }}>{f.title}</div>
-                  <div className="text-base text-gray-600" style={{ color: 'var(--sc-text-light)' }}>{f.desc}</div>
+                  <div className="text-base" style={{ color: 'var(--sc-text-light)' }}>{f.desc}</div>
                 </div>
               </motion.div>
             ))}
@@ -82,7 +82,7 @@ function Login() {
         </div>
       </motion.div>
       {/* Sticky mobile CTA */}
-      <div className="sm:hidden fixed bottom-0 left-0 right-0 bg-white/80 backdrop-blur border-t border-gray-200 p-3">
+      <div className="sm:hidden fixed bottom-0 left-0 right-0 p-3 backdrop-blur border-t" style={{ background: 'var(--sc-white)', borderColor: 'var(--sc-light-gray)' }}>
         <motion.button whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.99 }} onClick={prewarmAndLogin} className="w-full flex items-center justify-center rounded bg-gradient-to-r from-[#FF5500] to-[#E64A00] hover:brightness-95 hover:shadow-orange-200 text-white py-3">
           <span className="whitespace-nowrap">Continue with SoundCloud</span>
         </motion.button>

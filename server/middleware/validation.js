@@ -172,8 +172,8 @@ export const validateCreateFromLikes = [
       if (!Array.isArray(value) || value.length === 0) {
         throw new Error('trackIds must be a non-empty array');
       }
-      if (value.length > 500) {
-        throw new Error('Cannot have more than 500 tracks');
+      if (value.length > 2000) {
+        throw new Error('Cannot have more than 2000 tracks in one request');
       }
       // Validate each track ID is a positive integer
       for (const trackId of value) {
@@ -216,6 +216,59 @@ export const validateLikesPagination = [
         throw new Error('Next cursor must be a valid URL');
       }
     }),
+  handleValidationErrors
+];
+
+/**
+ * Validate batch resolve request
+ */
+export const validateBatchResolve = [
+  body('urls')
+    .isArray({ min: 1, max: 50 })
+    .withMessage('urls must be an array with 1-50 items'),
+  body('urls.*')
+    .isString()
+    .trim()
+    .isLength({ min: 1, max: 2048 })
+    .withMessage('Each URL must be a non-empty string'),
+  handleValidationErrors
+];
+
+/**
+ * Validate activities request
+ */
+export const validateActivities = [
+  query('limit')
+    .optional()
+    .isInt({ min: 1, max: 500 })
+    .withMessage('Limit must be between 1 and 500')
+    .toInt(),
+  handleValidationErrors
+];
+
+/**
+ * Validate bulk unlike request
+ */
+export const validateBulkUnlike = [
+  body('trackIds')
+    .isArray({ min: 1, max: 100 })
+    .withMessage('trackIds must be an array with 1-100 items'),
+  body('trackIds.*')
+    .isInt({ min: 1 })
+    .withMessage('Each trackId must be a positive integer'),
+  handleValidationErrors
+];
+
+/**
+ * Validate bulk unfollow request
+ */
+export const validateBulkUnfollow = [
+  body('userIds')
+    .isArray({ min: 1, max: 100 })
+    .withMessage('userIds must be an array with 1-100 items'),
+  body('userIds.*')
+    .isInt({ min: 1 })
+    .withMessage('Each userId must be a positive integer'),
   handleValidationErrors
 ];
 

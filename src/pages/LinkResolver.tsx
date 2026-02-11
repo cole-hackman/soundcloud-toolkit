@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Link as LinkIcon, Search, ExternalLink, Copy, Check } from 'lucide-react';
 import { Link } from 'react-router-dom';
@@ -70,7 +70,7 @@ function LinkResolver() {
                 style={{ background: 'var(--sc-white)', borderColor: 'var(--sc-light-gray)', color: 'var(--sc-text-dark)' }}
                 onKeyDown={(e) => e.key === 'Enter' && handleResolve()}
               />
-              <LinkIcon className="absolute left-4 sm:left-5 top-1/2 transform -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-[#666666]" />
+              <LinkIcon className="absolute left-4 sm:left-5 top-1/2 transform -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5" style={{ color: 'var(--sc-text-light)' }} />
             </div>
             <motion.button
               whileHover={{ scale: 1.02 }}
@@ -124,10 +124,11 @@ function LinkResolver() {
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="bg-white border-2 border-gray-200 rounded-xl p-8 sm:p-12 text-center"
+            className="border-2 rounded-xl p-8 sm:p-12 text-center"
+            style={{ background: 'var(--sc-white)', borderColor: 'var(--sc-light-gray)' }}
           >
-            <LinkIcon className="w-12 h-12 sm:w-16 sm:h-16 mx-auto mb-3 sm:mb-4 text-[#666666] opacity-50" />
-            <p className="text-base sm:text-lg text-[#666666]">Enter a SoundCloud link above to get started.</p>
+            <LinkIcon className="w-12 h-12 sm:w-16 sm:h-16 mx-auto mb-3 sm:mb-4 opacity-50" style={{ color: 'var(--sc-text-light)' }} />
+            <p className="text-base sm:text-lg" style={{ color: 'var(--sc-text-light)' }}>Enter a SoundCloud link above to get started.</p>
           </motion.div>
         )}
 
@@ -136,7 +137,8 @@ function LinkResolver() {
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="bg-white border-2 border-gray-200 rounded-2xl overflow-hidden shadow-xl"
+            className="rounded-2xl overflow-hidden shadow-xl border-2"
+            style={{ background: 'var(--sc-white)', borderColor: 'var(--sc-light-gray)' }}
           >
             <div className="p-4 sm:p-6 md:p-8">
               <div className="flex flex-col sm:flex-row items-start gap-4 sm:gap-6">
@@ -162,15 +164,15 @@ function LinkResolver() {
                       {resolvedContent.type.toUpperCase()}
                     </span>
                   </div>
-                  <h3 className="text-xl sm:text-2xl font-bold mb-2 text-[#333333] break-words">
+                  <h3 className="text-xl sm:text-2xl font-bold mb-2 break-words" style={{ color: 'var(--sc-text-dark)' }}>
                     {resolvedContent.type === 'user'
                       ? (resolvedContent as ResolvedUser).username
                       : (resolvedContent as any).title}
                   </h3>
                   {resolvedContent.type !== 'user' && (
-                    <p className="text-base sm:text-lg text-[#666666] mb-3 sm:mb-4">{(resolvedContent as any).user?.username}</p>
+                    <p className="text-base sm:text-lg mb-3 sm:mb-4" style={{ color: 'var(--sc-text-light)' }}>{(resolvedContent as any).user?.username}</p>
                   )}
-                  <div className="flex flex-col sm:flex-row items-center sm:items-start sm:space-x-6 gap-2 sm:gap-0 text-sm sm:text-base text-[#666666]">
+                  <div className="flex flex-col sm:flex-row items-center sm:items-start sm:space-x-6 gap-2 sm:gap-0 text-sm sm:text-base" style={{ color: 'var(--sc-text-light)' }}>
                     {resolvedContent.type === 'track' && (
                       <span>
                         Duration:{' '}
@@ -191,9 +193,9 @@ function LinkResolver() {
                 </div>
               </div>
             </div>
-            <div className="border-t-2 border-gray-200 p-4 sm:p-6 bg-gray-50">
+            <div className="border-t-2 p-4 sm:p-6" style={{ borderColor: 'var(--sc-light-gray)', background: 'var(--sc-light-gray)' }}>
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 sm:gap-0">
-                <div className="flex items-center space-x-2 sm:space-x-3 text-xs sm:text-sm text-[#666666] flex-1 min-w-0">
+                <div className="flex items-center space-x-2 sm:space-x-3 text-xs sm:text-sm flex-1 min-w-0" style={{ color: 'var(--sc-text-light)' }}>
                   <LinkIcon className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
                   <span className="truncate break-all">{(resolvedContent as any).permalink_url}</span>
                 </div>
@@ -202,9 +204,10 @@ function LinkResolver() {
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
                     onClick={() => handleCopy((resolvedContent as any).permalink_url)}
-                    className="px-3 sm:px-4 py-2 rounded-lg border-2 border-gray-200 hover:border-[#FF5500] transition-all bg-white"
+                    className="px-3 sm:px-4 py-2 rounded-lg border-2 hover:border-[#FF5500] transition-all"
+                    style={{ background: 'var(--sc-white)', borderColor: 'var(--sc-light-gray)' }}
                   >
-                    {copied ? <Check className="w-4 h-4 sm:w-5 sm:h-5 text-green-600" /> : <Copy className="w-4 h-4 sm:w-5 sm:h-5 text-[#666666]" />}
+                    {copied ? <Check className="w-4 h-4 sm:w-5 sm:h-5 text-green-600" /> : <Copy className="w-4 h-4 sm:w-5 sm:h-5" style={{ color: 'var(--sc-text-light)' }} />}
                   </motion.button>
                   <motion.button
                     whileHover={{ scale: 1.02 }}

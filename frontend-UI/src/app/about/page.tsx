@@ -1,34 +1,21 @@
-import type { Metadata } from "next";
-import Link from "next/link";
+"use client";
 
-export const metadata: Metadata = {
-  title: "About SC Toolkit – SoundCloud Playlist Management Tool",
-  description:
-    "Learn about SC Toolkit, a free web application designed to enhance your SoundCloud experience with advanced playlist management tools.",
-  alternates: {
-    canonical: "https://www.soundcloudtoolkit.com/about",
-  },
-  openGraph: {
-    title: "About SC Toolkit – SoundCloud Playlist Management Tool",
-    description:
-      "Learn about SC Toolkit, a free web application designed to enhance your SoundCloud experience with advanced playlist management tools.",
-    url: "https://www.soundcloudtoolkit.com/about",
-    type: "website",
-  },
-};
+import { useRouter } from "next/navigation";
 
 export default function AboutPage() {
+  const router = useRouter();
+
   return (
     <div className="min-h-screen bg-[#F2F2F2]">
       <div className="max-w-4xl mx-auto px-6 py-20">
         <article className="bg-white rounded-2xl p-8 md:p-12 shadow-lg">
           <div className="mb-6">
-            <Link
-              href="/"
+            <button
+              onClick={() => router.back()}
               className="text-[#FF5500] hover:text-[#E64A00] transition inline-flex items-center gap-2"
             >
-              <span>←</span> Back to Home
-            </Link>
+              <span>←</span> Back
+            </button>
           </div>
 
           <h1 className="text-4xl md:text-5xl font-bold mb-6 text-[#333333]">
@@ -61,39 +48,70 @@ export default function AboutPage() {
               <h2 className="text-2xl font-bold mb-4 text-[#333333]">
                 What We Offer
               </h2>
-              <ul className="list-disc list-inside space-y-2 ml-4">
+
+              <h3 className="text-lg font-semibold mb-2 text-[#444444]">
+                Playlist Tools
+              </h3>
+              <ul className="list-disc list-inside space-y-2 ml-4 mb-4">
                 <li>
                   <strong className="text-[#333333]">Combine Playlists:</strong>{" "}
                   Merge multiple playlists into one unified collection with
                   automatic duplicate detection
                 </li>
                 <li>
-                  <strong className="text-[#333333]">Likes to Playlist:</strong>{" "}
-                  Transform your liked tracks into organized, shareable
-                  playlists
+                  <strong className="text-[#333333]">Playlist Modifier:</strong>{" "}
+                  Reorder, remove, and reorganize tracks with advanced sorting.
+                  Includes download &amp; buy-link indicators for quick filtering
                 </li>
                 <li>
-                  <strong className="text-[#333333]">Playlist Modifier:</strong>{" "}
-                  Reorder, remove, and reorganize tracks with advanced sorting
-                  options (by title, artist, date, duration, or BPM)
+                  <strong className="text-[#333333]">Playlist Health Check:</strong>{" "}
+                  Scan your playlists for blocked, geo-restricted, or unavailable
+                  tracks and optionally remove them
                 </li>
+                <li>
+                  <strong className="text-[#333333]">Activity → Playlist:</strong>{" "}
+                  Save tracks from your SoundCloud activity feed directly into a
+                  new or existing playlist
+                </li>
+              </ul>
+
+              <h3 className="text-lg font-semibold mb-2 text-[#444444]">
+                Likes &amp; Following
+              </h3>
+              <ul className="list-disc list-inside space-y-2 ml-4 mb-4">
+                <li>
+                  <strong className="text-[#333333]">Likes → Playlist:</strong>{" "}
+                  Transform your liked tracks into organized, shareable playlists
+                </li>
+                <li>
+                  <strong className="text-[#333333]">Like Manager:</strong>{" "}
+                  Browse, search, sort, and bulk-unlike your liked tracks
+                </li>
+                <li>
+                  <strong className="text-[#333333]">Following Manager:</strong>{" "}
+                  Browse, search, sort, and bulk-unfollow the users you follow
+                </li>
+              </ul>
+
+              <h3 className="text-lg font-semibold mb-2 text-[#444444]">
+                Link Tools
+              </h3>
+              <ul className="list-disc list-inside space-y-2 ml-4">
                 <li>
                   <strong className="text-[#333333]">Link Resolver:</strong>{" "}
                   Extract detailed metadata from any SoundCloud URL
                 </li>
                 <li>
-                  <strong className="text-[#333333]">
-                    Smart Deduplication:
-                  </strong>{" "}
-                  Automatically detect and remove duplicate tracks across your
-                  playlists
+                  <strong className="text-[#333333]">Batch Link Resolver:</strong>{" "}
+                  Resolve up to 50 SoundCloud URLs at once and view details for
+                  each
                 </li>
               </ul>
             </section>
 
             <section>
               <h2 className="text-2xl font-bold mb-4 text-[#333333]">
-                Security & Privacy
+                Security &amp; Privacy
               </h2>
               <p>
                 Your security and privacy are our top priorities. SC Toolkit
@@ -107,7 +125,7 @@ export default function AboutPage() {
 
             <section>
               <h2 className="text-2xl font-bold mb-4 text-[#333333]">
-                Free & Open
+                Free &amp; Open
               </h2>
               <p>
                 SC Toolkit is completely free to use. We&apos;re committed to
@@ -157,4 +175,3 @@ export default function AboutPage() {
     </div>
   );
 }
-

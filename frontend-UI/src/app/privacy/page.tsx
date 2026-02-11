@@ -1,23 +1,9 @@
-import type { Metadata } from "next";
-import Link from "next/link";
+"use client";
 
-export const metadata: Metadata = {
-  title: "Privacy Policy – SC Toolkit",
-  description:
-    "Learn how SC Toolkit protects your privacy and handles your SoundCloud data. We use OAuth authentication and never store your password.",
-  alternates: {
-    canonical: "https://www.soundcloudtoolkit.com/privacy",
-  },
-  openGraph: {
-    title: "Privacy Policy – SC Toolkit",
-    description:
-      "Learn how SC Toolkit protects your privacy and handles your SoundCloud data. We use OAuth authentication and never store your password.",
-    url: "https://www.soundcloudtoolkit.com/privacy",
-    type: "website",
-  },
-};
+import { useRouter } from "next/navigation";
 
 export default function PrivacyPage() {
+  const router = useRouter();
   const lastUpdated = new Date().toLocaleDateString("en-US", {
     year: "numeric",
     month: "long",
@@ -29,12 +15,12 @@ export default function PrivacyPage() {
       <div className="max-w-4xl mx-auto px-6 py-20">
         <article className="bg-white rounded-2xl p-8 md:p-12 shadow-lg">
           <div className="mb-6">
-            <Link
-              href="/"
+            <button
+              onClick={() => router.back()}
               className="text-[#FF5500] hover:text-[#E64A00] transition inline-flex items-center gap-2"
             >
-              <span>←</span> Back to Home
-            </Link>
+              <span>←</span> Back
+            </button>
           </div>
 
           <h1 className="text-4xl md:text-5xl font-bold mb-6 text-[#333333]">

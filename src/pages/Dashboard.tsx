@@ -58,7 +58,7 @@ function Dashboard() {
   ];
 
   return (
-    <div className="min-h-screen" style={{ background: 'var(--sc-light-gray)' }}>
+    <div className="min-h-screen relative overflow-hidden font-sans" style={{ background: 'linear-gradient(to bottom right, var(--sc-light-gray), var(--sc-white))' }}>
       <div className="container mx-auto px-4 sm:px-6 py-8 sm:py-12 md:py-16 max-w-7xl">
         {/* Welcome Section */}
         <motion.div 
@@ -85,12 +85,12 @@ function Dashboard() {
               transition={{ duration: 0.5, delay: index * 0.1 }}
               whileHover={{ y: -4, scale: 1.02 }}
               className="group rounded-2xl p-6 sm:p-8 md:p-10 hover:border-[#FF5500] hover:shadow-2xl transition-all duration-300 border-2"
-              style={{ background: 'var(--sc-white)', borderColor: 'var(--sc-light-gray)' }}
+              style={{ background: 'var(--sc-white)' }}
             >
               <Link to={feature.path} className="block">
                 <div className="flex items-start justify-between mb-4 sm:mb-6">
-                  <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-gradient-to-br from-[#FF5500] to-[#E64A00] flex items-center justify-center text-white shadow-lg">
-                    <feature.icon className="w-8 h-8 sm:w-10 sm:h-10" />
+                  <div className="p-3 rounded-xl bg-orange-50 text-[#FF5500] mb-4 w-fit group-hover:scale-110 transition-transform duration-300">
+                    <feature.icon size={24} />
                   </div>
                   <ArrowRight className="w-5 h-5 sm:w-6 sm:h-6 text-[#FF5500] opacity-0 group-hover:opacity-100 transition-opacity" />
                 </div>

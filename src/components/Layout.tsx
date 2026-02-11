@@ -22,7 +22,7 @@ function Layout({ children }: LayoutProps) {
   const location = useLocation();
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: 'var(--sc-light-gray)' }}>
+    <div className="min-h-screen flex flex-col" style={{ background: 'var(--sc-light-gray)', color: 'var(--sc-text-dark)' }}>
       {/* Header */}
       <motion.header initial={{ y: -20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="sticky top-0 z-50" style={{ background: 'var(--sc-white)', borderBottom: '1px solid var(--sc-light-gray)' }}>
         <div className="container mx-auto px-3 sm:px-4 py-2 sm:py-3">
@@ -83,9 +83,10 @@ function ProfileMenu({ user, onLogout }: { user: { name: string; avatar: string 
         <span className="text-sm hidden sm:block" style={{ color: 'var(--sc-text-light)' }}>{user.name}</span>
       </button>
       {open && (
-        <div className="absolute right-0 mt-2 w-48 sc-card p-1 shadow-lg z-50" style={{ background: 'var(--sc-white)' }}>
+        <div className="absolute right-0 mt-2 w-48 sc-card p-1 shadow-lg z-50" style={{ background: 'var(--sc-white)', border: '1px solid var(--sc-light-gray)' }}>
           <button 
-            onClick={() => {
+            onClick={(e) => {
+              console.log('ProfileMenu: Toggle button clicked');
               toggleTheme();
               setOpen(false);
             }}

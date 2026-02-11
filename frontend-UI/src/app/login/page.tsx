@@ -10,7 +10,7 @@ import { Layers, Heart, ListChecks, Link as LinkIcon } from "lucide-react";
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "";
 
 export default function LoginPage() {
-  const { isAuthenticated, loading, login } = useAuth();
+  const { isAuthenticated, loading, login, apiUnreachable, retryAuth } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
@@ -122,11 +122,30 @@ export default function LoginPage() {
             ))}
           </div>
 
+          {/* API unreachable message */}
+          {apiUnreachable && (
+            <div className="mb-4 p-4 rounded-lg bg-amber-50 border border-amber-200 text-center">
+              <p className="text-sm text-amber-800 font-medium">
+                API server unavailable
+              </p>
+              <p className="text-xs text-amber-700 mt-1">
+                Start the backend with <code className="bg-amber-100 px-1 rounded">npm run dev:full</code> and ensure <code className="bg-amber-100 px-1 rounded">.env</code> has the required variables.
+              </p>
+              <button
+                onClick={retryAuth}
+                className="mt-2 text-sm text-[#FF5500] font-semibold hover:underline"
+              >
+                Retry
+              </button>
+            </div>
+          )}
+
           {/* Login Button (hidden on mobile; mobile has sticky CTA below) */}
           <div className="hidden sm:flex justify-center">
             <button
               onClick={prewarmAndLogin}
-              className="w-full sm:w-[280px] mx-auto flex items-center justify-center rounded bg-gradient-to-r from-[#FF5500] to-[#E64A00] hover:brightness-95 hover:shadow-orange-200 text-white py-3 font-semibold transition-all"
+              disabled={apiUnreachable}
+              className="w-full sm:w-[280px] mx-auto flex items-center justify-center rounded bg-gradient-to-r from-[#FF5500] to-[#E64A00] hover:brightness-95 hover:shadow-orange-200 text-white py-3 font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <span className="whitespace-nowrap">Continue with SoundCloud</span>
             </button>
@@ -151,7 +170,8 @@ export default function LoginPage() {
       <div className="sm:hidden fixed bottom-0 left-0 right-0 bg-white/80 backdrop-blur border-t border-gray-200 p-3">
         <button
           onClick={prewarmAndLogin}
-          className="w-full flex items-center justify-center rounded bg-gradient-to-r from-[#FF5500] to-[#E64A00] hover:brightness-95 hover:shadow-orange-200 text-white py-3 font-semibold transition-all"
+          disabled={apiUnreachable}
+          className="w-full flex items-center justify-center rounded bg-gradient-to-r from-[#FF5500] to-[#E64A00] hover:brightness-95 hover:shadow-orange-200 text-white py-3 font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <span className="whitespace-nowrap">Continue with SoundCloud</span>
         </button>

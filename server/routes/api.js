@@ -396,6 +396,30 @@ router.post('/resolve', authenticateUser, heavyOperationRateLimiter, validateRes
 router.get('/resolve', authenticateUser, heavyOperationRateLimiter, validateResolve, handleResolve);
 
 /**
+ * GET /api/proxy-download
+ * Proxy a download request to SoundCloud to verify auth and get the final link
+ */
+router.get('/proxy-download', authenticateUser, async (req, res) => {
+  try {
+    const { url } = req.query;
+    if (!url) {
+      return res.status(400).json({ error: 'Missing url parameter' });
+    }
+
+    const result = await soundcloudClient.getDownloadLink(req.accessToken, req.refreshToken, url);
+    
+    if (result && result.redirect) {
+      return res.redirect(result.redirect);
+    }
+    
+    res.status(404).json({ error: 'Could not resolve download link' });
+  } catch (error) {
+    logger.error('Proxy download error:', error);
+    res.status(500).json({ error: 'Failed to proxy download' });
+  }
+});
+
+/**
  * POST /api/playlists/merge
  * Merge multiple playlists
  */
@@ -764,15 +788,35 @@ router.get('/activities', authenticateUser, validateActivities, async (req, res)
     const activities = await soundcloudClient.getActivities(req.accessToken, req.refreshToken, limit);
 
     // Filter to track-related activities and map to useful shape
-    logger.info(`[/api/activities] Fetched ${activities.length} activities`);
-    const trackActivities = activities
-      .filter(item => item.origin && item.origin.kind === 'track')
-      .map(item => ({
+    logger.info(`[/api/activities] Fetched ${activities.length} raw activities`);
+    
+    let trackCount = 0;
+    const trackActivities = activities.map(item => {
+      // Check for track origin
+      if (!item.origin || item.origin.kind !== 'track') return null;
+      
+      // Normalize the items
+      const normalized = normalizeResource(item.origin);
+      if (!normalized || normalized.type !== 'track') return null;
+
+      trackCount++;
+      return {
         type: item.type,
         created_at: item.created_at,
-        origin: item.origin
-      }));
+        origin: {
+          ...normalized,
+          // Frontend expects 'duration', normalizeResource provides 'duration_ms'
+          duration: normalized.duration_ms, 
+          // Ensure user object has username for display
+          user: {
+            ...normalized.user,
+            username: normalized.user?.username || normalized.username || 'Unknown User'
+          }
+        }
+      };
+    }).filter(Boolean);
 
+    logger.info(`[/api/activities] Returning ${trackActivities.length} valid track activities`);
     res.json({ collection: trackActivities });
   } catch (error) {
     logger.error('Get activities error:', error);

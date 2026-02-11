@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { ArrowLeft, ArrowRight, Download, Music, ExternalLink, Heart, ListMusic } from "lucide-react";
+import { ArrowLeft, ArrowRight, Download, Music, ExternalLink, Heart, ListMusic, Trash2, X, CheckSquare } from "lucide-react";
 import { EmptyState, LoadingSpinner } from "@/components/ui";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "";
@@ -43,6 +43,11 @@ export default function DownloadsPage() {
   const [tracks, setTracks] = useState<Track[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingTracks, setLoadingTracks] = useState(false);
+  
+  // Selection Mode State
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedTrackIds, setSelectedTrackIds] = useState<Set<number>>(new Set());
+  const [isRemoving, setIsRemoving] = useState(false);
   
   // Fetch playlists on mount
   useEffect(() => {
@@ -94,6 +99,71 @@ export default function DownloadsPage() {
   const handleSelectSource = (p: Playlist) => {
       setSelectedSource(p);
       fetchTracks(p);
+      setSelectionMode(false);
+      setSelectedTrackIds(new Set());
+  };
+
+  const toggleSelectionMode = () => {
+    setSelectionMode(!selectionMode);
+    setSelectedTrackIds(new Set());
+  };
+
+  const toggleTrackSelection = (id: number) => {
+    const newSelected = new Set(selectedTrackIds);
+    if (newSelected.has(id)) {
+      newSelected.delete(id);
+    } else {
+      newSelected.add(id);
+    }
+    setSelectedTrackIds(newSelected);
+  };
+
+  const handleRemoveSelected = async () => {
+    if (!selectedSource || selectedSource.id === -1 || selectedTrackIds.size === 0) return;
+    
+    if (!confirm(`Remove ${selectedTrackIds.size} tracks from "${selectedSource.title}"?`)) return;
+
+    setIsRemoving(true);
+    try {
+        // Calculate the new track list
+        // We need to preserve the order of the remaining tracks
+        // The backend expects an array of IDs
+        
+        // IMPORTANT: We need all tracks for the playlist update, not just downloadable ones
+        // But `tracks` state currently holds what we fetched.
+        // Assuming `fetchTracks` fetches ALL tracks, not just downloadable (filtering happens in render/variable)
+        
+        const remainingTracks = tracks.filter(t => !selectedTrackIds.has(t.id));
+        const remainingIds = remainingTracks.map(t => t.id);
+
+        const response = await fetch(`${API_BASE}/api/playlists/${selectedSource.id}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ tracks: remainingIds }),
+        });
+
+        if (response.ok) {
+            // Update local state
+            setTracks(remainingTracks);
+            setSelectedTrackIds(new Set());
+            setSelectionMode(false);
+            // Optionally update playlist track count in `playlists` state
+            setPlaylists(prev => prev.map(p => 
+                p.id === selectedSource.id 
+                    ? { ...p, track_count: remainingTracks.length } 
+                    : p
+            ));
+        } else {
+            alert("Failed to update playlist. Please try again.");
+        }
+    } catch (error) {
+        console.error("Failed to remove tracks:", error);
+        alert("An error occurred while removing tracks.");
+    } finally {
+        setIsRemoving(false);
+    }
   };
 
   // Filter only downloadable or purchasable tracks
@@ -179,6 +249,39 @@ export default function DownloadsPage() {
                         {selectedSource.title}
                         <span className="text-lg font-normal text-[#666666] dark:text-muted-foreground ml-2">({downloadableTracks.length} downloadable)</span>
                     </h2>
+                    
+                    {/* Toolbar */}
+                    {selectedSource.id !== -1 && downloadableTracks.length > 0 && (
+                        <div className="flex items-center gap-4 mb-6">
+                            {!selectionMode ? (
+                                <button
+                                    onClick={toggleSelectionMode}
+                                    className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-[#666666] dark:text-muted-foreground bg-white dark:bg-card border border-gray-200 dark:border-border rounded-lg hover:bg-gray-50 dark:hover:bg-accent transition"
+                                >
+                                    <CheckSquare className="w-4 h-4" />
+                                    Select to Remove
+                                </button>
+                            ) : (
+                                <>
+                                    <button
+                                        onClick={toggleSelectionMode}
+                                        className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-[#666666] dark:text-muted-foreground bg-white dark:bg-card border border-gray-200 dark:border-border rounded-lg hover:bg-gray-50 dark:hover:bg-accent transition"
+                                    >
+                                        <X className="w-4 h-4" />
+                                        Cancel
+                                    </button>
+                                    <button
+                                        onClick={handleRemoveSelected}
+                                        disabled={selectedTrackIds.size === 0 || isRemoving}
+                                        className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-red-500 rounded-lg hover:bg-red-600 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
+                                        {isRemoving ? <LoadingSpinner className="w-4 h-4 text-white" /> : <Trash2 className="w-4 h-4" />}
+                                        Remove ({selectedTrackIds.size})
+                                    </button>
+                                </>
+                            )}
+                        </div>
+                    )}
 
                     <div className="bg-white dark:bg-card rounded-2xl p-6 border-2 border-gray-200 dark:border-border">
                         {loadingTracks ? (
@@ -194,8 +297,19 @@ export default function DownloadsPage() {
                         ) : (
                             <div className="space-y-2">
                                 {downloadableTracks.map((track, index) => (
-                                    <div key={track.id} className="flex items-center gap-4 p-3 rounded-xl bg-gray-50 dark:bg-secondary/20 hover:bg-gray-100 dark:hover:bg-secondary/40 transition-colors group">
-                                         <span className="w-8 text-center text-sm text-[#999999] dark:text-muted-foreground">{index + 1}</span>
+                                    <div key={track.id} className={`flex items-center gap-4 p-3 rounded-xl transition-colors group ${selectedTrackIds.has(track.id) ? "bg-orange-50 dark:bg-orange-900/20" : "bg-gray-50 dark:bg-secondary/20 hover:bg-gray-100 dark:hover:bg-secondary/40"}`}>
+                                         {selectionMode && (
+                                            <div className="pl-1 pr-2">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={selectedTrackIds.has(track.id)}
+                                                    onChange={() => toggleTrackSelection(track.id)}
+                                                    className="w-5 h-5 rounded border-gray-300 text-[#FF5500] focus:ring-[#FF5500]"
+                                                />
+                                            </div>
+                                         )}
+                                         {!selectionMode && <span className="w-8 text-center text-sm text-[#999999] dark:text-muted-foreground">{index + 1}</span>}
+                                         
                                          <img src={track.artwork_url || "/SC Toolkit Icon.png"} alt={track.title} className="w-12 h-12 rounded-lg object-cover" />
                                          <div className="flex-1 min-w-0">
                                             <div className="font-semibold text-[#333333] dark:text-foreground truncate flex items-center gap-2">
@@ -203,7 +317,7 @@ export default function DownloadsPage() {
                                                 {/* Labels */}
                                                 {(Boolean(track.downloadable) || track.downloadable === "true" || !!track.download_url) && (
                                                     <a
-                                                        href={track.download_url || track.permalink_url} // Should ideally go to download_url or fallback
+                                                        href={track.download_url ? `${API_BASE}/api/proxy-download?url=${encodeURIComponent(track.download_url)}` : track.permalink_url}
                                                         target="_blank"
                                                         rel="noopener noreferrer"
                                                         className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-xs font-medium hover:bg-green-200 dark:hover:bg-green-900/50"
@@ -220,7 +334,7 @@ export default function DownloadsPage() {
                                          {/* Action Button */}
                                          <div className="flex gap-2">
                                             <a 
-                                                href={track.download_url || track.purchase_url || track.permalink_url} 
+                                                href={track.download_url ? `${API_BASE}/api/proxy-download?url=${encodeURIComponent(track.download_url)}` : (track.purchase_url || track.permalink_url)} 
                                                 target="_blank" 
                                                 rel="noopener noreferrer" 
                                                 className={`p-2 rounded-lg transition text-white ${

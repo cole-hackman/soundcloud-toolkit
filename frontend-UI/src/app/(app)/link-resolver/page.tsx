@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { ArrowLeft, Link as LinkIcon, Search, ExternalLink } from "lucide-react";
@@ -26,7 +26,7 @@ interface ResolvedData {
   };
 }
 
-export default function LinkResolverPage() {
+function LinkResolverContent() {
   const searchParams = useSearchParams();
   const [url, setUrl] = useState("");
   const [loading, setLoading] = useState(false);
@@ -219,5 +219,13 @@ export default function LinkResolverPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function LinkResolverPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-[#F2F2F2] dark:bg-background flex items-center justify-center"><LoadingSpinner /></div>}>
+      <LinkResolverContent />
+    </Suspense>
   );
 }

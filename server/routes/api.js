@@ -419,7 +419,7 @@ router.post('/playlists/merge', authenticateUser, heavyOperationRateLimiter, val
         playlistId
       );
       const all = Array.isArray(playlist.tracks) ? playlist.tracks : [];
-      const filtered = all.filter(t => t && t.playback_count !== 0 && !t.blocked_at && t.streamable !== false);
+      const filtered = all.filter(t => t && !t.blocked_at && t.streamable !== false);
       fetchedTotal += all.length;
       acceptedTotal += filtered.length;
       perPlaylistCounts.push({ id: playlistId, fetched: all.length, accepted: filtered.length });

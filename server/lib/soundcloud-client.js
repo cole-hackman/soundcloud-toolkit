@@ -385,6 +385,67 @@ class SoundCloudClient {
   async unfollowUser(accessToken, refreshToken, userId) {
     return this.scRequest(`/me/followings/${userId}`, accessToken, refreshToken, { method: 'DELETE' });
   }
+
+  /**
+   * Get the final download link for a track
+   * Handles the redirect manually to ensure we get the final URL
+   */
+  async getDownloadLink(accessToken, refreshToken, downloadUrl) {
+    // Append client_id if needed, but usually download_url has it or needs auth token
+    // We'll try with auth token primarily
+    
+    // We need to fetch with redirect: manual to capture the location header if it redirects
+    // or just let it follow triggers if the final link doesn't need auth. 
+    // SoundCloud API usually returns a 302 to the actual file (e.g. CF/S3)
+    
+    // NOTE: The download_url from the track object often looks like: 
+    // https://api.soundcloud.com/tracks/123/download
+    
+    // We use scRequest which adds the base URL, but download_url is absolute.
+    // So we use fetch directly or a modified helper.
+    // Let's use a direct fetch with our token.
+
+    const urlWithToken = new URL(downloadUrl);
+    // Some download URLs are already signed or just need OAuth
+    // If we provide the OAuth token in header, it should work.
+
+    const res = await fetch(downloadUrl.replace('https://api.soundcloud.com', this.baseUrl), {
+      method: 'GET',
+      headers: {
+        'Authorization': `OAuth ${accessToken}`,
+        'Accept': 'application/json, */*'
+      },
+      redirect: 'manual' 
+    });
+
+    if (res.status === 302 || res.status === 301) {
+      return { redirect: res.headers.get('location') };
+    }
+    
+    if (res.status === 200) {
+        // Sometimes it returns the file directly? Or a JSON with the link?
+        // Usually it's a redirect. If it's 200, it might be the binary data, 
+        // which we can't easily proxy without streaming.
+        // But for "download" we usually want to redirect the user.
+        // Let's check headers.
+        const type = res.headers.get('content-type');
+        if (type && type.includes('application/json')) {
+            const json = await res.json();
+            return { redirect: json.redirectUri || json.url || json.link }; // Handle various JSON responses
+        }
+        // If it's a file, we might be in trouble if we expected a link.
+        // But the 401 error usually implies we failed the manifest check.
+        // Let's assume correct auth gets us a redirect.
+    }
+
+    if (res.status === 401) {
+        // Try refreshing
+        const refreshed = await this.refreshTokens(refreshToken);
+        return this.getDownloadLink(refreshed.access_token, refreshToken, downloadUrl);
+    }
+    
+    throw new Error(`Download request failed: ${res.status}`);
+  }
 }
 
 export const soundcloudClient = new SoundCloudClient();

@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "dev:next": "cd frontend-UI && npm run dev",
-    "dev:server": "node server/index.js",
+    "dev:server": "NODE_ENV=development node server/index.js",
     "dev:full": "concurrently \"npm run dev:next\" \"npm run dev:server\"",
     "build": "npm install && npm run build:frontend && npm run prisma:generate",
     "build:frontend": "cd frontend-UI && npm install && npm run build",

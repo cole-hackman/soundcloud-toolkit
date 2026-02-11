@@ -17,7 +17,7 @@ function LikesToPlaylist() {
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [nextHref, setNextHref] = useState<string | null>(null);
   const [loadingPage, setLoadingPage] = useState(false);
-  const MAX = 500;
+  const MAX = 2000;
 
   useEffect(() => { fetchLikesFirstPage(); }, []);
 
@@ -53,16 +53,26 @@ function LikesToPlaylist() {
     if (!playlistTitle.trim()) return;
     const trackIds = Array.from(selected);
     if (trackIds.length === 0) { alert('Please select at least one track.'); return; }
-    if (trackIds.length > MAX) { alert('You can select up to 500 tracks.'); return; }
+    if (trackIds.length > MAX) { alert(`You can select up to ${MAX} tracks.`); return; }
     setIsProcessing(true);
     try {
       const response = await fetch(`${API_BASE}/api/playlists/from-likes`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ title: playlistTitle, trackIds }) });
-      if (response.ok) { const data = await response.json(); setResult(data); setIsComplete(true); emitToast({ message: 'Playlist created from likes', variant: 'success' }); }
-      else { const error = await response.json(); console.error('Failed to create playlist from likes:', error); emitToast({ message: 'Failed to create playlist', variant: 'error' }); }
+      const data = await response.json().catch(() => ({}));
+      if (response.ok) {
+        setResult(data);
+        setIsComplete(true);
+        const multiple = data.playlists && data.playlists.length > 1;
+        emitToast({ message: multiple ? `Created ${data.numPlaylistsCreated} playlists` : 'Playlist created from likes', variant: 'success' });
+      } else {
+        const message = typeof data?.error === 'string' ? data.error : 'Failed to create playlist';
+        console.error('Failed to create playlist from likes:', data);
+        emitToast({ message, variant: 'error' });
+      }
     } catch (error) { console.error('Error creating playlist:', error); emitToast({ message: 'An error occurred. Please try again.', variant: 'error' }); } finally { setIsProcessing(false); }
   };
 
-  if (isComplete) {
+  if (isComplete && result) {
+    const multiple = result.playlists && result.playlists.length > 1;
     return (
       <div className="min-h-screen flex items-center justify-center px-4 sm:px-6 py-8 sm:py-12" style={{ background: 'var(--sc-light-gray)' }}>
         <div className="max-w-2xl w-full">
@@ -76,26 +86,46 @@ function LikesToPlaylist() {
             <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full flex items-center justify-center mx-auto mb-4 sm:mb-6 bg-gradient-to-br from-[#22c55e] to-[#16a34a] shadow-lg">
               <Check className="w-10 h-10 sm:w-12 sm:h-12 text-white" />
             </div>
-            <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-3 sm:mb-4 px-4" style={{ color: 'var(--sc-text-dark)' }}>Playlist Created!</h1>
+            <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-3 sm:mb-4 px-4" style={{ color: 'var(--sc-text-dark)' }}>
+              {multiple ? 'Playlists Created!' : 'Playlist Created!'}
+            </h1>
             <p className="text-base sm:text-lg mb-6 sm:mb-8 leading-relaxed px-4" style={{ color: 'var(--sc-text-light)' }}>
-              "{result?.playlist?.title || playlistTitle}" has been created with {result?.totalTracks || likedTracksCount} tracks
+              {multiple
+                ? `${result.totalTracks ?? selected.size} tracks across ${result.numPlaylistsCreated} playlists.`
+                : `"${result?.playlist?.title || playlistTitle}" has been created with ${result?.totalTracks ?? selected.size} tracks`}
             </p>
+            {multiple && result.playlists && (
+              <div className="space-y-2 mb-6 text-left px-4">
+                {result.playlists.map((p: { id: number; title: string; permalink_url: string; trackCount: number }) => (
+                  <a
+                    key={p.id}
+                    href={p.permalink_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block px-4 py-3 rounded-xl border-2 hover:border-[#FF5500] transition-all"
+                    style={{ borderColor: 'var(--sc-light-gray)', color: 'var(--sc-text-dark)' }}
+                  >
+                    <span className="font-semibold">{p.title}</span>
+                    <span className="text-sm ml-2" style={{ color: 'var(--sc-text-light)' }}>({p.trackCount} tracks)</span>
+                  </a>
+                ))}
+              </div>
+            )}
             <div className="space-y-3 sm:space-y-4 px-4">
-              <motion.button
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                onClick={() => {
-                  const url = result?.permalink_url || result?.playlist?.permalink_url;
-                  if (url) window.open(url, '_blank');
-                }}
-                className="w-full px-6 sm:px-8 py-3 sm:py-4 bg-gradient-to-r from-[#FF5500] to-[#E64A00] text-white font-semibold rounded-lg hover:shadow-xl hover:shadow-orange-500/30 transition-all text-base sm:text-lg"
-              >
-                Open in SoundCloud
-              </motion.button>
+              {!multiple && (result?.permalink_url || result?.playlist?.permalink_url) && (
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => window.open(result?.permalink_url || result?.playlist?.permalink_url, '_blank')}
+                  className="w-full px-6 sm:px-8 py-3 sm:py-4 bg-gradient-to-r from-[#FF5500] to-[#E64A00] text-white font-semibold rounded-lg hover:shadow-xl hover:shadow-orange-500/30 transition-all text-base sm:text-lg"
+                >
+                  Open in SoundCloud
+                </motion.button>
+              )}
               <Link
                 to="/dashboard"
                 className="block w-full text-center px-6 py-3 rounded-lg border-2 hover:border-[#FF5500] transition-all text-base sm:text-lg"
-                style={{ background: 'var(--sc-white)', color: 'var(--sc-text-dark)', borderColor: 'var(--sc-light-gray)' }}
+                style={{ background: multiple ? 'var(--sc-white)' : undefined, color: 'var(--sc-text-dark)', borderColor: 'var(--sc-light-gray)' }}
               >
                 Back to Dashboard
               </Link>
@@ -181,7 +211,7 @@ function LikesToPlaylist() {
                           if (next.has(id)) next.delete(id);
                           else {
                             if (next.size >= MAX) {
-                              alert('You can select up to 500 tracks.');
+                              alert(`You can select up to ${MAX} tracks.`);
                               return next;
                             }
                             next.add(id);
@@ -254,6 +284,11 @@ function LikesToPlaylist() {
           {/* Settings */}
           <div className="rounded-2xl p-4 sm:p-6 md:p-8 shadow-lg border-2" style={{ background: 'var(--sc-white)', borderColor: 'var(--sc-light-gray)' }}>
             <h3 className="text-xl sm:text-2xl font-bold mb-4 sm:mb-6" style={{ color: 'var(--sc-text-dark)' }}>Playlist Settings</h3>
+            {selected.size > 500 && (
+              <p className="text-sm mb-4" style={{ color: '#FF5500' }}>
+                Selection exceeds 500 tracks; multiple playlists will be created.
+              </p>
+            )}
             <div>
               <label className="block text-sm sm:text-base font-semibold mb-2 sm:mb-3" style={{ color: 'var(--sc-text-dark)' }}>Playlist Name</label>
               <input

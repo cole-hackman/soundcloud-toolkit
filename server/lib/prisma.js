@@ -1,4 +1,5 @@
-import { PrismaClient } from '@prisma/client';
+import pkg from '@prisma/client';
+const { PrismaClient } = pkg;
 
 // Prevent multiple instances of Prisma Client in development
 export const prisma = globalThis.__prisma || new PrismaClient({

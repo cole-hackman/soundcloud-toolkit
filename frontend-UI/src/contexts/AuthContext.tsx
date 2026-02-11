@@ -15,6 +15,8 @@ interface AuthContextType {
   login: () => void;
   logout: () => void;
   loading: boolean;
+  apiUnreachable: boolean;
+  retryAuth: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -27,12 +29,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [apiUnreachable, setApiUnreachable] = useState(false);
 
   useEffect(() => {
     checkAuthStatus();
   }, []);
 
   const checkAuthStatus = async () => {
+    setApiUnreachable(false);
     try {
       const response = await fetch(`${API_BASE}/api/auth/me`, {
         credentials: "include",
@@ -55,6 +59,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.error("Auth check failed:", error);
       setIsAuthenticated(false);
       setUser(null);
+      setApiUnreachable(true);
     } finally {
       setLoading(false);
     }
@@ -79,9 +84,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const retryAuth = () => {
+    setLoading(true);
+    checkAuthStatus();
+  };
+
   return (
     <AuthContext.Provider
-      value={{ isAuthenticated, user, login, logout, loading }}
+      value={{ isAuthenticated, user, login, logout, loading, apiUnreachable, retryAuth }}
     >
       {children}
     </AuthContext.Provider>

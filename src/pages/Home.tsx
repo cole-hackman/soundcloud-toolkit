@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link, useNavigate } from 'react-router-dom';
 import { Layers, Heart, ArrowUpDown, Link as LinkIcon, Shield, LogIn, Settings, Music, Check, ChevronDown } from 'lucide-react';
@@ -45,7 +45,7 @@ function Home() {
   // Show loading state while checking auth
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#F2F2F2]">
+      <div className="min-h-screen flex items-center justify-center transition-colors duration-200" style={{ background: 'var(--sc-light-gray)' }}>
         <div className="w-8 h-8 border-2 border-[#FF5500] border-t-transparent rounded-full animate-spin" />
       </div>
     );
@@ -136,11 +136,11 @@ function Home() {
   };
 
   return (
-    <div className="min-h-screen bg-[#F2F2F2] text-[#333333]">
+    <div className="min-h-screen transition-colors duration-200" style={{ background: 'var(--sc-light-gray)', color: 'var(--sc-text-dark)' }}>
       {/* Navigation */}
       <nav className="fixed top-0 left-0 right-0 z-50 flex items-center justify-center pt-4 sm:pt-6">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 w-full">
-          <div className="bg-white/90 backdrop-blur-sm rounded-full border border-gray-200 shadow-lg px-4 sm:px-6 py-2 sm:py-3 flex items-center justify-between">
+          <div className="backdrop-blur-sm rounded-full border shadow-lg px-4 sm:px-6 py-2 sm:py-3 flex items-center justify-between transition-colors duration-200" style={{ background: 'var(--sc-white)', borderColor: 'var(--sc-text-light)' }}>
             <div className="flex items-center gap-2">
               <img src={scLogo} alt="SC Toolkit" className="h-8 sm:h-10 object-contain" />
             </div>
@@ -169,7 +169,8 @@ function Home() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.2 }}
-            className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl xl:text-8xl font-bold mb-4 sm:mb-6 leading-tight text-[#333333]"
+            className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl xl:text-8xl font-bold mb-4 sm:mb-6 leading-tight"
+            style={{ color: 'var(--sc-text-dark)' }}
           >
             Smarter SoundCloud
             <br />
@@ -181,7 +182,8 @@ function Home() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.3 }}
-            className="text-base sm:text-lg md:text-xl text-[#666666] mb-8 sm:mb-10 max-w-2xl mx-auto leading-relaxed px-4"
+            className="text-base sm:text-lg md:text-xl mb-8 sm:mb-10 max-w-2xl mx-auto leading-relaxed px-4"
+            style={{ color: 'var(--sc-text-light)' }}
           >
             Organize, merge, and clean your SoundCloud music in ways the native app can't. Powerful tools for power users.
           </motion.p>
@@ -201,14 +203,15 @@ function Home() {
       </section>
 
       {/* Features Section */}
-      <section id="features" className="py-24 px-6 bg-white">
+      <section id="features" className="py-24 px-6 transition-colors duration-200" style={{ background: 'var(--sc-white)' }}>
         <div className="max-w-7xl mx-auto">
           <motion.h2 
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ duration: 0.6 }}
-            className="text-4xl md:text-5xl font-bold text-center mb-16 text-[#333333]"
+            className="text-4xl md:text-5xl font-bold text-center mb-16"
+            style={{ color: 'var(--sc-text-dark)' }}
           >
             Powerful Features
           </motion.h2>
@@ -221,15 +224,16 @@ function Home() {
                 viewport={{ once: true }}
                 transition={{ duration: 0.5, delay: i * 0.1 }}
                 whileHover={{ y: -4, scale: 1.02 }}
-                className="group bg-white border-2 border-gray-200 rounded-2xl p-10 hover:border-[#FF5500] hover:shadow-2xl transition-all duration-300"
+                className="group border-2 rounded-2xl p-10 hover:border-[#FF5500] hover:shadow-2xl transition-all duration-300"
+                style={{ background: 'var(--sc-white)', borderColor: 'var(--sc-light-gray)' }}
               >
                 <div className="w-20 h-20 rounded-full bg-gradient-to-br from-[#FF5500] to-[#E64A00] flex items-center justify-center text-white mb-6">
                   <feature.icon className="w-10 h-10" />
                 </div>
-                <h3 className="text-2xl font-bold mb-4 text-[#333333] group-hover:text-[#FF5500] transition">
+                <h3 className="text-2xl font-bold mb-4 group-hover:text-[#FF5500] transition" style={{ color: 'var(--sc-text-dark)' }}>
                   {feature.title}
                 </h3>
-                <p className="text-[#666666] leading-relaxed text-lg">
+                <p className="leading-relaxed text-lg" style={{ color: 'var(--sc-text-light)' }}>
                   {feature.description}
                 </p>
               </motion.div>
@@ -246,7 +250,8 @@ function Home() {
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ duration: 0.6 }}
-            className="text-4xl md:text-5xl font-bold text-center mb-16 text-[#333333]"
+            className="text-4xl md:text-5xl font-bold text-center mb-16"
+            style={{ color: 'var(--sc-text-dark)' }}
           >
             Built for SoundCloud Power Users
           </motion.h2>
@@ -258,12 +263,13 @@ function Home() {
                 whileInView={{ opacity: 1, x: 0 }}
                 viewport={{ once: true }}
                 transition={{ duration: 0.5, delay: i * 0.1 }}
-                className="flex items-start gap-4 bg-white p-6 rounded-xl border border-gray-200"
+                className="flex items-start gap-4 p-6 rounded-xl border"
+                style={{ background: 'var(--sc-white)', borderColor: 'var(--sc-light-gray)' }}
               >
                 <div className="flex-shrink-0 w-6 h-6 rounded-full bg-[#FF5500] flex items-center justify-center text-white font-bold text-sm mt-1">
                   <Check className="w-4 h-4" />
                 </div>
-                <p className="text-[#666666] text-lg leading-relaxed">
+                <p className="text-lg leading-relaxed" style={{ color: 'var(--sc-text-light)' }}>
                   {benefit}
                 </p>
               </motion.div>
@@ -273,14 +279,15 @@ function Home() {
       </section>
 
       {/* How It Works Section */}
-      <section id="how-it-works" className="py-24 px-6 bg-white">
+      <section id="how-it-works" className="py-24 px-6 transition-colors duration-200" style={{ background: 'var(--sc-white)' }}>
         <div className="max-w-6xl mx-auto">
           <motion.h2 
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ duration: 0.6 }}
-            className="text-4xl md:text-5xl font-bold text-center mb-20 text-[#333333]"
+            className="text-4xl md:text-5xl font-bold text-center mb-20"
+            style={{ color: 'var(--sc-text-dark)' }}
           >
             How It Works
           </motion.h2>
@@ -299,8 +306,8 @@ function Home() {
                     <item.icon className="w-8 h-8" />
                   </div>
                 </div>
-                <h3 className="text-2xl font-bold mb-3 text-[#333333]">{item.title}</h3>
-                <p className="text-[#666666] text-lg leading-relaxed">
+                <h3 className="text-2xl font-bold mb-3" style={{ color: 'var(--sc-text-dark)' }}>{item.title}</h3>
+                <p className="text-lg leading-relaxed" style={{ color: 'var(--sc-text-light)' }}>
                   {item.description}
                 </p>
               </motion.div>
@@ -317,7 +324,8 @@ function Home() {
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ duration: 0.6 }}
-            className="text-4xl md:text-5xl font-bold text-center mb-16 text-[#333333]"
+            className="text-4xl md:text-5xl font-bold text-center mb-16"
+            style={{ color: 'var(--sc-text-dark)' }}
           >
             Frequently Asked Questions
           </motion.h2>
@@ -329,13 +337,14 @@ function Home() {
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{ duration: 0.5, delay: index * 0.1 }}
-                className="bg-white rounded-xl border-2 border-gray-200 overflow-hidden hover:border-[#FF5500] transition-all duration-300"
+                className="rounded-xl border-2 overflow-hidden hover:border-[#FF5500] transition-all duration-300"
+                style={{ background: 'var(--sc-white)', borderColor: 'var(--sc-light-gray)' }}
               >
                 <button
                   onClick={() => toggleFAQ(index)}
-                  className="w-full px-6 py-5 flex items-center justify-between text-left hover:bg-gray-50 transition-colors"
+                  className="w-full px-6 py-5 flex items-center justify-between text-left hover:bg-black/5 transition-colors"
                 >
-                  <h3 className="text-lg md:text-xl font-semibold text-[#333333] pr-4">
+                  <h3 className="text-lg md:text-xl font-semibold pr-4" style={{ color: 'var(--sc-text-dark)' }}>
                     {faq.question}
                   </h3>
                   <ChevronDown
@@ -354,7 +363,7 @@ function Home() {
                       className="overflow-hidden"
                     >
                       <div className="px-6 pb-5 pt-0">
-                        <p className="text-[#666666] text-base md:text-lg leading-relaxed">
+                        <p className="text-base md:text-lg leading-relaxed" style={{ color: 'var(--sc-text-light)' }}>
                           {faq.answer}
                         </p>
                       </div>
@@ -375,13 +384,14 @@ function Home() {
             whileInView={{ opacity: 1, scale: 1 }}
             viewport={{ once: true }}
             transition={{ duration: 0.6 }}
-            className="bg-white rounded-3xl p-12 text-center border-2 border-gray-200 shadow-xl"
+            className="rounded-3xl p-12 text-center border-2 shadow-xl"
+            style={{ background: 'var(--sc-white)', borderColor: 'var(--sc-light-gray)' }}
           >
             <div className="w-20 h-20 rounded-full bg-gradient-to-br from-[#FF5500] to-[#E64A00] flex items-center justify-center text-white mx-auto mb-6">
               <Shield className="w-10 h-10" />
             </div>
-            <h2 className="text-3xl font-bold mb-4 text-[#333333]">Secure & Private</h2>
-            <p className="text-[#666666] text-lg leading-relaxed mb-6">
+            <h2 className="text-3xl font-bold mb-4" style={{ color: 'var(--sc-text-dark)' }}>Secure & Private</h2>
+            <p className="text-lg leading-relaxed mb-6" style={{ color: 'var(--sc-text-light)' }}>
               SC Toolkit uses official SoundCloud OAuth authentication. We never store your password and only request the minimum permissions needed. Your data stays private and secure.
             </p>
             <Link to="/privacy" className="text-[#FF5500] hover:text-[#E64A00] font-semibold">
@@ -392,7 +402,7 @@ function Home() {
       </section>
 
       {/* Footer */}
-      <footer className="border-t border-gray-300 py-12 px-6 bg-white">
+      <footer className="border-t py-12 px-6 transition-colors duration-200" style={{ background: 'var(--sc-white)', borderColor: 'var(--sc-light-gray)' }}>
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-8">
             <div className="flex items-center justify-center gap-4 mb-4">

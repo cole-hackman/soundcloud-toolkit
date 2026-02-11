@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, GripVertical, Trash2, Save, ChevronDown, Check, Undo, ArrowUpDown } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { emitToast } from '../lib/toast';
 import { Link } from 'react-router-dom';
 
@@ -81,10 +81,7 @@ function PlaylistModifier() {
     } catch (e) { console.error('Failed to load playlist', e); } finally { setLoading(false); }
   }
 
-  function move(from: number, to: number) {
-    setViewTracks(prev => { const next = prev.slice(); const [item] = next.splice(from, 1); next.splice(Math.max(0, Math.min(to, next.length)), 0, item); return next; });
-    if (sortKey !== 'manual') { setSortKey('manual'); emitToast({ message: 'Switched to Manual after drag', variant: 'info' }); }
-  }
+
   function removeSelected() { if (selectedIds.size === 0) return; setTracks(prev => prev.filter(t => !selectedIds.has(t.id))); setViewTracks(prev => prev.filter(t => !selectedIds.has(t.id))); setSelectedIds(new Set()); }
 
   function onDragStartItem(index: number, e: React.DragEvent) {
@@ -255,15 +252,16 @@ function PlaylistModifier() {
               <button
                 type="button"
                 onClick={() => setIsSelectorOpen(v => !v)}
-                className="w-full px-4 py-3 bg-white border-2 border-gray-200 rounded-xl sc-focus hover:border-[#FF5500] transition-all flex items-center justify-between text-left"
+                className="w-full px-4 py-3 border-2 rounded-xl sc-focus hover:border-[#FF5500] transition-all flex items-center justify-between text-left"
+                style={{ background: 'var(--sc-white)', borderColor: 'var(--sc-light-gray)' }}
               >
-                <span className="truncate font-medium text-[#333333]">
+                <span className="truncate font-medium" style={{ color: 'var(--sc-text-dark)' }}>
                   {playlists.find(x => String(x.id) === String(selectedPlaylistId))?.title || 'Select a playlist…'}
                 </span>
-                <ChevronDown className="w-5 h-5 text-[#666666]" />
+                <ChevronDown className="w-5 h-5" style={{ color: 'var(--sc-text-light)' }} />
               </button>
               {isSelectorOpen && (
-                <div className="absolute z-10 mt-2 w-full max-h-64 overflow-auto bg-white border-2 border-gray-200 rounded-xl p-2 shadow-xl">
+                <div className="absolute z-10 mt-2 w-full max-h-64 overflow-auto border-2 rounded-xl p-2 shadow-xl" style={{ background: 'var(--sc-white)', borderColor: 'var(--sc-light-gray)' }}>
                   {playlists.map(p => (
                     <button
                       key={p.id}
@@ -275,7 +273,7 @@ function PlaylistModifier() {
                       ) : (
                         <div className="w-10 h-10 rounded-lg" style={{ background: 'var(--sc-light-gray)' }} />
                       )}
-                      <span className="flex-1 text-base truncate text-[#333333]">{p.title}</span>
+                      <span className="flex-1 text-base truncate" style={{ color: 'var(--sc-text-dark)' }}>{p.title}</span>
                       {String(p.id) === String(selectedPlaylistId) && (
                         <Check className="w-5 h-5 text-[#FF5500]" />
                       )}
@@ -305,10 +303,10 @@ function PlaylistModifier() {
           transition={{ delay: 0.2 }}
           className="sticky top-0 z-10 mb-4 sm:mb-6"
         >
-          <div className="bg-white border-2 border-gray-200 rounded-xl px-3 sm:px-4 md:px-6 py-3 sm:py-4 shadow-lg flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 sm:gap-4">
+          <div className="border-2 rounded-xl px-3 sm:px-4 md:px-6 py-3 sm:py-4 shadow-lg flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 sm:gap-4" style={{ background: 'var(--sc-white)', borderColor: 'var(--sc-light-gray)' }}>
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:gap-4 flex-1">
               {/* Segmented quick choices */}
-              <div className="flex items-center rounded-lg border-2 border-gray-200 overflow-hidden flex-1 sm:flex-none" role="tablist" aria-label="Sort">
+              <div className="flex items-center rounded-lg border-2 overflow-hidden flex-1 sm:flex-none" style={{ borderColor: 'var(--sc-light-gray)' }} role="tablist" aria-label="Sort">
                 {([
                   ['manual', 'Manual'],
                   ['title-asc', 'Title'],
@@ -323,8 +321,9 @@ function PlaylistModifier() {
                     className={`flex-1 sm:flex-none px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium transition-all ${
                       sortKey === key
                         ? 'bg-gradient-to-r from-[#FF5500] to-[#E64A00] text-white'
-                        : 'bg-white text-[#666666] hover:bg-gray-50'
+                        : 'bg-transparent hover:bg-black/5'
                     }`}
+                    style={sortKey !== key ? { color: 'var(--sc-text-light)' } : {}}
                   >
                     {label}
                   </button>
@@ -334,9 +333,10 @@ function PlaylistModifier() {
                 <button
                   type="button"
                   onClick={() => setIsSortOpen(v => !v)}
-                  className="w-full sm:w-56 px-3 sm:px-4 py-1.5 sm:py-2 bg-white border-2 border-gray-200 rounded-xl sc-focus hover:border-[#FF5500] transition-all text-xs sm:text-sm flex items-center justify-between"
+                  className="w-full sm:w-56 px-3 sm:px-4 py-1.5 sm:py-2 border-2 rounded-xl sc-focus hover:border-[#FF5500] transition-all text-xs sm:text-sm flex items-center justify-between"
+                  style={{ background: 'var(--sc-white)', borderColor: 'var(--sc-light-gray)' }}
                 >
-                  <span className="font-medium text-[#333333]">
+                  <span className="font-medium" style={{ color: 'var(--sc-text-dark)' }}>
                     {(() => {
                       const map: Record<SortKey, string> = {
                         'manual': 'Manual',
@@ -354,10 +354,10 @@ function PlaylistModifier() {
                       return map[sortKey];
                     })()}
                   </span>
-                  <ChevronDown className="w-5 h-5 text-[#666666]" />
+                  <ChevronDown className="w-5 h-5" style={{ color: 'var(--sc-text-light)' }} />
                 </button>
                 {isSortOpen && (
-                  <div className="absolute z-10 mt-2 w-64 max-h-64 overflow-auto bg-white border-2 border-gray-200 rounded-xl p-2 shadow-xl">
+                  <div className="absolute z-10 mt-2 w-64 max-h-64 overflow-auto border-2 rounded-xl p-2 shadow-xl" style={{ background: 'var(--sc-white)', borderColor: 'var(--sc-light-gray)' }}>
                     {([
                       ['manual', 'Manual'],
                       ['title-asc', 'Title · A→Z'],
@@ -379,7 +379,7 @@ function PlaylistModifier() {
                         }}
                         className="w-full flex items-center gap-3 px-4 py-3 rounded-lg sc-focus hover:bg-gray-50 text-left transition-colors"
                       >
-                        <span className="flex-1 text-sm text-[#333333]">{label}</span>
+                        <span className="flex-1 text-sm" style={{ color: 'var(--sc-text-dark)' }}>{label}</span>
                         {sortKey === key && <Check className="w-5 h-5 text-[#FF5500]" />}
                       </button>
                     ))}
@@ -396,7 +396,7 @@ function PlaylistModifier() {
                   onChange={(e) => setApplyMode(e.target.checked)}
                   className="w-4 h-4 sm:w-5 sm:h-5 sc-focus"
                 />
-                <label htmlFor="applyMode" className="text-xs sm:text-sm font-medium text-[#666666] cursor-pointer">
+                <label htmlFor="applyMode" className="text-xs sm:text-sm font-medium cursor-pointer" style={{ color: 'var(--sc-text-dark)' }}>
                   Apply to playlist order
                 </label>
               </div>
@@ -411,7 +411,8 @@ function PlaylistModifier() {
                   undoApply();
                 }}
                 disabled={!lastAppliedOrder || saving}
-                className="px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg border-2 border-gray-200 hover:border-[#FF5500] transition-all font-medium text-[#333333] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm"
+                className="px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg border-2 transition-all font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm"
+                style={{ color: 'var(--sc-text-dark)', borderColor: 'var(--sc-light-gray)' }}
               >
                 <Undo className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                 Undo
@@ -436,7 +437,8 @@ function PlaylistModifier() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3 }}
-          className={`bg-white border-2 border-gray-200 rounded-xl overflow-hidden shadow-lg ${draggingIndex !== null ? 'sc-dragging' : ''}`}
+          className={`border-2 rounded-xl overflow-hidden shadow-lg ${draggingIndex !== null ? 'sc-dragging' : ''}`}
+          style={{ background: 'var(--sc-white)', borderColor: 'var(--sc-light-gray)' }}
         >
           {loading ? (
             <div className="p-8 space-y-4">
@@ -452,7 +454,7 @@ function PlaylistModifier() {
             </div>
           ) : tracks.length === 0 ? (
             <div className="p-12 text-center">
-              <p className="text-lg text-[#666666]">No tracks in this playlist.</p>
+              <p className="text-lg" style={{ color: 'var(--sc-text-light)' }}>No tracks in this playlist.</p>
             </div>
           ) : (
             <ul>
@@ -462,21 +464,24 @@ function PlaylistModifier() {
                   <motion.li
                     key={t.id}
                     className={`grid grid-cols-[auto_1fr_auto] sm:grid-cols-[auto_auto_1fr_auto_auto_auto] items-center gap-2 sm:gap-4 px-3 sm:px-6 py-3 sm:py-4 border-b transition-all ${
-                      selected ? 'bg-orange-50' : 'bg-white hover:bg-gray-50'
+                      selected ? 'bg-orange-50' : ''
                     }`}
-                    style={{ borderColor: 'var(--sc-light-gray)' }}
+                    style={{ 
+                      borderColor: 'var(--sc-light-gray)',
+                      background: selected ? 'rgba(255, 85, 0, 0.1)' : 'var(--sc-white)'
+                    }}
                     layout
                     draggable
-                    onDragStart={(e) => onDragStartItem(idx, e)}
+                    onDragStart={(e) => onDragStartItem(idx, e as any)}
                     onDragOver={(e) => onDragOverItem(idx, e)}
                     onDrop={(e) => onDropItem(idx, e)}
                     onDragEnd={onDragEndItem}
                   >
                     <div className="flex items-center gap-2 sm:gap-4 col-span-1">
-                      <span className="cursor-grab active:cursor-grabbing text-[#666666] hover:text-[#FF5500] transition-colors">
+                      <span className="cursor-grab active:cursor-grabbing hover:text-[#FF5500] transition-colors" style={{ color: 'var(--sc-text-light)' }}>
                         <GripVertical className="w-4 h-4 sm:w-5 sm:h-5" />
                       </span>
-                      <span className="hidden sm:inline text-sm px-2 sm:px-3 py-1 rounded-lg font-semibold bg-gray-100 text-[#666666] w-8 sm:w-10 text-center">
+                      <span className="hidden sm:inline text-sm px-2 sm:px-3 py-1 rounded-lg font-semibold bg-gray-100 w-8 sm:w-10 text-center" style={{ color: 'var(--sc-text-light)', background: 'var(--sc-light-gray)' }}>
                         {idx + 1}
                       </span>
                       {t.artwork_url ? (
@@ -487,24 +492,24 @@ function PlaylistModifier() {
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 mb-1">
-                        <span className="sm:hidden text-xs px-2 py-0.5 rounded font-semibold bg-gray-100 text-[#666666]">
+                        <span className="sm:hidden text-xs px-2 py-0.5 rounded font-semibold bg-gray-100" style={{ color: 'var(--sc-text-light)', background: 'var(--sc-light-gray)' }}>
                           {idx + 1}
                         </span>
-                        <div className="text-sm sm:text-base font-semibold truncate text-[#333333]" title={t.title || 'Untitled'}>
+                        <div className="text-sm sm:text-base font-semibold truncate" title={t.title || 'Untitled'} style={{ color: 'var(--sc-text-dark)' }}>
                           {t.title || 'Untitled'}
                         </div>
                       </div>
-                      <div className="text-xs sm:text-sm truncate text-[#666666]" title={t.user?.username || 'Unknown'}>
+                      <div className="text-xs sm:text-sm truncate" title={t.user?.username || 'Unknown'} style={{ color: 'var(--sc-text-light)' }}>
                         {t.user?.username || 'Unknown'}
                       </div>
                       <div className="flex items-center gap-2 mt-1 sm:hidden">
-                        <span className="text-xs px-2 py-0.5 rounded font-medium bg-gray-100 text-[#666666]">
+                        <span className="text-xs px-2 py-0.5 rounded font-medium bg-gray-100" style={{ color: 'var(--sc-text-light)', background: 'var(--sc-light-gray)' }}>
                           {formatDuration(t.duration)}
                         </span>
                         {(() => {
                           const bpm = parsedBpm(t);
                           return bpm != null ? (
-                            <span className="text-xs px-2 py-0.5 rounded font-medium bg-gray-100 text-[#666666]">
+                            <span className="text-xs px-2 py-0.5 rounded font-medium bg-gray-100" style={{ color: 'var(--sc-text-light)', background: 'var(--sc-light-gray)' }}>
                               BPM {bpm}
                             </span>
                           ) : null;
@@ -512,7 +517,7 @@ function PlaylistModifier() {
                       </div>
                     </div>
                     <div className="hidden sm:block text-right">
-                      <span className="inline-block text-sm px-3 py-1 rounded-lg font-medium bg-gray-100 text-[#666666]">
+                      <span className="inline-block text-sm px-3 py-1 rounded-lg font-medium bg-gray-100" style={{ color: 'var(--sc-text-light)', background: 'var(--sc-light-gray)' }}>
                         {formatDuration(t.duration)}
                       </span>
                     </div>
@@ -522,7 +527,8 @@ function PlaylistModifier() {
                         const inferred = bpm != null && t.bpm == null;
                         return (
                           <span
-                            className="inline-block text-sm px-3 py-1 rounded-lg font-medium bg-gray-100 text-[#666666]"
+                            className="inline-block text-sm px-3 py-1 rounded-lg font-medium bg-gray-100"
+                            style={{ color: 'var(--sc-text-light)', background: 'var(--sc-light-gray)' }}
                             title={inferred ? 'BPM inferred from track title.' : ''}
                           >
                             BPM {bpm != null ? `${bpm}${inferred ? ' ≈' : ''}` : '—'}
@@ -561,9 +567,9 @@ function PlaylistModifier() {
 
         {/* Sticky Save Bar */}
         {(selectedIds.size > 0 || hasChanges) && (
-          <div className="fixed left-0 right-0 bottom-0 z-40 bg-white border-t-2 border-gray-200 shadow-2xl">
+          <div className="fixed left-0 right-0 bottom-0 z-40 border-t-2 shadow-2xl" style={{ background: 'var(--sc-white)', borderColor: 'var(--sc-light-gray)' }}>
             <div className="container mx-auto px-4 sm:px-6 py-3 sm:py-4 max-w-7xl flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 sm:gap-4">
-              <div className="text-base sm:text-lg font-semibold text-[#333333]">
+              <div className="text-base sm:text-lg font-semibold" style={{ color: 'var(--sc-text-dark)' }}>
                 {selectedIds.size > 0 && `Selected ${selectedIds.size}`}
                 {hasChanges && selectedIds.size === 0 && 'Unsaved changes'}
               </div>

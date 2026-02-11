@@ -13,6 +13,10 @@ import {
   validateUpdatePlaylist,
   validateCreateFromLikes,
   validateLikesPagination,
+  validateBatchResolve,
+  validateActivities,
+  validateBulkUnlike,
+  validateBulkUnfollow,
 } from '../middleware/validation.js';
 
 const router = express.Router();
@@ -65,7 +69,11 @@ function normalizeResource(resource) {
       username: resource.user?.username,
       duration_ms: resource.duration,
       permalink_url: resource.permalink_url,
-      artwork_url: resource.artwork_url || resource.user?.avatar_url
+      artwork_url: resource.artwork_url || resource.user?.avatar_url,
+      downloadable: resource.downloadable,
+      download_url: resource.download_url,
+      purchase_url: resource.purchase_url,
+      purchase_title: resource.purchase_title
     };
   }
   if (kind === 'playlist') {
@@ -153,6 +161,15 @@ async function authenticateUser(req, res, next) {
 router.get('/me', authenticateUser, async (req, res) => {
   try {
     const userInfo = await soundcloudClient.getMe(req.accessToken, req.refreshToken);
+    logger.info('[/api/me] SC response keys:', Object.keys(userInfo));
+    logger.info('[/api/me] Stats fields:', {
+      followers_count: userInfo.followers_count,
+      followings_count: userInfo.followings_count,
+      public_favorites_count: userInfo.public_favorites_count,
+      likes_count: userInfo.likes_count,
+      playlist_count: userInfo.playlist_count,
+      track_count: userInfo.track_count,
+    });
     res.json(userInfo);
   } catch (error) {
     logger.error('Get me error:', error);
@@ -183,7 +200,7 @@ router.get('/playlists', authenticateUser, validatePagination, async (req, res) 
         try {
           const full = await soundcloudClient.getPlaylistWithTracks(req.accessToken, req.refreshToken, idNum);
           const first = Array.isArray(full.tracks) && full.tracks.length ? full.tracks[0] : null;
-          coverUrl = first?.artwork_url || '';
+          coverUrl = first?.artwork_url || first?.user?.avatar_url || '';
         } catch {}
       }
       if (!coverUrl) coverUrl = p.user?.avatar_url || '';
@@ -430,46 +447,33 @@ router.post('/playlists/merge', authenticateUser, heavyOperationRateLimiter, val
           ? `${baseTitle} (${i + 1}/${numPlaylists})`
           : baseTitle;
 
-        // Create playlist with initial batch up to 200 tracks
-        const initialCount = Math.min(batch.length, 200);
-        const initialBatch = batch.slice(0, initialCount);
+        // Create playlist with 100-track batches (SoundCloud API limit)
+        const mergeBatchSize = 100;
+        const initialBatch = batch.slice(0, mergeBatchSize);
         const newPlaylist = await soundcloudClient.createPlaylist(
           req.accessToken,
           req.refreshToken,
           playlistTitle,
-          `Merged from ${sourcePlaylistIds.length} playlists${numPlaylists > 1 ? ` - Part ${i + 1} of ${numPlaylists}` : ''}`,
+          `Merged from ${sourcePlaylistIds.length} playlists${numPlaylists > 1 ? ` - Part ${i + 1} of ${numPlaylists}` : ''}\n\nCreated using SC Toolkit. Try it for free soundcloudtoolkit.com`,
           initialBatch
         );
 
-        logger.info(`[merge] created playlist ${i + 1}/${numPlaylists}`, { id: newPlaylist.id, initialCount });
+        logger.info(`[merge] created playlist ${i + 1}/${numPlaylists}`, { id: newPlaylist.id, initialCount: initialBatch.length });
         await sleep(500);
 
-        // If more remain, set the full list at once (overwrite semantics)
-        let finalUpdateSucceeded = false;
         let finalCount = initialBatch.length;
-        if (batch.length > initialBatch.length) {
-          const attemptUpdate = async (attempt) => {
-            try {
-              const updated = await soundcloudClient.addTracksToPlaylist(
-                req.accessToken,
-                req.refreshToken,
-                newPlaylist.id,
-                batch
-              );
-              finalCount = Array.isArray(updated.tracks) ? updated.tracks.length : (updated.track_count || batch.length);
-              finalUpdateSucceeded = true;
-            } catch (e) {
-              logger.error(`[merge] playlist ${i + 1} final set attempt ${attempt} failed:`, e);
-              throw e;
-            }
-          };
-
-          try {
-            await attemptUpdate(1);
-          } catch {
-            await sleep(800);
-            await attemptUpdate(2);
-          }
+        let addIndex = mergeBatchSize;
+        while (addIndex < batch.length) {
+          await sleep(300);
+          const addBatch = batch.slice(0, addIndex + mergeBatchSize);
+          await soundcloudClient.addTracksToPlaylist(
+            req.accessToken,
+            req.refreshToken,
+            newPlaylist.id,
+            addBatch
+          );
+          finalCount += addBatch.length;
+          addIndex += mergeBatchSize;
         }
 
         // Verify current count if possible
@@ -524,49 +528,34 @@ router.post('/playlists/merge', authenticateUser, heavyOperationRateLimiter, val
         }
       });
     } else {
-      // Original single playlist logic (when <= 500 tracks)
-      
-      // Create playlist with initial batch up to 200 tracks
+      // Single playlist (<= 500 tracks) with 100-track batches
       const playlistTitle = baseTitle;
-      const initialCount = Math.min(trackIdsArray.length, 200);
-      const initialBatch = trackIdsArray.slice(0, initialCount);
+      const mergeBatchSize = 100;
+      const initialBatch = trackIdsArray.slice(0, mergeBatchSize);
       const newPlaylist = await soundcloudClient.createPlaylist(
         req.accessToken,
         req.refreshToken,
         playlistTitle,
-        `Merged from ${sourcePlaylistIds.length} playlists`,
+        `Merged from ${sourcePlaylistIds.length} playlists\n\nCreated using SC Toolkit. Try it for free soundcloudtoolkit.com`,
         initialBatch
       );
 
-      logger.info('[merge] created playlist', { id: newPlaylist.id, initialCount });
+      logger.info('[merge] created playlist', { id: newPlaylist.id, initialCount: initialBatch.length });
       await sleep(500);
 
-      // If more remain, set the full list at once (overwrite semantics)
-      let finalUpdateSucceeded = false;
       let finalCount = initialBatch.length;
-      if (trackIdsArray.length > initialBatch.length) {
-        const attemptUpdate = async (attempt) => {
-          try {
-            const updated = await soundcloudClient.addTracksToPlaylist(
-              req.accessToken,
-              req.refreshToken,
-              newPlaylist.id,
-              trackIdsArray
-            );
-            finalCount = Array.isArray(updated.tracks) ? updated.tracks.length : (updated.track_count || trackIdsArray.length);
-            finalUpdateSucceeded = true;
-          } catch (e) {
-            logger.error(`[merge] final set attempt ${attempt} failed:`, e);
-            throw e;
-          }
-        };
-
-        try {
-          await attemptUpdate(1);
-        } catch {
-          await sleep(800);
-          await attemptUpdate(2);
-        }
+      let addIndex = mergeBatchSize;
+      while (addIndex < trackIdsArray.length) {
+        await sleep(300);
+        const addBatch = trackIdsArray.slice(0, addIndex + mergeBatchSize);
+        await soundcloudClient.addTracksToPlaylist(
+          req.accessToken,
+          req.refreshToken,
+          newPlaylist.id,
+          addBatch
+        );
+        finalCount += addBatch.length;
+        addIndex += mergeBatchSize;
       }
 
       // Verify current count if possible
@@ -587,7 +576,6 @@ router.post('/playlists/merge', authenticateUser, heavyOperationRateLimiter, val
         uniqueBeforeCap,
         totalTracks: trackIdsArray.length,
         createdId: newPlaylist.id,
-        finalUpdateSucceeded,
         verifiedCount
       });
 
@@ -610,38 +598,100 @@ router.post('/playlists/merge', authenticateUser, heavyOperationRateLimiter, val
   }
 });
 
+const BATCH_SIZE_PLAYLIST_TRACKS = 100;
+const MAX_TRACKS_PER_PLAYLIST = 500;
+
+/**
+ * Create a single playlist from track IDs using 100-track batches (SoundCloud API limit).
+ */
+async function createPlaylistFromTrackIds(accessToken, refreshToken, trackIds, title, description) {
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const initialBatch = trackIds.slice(0, BATCH_SIZE_PLAYLIST_TRACKS);
+  const newPlaylist = await soundcloudClient.createPlaylist(
+    accessToken,
+    refreshToken,
+    title,
+    description,
+    initialBatch
+  );
+
+  let index = BATCH_SIZE_PLAYLIST_TRACKS;
+  while (index < trackIds.length) {
+    await sleep(300);
+    const batch = trackIds.slice(0, index + BATCH_SIZE_PLAYLIST_TRACKS);
+    await soundcloudClient.addTracksToPlaylist(
+      accessToken,
+      refreshToken,
+      newPlaylist.id,
+      batch
+    );
+    index += BATCH_SIZE_PLAYLIST_TRACKS;
+  }
+
+  return newPlaylist;
+}
+
 /**
  * POST /api/playlists/from-likes
- * Create playlist from liked tracks
+ * Create playlist(s) from liked tracks. Uses 100-track batches. If >500 tracks, creates multiple playlists.
  */
 router.post('/playlists/from-likes', authenticateUser, heavyOperationRateLimiter, validateCreateFromLikes, async (req, res) => {
   try {
     const { title, trackIds } = req.body;
-    // Validation middleware already checked the input
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    const baseTitle = title?.trim() || `My Liked Tracks - ${new Date().toLocaleDateString()}`;
 
-    const playlistTitle = title || `My Liked Tracks - ${new Date().toLocaleDateString()}`;
-    const initialBatch = trackIds.slice(0, 200);
-    const newPlaylist = await soundcloudClient.createPlaylist(
-      req.accessToken,
-      req.refreshToken,
-      playlistTitle,
-      `Playlist created from ${trackIds.length} liked tracks`,
-      initialBatch
-    );
-
-    let index = 200;
-    while (index < trackIds.length) {
-      const batch = trackIds.slice(index, index + 200);
-      await soundcloudClient.addTracksToPlaylist(
+    if (trackIds.length <= MAX_TRACKS_PER_PLAYLIST) {
+      const newPlaylist = await createPlaylistFromTrackIds(
         req.accessToken,
         req.refreshToken,
-        newPlaylist.id,
-        batch
+        trackIds,
+        baseTitle,
+        `Playlist created from ${trackIds.length} liked tracks\n\nCreated using SC Toolkit. Try it for free soundcloudtoolkit.com`
       );
-      index += 200;
+      return res.json({
+        playlistId: newPlaylist.id,
+        permalink_url: newPlaylist.permalink_url,
+        playlist: { id: newPlaylist.id, title: baseTitle, permalink_url: newPlaylist.permalink_url },
+        totalTracks: trackIds.length
+      });
     }
 
-    res.json({ playlistId: newPlaylist.id, permalink_url: newPlaylist.permalink_url, totalTracks: trackIds.length });
+    const numPlaylists = Math.ceil(trackIds.length / MAX_TRACKS_PER_PLAYLIST);
+    const createdPlaylists = [];
+
+    for (let i = 0; i < numPlaylists; i++) {
+      const startIdx = i * MAX_TRACKS_PER_PLAYLIST;
+      const endIdx = Math.min(startIdx + MAX_TRACKS_PER_PLAYLIST, trackIds.length);
+      const chunk = trackIds.slice(startIdx, endIdx);
+      const playlistTitle = numPlaylists > 1
+        ? `${baseTitle} (${i + 1}/${numPlaylists})`
+        : baseTitle;
+      const description = `Playlist created from liked tracks${numPlaylists > 1 ? ` - Part ${i + 1} of ${numPlaylists}` : ''}\n\nCreated using SC Toolkit. Try it for free soundcloudtoolkit.com`;
+
+      const newPlaylist = await createPlaylistFromTrackIds(
+        req.accessToken,
+        req.refreshToken,
+        chunk,
+        playlistTitle,
+        description
+      );
+
+      createdPlaylists.push({
+        id: newPlaylist.id,
+        title: playlistTitle,
+        permalink_url: newPlaylist.permalink_url,
+        trackCount: chunk.length
+      });
+
+      if (i < numPlaylists - 1) await sleep(500);
+    }
+
+    return res.json({
+      playlists: createdPlaylists,
+      totalTracks: trackIds.length,
+      numPlaylistsCreated: numPlaylists
+    });
   } catch (error) {
     logger.error('Create playlist from likes error:', error);
     res.status(500).json({ error: 'Failed to create playlist from likes' });
@@ -653,5 +703,161 @@ router.post('/playlists/from-likes', authenticateUser, heavyOperationRateLimiter
  * Remove duplicates from a playlist
  */
 // Smart Deduplication removed
+
+/**
+ * POST /api/resolve/batch
+ * Resolve multiple SoundCloud URLs at once
+ */
+router.post('/resolve/batch', authenticateUser, heavyOperationRateLimiter, validateBatchResolve, async (req, res) => {
+  try {
+    const { urls } = req.body;
+    const results = [];
+
+    // Process sequentially to avoid SoundCloud rate limits
+    for (const rawUrl of urls) {
+      const url = sanitizeUrl(rawUrl);
+      if (!url) {
+        results.push({ url: rawUrl, status: 'error', error: 'Invalid SoundCloud URL' });
+        continue;
+      }
+
+      // Check cache first
+      const cached = resolveCache.get(url);
+      if (cached && cached.expiresAt > Date.now()) {
+        results.push({ url: rawUrl, status: 'ok', data: cached.data });
+        continue;
+      }
+
+      try {
+        let resource;
+        try {
+          resource = await soundcloudClient.resolveUrl(req.accessToken, req.refreshToken, url);
+        } catch {
+          resource = await soundcloudClient.resolvePublic(url);
+        }
+        const normalized = normalizeResource(resource);
+        if (normalized) {
+          resolveCache.set(url, { data: normalized, expiresAt: Date.now() + RESOLVE_CACHE_TTL_MS });
+          results.push({ url: rawUrl, status: 'ok', data: normalized });
+        } else {
+          results.push({ url: rawUrl, status: 'error', error: 'Could not parse resource' });
+        }
+      } catch (err) {
+        results.push({ url: rawUrl, status: 'error', error: err.message || 'Resolve failed' });
+      }
+    }
+
+    res.json({ results });
+  } catch (error) {
+    logger.error('Batch resolve error:', error);
+    res.status(500).json({ error: 'Batch resolve failed' });
+  }
+});
+
+/**
+ * GET /api/activities
+ * Get the user's activity/stream feed
+ */
+router.get('/activities', authenticateUser, validateActivities, async (req, res) => {
+  try {
+    const limit = req.query.limit || 200;
+    const activities = await soundcloudClient.getActivities(req.accessToken, req.refreshToken, limit);
+
+    // Filter to track-related activities and map to useful shape
+    logger.info(`[/api/activities] Fetched ${activities.length} activities`);
+    const trackActivities = activities
+      .filter(item => item.origin && item.origin.kind === 'track')
+      .map(item => ({
+        type: item.type,
+        created_at: item.created_at,
+        origin: item.origin
+      }));
+
+    res.json({ collection: trackActivities });
+  } catch (error) {
+    logger.error('Get activities error:', error);
+    res.status(500).json({ error: 'Failed to fetch activities' });
+  }
+});
+
+/**
+ * POST /api/likes/tracks/bulk-unlike
+ * Unlike multiple tracks at once
+ */
+router.post('/likes/tracks/bulk-unlike', authenticateUser, heavyOperationRateLimiter, validateBulkUnlike, async (req, res) => {
+  try {
+    const { trackIds } = req.body;
+    const results = [];
+
+    // Process sequentially to avoid SoundCloud rate limits
+    for (const trackId of trackIds) {
+      try {
+        await soundcloudClient.unlikeTrack(req.accessToken, req.refreshToken, trackId);
+        results.push({ trackId, status: 'ok' });
+      } catch (err) {
+        results.push({ trackId, status: 'error', error: err.message || 'Unlike failed' });
+      }
+    }
+
+    res.json({ results });
+  } catch (error) {
+    logger.error('Bulk unlike error:', error);
+    res.status(500).json({ error: 'Bulk unlike failed' });
+  }
+});
+
+/**
+ * GET /api/followers
+ * Get the user's followers list
+ */
+router.get('/followers', authenticateUser, async (req, res) => {
+  try {
+    const followers = await soundcloudClient.getFollowers(req.accessToken, req.refreshToken);
+    res.json({ collection: followers, total: followers.length });
+  } catch (error) {
+    logger.error('Get followers error:', error);
+    res.status(500).json({ error: 'Failed to fetch followers' });
+  }
+});
+
+/**
+ * GET /api/followings
+ * Get the user's followings list
+ */
+router.get('/followings', authenticateUser, async (req, res) => {
+  try {
+    const followings = await soundcloudClient.getFollowings(req.accessToken, req.refreshToken);
+    res.json({ collection: followings, total: followings.length });
+  } catch (error) {
+    logger.error('Get followings error:', error);
+    res.status(500).json({ error: 'Failed to fetch followings' });
+  }
+});
+
+/**
+ * POST /api/followings/bulk-unfollow
+ * Unfollow multiple users at once
+ */
+router.post('/followings/bulk-unfollow', authenticateUser, heavyOperationRateLimiter, validateBulkUnfollow, async (req, res) => {
+  try {
+    const { userIds } = req.body;
+    const results = [];
+
+    // Process sequentially to avoid SoundCloud rate limits
+    for (const userId of userIds) {
+      try {
+        await soundcloudClient.unfollowUser(req.accessToken, req.refreshToken, userId);
+        results.push({ userId, status: 'ok' });
+      } catch (err) {
+        results.push({ userId, status: 'error', error: err.message || 'Unfollow failed' });
+      }
+    }
+
+    res.json({ results });
+  } catch (error) {
+    logger.error('Bulk unfollow error:', error);
+    res.status(500).json({ error: 'Bulk unfollow failed' });
+  }
+});
 
 export default router;

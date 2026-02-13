@@ -1,8 +1,13 @@
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link, useNavigate } from 'react-router-dom';
-import { Layers, Heart, ArrowUpDown, Link as LinkIcon, Shield, LogIn, Settings, Music, Check, ChevronDown } from 'lucide-react';
+import {
+  Layers, Heart, ArrowUpDown, Link as LinkIcon, Shield, LogIn, Settings,
+  Music, Check, ChevronDown, Radio, UserMinus, ThumbsDown, Download,
+  Link2, HeartPulse, Zap, Lock, Palette
+} from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import StructuredData from '../components/StructuredData';
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore
 import scLogo from '/sc toolkit transparent .png';
@@ -55,32 +60,64 @@ function Home() {
     {
       icon: Layers,
       title: 'Combine Playlists',
-      description: 'Merge multiple playlists into one unified collection. Automatically detect and remove duplicate tracks across all sources. Perfect for consolidating your music library or creating mega-playlists.'
+      description: 'Merge multiple playlists into one unified collection. Automatically detect and remove duplicate tracks across all sources. Perfect for consolidating your music library.'
     },
     {
       icon: Heart,
       title: 'Likes → Playlist',
-      description: 'Transform your liked tracks into organized playlists. Select from thousands of favorites and batch-create playlists with custom names. Never lose track of your favorite discoveries again.'
+      description: 'Transform your liked tracks into organized playlists. Select from thousands of favorites and batch-create playlists with custom names.'
     },
     {
       icon: ArrowUpDown,
       title: 'Playlist Modifier',
-      description: 'Take full control of your playlists. Reorder tracks with drag-and-drop, remove unwanted songs, and apply smart sorting by title, artist, date, duration, or BPM. Your playlists, your way.'
+      description: 'Take full control of your playlists. Reorder tracks with drag-and-drop, remove unwanted songs, and apply smart sorting by title, artist, date, duration, or BPM.'
+    },
+    {
+      icon: Radio,
+      title: 'Activity to Playlist',
+      description: 'Turn your SoundCloud activity feed into a curated playlist. Capture recently posted tracks from artists you follow before they get buried.'
+    },
+    {
+      icon: UserMinus,
+      title: 'Following Manager',
+      description: 'See who doesn\'t follow you back, clean up your following list, and bulk unfollow accounts. Take control of your SoundCloud social graph.'
+    },
+    {
+      icon: ThumbsDown,
+      title: 'Like Manager',
+      description: 'Browse, search, and bulk unlike tracks to keep your liked collection focused. Clean up thousands of stale likes in seconds.'
+    },
+    {
+      icon: Download,
+      title: 'Downloads',
+      description: 'Download tracks directly where the artist has enabled downloads or provided a purchase link. No third-party downloaders needed.'
+    },
+    {
+      icon: Link2,
+      title: 'Batch Link Resolver',
+      description: 'Paste multiple SoundCloud URLs and resolve them all at once. Get instant metadata for tracks, playlists, and users in bulk.'
+    },
+    {
+      icon: HeartPulse,
+      title: 'Playlist Health Check',
+      description: 'Scan your playlists for blocked, deleted, or unstreamable tracks and clean them up. Keep your playlists in perfect shape.'
     },
     {
       icon: LinkIcon,
       title: 'Link Resolver',
-      description: 'Get instant metadata from any SoundCloud URL. Resolve tracks, playlists, and user profiles to extract detailed information. Perfect for research, organization, and discovery.'
+      description: 'Get instant metadata from any SoundCloud URL. Resolve tracks, playlists, and user profiles to extract detailed information.'
     }
   ];
 
   const benefits = [
-    'Organize thousands of tracks with advanced playlist management tools',
-    'Automatically detect and remove duplicate tracks across playlists',
-    'Batch edit and reorganize your entire music library efficiently',
-    'Get insights and analytics from SoundCloud links and metadata',
-    'Smart sorting algorithms (by BPM, duration, artist, date)',
-    'No limits - handle playlists with hundreds of tracks'
+    'Merge multiple playlists with automatic duplicate removal',
+    'Turn liked tracks or activity feed into organized playlists',
+    'Download tracks with available download or purchase links',
+    'Manage your following list — find who doesn\'t follow back',
+    'Bulk operations: unlike tracks, unfollow users, resolve links',
+    'Smart playlist health checks for blocked or deleted tracks',
+    'Dark and light theme to match your preference',
+    '100% free with secure OAuth — your password is never stored'
   ];
 
   const steps = [
@@ -94,36 +131,44 @@ function Home() {
       step: '2',
       icon: Settings,
       title: 'Organize',
-      description: 'Use powerful tools to merge, sort, and clean your playlists'
+      description: 'Use 10+ powerful tools to merge, sort, clean, and manage your library'
     },
     {
       step: '3',
       icon: Music,
       title: 'Enjoy',
-      description: 'Export your organized playlists back to SoundCloud'
+      description: 'Export your organized playlists back to SoundCloud instantly'
     }
   ];
 
   const faqs = [
     {
       question: 'Is SC Toolkit free to use?',
-      answer: 'Yes, SC Toolkit is completely free to use. We provide powerful playlist management tools at no cost to help you organize your SoundCloud music.'
+      answer: 'Yes, SC Toolkit is completely free to use. We provide powerful playlist management and social tools at no cost to help you organize your SoundCloud music.'
     },
     {
       question: 'How secure is my SoundCloud account?',
-      answer: 'Your account security is our top priority. We use official SoundCloud OAuth authentication, which means we never see or store your password. We only request the minimum permissions needed to manage your playlists, and all tokens are encrypted at rest.'
+      answer: 'Your account security is our top priority. We use official SoundCloud OAuth authentication, which means we never see or store your password. We only request the minimum permissions needed to manage your playlists, and all tokens are encrypted at rest with AES-256-GCM.'
     },
     {
       question: 'Can I merge playlists with more than 500 tracks?',
-      answer: 'SoundCloud has a limit of 500 tracks per playlist. When merging playlists, we automatically cap the result at 500 tracks and remove duplicates to ensure your merged playlist is valid. If you have more tracks, we\'ll include the first 500 unique tracks.'
+      answer: 'Yes! When merging playlists that exceed 500 tracks, SC Toolkit automatically splits them into multiple playlists (e.g., Part 1/3, Part 2/3, Part 3/3) so you don\'t lose a single track.'
     },
     {
       question: 'What happens to my original playlists?',
       answer: 'Your original playlists remain completely untouched. When you merge playlists or create new ones from your likes, we create new playlists rather than modifying existing ones. You have full control over your music library.'
     },
     {
-      question: 'Can I undo changes made to my playlists?',
-      answer: 'When using the Playlist Modifier, you can undo the last applied order. However, we recommend being careful with playlist modifications as SoundCloud doesn\'t provide a built-in undo feature. Always review changes before saving.'
+      question: 'Can I see who doesn\'t follow me back?',
+      answer: 'Yes! The Following Manager compares your followers and following lists to show who doesn\'t follow you back. You can then bulk unfollow to clean up your social graph.'
+    },
+    {
+      question: 'Can I download tracks from SoundCloud?',
+      answer: 'SC Toolkit helps you download tracks where the artist has enabled downloads or provided a purchase link. We respect artist preferences and never bypass download restrictions.'
+    },
+    {
+      question: 'What is Activity to Playlist?',
+      answer: 'Activity to Playlist pulls the latest tracks from your SoundCloud activity feed — songs recently posted by artists you follow — and lets you save them as a new playlist before they get buried in your feed.'
     },
     {
       question: 'Does SC Toolkit work with private playlists?',
@@ -135,8 +180,18 @@ function Home() {
     setOpenFAQ(openFAQ === index ? null : index);
   };
 
+  const socialProofStats = [
+    { icon: Zap, label: '10+ Tools', description: 'Powerful features' },
+    { icon: Lock, label: 'Secure', description: 'OAuth & encrypted' },
+    { icon: Heart, label: '100% Free', description: 'No hidden costs' },
+    { icon: Palette, label: 'Dark Mode', description: 'Light & dark themes' }
+  ];
+
   return (
     <div className="min-h-screen transition-colors duration-200" style={{ background: 'var(--sc-light-gray)', color: 'var(--sc-text-dark)' }}>
+      {/* Structured Data for SEO */}
+      <StructuredData faqs={faqs} />
+
       {/* Navigation */}
       <nav className="fixed top-0 left-0 right-0 z-50 flex items-center justify-center pt-4 sm:pt-6">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 w-full">
@@ -172,10 +227,10 @@ function Home() {
             className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl xl:text-8xl font-bold mb-4 sm:mb-6 leading-tight"
             style={{ color: 'var(--sc-text-dark)' }}
           >
-            Smarter SoundCloud
+            The Ultimate SoundCloud
             <br />
             <span className="bg-gradient-to-r from-[#FF5500] to-[#E64A00] bg-clip-text text-transparent">
-              Playlists
+              Toolkit
             </span>
           </motion.h1>
           <motion.p 
@@ -185,7 +240,7 @@ function Home() {
             className="text-base sm:text-lg md:text-xl mb-8 sm:mb-10 max-w-2xl mx-auto leading-relaxed px-4"
             style={{ color: 'var(--sc-text-light)' }}
           >
-            Organize, merge, and clean your SoundCloud music in ways the native app can't. Powerful tools for power users.
+            Organize playlists, manage followers, download tracks, and clean up your SoundCloud in ways the native app can't. Free for all users.
           </motion.p>
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -196,44 +251,74 @@ function Home() {
               onClick={handleCTAClick}
               className="px-10 py-4 bg-gradient-to-r from-[#FF5500] to-[#E64A00] text-white font-semibold rounded-lg hover:shadow-xl hover:shadow-orange-500/30 transition-all text-lg"
             >
-              {isAuthenticated ? 'Go to Dashboard →' : 'Login with SoundCloud'}
+              {isAuthenticated ? 'Go to Dashboard →' : 'Get Started Free →'}
             </button>
           </motion.div>
+        </div>
+      </section>
+
+      {/* Social Proof Ribbon */}
+      <section className="py-8 px-6 border-y" style={{ background: 'var(--sc-white)', borderColor: 'var(--sc-light-gray)' }}>
+        <div className="max-w-5xl mx-auto">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+            {socialProofStats.map((stat, i) => (
+              <motion.div
+                key={i}
+                initial={{ opacity: 0, y: 10 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.4, delay: i * 0.1 }}
+                className="flex items-center gap-3 justify-center"
+              >
+                <div className="w-10 h-10 rounded-lg bg-[#FF5500]/10 flex items-center justify-center flex-shrink-0">
+                  <stat.icon className="w-5 h-5 text-[#FF5500]" />
+                </div>
+                <div>
+                  <div className="font-bold text-sm" style={{ color: 'var(--sc-text-dark)' }}>{stat.label}</div>
+                  <div className="text-xs" style={{ color: 'var(--sc-text-light)' }}>{stat.description}</div>
+                </div>
+              </motion.div>
+            ))}
+          </div>
         </div>
       </section>
 
       {/* Features Section */}
       <section id="features" className="py-24 px-6 transition-colors duration-200" style={{ background: 'var(--sc-white)' }}>
         <div className="max-w-7xl mx-auto">
-          <motion.h2 
+          <motion.div
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ duration: 0.6 }}
-            className="text-4xl md:text-5xl font-bold text-center mb-16"
-            style={{ color: 'var(--sc-text-dark)' }}
+            className="text-center mb-16"
           >
-            Powerful Features
-          </motion.h2>
-          <div className="grid md:grid-cols-2 gap-8">
+            <h2 className="text-4xl md:text-5xl font-bold mb-4" style={{ color: 'var(--sc-text-dark)' }}>
+              Powerful Features
+            </h2>
+            <p className="text-lg max-w-2xl mx-auto" style={{ color: 'var(--sc-text-light)' }}>
+              Everything you need to take control of your SoundCloud experience
+            </p>
+          </motion.div>
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
             {features.map((feature, i) => (
               <motion.div
                 key={i}
                 initial={{ opacity: 0, y: 20 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
-                transition={{ duration: 0.5, delay: i * 0.1 }}
+                transition={{ duration: 0.5, delay: i * 0.05 }}
                 whileHover={{ y: -4, scale: 1.02 }}
-                className="group border-2 rounded-2xl p-10 hover:border-[#FF5500] hover:shadow-2xl transition-all duration-300"
+                className="group border-2 rounded-2xl p-8 hover:border-[#FF5500] hover:shadow-2xl transition-all duration-300"
                 style={{ background: 'var(--sc-white)', borderColor: 'var(--sc-light-gray)' }}
               >
-                <div className="w-20 h-20 rounded-full bg-gradient-to-br from-[#FF5500] to-[#E64A00] flex items-center justify-center text-white mb-6">
-                  <feature.icon className="w-10 h-10" />
+                <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-[#FF5500] to-[#E64A00] flex items-center justify-center text-white mb-5">
+                  <feature.icon className="w-7 h-7" />
                 </div>
-                <h3 className="text-2xl font-bold mb-4 group-hover:text-[#FF5500] transition" style={{ color: 'var(--sc-text-dark)' }}>
+                <h3 className="text-xl font-bold mb-3 group-hover:text-[#FF5500] transition" style={{ color: 'var(--sc-text-dark)' }}>
                   {feature.title}
                 </h3>
-                <p className="leading-relaxed text-lg" style={{ color: 'var(--sc-text-light)' }}>
+                <p className="leading-relaxed" style={{ color: 'var(--sc-text-light)' }}>
                   {feature.description}
                 </p>
               </motion.div>
@@ -336,7 +421,7 @@ function Home() {
                 initial={{ opacity: 0, y: 20 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
-                transition={{ duration: 0.5, delay: index * 0.1 }}
+                transition={{ duration: 0.5, delay: index * 0.05 }}
                 className="rounded-xl border-2 overflow-hidden hover:border-[#FF5500] transition-all duration-300"
                 style={{ background: 'var(--sc-white)', borderColor: 'var(--sc-light-gray)' }}
               >
@@ -392,11 +477,36 @@ function Home() {
             </div>
             <h2 className="text-3xl font-bold mb-4" style={{ color: 'var(--sc-text-dark)' }}>Secure & Private</h2>
             <p className="text-lg leading-relaxed mb-6" style={{ color: 'var(--sc-text-light)' }}>
-              SC Toolkit uses official SoundCloud OAuth authentication. We never store your password and only request the minimum permissions needed. Your data stays private and secure.
+              SC Toolkit uses official SoundCloud OAuth authentication. We never store your password and only request the minimum permissions needed. All tokens are encrypted with AES-256-GCM. Your data stays private and secure.
             </p>
             <Link to="/privacy" className="text-[#FF5500] hover:text-[#E64A00] font-semibold">
               View Privacy Policy →
             </Link>
+          </motion.div>
+        </div>
+      </section>
+
+      {/* Final CTA */}
+      <section className="py-20 px-6 bg-gradient-to-b from-transparent to-[#FF5500]/5">
+        <div className="max-w-3xl mx-auto text-center">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.6 }}
+          >
+            <h2 className="text-3xl md:text-4xl font-bold mb-4" style={{ color: 'var(--sc-text-dark)' }}>
+              Ready to level up your SoundCloud?
+            </h2>
+            <p className="text-lg mb-8" style={{ color: 'var(--sc-text-light)' }}>
+              Join thousands of power users who manage their SoundCloud with SC Toolkit. It's free, secure, and takes 30 seconds to get started.
+            </p>
+            <button 
+              onClick={handleCTAClick}
+              className="px-10 py-4 bg-gradient-to-r from-[#FF5500] to-[#E64A00] text-white font-semibold rounded-lg hover:shadow-xl hover:shadow-orange-500/30 transition-all text-lg"
+            >
+              {isAuthenticated ? 'Go to Dashboard →' : 'Get Started Free →'}
+            </button>
           </motion.div>
         </div>
       </section>
@@ -424,4 +534,3 @@ function Home() {
 }
 
 export default Home;
-

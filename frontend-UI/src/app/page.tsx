@@ -1,50 +1,45 @@
 import Image from "next/image";
 import Link from "next/link";
 import { StructuredData } from "@/components/StructuredData";
-import { Layers, Heart, ArrowUpDown, Link2, Check, Lock, Zap, RefreshCw, Globe, Shield } from "lucide-react";
+import { 
+  Layers, Heart, ArrowUpDown, Link2, Check, Lock, Zap, RefreshCw, Globe, Shield, 
+  Radio, UserMinus, ThumbsDown, Download, HeartPulse, Link as LinkIcon, Music, Settings, LogIn 
+} from "lucide-react";
 
 // FAQ data - used for both display and structured data
 const faqs = [
   {
     question: "Is SC Toolkit free to use?",
-    answer:
-      "Yes, SC Toolkit is completely free to use. We provide powerful playlist management tools at no cost to help you organize your SoundCloud music. There are no hidden fees, premium tiers, or subscription requirements.",
+    answer: "Yes, SC Toolkit is completely free to use. We provide powerful playlist management and social tools at no cost to help you organize your SoundCloud music."
   },
   {
     question: "How secure is my SoundCloud account?",
-    answer:
-      "Your account security is our top priority. We use official SoundCloud OAuth authentication, which means we never see or store your password. We only request the minimum permissions needed to manage your playlists, and all tokens are encrypted at rest using AES-256-GCM encryption.",
+    answer: "Your account security is our top priority. We use official SoundCloud OAuth authentication, which means we never see or store your password. We only request the minimum permissions needed to manage your playlists, and all tokens are encrypted at rest with AES-256-GCM."
   },
   {
     question: "Can I merge playlists with more than 500 tracks?",
-    answer:
-      "SoundCloud has a limit of 500 tracks per playlist. When merging playlists, we automatically cap the result at 500 tracks and remove duplicates to ensure your merged playlist is valid. If you have more tracks, we'll include the first 500 unique tracks.",
+    answer: "Yes! When merging playlists that exceed 500 tracks, SC Toolkit automatically splits them into multiple playlists (e.g., Part 1/3, Part 2/3, Part 3/3) so you don't lose a single track."
   },
   {
     question: "What happens to my original playlists?",
-    answer:
-      "Your original playlists remain completely untouched. When you merge playlists or create new ones from your likes, we create new playlists rather than modifying existing ones. You have full control over your music library.",
+    answer: "Your original playlists remain completely untouched. When you merge playlists or create new ones from your likes, we create new playlists rather than modifying existing ones. You have full control over your music library."
   },
   {
-    question: "Can I undo changes made to my playlists?",
-    answer:
-      "When using the Playlist Modifier, you can undo the last applied order. However, we recommend being careful with playlist modifications as SoundCloud doesn't provide a built-in undo feature. Always review changes before saving.",
+    question: "Can I see who doesn't follow me back?",
+    answer: "Yes! The Following Manager compares your followers and following lists to show who doesn't follow you back. You can then bulk unfollow to clean up your social graph."
+  },
+  {
+    question: "Can I download tracks from SoundCloud?",
+    answer: "SC Toolkit helps you download tracks where the artist has enabled downloads or provided a purchase link. We respect artist preferences and never bypass download restrictions."
+  },
+  {
+    question: "What is Activity to Playlist?",
+    answer: "Activity to Playlist pulls the latest tracks from your SoundCloud activity feed — songs recently posted by artists you follow — and lets you save them as a new playlist before they get buried in your feed."
   },
   {
     question: "Does SC Toolkit work with private playlists?",
-    answer:
-      "Yes, SC Toolkit works with both public and private playlists. As long as you have access to the playlists through your SoundCloud account, you can use all our tools to organize them.",
-  },
-  {
-    question: "How does SC Toolkit handle duplicate tracks?",
-    answer:
-      "Our smart deduplication system identifies duplicate tracks across your playlists by comparing track IDs, titles, and artists. When merging playlists or cleaning up your library, duplicates are automatically detected and you can choose to remove them with a single click.",
-  },
-  {
-    question: "Is SC Toolkit affiliated with SoundCloud?",
-    answer:
-      "No, SC Toolkit is not affiliated with, endorsed by, or connected to SoundCloud. This is an independent tool created to enhance the SoundCloud user experience. We use SoundCloud's official public API with proper OAuth authentication.",
-  },
+    answer: "Yes, SC Toolkit works with both public and private playlists. As long as you have access to the playlists through your SoundCloud account, you can use all our tools to organize them."
+  }
 ];
 
 // Features data
@@ -52,85 +47,111 @@ const features = [
   {
     icon: Layers,
     title: "Combine Playlists",
-    description:
-      "Merge multiple playlists into one unified collection. Automatically detect and remove duplicate tracks across all sources. Perfect for consolidating your music library or creating mega-playlists from your favorite collections.",
+    description: "Merge multiple playlists into one unified collection. Automatically detect and remove duplicate tracks across all sources. Perfect for consolidating your music library."
   },
   {
     icon: Heart,
-    title: "Likes to Playlist",
-    description:
-      "Transform your liked tracks into organized playlists. Select from thousands of favorites and batch-create playlists with custom names. Never lose track of your favorite discoveries again.",
+    title: "Likes → Playlist",
+    description: "Transform your liked tracks into organized playlists. Select from thousands of favorites and batch-create playlists with custom names."
   },
   {
     icon: ArrowUpDown,
     title: "Playlist Modifier",
-    description:
-      "Take full control of your playlists. Reorder tracks with drag-and-drop, remove unwanted songs, and apply smart sorting by title, artist, date, duration, or BPM. Your playlists, your way.",
+    description: "Take full control of your playlists. Reorder tracks with drag-and-drop, remove unwanted songs, and apply smart sorting by title, artist, date, duration, or BPM."
+  },
+  {
+    icon: Radio,
+    title: "Activity to Playlist",
+    description: "Turn your SoundCloud activity feed into a curated playlist. Capture recently posted tracks from artists you follow before they get buried."
+  },
+  {
+    icon: UserMinus,
+    title: "Following Manager",
+    description: "See who doesn't follow you back, clean up your following list, and bulk unfollow accounts. Take control of your SoundCloud social graph."
+  },
+  {
+    icon: ThumbsDown,
+    title: "Like Manager",
+    description: "Browse, search, and bulk unlike tracks to keep your liked collection focused. Clean up thousands of stale likes in seconds."
+  },
+  {
+    icon: Download,
+    title: "Downloads",
+    description: "Download tracks directly where the artist has enabled downloads or provided a purchase link. No third-party downloaders needed."
   },
   {
     icon: Link2,
-    title: "Link Resolver",
-    description:
-      "Get instant metadata from any SoundCloud URL. Resolve tracks, playlists, and user profiles to extract detailed information. Perfect for research, organization, and discovery.",
+    title: "Batch Link Resolver",
+    description: "Paste multiple SoundCloud URLs and resolve them all at once. Get instant metadata for tracks, playlists, and users in bulk."
   },
+  {
+    icon: HeartPulse,
+    title: "Playlist Health Check",
+    description: "Scan your playlists for blocked, deleted, or unstreamable tracks and clean them up. Keep your playlists in perfect shape."
+  },
+  {
+    icon: LinkIcon,
+    title: "Link Resolver",
+    description: "Get instant metadata from any SoundCloud URL. Resolve tracks, playlists, and user profiles to extract detailed information."
+  }
 ];
 
 // Benefits data
 const benefits = [
-  "Organize thousands of tracks with advanced playlist management tools",
-  "Automatically detect and remove duplicate tracks across playlists",
-  "Batch edit and reorganize your entire music library efficiently",
-  "Get insights and analytics from SoundCloud links and metadata",
-  "Smart sorting algorithms (by BPM, duration, artist, date added)",
-  "No limits - handle playlists with hundreds of tracks at once",
+  "Merge multiple playlists with automatic duplicate removal",
+  "Turn liked tracks or activity feed into organized playlists",
+  "Download tracks with available download or purchase links",
+  "Manage your following list — find who doesn't follow back",
+  "Bulk operations: unlike tracks, unfollow users, resolve links",
+  "Smart playlist health checks for blocked or deleted tracks",
+  "Dark and light theme to match your preference",
+  "100% free with secure OAuth — your password is never stored"
 ];
 
-// User personas
+// User personas (kept from Next.js version as it's good content)
 const userTypes = [
   {
     title: "DJs & Producers",
     description:
-      "Build perfect sets by merging genre-specific playlists. Organize tracks by BPM for seamless mixing. Keep your crate digging discoveries organized and ready for your next performance.",
+      "Build perfect sets by merging genre-specific playlists. Organize tracks by BPM for seamless mixing. Keep your crate digging discoveries organized."
   },
   {
     title: "Music Curators",
     description:
-      "Manage large collections across multiple playlists. Remove duplicates that accumulate over time. Create themed compilations by combining your best discoveries.",
+      "Manage large collections across multiple playlists. Remove duplicates that accumulate over time. Create themed compilations by combining your best discoveries."
   },
   {
     title: "Collectors & Archivists",
     description:
-      "Archive your liked tracks before they disappear. Organize years of music discovery into meaningful collections. Never lose a track to SoundCloud's content changes.",
+      "Archive your liked tracks before they disappear. Organize years of music discovery into meaningful collections. Never lose a track to content changes."
   },
   {
     title: "Power Listeners",
     description:
-      "Tame playlist sprawl with smart organization tools. Create the perfect workout, study, or mood playlists. Enjoy your music without the clutter of duplicates.",
-  },
+      "Tame playlist sprawl with smart organization tools. Create the perfect workout, study, or mood playlists. Enjoy your music without the clutter of duplicates."
+  }
 ];
 
-// Problems we solve
-const problems = [
+// Steps data from Home.tsx
+const steps = [
   {
-    title: "Duplicate Tracks Everywhere",
-    description:
-      "The same track appears in multiple playlists, cluttering your library and making listening repetitive. Our deduplication tools scan across all your playlists to identify and remove duplicates.",
+    step: '1',
+    icon: LogIn,
+    title: 'Connect',
+    description: 'Sign in securely with your SoundCloud account using OAuth'
   },
   {
-    title: "Playlist Sprawl",
-    description:
-      "Years of saving tracks has left you with dozens of disorganized playlists. Combine related playlists into cohesive collections without losing any tracks.",
+    step: '2',
+    icon: Settings,
+    title: 'Organize',
+    description: 'Use 10+ powerful tools to merge, sort, clean, and manage your library'
   },
   {
-    title: "Manual Reordering Tedium",
-    description:
-      "SoundCloud's native reordering is painfully slow for large playlists. Our batch operations and smart sorting let you reorganize hundreds of tracks in seconds.",
-  },
-  {
-    title: "Lost Liked Tracks",
-    description:
-      "Your likes are a graveyard of forgotten discoveries. Convert them into organized playlists so you can actually listen to the music you've saved.",
-  },
+    step: '3',
+    icon: Music,
+    title: 'Enjoy',
+    description: 'Export your organized playlists back to SoundCloud instantly'
+  }
 ];
 
 export default function Home() {
@@ -151,30 +172,14 @@ export default function Home() {
                   height={40}
                   className="h-8 sm:h-10 w-auto object-contain"
                   priority
+                  unoptimized
                 />
               </div>
               <div className="hidden md:flex items-center gap-8 text-sm absolute left-1/2 transform -translate-x-1/2">
-                <a
-                  href="#features"
-                  className="hover:text-[#FF5500] transition"
-                >
-                  Features
-                </a>
-                <a
-                  href="#who-its-for"
-                  className="hover:text-[#FF5500] transition"
-                >
-                  Who It&apos;s For
-                </a>
-                <a
-                  href="#how-it-works"
-                  className="hover:text-[#FF5500] transition"
-                >
-                  How It Works
-                </a>
-                <a href="#faq" className="hover:text-[#FF5500] transition">
-                  FAQ
-                </a>
+                <a href="#features" className="hover:text-[#FF5500] transition">Features</a>
+                <a href="#benefits" className="hover:text-[#FF5500] transition">Benefits</a>
+                <a href="#how-it-works" className="hover:text-[#FF5500] transition">How It Works</a>
+                <a href="#faq" className="hover:text-[#FF5500] transition">FAQ</a>
               </div>
               <div className="flex items-center">
                 <Link
@@ -192,18 +197,19 @@ export default function Home() {
         <section className="pt-24 sm:pt-32 md:pt-40 pb-16 sm:pb-24 md:pb-32 px-4 sm:px-6 relative overflow-hidden bg-gradient-to-b from-[#FF5500]/5 to-transparent">
           <div className="max-w-4xl mx-auto text-center relative z-10">
             <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold mb-4 sm:mb-6 leading-tight text-[#333333]">
-              Smarter SoundCloud Playlist Management
+              The Ultimate SoundCloud <br />
+              <span className="bg-gradient-to-r from-[#FF5500] to-[#E64A00] bg-clip-text text-transparent">
+                Toolkit
+              </span>
             </h1>
             <p className="text-base sm:text-lg md:text-xl text-[#666666] mb-8 sm:mb-10 max-w-2xl mx-auto leading-relaxed px-4">
-              SC Toolkit helps SoundCloud power users organize, merge, and clean
-              playlists. Remove duplicates, manage thousands of tracks, and
-              build better playlists faster than the native app allows.
+              Organize playlists, manage followers, download tracks, and clean up your SoundCloud in ways the native app can't. Free for all users.
             </p>
             <Link
               href="/login"
-              className="inline-block px-8 sm:px-10 py-3 sm:py-4 bg-gradient-to-r from-[#FF5500] to-[#E64A00] text-white font-semibold rounded-lg hover:shadow-xl hover:shadow-orange-500/30 transition-all text-base sm:text-lg"
+              className="inline-block px-10 py-4 bg-gradient-to-r from-[#FF5500] to-[#E64A00] text-white font-semibold rounded-lg hover:shadow-xl hover:shadow-orange-500/30 transition-all text-lg"
             >
-              Login with SoundCloud
+              Get Started Free →
             </Link>
             <p className="mt-4 text-xs sm:text-sm text-[#999999]">
               Free to use. No credit card required.
@@ -211,71 +217,71 @@ export default function Home() {
           </div>
         </section>
 
-        {/* What SC Toolkit Does Section */}
-        <section className="py-20 px-6 bg-white">
-          <div className="max-w-4xl mx-auto">
-            <h2 className="text-3xl md:text-4xl font-bold text-center mb-8 text-[#333333]">
-              What SC Toolkit Does
-            </h2>
-            <div className="prose prose-lg max-w-none text-[#666666] leading-relaxed">
-              <p className="text-center text-lg mb-6">
-                SC Toolkit is a free web application that extends SoundCloud
-                with powerful playlist management features. While SoundCloud is
-                great for discovering and streaming music, its native playlist
-                tools are limited—especially for users with large libraries.
-              </p>
-              <p className="text-center text-lg">
-                We connect securely to your SoundCloud account using official
-                OAuth authentication, giving you the ability to merge playlists,
-                remove duplicates, convert likes to playlists, and reorganize
-                your music collection in ways that would take hours to do
-                manually.
-              </p>
+        {/* Social Proof Ribbon - NEW */}
+        <section className="py-8 px-6 border-y bg-white border-gray-200">
+          <div className="max-w-5xl mx-auto">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+              {[
+                { icon: Zap, label: '10+ Tools', description: 'Powerful features' },
+                { icon: Lock, label: 'Secure', description: 'OAuth & encrypted' },
+                { icon: Heart, label: '100% Free', description: 'No hidden costs' },
+                { icon: Layers, label: 'Unlimited', description: 'Playlist management' }
+              ].map((stat, i) => (
+                <div key={i} className="flex items-center gap-3 justify-center">
+                  <div className="w-10 h-10 rounded-lg bg-[#FF5500]/10 flex items-center justify-center flex-shrink-0">
+                    <stat.icon className="w-5 h-5 text-[#FF5500]" />
+                  </div>
+                  <div>
+                    <div className="font-bold text-sm text-[#333333]">{stat.label}</div>
+                    <div className="text-xs text-[#666666]">{stat.description}</div>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         </section>
 
-        {/* Key Features Section */}
+        {/* Features Section - UPDATED */}
         <section id="features" className="py-24 px-6 bg-[#F2F2F2]">
           <div className="max-w-7xl mx-auto">
-            <h2 className="text-4xl md:text-5xl font-bold text-center mb-16 text-[#333333]">
-              Key Features
-            </h2>
-            <div className="grid md:grid-cols-2 gap-8">
+            <div className="text-center mb-16">
+              <h2 className="text-4xl md:text-5xl font-bold mb-4 text-[#333333]">
+                Powerful Features
+              </h2>
+              <p className="text-lg max-w-2xl mx-auto text-[#666666]">
+                Everything you need to take control of your SoundCloud experience
+              </p>
+            </div>
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
               {features.map((feature, i) => {
                 const IconComponent = feature.icon;
                 return (
-                  <article
+                  <div
                     key={i}
-                    className="group bg-white border-2 border-gray-200 rounded-2xl p-10 hover:border-[#FF5500] hover:shadow-2xl hover:-translate-y-1 transition-all duration-300"
+                    className="group bg-white border-2 border-gray-200 rounded-2xl p-8 hover:border-[#FF5500] hover:shadow-2xl hover:-translate-y-1 transition-all duration-300"
                   >
-                    <div className="w-20 h-20 rounded-full bg-gradient-to-br from-[#FF5500] to-[#E64A00] flex items-center justify-center text-white mb-6">
-                      <IconComponent className="w-10 h-10" strokeWidth={2} />
+                    <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-[#FF5500] to-[#E64A00] flex items-center justify-center text-white mb-5">
+                      <IconComponent className="w-7 h-7" strokeWidth={2} />
                     </div>
-                    <h3 className="text-2xl font-bold mb-4 text-[#333333] group-hover:text-[#FF5500] transition">
+                    <h3 className="text-xl font-bold mb-3 text-[#333333] group-hover:text-[#FF5500] transition">
                       {feature.title}
                     </h3>
-                    <p className="text-[#666666] leading-relaxed text-lg">
+                    <p className="text-[#666666] leading-relaxed">
                       {feature.description}
                     </p>
-                  </article>
+                  </div>
                 );
               })}
             </div>
           </div>
         </section>
 
-        {/* Why SC Toolkit Is Better Section */}
-        <section className="py-24 px-6 bg-white">
+        {/* Benefits Section - UPDATED */}
+        <section id="benefits" className="py-24 px-6 bg-white">
           <div className="max-w-6xl mx-auto">
-            <h2 className="text-4xl md:text-5xl font-bold text-center mb-8 text-[#333333]">
-              Why SC Toolkit Is Better Than the SoundCloud App
+            <h2 className="text-4xl md:text-5xl font-bold text-center mb-16 text-[#333333]">
+              Built for SoundCloud Power Users
             </h2>
-            <p className="text-center text-lg text-[#666666] mb-16 max-w-3xl mx-auto">
-              SoundCloud&apos;s native app is designed for listening, not
-              library management. Here&apos;s what SC Toolkit offers that
-              SoundCloud doesn&apos;t:
-            </p>
             <div className="grid md:grid-cols-2 gap-6">
               {benefits.map((benefit, i) => (
                 <div
@@ -283,7 +289,7 @@ export default function Home() {
                   className="flex items-start gap-4 bg-[#F2F2F2] p-6 rounded-xl border border-gray-200"
                 >
                   <div className="flex-shrink-0 w-6 h-6 rounded-full bg-[#FF5500] flex items-center justify-center text-white font-bold text-sm mt-1">
-                    ✓
+                    <Check className="w-4 h-4" />
                   </div>
                   <p className="text-[#666666] text-lg leading-relaxed">
                     {benefit}
@@ -294,52 +300,21 @@ export default function Home() {
           </div>
         </section>
 
-        {/* Common Problems We Solve Section */}
-        <section className="py-24 px-6 bg-[#F2F2F2]">
-          <div className="max-w-6xl mx-auto">
-            <h2 className="text-4xl md:text-5xl font-bold text-center mb-8 text-[#333333]">
-              Common Problems We Solve
-            </h2>
-            <p className="text-center text-lg text-[#666666] mb-16 max-w-3xl mx-auto">
-              If you&apos;ve been using SoundCloud for years, you probably
-              recognize these frustrations. SC Toolkit was built specifically to
-              solve them.
-            </p>
-            <div className="grid md:grid-cols-2 gap-8">
-              {problems.map((problem, i) => (
-                <article
-                  key={i}
-                  className="bg-white p-8 rounded-2xl border border-gray-200"
-                >
-                  <h3 className="text-xl font-bold mb-3 text-[#333333]">
-                    {problem.title}
-                  </h3>
-                  <p className="text-[#666666] leading-relaxed">
-                    {problem.description}
-                  </p>
-                </article>
-              ))}
-            </div>
-          </div>
-        </section>
-
         {/* Who This Tool Is For Section */}
-        <section id="who-its-for" className="py-24 px-6 bg-white">
+        <section id="who-its-for" className="py-24 px-6 bg-[#F2F2F2]">
           <div className="max-w-6xl mx-auto">
             <h2 className="text-4xl md:text-5xl font-bold text-center mb-8 text-[#333333]">
               Who This Tool Is For
             </h2>
             <p className="text-center text-lg text-[#666666] mb-16 max-w-3xl mx-auto">
               SC Toolkit is designed for SoundCloud power users who take their
-              music organization seriously. Whether you&apos;re a professional
-              or just passionate about music, these tools will transform how you
-              manage your library.
+              music organization seriously.
             </p>
             <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
               {userTypes.map((user, i) => (
-                <article
+                <div
                   key={i}
-                  className="bg-[#F2F2F2] p-6 rounded-2xl border border-gray-200 text-center"
+                  className="bg-white p-6 rounded-2xl border border-gray-200 text-center"
                 >
                   <h3 className="text-lg font-bold mb-3 text-[#333333]">
                     {user.title}
@@ -347,53 +322,26 @@ export default function Home() {
                   <p className="text-[#666666] text-sm leading-relaxed">
                     {user.description}
                   </p>
-                </article>
+                </div>
               ))}
             </div>
           </div>
         </section>
 
-        {/* How It Works Section */}
-        <section id="how-it-works" className="py-24 px-6 bg-[#F2F2F2]">
+        {/* How It Works Section - UPDATED */}
+        <section id="how-it-works" className="py-24 px-6 bg-white">
           <div className="max-w-6xl mx-auto">
             <h2 className="text-4xl md:text-5xl font-bold text-center mb-20 text-[#333333]">
               How It Works
             </h2>
             <div className="grid md:grid-cols-3 gap-8">
-              {[
-                {
-                  step: "1",
-                  icon: Lock,
-                  title: "Connect",
-                  description:
-                    "Sign in securely with your SoundCloud account using official OAuth authentication. We never see your password.",
-                },
-                {
-                  step: "2",
-                  icon: Layers,
-                  title: "Organize",
-                  description:
-                    "Use our powerful tools to merge playlists, sort tracks, remove duplicates, and convert your likes into playlists.",
-                },
-                {
-                  step: "3",
-                  icon: Check,
-                  title: "Enjoy",
-                  description:
-                    "Your organized playlists sync directly back to SoundCloud. Enjoy your perfectly curated music library.",
-                },
-              ].map((item, i) => {
+              {steps.map((item, i) => {
                 const IconComponent = item.icon;
                 return (
-                  <article key={i} className="relative text-center">
-                    <div className="mb-6">
-                      <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-[#FF5500] text-white font-bold text-2xl mb-4">
-                        {item.step}
-                      </div>
-                    </div>
+                  <div key={i} className="text-center">
                     <div className="flex justify-center mb-4">
-                      <div className="w-16 h-16 rounded-full bg-[#F2F2F2] border-2 border-gray-200 flex items-center justify-center">
-                        <IconComponent className="w-8 h-8 text-[#FF5500]" strokeWidth={2} />
+                      <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[#FF5500] to-[#E64A00] flex items-center justify-center text-white">
+                        <IconComponent className="w-8 h-8" strokeWidth={2} />
                       </div>
                     </div>
                     <h3 className="text-2xl font-bold mb-3 text-[#333333]">
@@ -402,7 +350,7 @@ export default function Home() {
                     <p className="text-[#666666] text-lg leading-relaxed">
                       {item.description}
                     </p>
-                  </article>
+                  </div>
                 );
               })}
             </div>
@@ -410,9 +358,9 @@ export default function Home() {
         </section>
 
         {/* Security & Privacy Section */}
-        <section className="py-24 px-6 bg-white">
+        <section className="py-24 px-6 bg-[#F2F2F2]">
           <div className="max-w-3xl mx-auto">
-            <div className="bg-[#F2F2F2] rounded-3xl p-12 text-center border-2 border-gray-200">
+            <div className="bg-white rounded-3xl p-12 text-center border-2 border-gray-200 shadow-xl">
               <div className="w-20 h-20 rounded-full bg-gradient-to-br from-[#FF5500] to-[#E64A00] flex items-center justify-center text-white mx-auto mb-6">
                 <Shield className="w-10 h-10" strokeWidth={2} />
               </div>
@@ -427,13 +375,13 @@ export default function Home() {
                 secure.
               </p>
               <div className="flex flex-wrap justify-center gap-4 text-sm text-[#666666] mb-6">
-                <span className="bg-white px-4 py-2 rounded-full border border-gray-200 flex items-center gap-2">
+                <span className="bg-[#F2F2F2] px-4 py-2 rounded-full border border-gray-200 flex items-center gap-2">
                   <Lock className="w-4 h-4 text-[#FF5500]" /> OAuth 2.0 + PKCE
                 </span>
-                <span className="bg-white px-4 py-2 rounded-full border border-gray-200 flex items-center gap-2">
+                <span className="bg-[#F2F2F2] px-4 py-2 rounded-full border border-gray-200 flex items-center gap-2">
                   <Shield className="w-4 h-4 text-[#FF5500]" /> AES-256-GCM Encryption
                 </span>
-                <span className="bg-white px-4 py-2 rounded-full border border-gray-200 flex items-center gap-2">
+                <span className="bg-[#F2F2F2] px-4 py-2 rounded-full border border-gray-200 flex items-center gap-2">
                   <Check className="w-4 h-4 text-[#FF5500]" /> No Password Storage
                 </span>
               </div>
@@ -447,64 +395,7 @@ export default function Home() {
           </div>
         </section>
 
-        {/* Technical Capabilities Section */}
-        <section className="py-24 px-6 bg-[#F2F2F2]">
-          <div className="max-w-4xl mx-auto">
-            <h2 className="text-4xl md:text-5xl font-bold text-center mb-8 text-[#333333]">
-              Technical Capabilities
-            </h2>
-            <p className="text-center text-lg text-[#666666] mb-12 max-w-3xl mx-auto">
-              Built with modern web technologies for speed, security, and
-              reliability.
-            </p>
-            <div className="grid md:grid-cols-3 gap-6">
-              <article className="bg-white p-6 rounded-xl border border-gray-200 text-center">
-                <div className="flex justify-center mb-4">
-                  <div className="w-14 h-14 rounded-full bg-[#FF5500]/10 flex items-center justify-center">
-                    <Zap className="w-7 h-7 text-[#FF5500]" strokeWidth={2} />
-                  </div>
-                </div>
-                <h3 className="font-bold text-[#333333] mb-2">
-                  Batch Operations
-                </h3>
-                <p className="text-[#666666] text-sm">
-                  Process hundreds of tracks at once. Merge, sort, and dedupe
-                  entire playlists in seconds.
-                </p>
-              </article>
-              <article className="bg-white p-6 rounded-xl border border-gray-200 text-center">
-                <div className="flex justify-center mb-4">
-                  <div className="w-14 h-14 rounded-full bg-[#FF5500]/10 flex items-center justify-center">
-                    <RefreshCw className="w-7 h-7 text-[#FF5500]" strokeWidth={2} />
-                  </div>
-                </div>
-                <h3 className="font-bold text-[#333333] mb-2">
-                  Respectful API Usage
-                </h3>
-                <p className="text-[#666666] text-sm">
-                  We follow SoundCloud&apos;s API guidelines and rate limits.
-                  Your account stays safe.
-                </p>
-              </article>
-              <article className="bg-white p-6 rounded-xl border border-gray-200 text-center">
-                <div className="flex justify-center mb-4">
-                  <div className="w-14 h-14 rounded-full bg-[#FF5500]/10 flex items-center justify-center">
-                    <Globe className="w-7 h-7 text-[#FF5500]" strokeWidth={2} />
-                  </div>
-                </div>
-                <h3 className="font-bold text-[#333333] mb-2">
-                  Works Everywhere
-                </h3>
-                <p className="text-[#666666] text-sm">
-                  Web-based tool that works on any device with a modern browser.
-                  No downloads required.
-                </p>
-              </article>
-            </div>
-          </div>
-        </section>
-
-        {/* FAQ Section */}
+        {/* FAQ Section - UPDATED */}
         <section id="faq" className="py-24 px-6 bg-white">
           <div className="max-w-4xl mx-auto">
             <h2 className="text-4xl md:text-5xl font-bold text-center mb-16 text-[#333333]">

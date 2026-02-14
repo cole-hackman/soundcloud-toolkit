@@ -13,6 +13,10 @@ const faqs = [
     answer: "Yes, SC Toolkit is completely free to use. We provide powerful playlist management and social tools at no cost to help you organize your SoundCloud music."
   },
   {
+    question: "Do I need a SoundCloud Go+ or Pro subscription?",
+    answer: "No! SC Toolkit works with all SoundCloud accounts, including free ones. You do not need a paid subscription to use any of our features."
+  },
+  {
     question: "How secure is my SoundCloud account?",
     answer: "Your account security is our top priority. We use official SoundCloud OAuth authentication, which means we never see or store your password. We only request the minimum permissions needed to manage your playlists, and all tokens are encrypted at rest with AES-256-GCM."
   },

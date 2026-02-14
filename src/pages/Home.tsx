@@ -4,7 +4,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import {
   Layers, Heart, ArrowUpDown, Link as LinkIcon, Shield, LogIn, Settings,
   Music, Check, ChevronDown, Radio, UserMinus, ThumbsDown, Download,
-  Link2, HeartPulse, Zap, Lock, Palette
+  HeartPulse, Zap, Lock, Palette
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import StructuredData from '../components/StructuredData';
@@ -73,6 +73,11 @@ function Home() {
       description: 'Take full control of your playlists. Reorder tracks with drag-and-drop, remove unwanted songs, and apply smart sorting by title, artist, date, duration, or BPM.'
     },
     {
+      icon: Download,
+      title: 'Downloads',
+      description: 'Download tracks directly where the artist has enabled downloads or provided a purchase link. No third-party downloaders needed.'
+    },
+    {
       icon: Radio,
       title: 'Activity to Playlist',
       description: 'Turn your SoundCloud activity feed into a curated playlist. Capture recently posted tracks from artists you follow before they get buried.'
@@ -86,16 +91,6 @@ function Home() {
       icon: ThumbsDown,
       title: 'Like Manager',
       description: 'Browse, search, and bulk unlike tracks to keep your liked collection focused. Clean up thousands of stale likes in seconds.'
-    },
-    {
-      icon: Download,
-      title: 'Downloads',
-      description: 'Download tracks directly where the artist has enabled downloads or provided a purchase link. No third-party downloaders needed.'
-    },
-    {
-      icon: Link2,
-      title: 'Batch Link Resolver',
-      description: 'Paste multiple SoundCloud URLs and resolve them all at once. Get instant metadata for tracks, playlists, and users in bulk.'
     },
     {
       icon: HeartPulse,

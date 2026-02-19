@@ -14,9 +14,11 @@ interface Following {
   permalink_url: string;
   followers_count: number;
   track_count: number;
+  reposts_count?: number;
+  last_modified?: string;
 }
 
-type SortOption = "alpha" | "followers" | "tracks";
+type SortOption = "alpha" | "followers" | "tracks" | "reposts" | "last_modified";
 
 export default function FollowingManagerPage() {
   const [followings, setFollowings] = useState<Following[]>([]);
@@ -27,6 +29,7 @@ export default function FollowingManagerPage() {
   const [sort, setSort] = useState<SortOption>("alpha");
   const [followers, setFollowers] = useState<Set<number>>(new Set());
   const [filterMode, setFilterMode] = useState<"all" | "not-following-back">("all");
+  const [progress, setProgress] = useState<{ current: number; total: number } | null>(null);
 
   useEffect(() => {
     fetchFollowings();
@@ -78,31 +81,69 @@ export default function FollowingManagerPage() {
     if (!confirm(`Unfollow ${selected.size} user${selected.size > 1 ? "s" : ""}? This cannot be undone.`)) return;
 
     setRemoving(true);
+    setProgress({ current: 0, total: selected.size });
+    
+    // Chunk size for bulk operations (SoundCloud API limit usually 50-100)
+    // We use smaller chunks to be safe and show progress
+    const CHUNK_SIZE = 50;
+    const allUserIds = Array.from(selected);
+    const successfullyRemoved = new Set<number>();
+    
     try {
-      const userIds = Array.from(selected);
-      const response = await fetch(`${API_BASE}/api/followings/bulk-unfollow`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ userIds }),
-      });
-      if (response.ok) {
-        const data = await response.json();
-        const removedIds = new Set(
-          data.results
-            .filter((r: { status: string }) => r.status === "ok")
-            .map((r: { userId: number }) => r.userId)
-        );
-        setFollowings((prev) => prev.filter((f) => !removedIds.has(f.id)));
-        setSelected(new Set());
-      } else {
-        alert("Bulk unfollow failed");
+      for (let i = 0; i < allUserIds.length; i += CHUNK_SIZE) {
+        const chunk = allUserIds.slice(i, i + CHUNK_SIZE);
+        
+        try {
+          const response = await fetch(`${API_BASE}/api/followings/bulk-unfollow`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ userIds: chunk }),
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            data.results
+              .filter((r: { status: string; userId: number }) => r.status === "ok")
+              .forEach((r: { userId: number }) => successfullyRemoved.add(r.userId));
+          }
+        } catch (err) {
+          console.error(`Failed to unfollow chunk ${i}-${i + CHUNK_SIZE}`, err);
+        }
+
+        // Update progress
+        setProgress({ 
+          current: Math.min(i + CHUNK_SIZE, allUserIds.length), 
+          total: allUserIds.length 
+        });
       }
+      
+      // Update UI state
+      if (successfullyRemoved.size > 0) {
+        setFollowings((prev) => prev.filter((f) => !successfullyRemoved.has(f.id)));
+        
+        // Remove successfully unfollowed IDs from selection
+        setSelected(prev => {
+          const next = new Set(prev);
+          successfullyRemoved.forEach(id => next.delete(id));
+          return next;
+        });
+
+        if (successfullyRemoved.size < allUserIds.length) {
+          alert(`Unfollowed ${successfullyRemoved.size} users. Some failed.`);
+        } else {
+          // Success toast or just clear selection (already done above)
+        }
+      } else {
+        alert("Bulk unfollow failed completely");
+      }
+
     } catch (error) {
       console.error("Bulk unfollow error:", error);
-      alert("An error occurred");
+      alert("An error occurred during bulk unfollow");
     } finally {
       setRemoving(false);
+      setProgress(null);
     }
   };
 
@@ -110,6 +151,19 @@ export default function FollowingManagerPage() {
     if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
     if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
     return n.toString();
+  };
+
+  const formatDate = (dateStr?: string) => {
+    if (!dateStr) return "N/A";
+    try {
+      return new Date(dateStr).toLocaleDateString(undefined, { 
+        year: 'numeric', 
+        month: 'short', 
+        day: 'numeric' 
+      });
+    } catch {
+      return "Invalid Date";
+    }
   };
 
   const filteredFollowings = followings
@@ -121,7 +175,14 @@ export default function FollowingManagerPage() {
     .sort((a, b) => {
       if (sort === "alpha") return (a.username || "").localeCompare(b.username || "");
       if (sort === "followers") return (b.followers_count || 0) - (a.followers_count || 0);
-      return (b.track_count || 0) - (a.track_count || 0);
+      if (sort === "tracks") return (b.track_count || 0) - (a.track_count || 0);
+      if (sort === "reposts") return (b.reposts_count || 0) - (a.reposts_count || 0);
+      if (sort === "last_modified") {
+        const dateA = a.last_modified ? new Date(a.last_modified).getTime() : 0;
+        const dateB = b.last_modified ? new Date(b.last_modified).getTime() : 0;
+        return dateB - dateA; // Newest first
+      }
+      return 0;
     });
 
   return (
@@ -177,6 +238,8 @@ export default function FollowingManagerPage() {
                 <option value="alpha">A → Z</option>
                 <option value="followers">Most Followers</option>
                 <option value="tracks">Most Tracks</option>
+                <option value="reposts">Most Reposts</option>
+                <option value="last_modified">Recently Active</option>
               </select>
               
               <div className="flex bg-gray-100 dark:bg-secondary/20 p-1 rounded-lg">
@@ -218,11 +281,16 @@ export default function FollowingManagerPage() {
                   className="px-4 py-1.5 rounded-lg bg-red-500 text-white text-sm font-medium hover:bg-red-600 transition disabled:opacity-50 flex items-center gap-2"
                 >
                   {removing ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      {progress ? `Unfollowing ${progress.current}/${progress.total}...` : "Unfollowing..."}
+                    </>
                   ) : (
-                    <UserMinus className="w-4 h-4" />
+                    <>
+                      <UserMinus className="w-4 h-4" />
+                      Unfollow Selected
+                    </>
                   )}
-                  Unfollow Selected
                 </button>
               </div>
             )}
@@ -257,9 +325,22 @@ export default function FollowingManagerPage() {
                       className="w-12 h-12 rounded-full object-cover"
                     />
                     <div className="flex-1 min-w-0">
-                      <div className="font-semibold text-[#333333] dark:text-foreground text-sm truncate">{user.username}</div>
-                      <div className="text-xs text-[#666666] dark:text-muted-foreground">
-                        {formatNumber(user.followers_count || 0)} followers • {formatNumber(user.track_count || 0)} tracks
+                      <div className="flex items-center gap-2">
+                        <div className="font-semibold text-[#333333] dark:text-foreground text-sm truncate">
+                          {user.username}
+                        </div>
+                        {user.last_modified && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300">
+                             Active: {formatDate(user.last_modified)}
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-xs text-[#666666] dark:text-muted-foreground mt-0.5 flex flex-wrap gap-x-3">
+                        <span>{formatNumber(user.followers_count || 0)} followers</span>
+                        <span>{formatNumber(user.track_count || 0)} tracks</span>
+                        {user.reposts_count !== undefined && (
+                          <span>{formatNumber(user.reposts_count)} reposts</span>
+                        )}
                       </div>
                     </div>
                     <a

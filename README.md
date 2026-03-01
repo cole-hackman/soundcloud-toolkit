@@ -8,77 +8,37 @@ A web toolkit for SoundCloud power users — organize playlists, manage follower
 [![React](https://img.shields.io/badge/react-18-61dafb.svg)](#install)
 [![Vite](https://img.shields.io/badge/build-vite-646cff.svg)](#install)
 
-## Table of Contents
+## 1. What Is the Project?
 
-- [Security](#security)
-- [Background](#background)
-- [Features](#features)
-- [Install](#install)
-- [Usage](#usage)
-- [API](#api)
-- [Maintainers](#maintainers)
-- [Contributing](#contributing)
-- [License](#license)
+**SoundCloud Toolkit** is a web application designed for SoundCloud power users. It provides advanced tools to organize playlists, manage followers, bulk-unlike tracks, proxy downloads, and clean up your library using secure OAuth and a fast modern UI.
 
-## Security
+## 2. Why Was This Project Built?
 
-- **OAuth2 + PKCE** with the official SoundCloud flow. No credential storage in the frontend.
-- **Session cookie** is HMAC‑signed (`SESSION_SECRET`), `HttpOnly`, `Secure`, `SameSite=None` in production.
-- **Access/refresh tokens** are **encrypted at rest** using **AES‑256‑GCM** with a 32‑char `ENCRYPTION_KEY`.
-- **CORS allowlist** via `APP_URLS`; cookies require HTTPS and same eTLD+1 for reliability.
-- **Rate limiting** on heavy operations (merge, batch resolve, bulk unlike/unfollow).
-- **Input validation** on all API routes via `express-validator`.
-- **Helmet** security headers in production.
-- Avoid committing secrets: `.env*` is ignored; ship **.env.example** for setup.
+Managing a large SoundCloud library natively can be tedious and restrictive. Power users often struggle with organizing massive playlists, cleaning up thousands of old likes, or seeing who isn't following them back. Important tracks get buried, and managing a social graph is difficult. SoundCloud Toolkit centralizes these advanced management features into one simple interface, providing capabilities that go far beyond what the native app offers.
 
-## Background
+## 3. What Problems Did It Solve?
 
-**SoundCloud Toolkit** goes far beyond what the native SoundCloud app offers, giving power users 10+ tools to manage every aspect of their library — playlists, likes, followers, downloads, and more.
+One major challenge was dealing with SoundCloud's strict 500-track limit for playlists when users attempted to merge multiple large playlists. This was solved by implementing an algorithm that automatically detects the track count during a merge and intelligently splits the merged result into numbered, sequential playlist parts (e.g., "Merged Playlist pt. 1", "Merged Playlist pt. 2") while removing duplicates.
 
-### Tech Stack
+Another challenge was handling API rate limits during bulk operations like unliking or unfollowing. This was addressed by implementing rate limiting on the backend, processing requests in batches, and using cursor-based linked partitioning for reliable pagination of large libraries.
 
-| Layer        | Technologies                                                                                         |
-| ------------ | ---------------------------------------------------------------------------------------------------- |
-| **Frontend** | React 18, Vite, React Router, Framer Motion, Lucide icons, Vercel Analytics                          |
-| **Backend**  | Node.js, Express, Helmet, CORS, cookie-based sessions, rate limiting                                 |
-| **Database** | Prisma ORM + PostgreSQL (Neon recommended)                                                           |
-| **Auth**     | SoundCloud OAuth2 + PKCE, AES-256-GCM token encryption                                               |
-| **SEO**      | JSON-LD structured data (Organization, SoftwareApplication, FAQPage), Open Graph & Twitter Card meta |
+## 4. What Technologies Are Used?
 
-## Features
+- **Frontend**: Next.js 15, React 18, Tailwind CSS, shadcn/ui
+- **Backend**: Node.js, Express.js, Helmet, CORS
+- **Database**: PostgreSQL with Prisma ORM
+- **Authentication**: SoundCloud OAuth2 + PKCE, AES-256-GCM token encryption
+- **Deployment**: Vercel (frontend), Render / Railway (backend)
 
-### 🎵 Playlist Management
+## 5. What Did You Implement?
 
-- **Combine Playlists** — Merge multiple playlists into one, with automatic duplicate detection and removal. Auto-splits into parts when exceeding the 500-track SoundCloud limit.
-- **Playlist Modifier** — Reorder tracks via drag-and-drop, remove unwanted songs, and apply smart sorting by title, artist, date, duration, or BPM. Push the updated order back to SoundCloud.
-- **Playlist Health Check** — Scan playlists for blocked, deleted, or unstreamable tracks. Clean up dead entries to keep playlists in perfect shape.
+- **Playlist Management**: Combine multiple playlists, auto-split large playlists, remove duplicates, and health-check playlists for dead tracks.
+- **Likes & Activity**: Convert liked tracks to playlists, batch unlike tracks, and capture recent activity feeds into playlists.
+- **Social Management**: Identify non-followers and bulk unfollow accounts to clean up your social graph.
+- **Link & Metadata Tools**: Resolve any SoundCloud URL (track, playlist, or user) to normalized metadata instantly, with batching and in-memory caching.
+- **Secure Authentication**: End-to-end OAuth flow with AES-256-GCM token encryption and CSRF-protected HttpOnly cookies.
 
-### ❤️ Likes & Activity
-
-- **Likes → Playlist** — Convert your liked tracks into curated playlists. Select from thousands of favorites and batch-create playlists with custom names.
-- **Activity to Playlist** — Capture recently posted tracks from your activity feed (artists you follow) and save them as a playlist before they get buried.
-- **Like Manager** — Browse, search, and bulk unlike tracks. Clean up thousands of stale likes in seconds.
-
-### 👥 Social Management
-
-- **Following Manager** — See who doesn't follow you back, filter and search your followings list, and bulk unfollow accounts to clean up your social graph.
-
-### 🔗 Link & Metadata Tools
-
-- **Link Resolver** — Resolve any SoundCloud URL (track, playlist, or user) to normalized metadata instantly.
-- **Batch Link Resolver** — Paste multiple SoundCloud URLs and resolve them all at once with in-memory caching (5-minute TTL).
-
-### ⬇️ Downloads
-
-- **Proxy Downloads** — Download tracks where the artist has enabled downloads or provided a purchase link. Downloads are proxied through the backend for reliable delivery.
-
-### 🎨 UI & Accessibility
-
-- **Dark / Light Theme** — System-aware theme toggle persisted in local storage.
-- **Responsive Design** — Works on desktop, tablet, and mobile.
-- **Animated UI** — Smooth transitions and micro-animations via Framer Motion.
-
-## Install
+## 6. How Can Someone Run It Locally?
 
 **Requirements**
 
@@ -91,47 +51,37 @@ cd soundcloud-toolkit
 npm install
 ```
 
-Create **.env** (server) and optionally **.env.local** (frontend). Example:
+Create **.env** (server) and **frontend-UI/.env.local** (frontend). Example:
 
 ```bash
 # --- Server (.env) ---
 SOUNDCLOUD_CLIENT_ID=your_client_id
 SOUNDCLOUD_CLIENT_SECRET=your_client_secret
-SOUNDCLOUD_REDIRECT_URI=https://api.yourdomain.com/api/auth/callback
+SOUNDCLOUD_REDIRECT_URI=http://localhost:3011/api/auth/callback
 SESSION_SECRET=super_long_random_string
 ENCRYPTION_KEY=32characterslongexactly32characters!
-DATABASE_URL=postgres://...-pooler.../neondb?sslmode=require&pgbouncer=true&connection_limit=1&connect_timeout=15
-APP_URL=https://www.yourdomain.com
-APP_URLS=https://www.yourdomain.com,https://api.yourdomain.com
+DATABASE_URL=postgres://...
+APP_URL=http://localhost:3000
+APP_URLS=http://localhost:3000,http://localhost:3011
 
-# --- Frontend (.env.local) ---
-VITE_API_BASE=https://api.yourdomain.com
+# --- Frontend (frontend-UI/.env.local) ---
+NEXT_PUBLIC_API_URL=http://localhost:3011
 ```
 
 Initialize the DB schema:
 
 ```bash
 npx prisma db push
-# or
-npx prisma migrate dev
 ```
 
-## Usage
-
-### Local Development
+**Start the development servers:**
 
 ```bash
-# start frontend (Vite)
+# Run both frontend (Next.js) and backend (Express) concurrently
 npm run dev
-
-# start backend (Express on 3001)
-npm run dev:server
-
-# run both concurrently
-npm run dev:full
 ```
 
-Visit **http://localhost:5173** → **Login with SoundCloud**.
+Visit **http://localhost:3000** → **Login with SoundCloud**.
 
 ### Build & Preview
 

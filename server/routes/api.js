@@ -912,10 +912,35 @@ router.post('/followings/bulk-unfollow', authenticateUser, heavyOperationRateLim
 router.get('/reposts', authenticateUser, async (req, res) => {
   try {
     const reposts = await soundcloudClient.getReposts(req.accessToken, req.refreshToken);
+    logger.info(`[GET /api/reposts] returning ${reposts.length} reposts`);
     res.json({ collection: reposts, total_results: reposts.length });
   } catch (error) {
     logger.error('Get reposts error:', error);
     res.status(500).json({ error: 'Failed to fetch reposts' });
+  }
+});
+
+/**
+ * GET /api/reposts/debug
+ * Returns raw activity feed data to diagnose type field values from SoundCloud.
+ * Shows all unique types and a sample of items.
+ */
+router.get('/reposts/debug', authenticateUser, async (req, res) => {
+  try {
+    const items = await soundcloudClient.paginate('/me/activities/all/own', req.accessToken, req.refreshToken, 50);
+    const uniqueTypes = [...new Set(items.map(i => i.type))];
+    const sample = items.slice(0, 10).map(i => ({
+      type: i.type,
+      created_at: i.created_at,
+      origin_kind: i.origin?.kind,
+      origin_title: i.origin?.title,
+      origin_urn: i.origin?.urn,
+    }));
+    logger.info('[GET /api/reposts/debug] uniqueTypes:', uniqueTypes);
+    res.json({ total: items.length, uniqueTypes, sample });
+  } catch (error) {
+    logger.error('Reposts debug error:', error);
+    res.status(500).json({ error: error.message });
   }
 });
 

@@ -387,18 +387,48 @@ class SoundCloudClient {
   }
 
   /**
-   * Get the user's reposts by filtering the own-activity feed.
+   * Get the user's reposts by filtering their activity feeds.
+   * Tries /me/activities/all/own first, then falls back to /me/activities.
    * Returns an array of { id, urn, resourceType, title, user, artwork_url, permalink_url, created_at }.
    */
   async getReposts(accessToken, refreshToken) {
-    const items = await this.paginate('/me/activities/all/own', accessToken, refreshToken, 200);
-    const repostTypes = new Set(['track-repost', 'playlist-repost']);
+    // SoundCloud repost type strings (both dash and underscore variants observed in the wild)
+    const REPOST_TYPES = new Set([
+      'track-repost', 'playlist-repost',
+      'track_repost', 'playlist_repost',
+      'repost',
+    ]);
+
+    let items = [];
+    // Try the "own" activity endpoint first (shows things the user themselves did)
+    try {
+      items = await this.paginate('/me/activities/all/own', accessToken, refreshToken, 200);
+    } catch (e) {
+      logger.warn('[getReposts] /me/activities/all/own failed, trying /me/activities:', e.message);
+    }
+
+    // If no repost-type items found in own feed, broaden to general activities
+    const hasReposts = items.some(i => REPOST_TYPES.has(i.type));
+    if (!hasReposts) {
+      try {
+        const general = await this.paginate('/me/activities', accessToken, refreshToken, 200);
+        items = [...items, ...general];
+      } catch (e) {
+        logger.warn('[getReposts] /me/activities also failed:', e.message);
+      }
+    }
+
+    // Log all unique types to aid debugging
+    const uniqueTypes = [...new Set(items.map(i => i.type))];
+    logger.info('[getReposts] unique activity types found:', uniqueTypes);
+    logger.info('[getReposts] total items from feeds:', items.length);
+
     return items
-      .filter(item => repostTypes.has(item.type))
+      .filter(item => REPOST_TYPES.has(item.type))
       .map(item => {
         const origin = item.origin || {};
-        const resourceType = item.type === 'track-repost' ? 'track' : 'playlist';
-        // Prefer numeric id; fall back to parsing from urn
+        const isPlaylist = item.type.includes('playlist');
+        const resourceType = isPlaylist ? 'playlist' : 'track';
         let id = origin.id;
         if (id == null && origin.urn) {
           const m = String(origin.urn).match(/(\d+)$/);

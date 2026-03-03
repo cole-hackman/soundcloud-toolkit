@@ -922,27 +922,98 @@ router.get('/reposts', authenticateUser, async (req, res) => {
 
 /**
  * GET /api/reposts/debug
- * Returns raw activity feed data to diagnose type field values from SoundCloud.
- * Shows all unique types and a sample of items.
+ * Diagnostic endpoint — tests multiple SC API endpoints and returns raw results.
+ * Navigate to /api/reposts/debug while logged in to diagnose repost fetching.
  */
 router.get('/reposts/debug', authenticateUser, async (req, res) => {
+  const clientId = process.env.SOUNDCLOUD_CLIENT_ID;
+  const token = req.accessToken;
+  const debug = {};
+
+  // 1. Get SC user ID
   try {
-    const items = await soundcloudClient.paginate('/me/activities/all/own', req.accessToken, req.refreshToken, 50);
-    const uniqueTypes = [...new Set(items.map(i => i.type))];
-    const sample = items.slice(0, 10).map(i => ({
-      type: i.type,
-      created_at: i.created_at,
-      origin_kind: i.origin?.kind,
-      origin_title: i.origin?.title,
-      origin_urn: i.origin?.urn,
-    }));
-    logger.info('[GET /api/reposts/debug] uniqueTypes:', uniqueTypes);
-    res.json({ total: items.length, uniqueTypes, sample });
-  } catch (error) {
-    logger.error('Reposts debug error:', error);
-    res.status(500).json({ error: error.message });
+    const me = await soundcloudClient.getMe(token, req.refreshToken);
+    debug.userId = me?.id;
+    debug.reposts_count = me?.reposts_count;
+  } catch (e) {
+    debug.userId = `ERROR: ${e.message}`;
   }
+
+  // 2. Try v2 API stream/users/{id}/reposts
+  try {
+    const v2url = `https://api-v2.soundcloud.com/stream/users/${debug.userId}/reposts?limit=10&client_id=${clientId}`;
+    const v2res = await fetch(v2url, {
+      headers: { Authorization: `OAuth ${token}`, Accept: 'application/json' },
+    });
+    const v2body = await v2res.text();
+    let v2json = null;
+    try { v2json = JSON.parse(v2body); } catch (_) { /* not json */ }
+    debug.v2_reposts = {
+      status: v2res.status,
+      statusText: v2res.statusText,
+      body: v2json ?? v2body.slice(0, 500),
+      collection_length: v2json?.collection?.length ?? null,
+    };
+  } catch (e) {
+    debug.v2_reposts = { error: e.message };
+  }
+
+  // 3. Try v2 API without client_id (just OAuth token)
+  try {
+    const v2url2 = `https://api-v2.soundcloud.com/stream/users/${debug.userId}/reposts?limit=10`;
+    const v2res2 = await fetch(v2url2, {
+      headers: { Authorization: `OAuth ${token}`, Accept: 'application/json' },
+    });
+    const v2body2 = await v2res2.text();
+    let v2json2 = null;
+    try { v2json2 = JSON.parse(v2body2); } catch (_) { /* not json */ }
+    debug.v2_reposts_no_clientid = {
+      status: v2res2.status,
+      statusText: v2res2.statusText,
+      body: v2json2 ?? v2body2.slice(0, 500),
+      collection_length: v2json2?.collection?.length ?? null,
+    };
+  } catch (e) {
+    debug.v2_reposts_no_clientid = { error: e.message };
+  }
+
+  // 4. Try v1 /me/activities (first page only)
+  try {
+    const v1res = await fetch(`https://api.soundcloud.com/me/activities?limit=50`, {
+      headers: { Authorization: `OAuth ${token}`, Accept: 'application/json' },
+    });
+    const v1json = await v1res.json();
+    const types = [...new Set((v1json.collection ?? []).map(i => i.type))];
+    debug.v1_activities = {
+      status: v1res.status,
+      total_items: v1json.collection?.length ?? 0,
+      unique_types: types,
+      repost_items: (v1json.collection ?? []).filter(i => i.type?.includes('repost')).length,
+    };
+  } catch (e) {
+    debug.v1_activities = { error: e.message };
+  }
+
+  // 5. Try v1 /me/activities/all/own (first page only)
+  try {
+    const v1own = await fetch(`https://api.soundcloud.com/me/activities/all/own?limit=50`, {
+      headers: { Authorization: `OAuth ${token}`, Accept: 'application/json' },
+    });
+    const v1ownjson = await v1own.json();
+    const types2 = [...new Set((v1ownjson.collection ?? []).map(i => i.type))];
+    debug.v1_activities_own = {
+      status: v1own.status,
+      total_items: v1ownjson.collection?.length ?? 0,
+      unique_types: types2,
+      repost_items: (v1ownjson.collection ?? []).filter(i => i.type?.includes('repost')).length,
+    };
+  } catch (e) {
+    debug.v1_activities_own = { error: e.message };
+  }
+
+  res.json(debug);
 });
+
 
 /**
  * POST /api/reposts/bulk-remove

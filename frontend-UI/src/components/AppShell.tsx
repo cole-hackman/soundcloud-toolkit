@@ -26,6 +26,7 @@ import {
   Stethoscope,
   ListChecks,
   Download,
+  Repeat2,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/contexts/ThemeContext";
@@ -67,6 +68,7 @@ const NAV: NavEntry[] = [
     items: [
       { href: "/likes-to-playlist", label: "Likes → Playlist", icon: Heart },
       { href: "/like-manager", label: "Like Manager", icon: ThumbsUp },
+      { href: "/repost-manager", label: "Repost Manager", icon: Repeat2 },
       { href: "/following-manager", label: "Following Manager", icon: Users },
     ],
   },

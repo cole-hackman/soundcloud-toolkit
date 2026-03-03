@@ -272,3 +272,19 @@ export const validateBulkUnfollow = [
   handleValidationErrors
 ];
 
+/**
+ * Validate bulk unrepost request
+ */
+export const validateBulkUnrepost = [
+  body('items')
+    .isArray({ min: 1, max: 100 })
+    .withMessage('items must be an array with 1-100 items'),
+  body('items.*.id')
+    .isInt({ min: 1 })
+    .withMessage('Each item id must be a positive integer'),
+  body('items.*.resourceType')
+    .isIn(['track', 'playlist'])
+    .withMessage('Each item resourceType must be track or playlist'),
+  handleValidationErrors
+];
+

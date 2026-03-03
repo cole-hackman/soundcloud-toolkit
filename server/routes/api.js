@@ -17,6 +17,7 @@ import {
   validateActivities,
   validateBulkUnlike,
   validateBulkUnfollow,
+  validateBulkUnrepost,
 } from '../middleware/validation.js';
 
 const router = express.Router();
@@ -901,6 +902,47 @@ router.post('/followings/bulk-unfollow', authenticateUser, heavyOperationRateLim
   } catch (error) {
     logger.error('Bulk unfollow error:', error);
     res.status(500).json({ error: 'Bulk unfollow failed' });
+  }
+});
+
+/**
+ * GET /api/reposts
+ * Get the authenticated user's reposts (tracks + playlists) via activity feed.
+ */
+router.get('/reposts', authenticateUser, async (req, res) => {
+  try {
+    const reposts = await soundcloudClient.getReposts(req.accessToken, req.refreshToken);
+    res.json({ collection: reposts, total_results: reposts.length });
+  } catch (error) {
+    logger.error('Get reposts error:', error);
+    res.status(500).json({ error: 'Failed to fetch reposts' });
+  }
+});
+
+/**
+ * POST /api/reposts/bulk-remove
+ * Remove multiple reposts at once.
+ * Body: { items: Array<{ id: number; resourceType: 'track' | 'playlist' }> }
+ */
+router.post('/reposts/bulk-remove', authenticateUser, heavyOperationRateLimiter, validateBulkUnrepost, async (req, res) => {
+  try {
+    const { items } = req.body;
+    const results = [];
+
+    // Process sequentially to avoid SoundCloud rate limits
+    for (const item of items) {
+      try {
+        await soundcloudClient.deleteRepost(req.accessToken, req.refreshToken, item.id, item.resourceType);
+        results.push({ id: item.id, resourceType: item.resourceType, status: 'ok' });
+      } catch (err) {
+        results.push({ id: item.id, resourceType: item.resourceType, status: 'error', error: err.message || 'Remove failed' });
+      }
+    }
+
+    res.json({ results });
+  } catch (error) {
+    logger.error('Bulk unrepost error:', error);
+    res.status(500).json({ error: 'Bulk unrepost failed' });
   }
 });
 

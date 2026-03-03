@@ -387,6 +387,48 @@ class SoundCloudClient {
   }
 
   /**
+   * Get the user's reposts by filtering the own-activity feed.
+   * Returns an array of { id, urn, resourceType, title, user, artwork_url, permalink_url, created_at }.
+   */
+  async getReposts(accessToken, refreshToken) {
+    const items = await this.paginate('/me/activities/all/own', accessToken, refreshToken, 200);
+    const repostTypes = new Set(['track-repost', 'playlist-repost']);
+    return items
+      .filter(item => repostTypes.has(item.type))
+      .map(item => {
+        const origin = item.origin || {};
+        const resourceType = item.type === 'track-repost' ? 'track' : 'playlist';
+        // Prefer numeric id; fall back to parsing from urn
+        let id = origin.id;
+        if (id == null && origin.urn) {
+          const m = String(origin.urn).match(/(\d+)$/);
+          if (m) id = Number(m[1]);
+        }
+        return {
+          id: id != null ? Number(id) : null,
+          urn: origin.urn || (id != null ? `soundcloud:${resourceType}s:${id}` : null),
+          resourceType,
+          title: origin.title || 'Unknown',
+          user: { username: origin.user?.username || origin.username || 'Unknown' },
+          artwork_url: origin.artwork_url || origin.user?.avatar_url || null,
+          permalink_url: origin.permalink_url || null,
+          created_at: item.created_at || null,
+        };
+      })
+      .filter(r => r.id != null);
+  }
+
+  /**
+   * Remove a repost. resourceType must be 'track' or 'playlist'.
+   */
+  async deleteRepost(accessToken, refreshToken, id, resourceType) {
+    const path = resourceType === 'playlist'
+      ? `/reposts/playlists/${id}`
+      : `/reposts/tracks/${id}`;
+    return this.scRequest(path, accessToken, refreshToken, { method: 'DELETE' });
+  }
+
+  /**
    * Get the final download link for a track
    * Handles the redirect manually to ensure we get the final URL
    */

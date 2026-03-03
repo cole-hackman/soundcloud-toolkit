@@ -484,7 +484,14 @@ class SoundCloudClient {
 
     // Step 4: V2 returned nothing – fall back to V1 activity feed
     logger.info('[getReposts] v2 returned 0 items, trying v1 activity feed as fallback');
-    const REPOST_TYPES = new Set(['track-repost', 'playlist-repost', 'track_repost', 'playlist_repost', 'repost']);
+    // Official SC API uses "track:repost" / "playlist:repost" (colons per Swagger spec).
+    // Older docs used hyphens/underscores — include all variants for safety.
+    const REPOST_TYPES = new Set([
+      'track:repost', 'playlist:repost',       // official Swagger format
+      'track-repost', 'playlist-repost',        // alternative hyphen format
+      'track_repost', 'playlist_repost',        // alternative underscore format
+      'repost',                                 // catch-all
+    ]);
     const allItems = [];
 
     try {

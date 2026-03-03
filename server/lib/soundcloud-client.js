@@ -387,65 +387,103 @@ class SoundCloudClient {
   }
 
   /**
-   * Get the user's reposts by filtering their activity feeds.
-   * Tries /me/activities/all/own first, then falls back to /me/activities.
-   * Returns an array of { id, urn, resourceType, title, user, artwork_url, permalink_url, created_at }.
+   * Get the user's reposts by scanning both activity feeds.
+   *
+   * Strategy:
+   *  1. Fetch /me (cheap) to get the authenticated user's SC numeric ID.
+   *  2. Paginate /me/activities (proven to work) and keep items whose
+   *     item.type contains "repost" AND whose item.user.id matches ours.
+   *  3. Also try /me/activities/all/own (may be empty on newer OAuth2
+   *     accounts) and merge any additional repost items found there.
+   *  4. Deduplicate and return.
    */
   async getReposts(accessToken, refreshToken) {
-    // SoundCloud repost type strings (both dash and underscore variants observed in the wild)
     const REPOST_TYPES = new Set([
       'track-repost', 'playlist-repost',
       'track_repost', 'playlist_repost',
       'repost',
     ]);
 
-    let items = [];
-    // Try the "own" activity endpoint first (shows things the user themselves did)
+    // 1. Get authenticated user's SC ID for stream filtering
+    let myScId = null;
     try {
-      items = await this.paginate('/me/activities/all/own', accessToken, refreshToken, 200);
+      const me = await this.scRequest('/me', accessToken, refreshToken);
+      myScId = me?.id ?? null;
+      logger.info('[getReposts] authenticated SC user id:', myScId);
     } catch (e) {
-      logger.warn('[getReposts] /me/activities/all/own failed, trying /me/activities:', e.message);
+      logger.warn('[getReposts] could not fetch /me:', e.message);
     }
 
-    // If no repost-type items found in own feed, broaden to general activities
-    const hasReposts = items.some(i => REPOST_TYPES.has(i.type));
-    if (!hasReposts) {
-      try {
-        const general = await this.paginate('/me/activities', accessToken, refreshToken, 200);
-        items = [...items, ...general];
-      } catch (e) {
-        logger.warn('[getReposts] /me/activities also failed:', e.message);
+    const allItems = [];
+
+    // 2. /me/activities — the primary working stream
+    try {
+      const streamItems = await this.paginate('/me/activities', accessToken, refreshToken, 200);
+      logger.info('[getReposts] /me/activities raw count:', streamItems.length);
+      const uniqueStreamTypes = [...new Set(streamItems.map(i => i.type))];
+      logger.info('[getReposts] /me/activities unique types:', uniqueStreamTypes);
+
+      for (const item of streamItems) {
+        if (!REPOST_TYPES.has(item.type)) continue;
+        // Keep if it's by the authenticated user (or if we couldn't determine user)
+        const itemUserId = item.user?.id ?? item.origin?.user?.id ?? null;
+        if (myScId !== null && itemUserId !== null && itemUserId !== myScId) continue;
+        allItems.push(item);
       }
+    } catch (e) {
+      logger.warn('[getReposts] /me/activities failed:', e.message);
     }
 
-    // Log all unique types to aid debugging
-    const uniqueTypes = [...new Set(items.map(i => i.type))];
-    logger.info('[getReposts] unique activity types found:', uniqueTypes);
-    logger.info('[getReposts] total items from feeds:', items.length);
+    // 3. /me/activities/all/own — secondary source (may work for some accounts)
+    try {
+      const ownItems = await this.paginate('/me/activities/all/own', accessToken, refreshToken, 200);
+      logger.info('[getReposts] /me/activities/all/own raw count:', ownItems.length);
+      const uniqueOwnTypes = [...new Set(ownItems.map(i => i.type))];
+      logger.info('[getReposts] /me/activities/all/own unique types:', uniqueOwnTypes);
 
-    return items
-      .filter(item => REPOST_TYPES.has(item.type))
-      .map(item => {
-        const origin = item.origin || {};
-        const isPlaylist = item.type.includes('playlist');
-        const resourceType = isPlaylist ? 'playlist' : 'track';
-        let id = origin.id;
-        if (id == null && origin.urn) {
-          const m = String(origin.urn).match(/(\d+)$/);
-          if (m) id = Number(m[1]);
-        }
-        return {
-          id: id != null ? Number(id) : null,
-          urn: origin.urn || (id != null ? `soundcloud:${resourceType}s:${id}` : null),
-          resourceType,
-          title: origin.title || 'Unknown',
-          user: { username: origin.user?.username || origin.username || 'Unknown' },
-          artwork_url: origin.artwork_url || origin.user?.avatar_url || null,
-          permalink_url: origin.permalink_url || null,
-          created_at: item.created_at || null,
-        };
-      })
-      .filter(r => r.id != null);
+      for (const item of ownItems) {
+        if (REPOST_TYPES.has(item.type)) allItems.push(item);
+      }
+    } catch (e) {
+      logger.warn('[getReposts] /me/activities/all/own failed:', e.message);
+    }
+
+    logger.info('[getReposts] total repost candidates before dedup:', allItems.length);
+
+    // 4. Normalize and deduplicate by resourceType+id
+    const seen = new Set();
+    const results = [];
+    for (const item of allItems) {
+      const origin = item.origin || {};
+      const isPlaylist = item.type.includes('playlist');
+      const resourceType = isPlaylist ? 'playlist' : 'track';
+
+      let id = origin.id;
+      if (id == null && origin.urn) {
+        const m = String(origin.urn).match(/(\d+)$/);
+        if (m) id = Number(m[1]);
+      }
+      if (id == null) continue;
+      id = Number(id);
+
+      const key = `${resourceType}:${id}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+
+      results.push({
+        id,
+        urn: origin.urn || `soundcloud:${resourceType}s:${id}`,
+        resourceType,
+        title: origin.title || 'Unknown',
+        user: { username: origin.user?.username || origin.username || 'Unknown' },
+        artwork_url: origin.artwork_url || origin.user?.avatar_url || null,
+        permalink_url: origin.permalink_url || null,
+        created_at: item.created_at || null,
+      });
+    }
+
+    logger.info('[getReposts] returning', results.length, 'reposts');
+    return results;
   }
 
   /**

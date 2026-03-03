@@ -387,24 +387,12 @@ class SoundCloudClient {
   }
 
   /**
-   * Get the user's reposts by scanning both activity feeds.
-   *
-   * Strategy:
-   *  1. Fetch /me (cheap) to get the authenticated user's SC numeric ID.
-   *  2. Paginate /me/activities (proven to work) and keep items whose
-   *     item.type contains "repost" AND whose item.user.id matches ours.
-   *  3. Also try /me/activities/all/own (may be empty on newer OAuth2
-   *     accounts) and merge any additional repost items found there.
-   *  4. Deduplicate and return.
+   * Get the user's reposts using SoundCloud's V2 API
+   * (same endpoint SC's web app uses for the profile "Reposts" tab).
+   * Falls back to the V1 activity feed if the V2 endpoint fails.
    */
   async getReposts(accessToken, refreshToken) {
-    const REPOST_TYPES = new Set([
-      'track-repost', 'playlist-repost',
-      'track_repost', 'playlist_repost',
-      'repost',
-    ]);
-
-    // 1. Get authenticated user's SC ID for stream filtering
+    // Step 1: get authenticated user's SC ID
     let myScId = null;
     try {
       const me = await this.scRequest('/me', accessToken, refreshToken);
@@ -414,50 +402,120 @@ class SoundCloudClient {
       logger.warn('[getReposts] could not fetch /me:', e.message);
     }
 
+    if (!myScId) {
+      logger.error('[getReposts] cannot determine user ID, aborting');
+      return [];
+    }
+
+    // Step 2: paginate the V2 reposts stream
+    const rawItems = [];
+    try {
+      let nextUrl = `https://api-v2.soundcloud.com/stream/users/${myScId}/reposts?limit=200&client_id=${this.clientId}`;
+      let currentToken = accessToken;
+      let pageCount = 0;
+
+      while (nextUrl && pageCount < 20) {
+        pageCount++;
+        const res = await fetch(nextUrl, {
+          headers: {
+            'Authorization': `OAuth ${currentToken}`,
+            'Accept': 'application/json',
+          },
+        });
+
+        if (res.status === 401) {
+          logger.info('[getReposts] 401 on v2 – refreshing token');
+          const refreshed = await this.refreshTokens(refreshToken);
+          currentToken = refreshed.access_token;
+          continue;
+        }
+
+        if (!res.ok) {
+          logger.warn(`[getReposts] v2 stream/reposts returned HTTP ${res.status} – will fall back to v1`);
+          break;
+        }
+
+        const data = await res.json();
+        const items = data.collection ?? [];
+        logger.info(`[getReposts] v2 page ${pageCount}: ${items.length} items, next: ${data.next_href ? 'yes' : 'no'}`);
+        rawItems.push(...items);
+        nextUrl = data.next_href || null;
+      }
+    } catch (e) {
+      logger.warn('[getReposts] v2 request error:', e.message);
+    }
+
+    logger.info('[getReposts] v2 raw item count:', rawItems.length);
+
+    // Step 3: normalize V2 items
+    // V2 format: { type: "track-repost"|"playlist-repost", track: {...}|playlist: {...}, created_at }
+    if (rawItems.length > 0) {
+      const seen = new Set();
+      const results = [];
+
+      for (const item of rawItems) {
+        const resource = item.track || item.playlist || null;
+        if (!resource) continue;
+
+        const isPlaylist = !!(item.playlist) || String(item.type).includes('playlist');
+        const resourceType = isPlaylist ? 'playlist' : 'track';
+        const id = resource.id ? Number(resource.id) : null;
+        if (!id) continue;
+
+        const key = `${resourceType}:${id}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+
+        results.push({
+          id,
+          urn: resource.urn || `soundcloud:${resourceType}s:${id}`,
+          resourceType,
+          title: resource.title || 'Unknown',
+          user: { username: resource.user?.username || 'Unknown' },
+          artwork_url: resource.artwork_url || resource.user?.avatar_url || null,
+          permalink_url: resource.permalink_url || null,
+          created_at: item.created_at || null,
+        });
+      }
+
+      logger.info('[getReposts] returning', results.length, 'reposts (v2)');
+      return results;
+    }
+
+    // Step 4: V2 returned nothing – fall back to V1 activity feed
+    logger.info('[getReposts] v2 returned 0 items, trying v1 activity feed as fallback');
+    const REPOST_TYPES = new Set(['track-repost', 'playlist-repost', 'track_repost', 'playlist_repost', 'repost']);
     const allItems = [];
 
-    // 2. /me/activities — the primary working stream
     try {
       const streamItems = await this.paginate('/me/activities', accessToken, refreshToken, 200);
-      logger.info('[getReposts] /me/activities raw count:', streamItems.length);
-      const uniqueStreamTypes = [...new Set(streamItems.map(i => i.type))];
-      logger.info('[getReposts] /me/activities unique types:', uniqueStreamTypes);
-
+      logger.info('[getReposts] v1 /me/activities count:', streamItems.length, 'types:', [...new Set(streamItems.map(i => i.type))]);
       for (const item of streamItems) {
         if (!REPOST_TYPES.has(item.type)) continue;
-        // Keep if it's by the authenticated user (or if we couldn't determine user)
         const itemUserId = item.user?.id ?? item.origin?.user?.id ?? null;
-        if (myScId !== null && itemUserId !== null && itemUserId !== myScId) continue;
+        if (myScId !== null && itemUserId !== null && Number(itemUserId) !== myScId) continue;
         allItems.push(item);
       }
     } catch (e) {
-      logger.warn('[getReposts] /me/activities failed:', e.message);
+      logger.warn('[getReposts] v1 /me/activities failed:', e.message);
     }
 
-    // 3. /me/activities/all/own — secondary source (may work for some accounts)
     try {
       const ownItems = await this.paginate('/me/activities/all/own', accessToken, refreshToken, 200);
-      logger.info('[getReposts] /me/activities/all/own raw count:', ownItems.length);
-      const uniqueOwnTypes = [...new Set(ownItems.map(i => i.type))];
-      logger.info('[getReposts] /me/activities/all/own unique types:', uniqueOwnTypes);
-
+      logger.info('[getReposts] v1 /me/activities/all/own count:', ownItems.length);
       for (const item of ownItems) {
         if (REPOST_TYPES.has(item.type)) allItems.push(item);
       }
     } catch (e) {
-      logger.warn('[getReposts] /me/activities/all/own failed:', e.message);
+      logger.warn('[getReposts] v1 /me/activities/all/own failed:', e.message);
     }
 
-    logger.info('[getReposts] total repost candidates before dedup:', allItems.length);
-
-    // 4. Normalize and deduplicate by resourceType+id
     const seen = new Set();
-    const results = [];
+    const fallbackResults = [];
     for (const item of allItems) {
       const origin = item.origin || {};
       const isPlaylist = item.type.includes('playlist');
       const resourceType = isPlaylist ? 'playlist' : 'track';
-
       let id = origin.id;
       if (id == null && origin.urn) {
         const m = String(origin.urn).match(/(\d+)$/);
@@ -465,25 +523,23 @@ class SoundCloudClient {
       }
       if (id == null) continue;
       id = Number(id);
-
       const key = `${resourceType}:${id}`;
       if (seen.has(key)) continue;
       seen.add(key);
-
-      results.push({
+      fallbackResults.push({
         id,
         urn: origin.urn || `soundcloud:${resourceType}s:${id}`,
         resourceType,
         title: origin.title || 'Unknown',
-        user: { username: origin.user?.username || origin.username || 'Unknown' },
+        user: { username: origin.user?.username || 'Unknown' },
         artwork_url: origin.artwork_url || origin.user?.avatar_url || null,
         permalink_url: origin.permalink_url || null,
         created_at: item.created_at || null,
       });
     }
 
-    logger.info('[getReposts] returning', results.length, 'reposts');
-    return results;
+    logger.info('[getReposts] returning', fallbackResults.length, 'reposts (v1 fallback)');
+    return fallbackResults;
   }
 
   /**

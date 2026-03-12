@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { ArrowLeft, Shuffle, Save, ArrowUpDown, Trash2, Music, Download, ExternalLink } from "lucide-react";
-import { EmptyState, LoadingSpinner } from "@/components/ui";
+import { EmptyState, LoadingSpinner, Skeleton } from "@/components/ui";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "";
 
@@ -37,6 +37,8 @@ export default function PlaylistModifierPage() {
   const [loadingTracks, setLoadingTracks] = useState(false);
   const [saving, setSaving] = useState(false);
   const [trackFilter, setTrackFilter] = useState<TrackFilter>("all");
+  const [loadError, setLoadError] = useState(false);
+  const [tracksError, setTracksError] = useState(false);
 
   const filteredTracks = tracks.filter((t) => {
     if (trackFilter === "downloadable") return Boolean(t.downloadable) || t.downloadable === "true";
@@ -53,15 +55,19 @@ export default function PlaylistModifierPage() {
 
   const fetchPlaylists = async () => {
     try {
+      setLoadError(false);
       const response = await fetch(`${API_BASE}/api/playlists`, {
         credentials: "include",
       });
       if (response.ok) {
         const data = await response.json();
         setPlaylists(data.collection || []);
+      } else {
+        setLoadError(true);
       }
     } catch (error) {
       console.error("Failed to fetch playlists:", error);
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -69,6 +75,7 @@ export default function PlaylistModifierPage() {
 
   const fetchTracks = async (playlistId: number) => {
     setLoadingTracks(true);
+    setTracksError(false);
     try {
       const response = await fetch(
         `${API_BASE}/api/playlists/${playlistId}`,
@@ -77,9 +84,12 @@ export default function PlaylistModifierPage() {
       if (response.ok) {
         const data = await response.json();
         setTracks(data.tracks || []);
+      } else {
+        setTracksError(true);
       }
     } catch (error) {
       console.error("Failed to fetch tracks:", error);
+      setTracksError(true);
     } finally {
       setLoadingTracks(false);
     }
@@ -91,6 +101,13 @@ export default function PlaylistModifierPage() {
   };
 
   const removeTrack = (trackId: number) => {
+    if (
+      !window.confirm(
+        "Remove this track from the playlist on save? You can still cancel by not saving."
+      )
+    ) {
+      return;
+    }
     setTracks((prev) => prev.filter((t) => t.id !== trackId));
   };
 
@@ -112,6 +129,13 @@ export default function PlaylistModifierPage() {
 
   const savePlaylist = async () => {
     if (!selectedPlaylist) return;
+    if (
+      !window.confirm(
+        "Update this playlist on SoundCloud with the current order and removed tracks?"
+      )
+    ) {
+      return;
+    }
     setSaving(true);
     try {
       const response = await fetch(
@@ -171,12 +195,29 @@ export default function PlaylistModifierPage() {
             {loading ? (
               <div className="space-y-3">
                 {Array.from({ length: 5 }).map((_, i) => (
-                  <div
+                  <Skeleton
                     key={i}
-                    className="h-16 bg-gray-100 dark:bg-secondary/50 rounded-lg animate-pulse"
+                    className="h-16 rounded-lg bg-gray-100 dark:bg-secondary/40"
                   />
                 ))}
               </div>
+            ) : loadError ? (
+              <EmptyState
+                title="Couldn’t load your playlists"
+                description="The backend may be unreachable. Retry to refresh the list."
+                action={
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLoading(true);
+                      fetchPlaylists();
+                    }}
+                    className="px-4 py-2 rounded-lg text-sm font-semibold bg-gradient-to-r from-[#FF5500] to-[#E64A00] text-white hover:shadow-md transition"
+                  >
+                    Retry
+                  </button>
+                }
+              />
             ) : playlists.length === 0 ? (
               <EmptyState
                 icon={<Music className="w-12 h-12" />}
@@ -275,12 +316,26 @@ export default function PlaylistModifierPage() {
               {loadingTracks ? (
                 <div className="space-y-3">
                   {Array.from({ length: 10 }).map((_, i) => (
-                    <div
+                    <Skeleton
                       key={i}
-                      className="h-16 bg-gray-100 dark:bg-secondary/50 rounded-lg animate-pulse"
+                      className="h-16 rounded-lg bg-gray-100 dark:bg-secondary/40"
                     />
                   ))}
                 </div>
+              ) : tracksError ? (
+                <EmptyState
+                  title="Couldn’t load tracks for this playlist"
+                  description="The playlist data could not be fetched. Retry to try again."
+                  action={
+                    <button
+                      type="button"
+                      onClick={() => selectedPlaylist && fetchTracks(selectedPlaylist.id)}
+                      className="px-4 py-2 rounded-lg text-sm font-semibold bg-gradient-to-r from-[#FF5500] to-[#E64A00] text-white hover:shadow-md transition"
+                    >
+                      Retry
+                    </button>
+                  }
+                />
               ) : tracks.length === 0 ? (
                 <EmptyState
                   icon={<Music className="w-12 h-12" />}

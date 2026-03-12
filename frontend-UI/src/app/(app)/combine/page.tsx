@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { ArrowLeft, X, Combine, Check, Music } from "lucide-react";
-import { EmptyState, LoadingSpinner } from "@/components/ui";
+import { EmptyState, LoadingSpinner, Skeleton } from "@/components/ui";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "";
 
@@ -22,6 +22,7 @@ export default function CombinePlaylistsPage() {
   const [isComplete, setIsComplete] = useState(false);
   const [userPlaylists, setUserPlaylists] = useState<Playlist[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [result, setResult] = useState<{
     playlists?: { title: string }[];
     playlist?: { title: string };
@@ -35,15 +36,19 @@ export default function CombinePlaylistsPage() {
 
   const fetchPlaylists = async () => {
     try {
+      setLoadError(false);
       const response = await fetch(`${API_BASE}/api/playlists`, {
         credentials: "include",
       });
       if (response.ok) {
         const data = await response.json();
         setUserPlaylists(data.collection || []);
+      } else {
+        setLoadError(true);
       }
     } catch (error) {
       console.error("Failed to fetch playlists:", error);
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -60,6 +65,15 @@ export default function CombinePlaylistsPage() {
 
   const handleCombine = async () => {
     if (selectedPlaylists.length < 2 || !newPlaylistTitle.trim()) return;
+    if (
+      !window.confirm(
+        `Create a new playlist from ${selectedPlaylists.length} source playlist${
+          selectedPlaylists.length > 1 ? "s" : ""
+        }?`
+      )
+    ) {
+      return;
+    }
     setIsProcessing(true);
     try {
       const response = await fetch(`${API_BASE}/api/playlists/merge`, {
@@ -76,9 +90,13 @@ export default function CombinePlaylistsPage() {
         setResult(data);
         setIsComplete(true);
       } else {
-        const error = await response.json();
+        const error = await response.json().catch(() => ({}));
         console.error("Failed to merge playlists:", error);
-        alert("Failed to merge playlists");
+        alert(
+          typeof error?.error === "string"
+            ? error.error
+            : "Failed to merge playlists. Please try again."
+        );
       }
     } catch (error) {
       console.error("Error merging playlists:", error);
@@ -180,22 +198,36 @@ export default function CombinePlaylistsPage() {
               <h2 className="text-xl font-bold mb-4 text-[#333333] dark:text-foreground">
                 Your Playlists
               </h2>
-                {loading ? (
-                  <div className="space-y-3">
-                    {Array.from({ length: 5 }).map((_, i) => (
-                      <div
-                        key={i}
-                        className="h-16 bg-gray-100 dark:bg-secondary/50 rounded-lg animate-pulse"
-                      />
-                    ))}
-                  </div>
-                ) : userPlaylists.length === 0 ? (
-                  <EmptyState
-                    icon={<Music className="w-12 h-12" />}
-                    title="No playlists found"
-                    description="Create some playlists on SoundCloud first."
-                  />
-                ) : (
+              {loading ? (
+                <div className="space-y-3">
+                  {Array.from({ length: 5 }).map((_, i) => (
+                    <Skeleton key={i} className="h-16 rounded-lg bg-gray-100 dark:bg-secondary/40" />
+                  ))}
+                </div>
+              ) : loadError ? (
+                <EmptyState
+                  title="Couldn’t load your playlists"
+                  description="The backend may be unreachable. Retry to refresh the list."
+                  action={
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setLoading(true);
+                        fetchPlaylists();
+                      }}
+                      className="px-4 py-2 rounded-lg text-sm font-semibold bg-gradient-to-r from-[#FF5500] to-[#E64A00] text-white hover:shadow-md transition"
+                    >
+                      Retry
+                    </button>
+                  }
+                />
+              ) : userPlaylists.length === 0 ? (
+                <EmptyState
+                  icon={<Music className="w-12 h-12" />}
+                  title="No playlists found"
+                  description="Create some playlists on SoundCloud first."
+                />
+              ) : (
                 <div className="space-y-2 max-h-[500px] overflow-y-auto">
                   {userPlaylists.map((playlist) => {
                     const isSelected = selectedPlaylists.some(

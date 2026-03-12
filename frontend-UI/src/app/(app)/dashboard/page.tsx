@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -18,7 +18,7 @@ import {
   Download,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
-import { Card, Input } from "@/components/ui";
+import { Card, EmptyState, Input, Skeleton } from "@/components/ui";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "";
 const LAST_TOOLS_KEY = "sc-toolkit-last-tools";
@@ -145,8 +145,10 @@ export default function DashboardPage() {
   const router = useRouter();
   const [stats, setStats] = useState<UserStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [statsError, setStatsError] = useState(false);
   const [linkUrl, setLinkUrl] = useState("");
   const [recentTools, setRecentTools] = useState<string[]>([]);
+  const [toolQuery, setToolQuery] = useState("");
 
   useEffect(() => {
     fetchUserStats();
@@ -162,6 +164,7 @@ export default function DashboardPage() {
   }, []);
 
   const fetchUserStats = async () => {
+    setStatsError(false);
     try {
       // Fetch user profile from SC API for follower/following/likes counts
       const [meRes, playlistsRes, likesRes, followingsRes] = await Promise.all([
@@ -178,19 +181,15 @@ export default function DashboardPage() {
 
       if (meRes.ok) {
         const userData = await meRes.json();
-        console.log("[Dashboard] /api/me response:", userData);
         followers = userData.followers_count ?? 0;
         followings = userData.followings_count ?? 0;
         likes = userData.public_favorites_count ?? userData.likes_count ?? 0;
         playlists = userData.playlist_count ?? 0;
-      } else {
-        console.warn("[Dashboard] /api/me failed:", meRes.status);
       }
 
       // Fallback: count playlists from the playlists endpoint
       if (playlists === 0 && playlistsRes.ok) {
         const playlistData = await playlistsRes.json();
-        console.log("[Dashboard] /api/playlists response:", playlistData);
         if (Array.isArray(playlistData)) {
           playlists = playlistData.length;
         } else if (playlistData.collection) {
@@ -201,7 +200,6 @@ export default function DashboardPage() {
       // Fallback: count likes from the likes endpoint
       if (likes === 0 && likesRes.ok) {
         const likesData = await likesRes.json();
-        console.log("[Dashboard] /api/likes/paged response:", likesData);
         if (likesData.total != null) {
           likes = likesData.total;
         } else if (likesData.collection) {
@@ -212,7 +210,6 @@ export default function DashboardPage() {
       // Fallback: count followings from the followings endpoint
       if (followings === 0 && followingsRes.ok) {
         const followingsData = await followingsRes.json();
-        console.log("[Dashboard] /api/followings response:", followingsData);
         if (followingsData.total != null) {
           followings = followingsData.total;
         } else if (followingsData.collection) {
@@ -229,6 +226,7 @@ export default function DashboardPage() {
       });
     } catch (error) {
       console.error("Failed to fetch user stats:", error);
+      setStatsError(true);
     } finally {
       setLoading(false);
     }
@@ -241,36 +239,47 @@ export default function DashboardPage() {
     router.push(`/link-resolver?${params.toString()}`);
   };
 
-  const statsData = [
-    { label: "Playlists", value: stats?.playlist_count ?? 0, icon: "📋" },
-    { label: "Liked Tracks", value: stats?.public_favorites_count ?? 0, icon: "❤️" },
-    { label: "Following", value: stats?.followings_count ?? 0, icon: "👥" },
-    { label: "Followers", value: stats?.followers_count ?? 0, icon: "⭐" },
-  ];
+  const statsData = useMemo(
+    () => [
+      { label: "Playlists", value: stats?.playlist_count ?? 0, icon: "📋" },
+      { label: "Liked tracks", value: stats?.public_favorites_count ?? 0, icon: "❤️" },
+      { label: "Following", value: stats?.followings_count ?? 0, icon: "👥" },
+      { label: "Followers", value: stats?.followers_count ?? 0, icon: "⭐" },
+    ],
+    [stats]
+  );
+
+  const filteredFeatures = useMemo(() => {
+    const q = toolQuery.trim().toLowerCase();
+    if (!q) return FEATURES;
+    return FEATURES.filter((f) => {
+      const hay = `${f.title} ${f.description} ${f.id}`.toLowerCase();
+      return hay.includes(q);
+    });
+  }, [toolQuery]);
 
   return (
     <div className="min-h-screen bg-[#F2F2F2] dark:bg-background">
       <div className="mx-auto px-4 sm:px-6 py-5 sm:py-6 max-w-5xl">
         {/* Welcome Section */}
-        <div className="flex items-center justify-between gap-4 mb-5">
-          <div>
+        <div className="flex items-start justify-between gap-4 mb-5">
+          <div className="min-w-0">
             <h1 className="text-xl sm:text-2xl font-bold text-[#333333] dark:text-foreground">
-              Welcome back,{" "}
-              <span className="bg-gradient-to-r from-[#FF5500] to-[#E64A00] bg-clip-text text-transparent">
-                {user?.display_name}
-              </span>
+              Dashboard
             </h1>
             <p className="text-sm mt-0.5 text-[#888888] dark:text-muted-foreground">
-              Choose a tool to enhance your SoundCloud experience
+              Quick access to your tools, stats, and recent activity.
             </p>
           </div>
-          {user?.avatar_url && (
-            <img
-              src={user.avatar_url}
-              alt={user.display_name}
-              className="w-10 h-10 rounded-full ring-2 ring-[#FF5500]/20 shrink-0"
-            />
-          )}
+          <div className="flex items-center gap-3 shrink-0">
+            {user?.avatar_url && (
+              <img
+                src={user.avatar_url}
+                alt={user.display_name}
+                className="w-10 h-10 rounded-full ring-2 ring-[#FF5500]/20 shrink-0"
+              />
+            )}
+          </div>
         </div>
 
         {/* Link Resolver Quick Input */}
@@ -284,7 +293,7 @@ export default function DashboardPage() {
                 onChange={(e) => setLinkUrl(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleResolveLink()}
                 placeholder="Paste a SoundCloud URL to resolve..."
-                className="pl-10 text-sm h-9"
+                className="pl-10 text-sm h-9 bg-transparent dark:text-foreground dark:border-border"
               />
             </div>
             <button
@@ -299,29 +308,51 @@ export default function DashboardPage() {
         </Card>
 
         {/* Stats Section */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-          {loading
-            ? Array.from({ length: 4 }).map((_, index) => (
-                <Card key={index} className="p-3 sm:p-4 text-center">
-                  <div className="w-8 h-8 rounded-lg mx-auto mb-1.5 bg-gray-200 dark:bg-secondary animate-pulse" />
-                  <div className="w-14 h-3.5 rounded mx-auto bg-gray-200 dark:bg-secondary animate-pulse" />
-                </Card>
-              ))
-            : statsData.map((stat, index) => (
-                <Card
-                  key={index}
-                  className="p-3 sm:p-4 text-center hover:-translate-y-0.5"
+        {statsError ? (
+          <Card className="p-6 mb-6">
+            <EmptyState
+              title="Couldn’t load your stats"
+              description="The backend may be sleeping or unreachable. Retry to refresh your dashboard."
+              action={
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLoading(true);
+                    fetchUserStats();
+                  }}
+                  className="px-4 py-2 rounded-lg text-sm font-semibold bg-gradient-to-r from-[#FF5500] to-[#E64A00] text-white hover:shadow-md transition"
                 >
-                  <div className="text-lg mb-1">{stat.icon}</div>
-                  <div className="text-xl sm:text-2xl font-bold mb-0.5 text-[#333333] dark:text-foreground">
-                    {stat.value.toLocaleString()}
-                  </div>
-                  <div className="text-[11px] font-medium text-[#999999] dark:text-muted-foreground uppercase tracking-wide">
-                    {stat.label}
-                  </div>
-                </Card>
-              ))}
-        </div>
+                  Retry
+                </button>
+              }
+            />
+          </Card>
+        ) : (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+            {loading
+              ? Array.from({ length: 4 }).map((_, index) => (
+                  <Card key={index} className="p-3 sm:p-4">
+                    <Skeleton className="mx-auto mb-2 h-8 w-8 rounded-lg" />
+                    <Skeleton className="mx-auto mb-1.5 h-4 w-16" />
+                    <Skeleton className="mx-auto h-3 w-20" />
+                  </Card>
+                ))
+              : statsData.map((stat, index) => (
+                  <Card
+                    key={index}
+                    className="p-3 sm:p-4 text-center hover:-translate-y-0.5"
+                  >
+                    <div className="text-lg mb-1">{stat.icon}</div>
+                    <div className="text-xl sm:text-2xl font-bold mb-0.5 text-[#333333] dark:text-foreground">
+                      {stat.value.toLocaleString()}
+                    </div>
+                    <div className="text-[11px] font-medium text-[#999999] dark:text-muted-foreground uppercase tracking-wide">
+                      {stat.label}
+                    </div>
+                  </Card>
+                ))}
+          </div>
+        )}
 
         {/* Recently Used */}
         {recentTools.length > 0 && (
@@ -343,9 +374,27 @@ export default function DashboardPage() {
           </div>
         )}
 
+        {/* Tool search */}
+        <div className="mb-3">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              value={toolQuery}
+              onChange={(e) => setToolQuery(e.target.value)}
+              placeholder="Search tools…"
+              className="pl-9 h-9 bg-white dark:bg-card dark:text-foreground dark:border-border"
+            />
+          </div>
+        </div>
+
         {/* Quick Actions - Feature Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-          {FEATURES.map((feature) => (
+        {filteredFeatures.length === 0 ? (
+          <Card className="p-6">
+            <EmptyState title="No tools match your search" description="Try a different keyword." />
+          </Card>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+          {filteredFeatures.map((feature) => (
             <Card
               key={feature.id}
               className="group p-4 sm:p-5 hover:-translate-y-0.5"
@@ -366,7 +415,8 @@ export default function DashboardPage() {
               </Link>
             </Card>
           ))}
-        </div>
+          </div>
+        )}
 
 
 

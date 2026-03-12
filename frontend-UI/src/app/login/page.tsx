@@ -3,15 +3,19 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { Layers, Heart, ListChecks, Link as LinkIcon } from "lucide-react";
+import { useTheme } from "@/contexts/ThemeContext";
+import { Card, LoadingSpinner } from "@/components/ui";
+import { Layers, Heart, ListChecks, Link as LinkIcon, Moon, Sun, Lock } from "lucide-react";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "";
 
 export default function LoginPage() {
   const { isAuthenticated, loading, login, apiUnreachable, retryAuth } = useAuth();
+  const { theme, toggleTheme } = useTheme();
   const router = useRouter();
+  const [prewarming, setPrewarming] = useState(false);
 
   useEffect(() => {
     if (!loading && isAuthenticated) {
@@ -21,6 +25,8 @@ export default function LoginPage() {
 
   // Pre-warm API before redirecting to reduce cold-start hiccups
   const prewarmAndLogin = async () => {
+    if (apiUnreachable || prewarming) return;
+    setPrewarming(true);
     try {
       await Promise.race([
         fetch(`${API_BASE}/health`, { credentials: "include" }),
@@ -38,46 +44,57 @@ export default function LoginPage() {
     } catch {
       // Ignore errors
     }
-    login();
+    try {
+      login();
+    } finally {
+      setPrewarming(false);
+    }
   };
 
-  const features = [
-    {
-      icon: Layers,
-      title: "Combine Playlists",
-      desc: "Merge and remove duplicates instantly.",
-    },
-    {
-      icon: Heart,
-      title: "Likes → Playlist",
-      desc: "Turn favorites into organized collections.",
-    },
-    {
-      icon: ListChecks,
-      title: "Smart Deduplication",
-      desc: "Keep your playlists clean.",
-    },
-    {
-      icon: LinkIcon,
-      title: "Link Resolver",
-      desc: "Get details from any SoundCloud link.",
-    },
-  ];
+  const features = useMemo(
+    () => [
+      { icon: Layers, title: "Combine playlists", desc: "Merge multiple playlists, remove duplicates." },
+      { icon: Heart, title: "Likes → playlist", desc: "Turn favorites into organized collections." },
+      { icon: ListChecks, title: "Bulk tools", desc: "Unlike, unfollow, and clean up fast." },
+      { icon: LinkIcon, title: "Resolve links", desc: "Extract metadata from any SoundCloud URL." },
+    ],
+    []
+  );
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-orange-50 to-white">
-        <div className="w-8 h-8 border-2 border-[#FF5500] border-t-transparent rounded-full animate-spin" />
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <LoadingSpinner size="lg" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-b from-orange-50 to-white">
-      <div className="w-full max-w-[480px]">
-        <div className="bg-white rounded-2xl shadow-xl p-8 relative border border-gray-100">
+    <div className="min-h-screen bg-background">
+      {/* subtle background */}
+      <div className="pointer-events-none fixed inset-0 bg-gradient-to-b from-[#FF5500]/10 via-transparent to-transparent dark:from-[#FF5500]/15" />
+
+      <div className="relative mx-auto flex min-h-screen w-full max-w-6xl items-center justify-center p-4">
+        <div className="w-full max-w-[520px]">
+          {/* Top row */}
+          <div className="mb-4 flex items-center justify-between">
+            <div className="text-xs text-muted-foreground">
+              SC Toolkit
+            </div>
+            <button
+              type="button"
+              onClick={toggleTheme}
+              className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-xs font-medium text-foreground hover:bg-accent transition"
+              aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+            >
+              {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+              {theme === "dark" ? "Light" : "Dark"}
+            </button>
+          </div>
+
+          <Card className="p-6 sm:p-8 shadow-md hover:shadow-md">
           {/* Logo */}
-          <div className="flex flex-col items-center mb-6 mt-8">
+          <div className="flex flex-col items-center mb-6 mt-2">
             <Image
               src="/sc toolkit transparent .png"
               alt="SC Toolkit"
@@ -90,33 +107,38 @@ export default function LoginPage() {
 
           {/* Headline */}
           <div className="text-center mb-6">
-            <h1 className="text-2xl font-semibold text-[#333333]">
+            <h1 className="text-2xl sm:text-3xl font-semibold text-foreground">
               Smarter SoundCloud Playlists
             </h1>
-            <p className="mt-1 text-sm text-[#666666]">
-              Organize, merge, and clean your SoundCloud music in ways the
-              native app can&apos;t.
+            <p className="mt-2 text-sm text-muted-foreground">
+              Organize playlists, manage your library, and run bulk cleanups—fast.
             </p>
           </div>
 
+          {/* Trust row */}
+          <div className="mb-6 flex flex-wrap items-center justify-center gap-2 text-xs text-muted-foreground">
+            <span className="inline-flex items-center gap-1 rounded-full border border-border bg-card px-3 py-1.5">
+              <Lock className="h-3.5 w-3.5 text-[#FF5500]" />
+              OAuth login (no password stored)
+            </span>
+            <span className="inline-flex items-center gap-1 rounded-full border border-border bg-card px-3 py-1.5">
+              Free to use
+            </span>
+            <span className="inline-flex items-center gap-1 rounded-full border border-border bg-card px-3 py-1.5">
+              Light / dark theme
+            </span>
+          </div>
+
           {/* Features */}
-          <div className="space-y-4 mb-8">
+          <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
             {features.map((f, index) => (
-              <div
-                key={index}
-                className="flex items-start gap-3 py-3 animate-fadeIn"
-                style={{
-                  animationDelay: `${0.15 + index * 0.07}s`,
-                }}
-              >
-                <div className="w-10 h-10 rounded flex items-center justify-center bg-[#FF5500]">
-                  <f.icon className="w-7 h-7 text-white" />
+              <div key={index} className="flex items-start gap-3 rounded-xl border border-border bg-card px-4 py-3">
+                <div className="mt-0.5 inline-flex h-9 w-9 items-center justify-center rounded-lg bg-[#FF5500]/10 text-[#FF5500]">
+                  <f.icon className="h-5 w-5" />
                 </div>
-                <div>
-                  <div className="text-lg font-semibold text-[#333333]">
-                    {f.title}
-                  </div>
-                  <div className="text-base text-[#666666]">{f.desc}</div>
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold text-foreground">{f.title}</div>
+                  <div className="text-sm text-muted-foreground">{f.desc}</div>
                 </div>
               </div>
             ))}
@@ -124,38 +146,46 @@ export default function LoginPage() {
 
           {/* API unreachable message */}
           {apiUnreachable && (
-            <div className="mb-4 p-4 rounded-lg bg-amber-50 border border-amber-200 text-center">
-              <p className="text-sm text-amber-800 font-medium">
-                API server unavailable
-              </p>
-              <p className="text-xs text-amber-700 mt-1">
-                Start the backend with <code className="bg-amber-100 px-1 rounded">npm run dev:full</code> and ensure <code className="bg-amber-100 px-1 rounded">.env</code> has the required variables.
-              </p>
+            <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-950 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-100">
+              <div className="text-sm font-semibold">Backend not reachable</div>
+              <div className="mt-1 text-xs opacity-90">
+                Start the backend with{" "}
+                <code className="rounded bg-amber-100 px-1 dark:bg-amber-900/30">npm run dev:full</code>{" "}
+                and ensure <code className="rounded bg-amber-100 px-1 dark:bg-amber-900/30">.env</code> is set.
+              </div>
               <button
+                type="button"
                 onClick={retryAuth}
-                className="mt-2 text-sm text-[#FF5500] font-semibold hover:underline"
+                className="mt-2 text-xs font-semibold text-[#FF5500] hover:underline"
               >
-                Retry
+                Retry connection
               </button>
             </div>
           )}
 
-          {/* Login Button (hidden on mobile; mobile has sticky CTA below) */}
-          <div className="hidden sm:flex justify-center">
+          {/* Login Button */}
+          <div className="hidden sm:flex flex-col gap-2">
             <button
               onClick={prewarmAndLogin}
-              disabled={apiUnreachable}
-              className="w-full sm:w-[280px] mx-auto flex items-center justify-center rounded bg-gradient-to-r from-[#FF5500] to-[#E64A00] hover:brightness-95 hover:shadow-orange-200 text-white py-3 font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={apiUnreachable || prewarming}
+              className="w-full mx-auto flex items-center justify-center rounded-lg bg-gradient-to-r from-[#FF5500] to-[#E64A00] hover:brightness-95 text-white py-3 font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <span className="whitespace-nowrap">Continue with SoundCloud</span>
+              {prewarming ? (
+                <>
+                  <LoadingSpinner size="sm" className="border-white" />
+                  Warming up…
+                </>
+              ) : (
+                <span className="whitespace-nowrap">Continue with SoundCloud</span>
+              )}
             </button>
+            <p className="text-xs text-center text-muted-foreground">
+              You’ll be redirected to SoundCloud to approve access.
+            </p>
           </div>
-          <p className="text-xs text-center mt-3 text-[#999999]">
-            Secure authentication via SoundCloud.
-          </p>
 
           {/* Footer Links */}
-          <div className="flex items-center justify-center gap-4 mt-6 text-sm text-gray-500">
+          <div className="flex items-center justify-center gap-4 mt-6 text-sm text-muted-foreground">
             <Link className="hover:text-[#FF5500] transition" href="/about">
               About
             </Link>
@@ -163,20 +193,27 @@ export default function LoginPage() {
               Privacy
             </Link>
           </div>
+          </Card>
         </div>
       </div>
 
       {/* Sticky mobile CTA */}
-      <div className="sm:hidden fixed bottom-0 left-0 right-0 bg-white/80 backdrop-blur border-t border-gray-200 p-3">
+      <div className="sm:hidden fixed bottom-0 left-0 right-0 bg-background/80 backdrop-blur border-t border-border p-3">
         <button
           onClick={prewarmAndLogin}
-          disabled={apiUnreachable}
-          className="w-full flex items-center justify-center rounded bg-gradient-to-r from-[#FF5500] to-[#E64A00] hover:brightness-95 hover:shadow-orange-200 text-white py-3 font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          disabled={apiUnreachable || prewarming}
+          className="w-full flex items-center justify-center rounded-lg bg-gradient-to-r from-[#FF5500] to-[#E64A00] hover:brightness-95 text-white py-3 font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          <span className="whitespace-nowrap">Continue with SoundCloud</span>
+          {prewarming ? (
+            <>
+              <LoadingSpinner size="sm" className="border-white" />
+              Warming up…
+            </>
+          ) : (
+            <span className="whitespace-nowrap">Continue with SoundCloud</span>
+          )}
         </button>
       </div>
-
     </div>
   );
 }

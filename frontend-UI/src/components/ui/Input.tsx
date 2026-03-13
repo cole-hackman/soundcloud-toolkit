@@ -1,17 +1,30 @@
 import { cn } from "@/lib/utils";
 
+interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
+  error?: boolean;
+}
+
 export function Input({
   className,
+  error,
   ...props
-}: React.InputHTMLAttributes<HTMLInputElement>) {
+}: InputProps) {
   return (
     <input
       className={cn(
-        "w-full px-4 py-3 rounded-lg border-2 border-gray-200",
-        "focus:border-[#FF5500] focus:outline-none transition",
-        className
+        "w-full rounded-md border bg-surface px-3 py-2 text-sm text-foreground shadow-sm",
+        "placeholder:text-muted-foreground",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+        error
+          ? "border-red-500 focus-visible:ring-red-500/40 animate-[shake_150ms_ease-in-out_1]"
+          : "border-input focus-visible:ring-primary/60",
+        "dark:bg-white/5",
+        "transition-colors duration-150",
+        className,
       )}
+      aria-invalid={error ? "true" : undefined}
       {...props}
     />
   );
 }
+

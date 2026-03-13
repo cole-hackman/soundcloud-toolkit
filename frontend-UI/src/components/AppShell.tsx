@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import Script from "next/script";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
@@ -341,19 +340,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </div>
 
             <div className="px-3 pb-2">
-              <Script
-                src="https://cdnjs.buymeacoffee.com/1.0.0/button.prod.min.js"
-                data-name="bmc-button"
-                data-slug="hackman"
-                data-color="#fcffff"
-                data-emoji="☕"
-                data-font="Lato"
-                data-text="Support Me"
-                data-outline-color="#000000"
-                data-font-color="#000000"
-                data-coffee-color="#FFDD00"
-                strategy="afterInteractive"
-              />
+              <a
+                href="https://www.buymeacoffee.com/hackman"
+                target="_blank"
+                rel="noreferrer"
+                className="group inline-flex w-full items-center justify-center gap-2 rounded-xl border border-black bg-[#fcffff] px-3 py-2 text-[12px] font-semibold text-black shadow-sm transition hover:-translate-y-[1px] hover:shadow-md"
+              >
+                <span className="text-[14px] leading-none">☕</span>
+                <span>Support Me</span>
+              </a>
             </div>
           </div>
         ) : (
@@ -376,21 +371,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             >
               <LogOut className="w-4 h-4" />
             </button>
-            <div className="mt-1">
-              <Script
-                src="https://cdnjs.buymeacoffee.com/1.0.0/button.prod.min.js"
-                data-name="bmc-button"
-                data-slug="hackman"
-                data-color="#fcffff"
-                data-emoji="☕"
-                data-font="Lato"
-                data-text="Support Me"
-                data-outline-color="#000000"
-                data-font-color="#000000"
-                data-coffee-color="#FFDD00"
-                strategy="afterInteractive"
-              />
-            </div>
+            <a
+              href="https://www.buymeacoffee.com/hackman"
+              target="_blank"
+              rel="noreferrer"
+              className="mt-1 inline-flex h-8 w-8 items-center justify-center rounded-lg border border-black bg-[#fcffff] text-[14px] leading-none text-black shadow-sm transition hover:-translate-y-[1px] hover:shadow-md"
+              aria-label="Support me on Buy Me a Coffee"
+              title="Support Me"
+            >
+              ☕
+            </a>
           </div>
         )}
       </div>

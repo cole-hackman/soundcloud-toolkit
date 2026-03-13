@@ -313,38 +313,55 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {/* User Profile Section (Inline) */}
       <div className="px-2 mt-4">
         {(!effectiveCollapsed || isMobile) ? (
-          <div className="flex items-center gap-3 px-3 py-2">
+          <div className="space-y-2">
+            <div className="flex items-center gap-3 px-3 py-2">
+              <img
+                src={user?.avatar_url || "/SC Toolkit Icon.png"}
+                alt={user?.display_name || "User"}
+                className="w-6 h-6 rounded-full ring-1 ring-[#FF5500]/20 shrink-0"
+              />
+              <span className="text-[13px] font-medium text-[#333333] dark:text-foreground truncate flex-1">
+                {user?.display_name}
+              </span>
+              <button
+                onClick={toggleTheme}
+                className="p-1.5 rounded-md hover:bg-black/[0.04] dark:hover:bg-white/[0.04] text-[#888888] dark:text-[#a1a1aa] transition"
+                aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+              >
+                {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+              </button>
+              <button
+                onClick={logout}
+                className="p-1.5 rounded-md hover:bg-black/[0.04] dark:hover:bg-white/[0.04] text-[#888888] dark:text-[#a1a1aa] hover:text-[#FF5500] dark:hover:text-[#FF5500] transition"
+                aria-label="Log out"
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
+            </div>
+
+            <a
+              href="https://www.buymeacoffee.com/hackman"
+              target="_blank"
+              rel="noreferrer"
+              className="block px-3 pb-2"
+            >
+              <Image
+                src="https://img.buymeacoffee.com/button-api/?text=Buy%20me%20a%20coffee%20:)&emoji=%E2%98%95&slug=hackman&button_colour=ff5500&font_colour=000000&font_family=Poppins&outline_colour=000000&coffee_colour=FFDD00"
+                alt="Buy me a coffee"
+                width={220}
+                height={60}
+                className="w-full h-auto"
+              />
+            </a>
+          </div>
+        ) : (
+          /* Collapsed state: Stacked column of avatars/icons */
+          <div className="flex flex-col items-center gap-3 py-2">
             <img
               src={user?.avatar_url || "/SC Toolkit Icon.png"}
               alt={user?.display_name || "User"}
               className="w-6 h-6 rounded-full ring-1 ring-[#FF5500]/20 shrink-0"
             />
-            <span className="text-[13px] font-medium text-[#333333] dark:text-foreground truncate flex-1">
-              {user?.display_name}
-            </span>
-            <button
-              onClick={toggleTheme}
-              className="p-1.5 rounded-md hover:bg-black/[0.04] dark:hover:bg-white/[0.04] text-[#888888] dark:text-[#a1a1aa] transition"
-              aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-            >
-              {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-            </button>
-            <button
-              onClick={logout}
-              className="p-1.5 rounded-md hover:bg-black/[0.04] dark:hover:bg-white/[0.04] text-[#888888] dark:text-[#a1a1aa] hover:text-[#FF5500] dark:hover:text-[#FF5500] transition"
-              aria-label="Log out"
-            >
-              <LogOut className="w-4 h-4" />
-            </button>
-          </div>
-        ) : (
-          /* Collapsed state: Stacked column of avatars/icons */
-          <div className="flex flex-col items-center gap-4 py-2">
-             <img
-              src={user?.avatar_url || "/SC Toolkit Icon.png"}
-              alt={user?.display_name || "User"}
-              className="w-6 h-6 rounded-full ring-1 ring-[#FF5500]/20 shrink-0"
-            />
             <button
               onClick={toggleTheme}
               className="p-1.5 rounded-md hover:bg-black/[0.04] dark:hover:bg-white/[0.04] text-[#888888] dark:text-[#a1a1aa] transition"
@@ -357,6 +374,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             >
               <LogOut className="w-4 h-4" />
             </button>
+            <a
+              href="https://www.buymeacoffee.com/hackman"
+              target="_blank"
+              rel="noreferrer"
+              className="mt-1"
+            >
+              <Image
+                src="https://img.buymeacoffee.com/button-api/?text=Buy%20me%20a%20coffee%20:)&emoji=%E2%98%95&slug=hackman&button_colour=ff5500&font_colour=000000&font_family=Poppins&outline_colour=000000&coffee_colour=FFDD00"
+                alt="Buy me a coffee"
+                width={160}
+                height={48}
+                className="w-[120px] h-auto"
+              />
+            </a>
           </div>
         )}
       </div>

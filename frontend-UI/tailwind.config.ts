@@ -10,7 +10,8 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        sans: ["var(--font-inter)", "system-ui", "sans-serif"],
+        display: ["var(--font-display)", "system-ui", "sans-serif"],
+        sans: ["var(--font-sans)", "system-ui", "sans-serif"],
       },
       colors: {
         background: 'hsl(var(--background))',
@@ -43,6 +44,9 @@ export default {
           DEFAULT: 'hsl(var(--destructive))',
           foreground: 'hsl(var(--destructive-foreground))'
         },
+        glass: 'hsl(var(--glass))',
+        surface: 'hsl(var(--surface))',
+        'surface-hover': 'hsl(var(--surface-hover))',
         border: 'hsl(var(--border))',
         input: 'hsl(var(--input))',
         ring: 'hsl(var(--ring))',
@@ -53,6 +57,35 @@ export default {
           '4': 'hsl(var(--chart-4))',
           '5': 'hsl(var(--chart-5))'
         }
+      },
+      boxShadow: {
+        'glow-sm':
+          '0 0 0 1px rgba(255, 85, 0, 0.45), 0 10px 25px rgba(255, 85, 0, 0.35)',
+        'elevation-1':
+          '0 14px 30px rgba(15, 23, 42, 0.45), 0 4px 10px rgba(15, 23, 42, 0.35)',
+        'elevation-2':
+          '0 18px 45px rgba(15, 23, 42, 0.65), 0 8px 18px rgba(15, 23, 42, 0.45)',
+        'elevation-3':
+          '0 28px 80px rgba(15, 23, 42, 0.80), 0 12px 30px rgba(15, 23, 42, 0.55)',
+      },
+      keyframes: {
+        'fade-in-up': {
+          '0%': { opacity: '0', transform: 'translateY(12px)' },
+          '100%': { opacity: '1', transform: 'translateY(0)' },
+        },
+        'fade-in': {
+          '0%': { opacity: '0' },
+          '100%': { opacity: '1' },
+        },
+        'scale-in': {
+          '0%': { opacity: '0', transform: 'scale(0.96)' },
+          '100%': { opacity: '1', transform: 'scale(1)' },
+        },
+      },
+      animation: {
+        'fade-in-up': 'fade-in-up 300ms ease-out both',
+        'fade-in': 'fade-in 200ms ease-out both',
+        'scale-in': 'scale-in 220ms ease-out both',
       },
       borderRadius: {
         lg: 'var(--radius)',

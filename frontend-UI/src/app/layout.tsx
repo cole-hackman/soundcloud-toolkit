@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Plus_Jakarta_Sans, Space_Grotesk } from "next/font/google";
+import Script from "next/script";
 import "./globals.css";
 import { GoogleAnalytics } from "@/components/Analytics";
 import { Providers } from "@/components/Providers";
@@ -103,6 +104,19 @@ export default function RootLayout({
         <Providers>
           {children}
         </Providers>
+        <Script
+          src="https://cdnjs.buymeacoffee.com/1.0.0/button.prod.min.js"
+          data-name="bmc-button"
+          data-slug="hackman"
+          data-color="#fcffff"
+          data-emoji="☕"
+          data-font="Lato"
+          data-text="Support Me"
+          data-outline-color="#000000"
+          data-font-color="#000000"
+          data-coffee-color="#FFDD00"
+          strategy="afterInteractive"
+        />
         <GoogleAnalytics />
         <Analytics />
       </body>

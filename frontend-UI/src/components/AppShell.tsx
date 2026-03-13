@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import Script from "next/script";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
@@ -339,20 +340,21 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </button>
             </div>
 
-            <a
-              href="https://www.buymeacoffee.com/hackman"
-              target="_blank"
-              rel="noreferrer"
-              className="block px-3 pb-2"
-            >
-              <Image
-                src="https://img.buymeacoffee.com/button-api/?text=Buy%20me%20a%20coffee%20:)&emoji=%E2%98%95&slug=hackman&button_colour=ff5500&font_colour=000000&font_family=Poppins&outline_colour=000000&coffee_colour=FFDD00"
-                alt="Buy me a coffee"
-                width={220}
-                height={60}
-                className="w-full h-auto"
+            <div className="px-3 pb-2">
+              <Script
+                src="https://cdnjs.buymeacoffee.com/1.0.0/button.prod.min.js"
+                data-name="bmc-button"
+                data-slug="hackman"
+                data-color="#fcffff"
+                data-emoji="☕"
+                data-font="Lato"
+                data-text="Support Me"
+                data-outline-color="#000000"
+                data-font-color="#000000"
+                data-coffee-color="#FFDD00"
+                strategy="afterInteractive"
               />
-            </a>
+            </div>
           </div>
         ) : (
           /* Collapsed state: Stacked column of avatars/icons */
@@ -374,20 +376,21 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             >
               <LogOut className="w-4 h-4" />
             </button>
-            <a
-              href="https://www.buymeacoffee.com/hackman"
-              target="_blank"
-              rel="noreferrer"
-              className="mt-1"
-            >
-              <Image
-                src="https://img.buymeacoffee.com/button-api/?text=Buy%20me%20a%20coffee%20:)&emoji=%E2%98%95&slug=hackman&button_colour=ff5500&font_colour=000000&font_family=Poppins&outline_colour=000000&coffee_colour=FFDD00"
-                alt="Buy me a coffee"
-                width={160}
-                height={48}
-                className="w-[120px] h-auto"
+            <div className="mt-1">
+              <Script
+                src="https://cdnjs.buymeacoffee.com/1.0.0/button.prod.min.js"
+                data-name="bmc-button"
+                data-slug="hackman"
+                data-color="#fcffff"
+                data-emoji="☕"
+                data-font="Lato"
+                data-text="Support Me"
+                data-outline-color="#000000"
+                data-font-color="#000000"
+                data-coffee-color="#FFDD00"
+                strategy="afterInteractive"
               />
-            </a>
+            </div>
           </div>
         )}
       </div>

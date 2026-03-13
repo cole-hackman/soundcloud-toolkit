@@ -6,7 +6,7 @@ A web toolkit for SoundCloud power users — organize playlists, manage follower
 [![License](https://img.shields.io/badge/license-UNLICENSED-lightgrey.svg)](#license)
 [![Node](https://img.shields.io/badge/node-%E2%89%A5%2018-43853d.svg)](#install)
 [![React](https://img.shields.io/badge/react-18-61dafb.svg)](#install)
-[![Vite](https://img.shields.io/badge/build-vite-646cff.svg)](#install)
+[![Next.js](https://img.shields.io/badge/next-15-black.svg)](#install)
 
 ## 1. What Is the Project?
 
@@ -57,15 +57,15 @@ Create **.env** (server) and **frontend-UI/.env.local** (frontend). Example:
 # --- Server (.env) ---
 SOUNDCLOUD_CLIENT_ID=your_client_id
 SOUNDCLOUD_CLIENT_SECRET=your_client_secret
-SOUNDCLOUD_REDIRECT_URI=http://localhost:3011/api/auth/callback
+SOUNDCLOUD_REDIRECT_URI=https://api.yourdomain.com/api/auth/callback
 SESSION_SECRET=super_long_random_string
 ENCRYPTION_KEY=32characterslongexactly32characters!
 DATABASE_URL=postgres://...
 APP_URL=http://localhost:3000
-APP_URLS=http://localhost:3000,http://localhost:3011
+APP_URLS=http://localhost:3000,http://localhost:3001
 
 # --- Frontend (frontend-UI/.env.local) ---
-NEXT_PUBLIC_API_URL=http://localhost:3011
+NEXT_PUBLIC_API_BASE=http://localhost:3001
 ```
 
 Initialize the DB schema:
@@ -87,14 +87,14 @@ Visit **http://localhost:3000** → **Login with SoundCloud**.
 
 ```bash
 npm run build
-npm run preview
+npm run server
 ```
 
 ### Deployment Pattern (example)
 
 | Component               | Recommendation                                                                                             |
 | ----------------------- | ---------------------------------------------------------------------------------------------------------- |
-| **Frontend**            | Vercel (Vite preset). Set `VITE_API_BASE` to your API origin.                                              |
+| **Frontend**            | Vercel (Next.js preset). Set `NEXT_PUBLIC_API_BASE` to your API origin.                                   |
 | **Backend**             | DigitalOcean App Platform (see `.do/app.yaml` and `DIGITALOCEAN_MIGRATION.md`), Render, Railway, or Fly.io |
 | **Database**            | Neon (pooled connection string recommended)                                                                |
 | **Domains**             | Frontend → `www.yourdomain.com`, API → `api.yourdomain.com`                                                |

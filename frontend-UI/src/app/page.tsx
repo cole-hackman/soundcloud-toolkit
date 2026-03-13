@@ -1,9 +1,25 @@
+"use client";
+
 import Image from "next/image";
 import Link from "next/link";
 import { StructuredData } from "@/components/StructuredData";
-import { 
-  Layers, Heart, ArrowUpDown, Check, Lock, Zap, RefreshCw, Globe, Shield, 
-  Radio, UserMinus, ThumbsDown, Download, HeartPulse, Link as LinkIcon, Music, Settings, LogIn 
+import { Button, Card } from "@/components/ui";
+import {
+  Layers,
+  Heart,
+  ArrowUpDown,
+  Check,
+  Lock,
+  Shield,
+  Radio,
+  UserMinus,
+  ThumbsDown,
+  Download,
+  HeartPulse,
+  Link as LinkIcon,
+  Music,
+  Settings,
+  LogIn,
 } from "lucide-react";
 
 // FAQ data - used for both display and structured data
@@ -134,56 +150,73 @@ const userTypes = [
 // Steps data from Home.tsx
 const steps = [
   {
-    step: '1',
+    step: "1",
     icon: LogIn,
-    title: 'Connect',
-    description: 'Sign in securely with your SoundCloud account using OAuth'
+    title: "Connect",
+    description: "Sign in securely with your SoundCloud account using OAuth",
   },
   {
-    step: '2',
+    step: "2",
     icon: Settings,
-    title: 'Organize',
-    description: 'Use 10+ powerful tools to merge, sort, clean, and manage your library'
+    title: "Organize",
+    description:
+      "Use 10+ powerful tools to merge, sort, clean, and manage your library",
   },
   {
-    step: '3',
+    step: "3",
     icon: Music,
-    title: 'Enjoy',
-    description: 'Export your organized playlists back to SoundCloud instantly'
-  }
+    title: "Enjoy",
+    description: "Export your organized playlists back to SoundCloud instantly",
+  },
 ];
 
 export default function Home() {
+  const scrollToFeatures = () => {
+    const el = document.getElementById("features");
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
   return (
     <>
       <StructuredData faqs={faqs} />
 
-      <div className="min-h-screen bg-[#F2F2F2] text-[#333333]">
+      <div className="min-h-screen bg-background text-foreground">
         {/* Navigation */}
-        <nav className="fixed top-0 left-0 right-0 z-50 flex items-center justify-center pt-4 sm:pt-6">
-          <div className="max-w-5xl mx-auto px-4 sm:px-6 w-full">
-            <div className="bg-white/90 backdrop-blur-sm rounded-full border border-gray-200 shadow-lg px-4 sm:px-6 py-2 sm:py-3 flex items-center justify-between">
+        <nav className="fixed inset-x-0 top-0 z-40 flex items-center justify-center pt-4 sm:pt-6">
+          <div className="mx-auto flex w-full max-w-6xl px-4 sm:px-6">
+            <div className="glass-card flex w-full items-center justify-between rounded-full border px-4 py-2 sm:px-6 sm:py-3">
               <div className="flex items-center gap-2">
                 <Image
                   src="/sc toolkit transparent .png"
                   alt="SC Toolkit Logo"
                   width={120}
                   height={40}
-                  className="h-8 sm:h-10 w-auto object-contain"
+                  className="h-8 w-auto object-contain sm:h-10"
                   priority
                   unoptimized
                 />
               </div>
-              <div className="hidden md:flex items-center gap-8 text-sm absolute left-1/2 transform -translate-x-1/2">
-                <a href="#features" className="hover:text-[#FF5500] transition">Features</a>
-                <a href="#benefits" className="hover:text-[#FF5500] transition">Benefits</a>
-                <a href="#how-it-works" className="hover:text-[#FF5500] transition">How It Works</a>
-                <a href="#faq" className="hover:text-[#FF5500] transition">FAQ</a>
+              <div className="absolute left-1/2 hidden -translate-x-1/2 items-center gap-8 text-sm text-muted-foreground md:flex">
+                <a href="#features" className="hover:text-foreground transition">
+                  Features
+                </a>
+                <a href="#benefits" className="hover:text-foreground transition">
+                  Benefits
+                </a>
+                <a
+                  href="#how-it-works"
+                  className="hover:text-foreground transition"
+                >
+                  How It Works
+                </a>
+                <a href="#faq" className="hover:text-foreground transition">
+                  FAQ
+                </a>
               </div>
               <div className="flex items-center">
                 <Link
                   href="/login"
-                  className="px-4 sm:px-6 py-1.5 sm:py-2 text-xs sm:text-sm bg-gradient-to-r from-[#FF5500] to-[#E64A00] text-white rounded-full hover:shadow-lg transition-all font-semibold"
+                  className="inline-flex items-center justify-center rounded-full bg-primary px-4 py-1.5 text-xs font-semibold text-primary-foreground shadow-elevation-1 transition-all hover:shadow-glow-sm hover:-translate-y-0.5 sm:px-6 sm:py-2 sm:text-sm"
                 >
                   Login
                 </Link>
@@ -193,46 +226,76 @@ export default function Home() {
         </nav>
 
         {/* Hero Section */}
-        <section className="pt-24 sm:pt-32 md:pt-40 pb-16 sm:pb-24 md:pb-32 px-4 sm:px-6 relative overflow-hidden bg-gradient-to-b from-[#FF5500]/5 to-transparent">
-          <div className="max-w-4xl mx-auto text-center relative z-10">
-            <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold mb-4 sm:mb-6 leading-tight text-[#333333]">
-              The Ultimate SoundCloud <br />
-              <span className="bg-gradient-to-r from-[#FF5500] to-[#E64A00] bg-clip-text text-transparent">
-                Toolkit
-              </span>
+        <section className="relative overflow-hidden px-4 pb-20 pt-28 sm:px-6 sm:pt-32 md:pb-28 md:pt-40">
+          <div className="pointer-events-none absolute inset-x-0 -top-40 -z-10 h-[480px] bg-[radial-gradient(circle_at_top,_rgba(255,85,0,0.18),transparent_55%),radial-gradient(circle_at_bottom,_rgba(37,99,235,0.18),transparent_55%)]" />
+
+          <div className="relative z-10 mx-auto flex max-w-4xl flex-col items-center text-center">
+            <div className="animate-fade-in-up inline-flex items-center gap-2 rounded-full border border-border/60 bg-surface/70 px-3 py-1 text-xs font-medium text-muted-foreground backdrop-blur">
+              <span className="h-2 w-2 rounded-full bg-primary" />
+              SoundCloud playlist power tools — free forever
+            </div>
+
+            <h1 className="mt-6 animate-fade-in-up text-balance text-4xl font-semibold tracking-tight text-foreground sm:text-5xl md:text-6xl lg:text-7xl [animation-delay:80ms]">
+              The Ultimate SoundCloud{" "}
+              <span className="text-gradient font-semibold">Toolkit</span>
             </h1>
-            <p className="text-base sm:text-lg md:text-xl text-[#666666] mb-8 sm:mb-10 max-w-2xl mx-auto leading-relaxed px-4">
-              Organize playlists, manage followers, download tracks, and clean up your SoundCloud in ways the native app can't. Free for all users.
+
+            <p className="mt-5 max-w-2xl animate-fade-in-up text-balance text-base text-muted-foreground sm:text-lg md:text-xl [animation-delay:160ms]">
+              Organize playlists, clean your library, and tame your SoundCloud
+              chaos with a focused console of tools — built for curators,
+              DJs, and power listeners.
             </p>
-            <Link
-              href="/login"
-              className="inline-block px-10 py-4 bg-gradient-to-r from-[#FF5500] to-[#E64A00] text-white font-semibold rounded-lg hover:shadow-xl hover:shadow-orange-500/30 transition-all text-lg"
-            >
-              Get Started Free →
-            </Link>
-            <p className="mt-4 text-xs sm:text-sm text-[#999999]">
-              Free to use. No credit card required.
+
+            <div className="mt-8 flex flex-wrap items-center justify-center gap-4 [animation-delay:220ms]">
+              <Link
+                href="/login"
+                className="inline-flex items-center justify-center gap-2 rounded-lg px-8 py-3 text-sm font-semibold shadow-elevation-2 transition-all duration-150 hover:shadow-glow-sm hover:-translate-y-0.5 bg-primary text-primary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/80 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+              >
+                Connect with SoundCloud
+              </Link>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={scrollToFeatures}
+                className="rounded-full px-6 py-2"
+              >
+                See what it does
+              </Button>
+            </div>
+
+            <p className="mt-4 text-xs text-muted-foreground sm:text-sm">
+              Free to use. No credit card. Just OAuth.
             </p>
           </div>
         </section>
 
-        {/* Social Proof Ribbon - NEW */}
-        <section className="py-8 px-6 border-y bg-white border-gray-200">
-          <div className="max-w-5xl mx-auto">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+        {/* Social proof / trust bar */}
+        <section className="border-y border-border/60 bg-surface px-4 py-6 sm:px-6">
+          <div className="mx-auto max-w-5xl">
+            <p className="mb-4 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Trusted by SoundCloud power users
+            </p>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               {[
-                { icon: Zap, label: '10+ Tools', description: 'Powerful features' },
-                { icon: Lock, label: 'Secure', description: 'OAuth & encrypted' },
-                { icon: Heart, label: '100% Free', description: 'No hidden costs' },
-                { icon: Layers, label: 'Unlimited', description: 'Playlist management' }
-              ].map((stat, i) => (
-                <div key={i} className="flex items-center gap-3 justify-center">
-                  <div className="w-10 h-10 rounded-lg bg-[#FF5500]/10 flex items-center justify-center flex-shrink-0">
-                    <stat.icon className="w-5 h-5 text-[#FF5500]" />
+                { icon: Lock, label: "Secure OAuth", description: "Official SoundCloud login" },
+                { icon: Shield, label: "No password storage", description: "Tokens encrypted at rest" },
+                { icon: Heart, label: "Loved by curators", description: "Playlists without the chaos" },
+                { icon: Layers, label: "Playlist safe", description: "Originals stay untouched" },
+              ].map((item, i) => (
+                <div
+                  key={i}
+                  className="flex items-center gap-3 rounded-xl border border-border/60 bg-surface/80 px-4 py-3"
+                >
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                    <item.icon className="h-4 w-4" />
                   </div>
-                  <div>
-                    <div className="font-bold text-sm text-[#333333]">{stat.label}</div>
-                    <div className="text-xs text-[#666666]">{stat.description}</div>
+                  <div className="min-w-0">
+                    <span className="block text-xs font-semibold text-foreground">
+                      {item.label}
+                    </span>
+                    <span className="block text-[11px] text-muted-foreground">
+                      {item.description}
+                    </span>
                   </div>
                 </div>
               ))}
@@ -240,57 +303,85 @@ export default function Home() {
           </div>
         </section>
 
-        {/* Features Section - UPDATED */}
-        <section id="features" className="py-24 px-6 bg-[#F2F2F2]">
-          <div className="max-w-7xl mx-auto">
-            <div className="text-center mb-16">
-              <h2 className="text-4xl md:text-5xl font-bold mb-4 text-[#333333]">
-                Powerful Features
+        {/* Features grid */}
+        <section
+          id="features"
+          className="px-4 py-20 sm:px-6 sm:py-24 lg:py-28"
+        >
+          <div className="mx-auto max-w-6xl">
+            <div className="mx-auto mb-14 max-w-3xl text-center">
+              <h2 className="text-3xl font-semibold tracking-tight sm:text-4xl md:text-5xl">
+                A console of tools for{" "}
+                <span className="text-gradient">total control</span>.
               </h2>
-              <p className="text-lg max-w-2xl mx-auto text-[#666666]">
-                Everything you need to take control of your SoundCloud experience
+              <p className="mt-4 text-base text-muted-foreground sm:text-lg">
+                Merge, clean, and re-shape your SoundCloud world without
+                wrestling the UI. Every tool is tuned for large libraries and
+                obsessive curators.
               </p>
             </div>
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {features.map((feature, i) => {
-                const IconComponent = feature.icon;
-                return (
-                  <div
-                    key={i}
-                    className="group bg-white border-2 border-gray-200 rounded-2xl p-8 hover:border-[#FF5500] hover:shadow-2xl hover:-translate-y-1 transition-all duration-300"
+
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {[
+                { name: "Playlists, without the mess", description: "Combine playlists, remove duplicates, and keep everything in sync.", href: "/combine", Icon: Layers, wide: true },
+                { name: "Likes → playlists, automatically", description: "Turn years of likes into themed, export-ready playlists.", href: "/likes-to-playlist", Icon: Heart, wide: false },
+                { name: "Health checks for every set", description: "Find blocked, deleted, and unstreamable tracks before a show.", href: "/playlist-health-check", Icon: HeartPulse, wide: false },
+                { name: "Social graph control", description: "See who doesn’t follow back, batch unfollow, and clean your feed.", href: "/following-manager", Icon: UserMinus, wide: false },
+              ].map((item, i) => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={item.wide ? "sm:col-span-2 lg:col-span-2" : ""}
+                >
+                  <Card
+                    interactive
+                    className="h-full p-5 transition-all hover:border-primary/60"
                   >
-                    <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-[#FF5500] to-[#E64A00] flex items-center justify-center text-white mb-5">
-                      <IconComponent className="w-7 h-7" strokeWidth={2} />
+                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                      <item.Icon className="h-5 w-5" />
                     </div>
-                    <h3 className="text-xl font-bold mb-3 text-[#333333] group-hover:text-[#FF5500] transition">
-                      {feature.title}
+                    <h3 className="mt-3 text-sm font-semibold text-foreground">
+                      {item.name}
                     </h3>
-                    <p className="text-[#666666] leading-relaxed">
-                      {feature.description}
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {item.description}
                     </p>
-                  </div>
-                );
-              })}
+                    <span className="mt-3 inline-block text-[11px] font-medium text-primary">
+                      Open →
+                    </span>
+                  </Card>
+                </Link>
+              ))}
             </div>
           </div>
         </section>
 
-        {/* Benefits Section - UPDATED */}
-        <section id="benefits" className="py-24 px-6 bg-white">
-          <div className="max-w-6xl mx-auto">
-            <h2 className="text-4xl md:text-5xl font-bold text-center mb-16 text-[#333333]">
-              Built for SoundCloud Power Users
+        {/* Benefits section */}
+        <section
+          id="benefits"
+          className="border-y border-border/60 bg-surface px-4 py-20 sm:px-6 sm:py-24"
+        >
+          <div className="mx-auto max-w-6xl">
+            <h2 className="text-center text-3xl font-semibold tracking-tight sm:text-4xl md:text-5xl">
+              Built for the{" "}
+              <span className="text-gradient">obsessed listeners</span>.
             </h2>
-            <div className="grid md:grid-cols-2 gap-6">
-              {benefits.map((benefit, i) => (
+            <p className="mx-auto mt-4 max-w-3xl text-center text-base text-muted-foreground sm:text-lg">
+              Whether you&apos;re a DJ, curator, or collector, SC Toolkit
+              gives you the levers to keep everything sharp, searchable, and
+              show-ready.
+            </p>
+
+            <div className="mt-12 grid gap-6 md:grid-cols-2">
+              {benefits.map((benefit) => (
                 <div
-                  key={i}
-                  className="flex items-start gap-4 bg-[#F2F2F2] p-6 rounded-xl border border-gray-200"
+                  key={benefit}
+                  className="glass-card flex items-start gap-4 rounded-xl border bg-surface/80 p-6"
                 >
-                  <div className="flex-shrink-0 w-6 h-6 rounded-full bg-[#FF5500] flex items-center justify-center text-white font-bold text-sm mt-1">
-                    <Check className="w-4 h-4" />
+                  <div className="mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
+                    <Check className="h-4 w-4" />
                   </div>
-                  <p className="text-[#666666] text-lg leading-relaxed">
+                  <p className="text-sm leading-relaxed text-foreground sm:text-base">
                     {benefit}
                   </p>
                 </div>
@@ -299,54 +390,38 @@ export default function Home() {
           </div>
         </section>
 
-        {/* Who This Tool Is For Section */}
-        <section id="who-its-for" className="py-24 px-6 bg-[#F2F2F2]">
-          <div className="max-w-6xl mx-auto">
-            <h2 className="text-4xl md:text-5xl font-bold text-center mb-8 text-[#333333]">
-              Who This Tool Is For
+        {/* How it works */}
+        <section
+          id="how-it-works"
+          className="bg-background/80 px-4 py-20 sm:px-6 sm:py-24"
+        >
+          <div className="mx-auto max-w-5xl">
+            <h2 className="text-center text-3xl font-semibold tracking-tight sm:text-4xl md:text-5xl">
+              How it works
             </h2>
-            <p className="text-center text-lg text-[#666666] mb-16 max-w-3xl mx-auto">
-              SC Toolkit is designed for SoundCloud power users who take their
-              music organization seriously.
+            <p className="mx-auto mt-4 max-w-2xl text-center text-base text-muted-foreground sm:text-lg">
+              Three steps, one clean library. No spreadsheets, no hacks — just
+              tools that speak SoundCloud.
             </p>
-            <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-              {userTypes.map((user, i) => (
-                <div
-                  key={i}
-                  className="bg-white p-6 rounded-2xl border border-gray-200 text-center"
-                >
-                  <h3 className="text-lg font-bold mb-3 text-[#333333]">
-                    {user.title}
-                  </h3>
-                  <p className="text-[#666666] text-sm leading-relaxed">
-                    {user.description}
-                  </p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
 
-        {/* How It Works Section - UPDATED */}
-        <section id="how-it-works" className="py-24 px-6 bg-white">
-          <div className="max-w-6xl mx-auto">
-            <h2 className="text-4xl md:text-5xl font-bold text-center mb-20 text-[#333333]">
-              How It Works
-            </h2>
-            <div className="grid md:grid-cols-3 gap-8">
+            <div className="relative mt-14 grid gap-8 rounded-3xl border border-border/70 bg-surface/70 p-8 shadow-elevation-1 sm:grid-cols-3 sm:p-10">
               {steps.map((item, i) => {
                 const IconComponent = item.icon;
                 return (
-                  <div key={i} className="text-center">
-                    <div className="flex justify-center mb-4">
-                      <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[#FF5500] to-[#E64A00] flex items-center justify-center text-white">
-                        <IconComponent className="w-8 h-8" strokeWidth={2} />
-                      </div>
+                  <div
+                    key={item.title}
+                    className="relative flex flex-col items-center text-center"
+                  >
+                    <div className="flex h-12 w-12 items-center justify-center rounded-full border border-border/70 bg-surface text-sm font-semibold text-muted-foreground">
+                      {item.step}
                     </div>
-                    <h3 className="text-2xl font-bold mb-3 text-[#333333]">
+                    <div className="mt-4 flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 text-primary">
+                      <IconComponent className="h-7 w-7" />
+                    </div>
+                    <h3 className="mt-4 text-lg font-semibold text-foreground">
                       {item.title}
                     </h3>
-                    <p className="text-[#666666] text-lg leading-relaxed">
+                    <p className="mt-2 text-sm text-muted-foreground">
                       {item.description}
                     </p>
                   </div>
@@ -356,66 +431,52 @@ export default function Home() {
           </div>
         </section>
 
-        {/* Security & Privacy Section */}
-        <section className="py-24 px-6 bg-[#F2F2F2]">
-          <div className="max-w-3xl mx-auto">
-            <div className="bg-white rounded-3xl p-12 text-center border-2 border-gray-200 shadow-xl">
-              <div className="w-20 h-20 rounded-full bg-gradient-to-br from-[#FF5500] to-[#E64A00] flex items-center justify-center text-white mx-auto mb-6">
-                <Shield className="w-10 h-10" strokeWidth={2} />
-              </div>
-              <h2 className="text-3xl font-bold mb-4 text-[#333333]">
-                Security & Privacy
-              </h2>
-              <p className="text-[#666666] text-lg leading-relaxed mb-6">
-                SC Toolkit uses official SoundCloud OAuth authentication with
-                PKCE. We never store your password and only request the minimum
-                permissions needed. All access tokens are encrypted at rest
-                using AES-256-GCM encryption. Your data stays private and
-                secure.
-              </p>
-              <div className="flex flex-wrap justify-center gap-4 text-sm text-[#666666] mb-6">
-                <span className="bg-[#F2F2F2] px-4 py-2 rounded-full border border-gray-200 flex items-center gap-2">
-                  <Lock className="w-4 h-4 text-[#FF5500]" /> OAuth 2.0 + PKCE
-                </span>
-                <span className="bg-[#F2F2F2] px-4 py-2 rounded-full border border-gray-200 flex items-center gap-2">
-                  <Shield className="w-4 h-4 text-[#FF5500]" /> AES-256-GCM Encryption
-                </span>
-                <span className="bg-[#F2F2F2] px-4 py-2 rounded-full border border-gray-200 flex items-center gap-2">
-                  <Check className="w-4 h-4 text-[#FF5500]" /> No Password Storage
-                </span>
-              </div>
+        {/* CTA section */}
+        <section className="border-y border-border/60 bg-surface px-4 py-20 sm:px-6 sm:py-24">
+          <div className="mx-auto max-w-3xl text-center">
+            <h2 className="text-3xl font-semibold tracking-tight sm:text-4xl md:text-5xl">
+              Ready to organize your SoundCloud like a studio session?
+            </h2>
+            <p className="mt-4 text-base text-muted-foreground sm:text-lg">
+              Connect once, pick a tool, and let SC Toolkit handle the
+              tedious parts — so you can listen, sort, and play.
+            </p>
+            <div className="mt-8 flex flex-wrap items-center justify-center gap-4">
               <Link
-                href="/privacy"
-                className="text-[#FF5500] hover:text-[#E64A00] font-semibold"
+                href="/login"
+                className="inline-flex items-center justify-center gap-2 rounded-lg px-10 py-3 text-base font-semibold shadow-elevation-2 transition-all duration-150 hover:shadow-glow-sm hover:-translate-y-0.5 bg-primary text-primary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/80 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
               >
-                View Privacy Policy →
+                Connect with SoundCloud
               </Link>
             </div>
           </div>
         </section>
 
-        {/* FAQ Section - UPDATED */}
-        <section id="faq" className="py-24 px-6 bg-white">
-          <div className="max-w-4xl mx-auto">
-            <h2 className="text-4xl md:text-5xl font-bold text-center mb-16 text-[#333333]">
-              Frequently Asked Questions
+        {/* FAQ */}
+        <section
+          id="faq"
+          className="bg-background px-4 py-20 sm:px-6 sm:py-24"
+        >
+          <div className="mx-auto max-w-4xl">
+            <h2 className="text-center text-3xl font-semibold tracking-tight sm:text-4xl">
+              Frequently asked
             </h2>
-            <div className="space-y-4">
-              {faqs.map((faq, index) => (
+            <div className="mt-10 space-y-4">
+              {faqs.map((faq) => (
                 <details
-                  key={index}
-                  className="bg-[#F2F2F2] rounded-xl border-2 border-gray-200 overflow-hidden group"
+                  key={faq.question}
+                  className="group rounded-xl border border-border/70 bg-surface/80"
                 >
-                  <summary className="w-full px-6 py-5 flex items-center justify-between text-left hover:bg-gray-100 transition-colors cursor-pointer list-none">
-                    <h3 className="text-lg md:text-xl font-semibold text-[#333333] pr-4">
+                  <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-4 sm:px-6 sm:py-5">
+                    <h3 className="pr-4 text-left text-sm font-medium text-foreground sm:text-base">
                       {faq.question}
                     </h3>
-                    <span className="text-[#FF5500] text-2xl flex-shrink-0 group-open:rotate-45 transition-transform">
+                    <span className="text-lg text-muted-foreground transition-transform group-open:rotate-45">
                       +
                     </span>
                   </summary>
-                  <div className="px-6 pb-5 pt-0">
-                    <p className="text-[#666666] text-base md:text-lg leading-relaxed">
+                  <div className="px-4 pb-4 pt-0 sm:px-6 sm:pb-5">
+                    <p className="text-sm leading-relaxed text-muted-foreground sm:text-base">
                       {faq.answer}
                     </p>
                   </div>
@@ -425,48 +486,38 @@ export default function Home() {
           </div>
         </section>
 
-        {/* Final CTA Section */}
-        <section className="py-24 px-6 bg-gradient-to-b from-[#FF5500]/10 to-[#F2F2F2]">
-          <div className="max-w-3xl mx-auto text-center">
-            <h2 className="text-4xl md:text-5xl font-bold mb-6 text-[#333333]">
-              Ready to Organize Your SoundCloud?
-            </h2>
-            <p className="text-lg text-[#666666] mb-10 max-w-2xl mx-auto">
-              Join thousands of SoundCloud power users who have transformed
-              their music libraries with SC Toolkit. It&apos;s free, secure, and
-              takes just seconds to get started.
-            </p>
-            <Link
-              href="/login"
-              className="inline-block px-12 py-5 bg-gradient-to-r from-[#FF5500] to-[#E64A00] text-white font-semibold rounded-lg hover:shadow-xl hover:shadow-orange-500/30 transition-all text-xl"
-            >
-              Get Started Free →
-            </Link>
-          </div>
-        </section>
-
         {/* Footer */}
-        <footer className="border-t border-gray-300 py-12 px-6 bg-white">
-          <div className="max-w-7xl mx-auto">
-            <div className="text-center mb-8">
-              <div className="flex items-center justify-center gap-4 mb-4 text-[#666666]">
-                <Link href="/about" className="hover:text-[#FF5500] transition">
+        <footer className="border-t border-border/60 bg-background/90 px-4 py-10 sm:px-6">
+          <div className="mx-auto max-w-6xl">
+            <div className="flex flex-col items-center justify-between gap-4 text-xs text-muted-foreground sm:flex-row sm:text-sm">
+              <div className="flex items-center gap-4">
+                <Link
+                  href="/about"
+                  className="hover:text-foreground transition-colors"
+                >
                   About
                 </Link>
-                <span>•</span>
+                <span className="hidden sm:inline">•</span>
                 <Link
                   href="/privacy"
-                  className="hover:text-[#FF5500] transition"
+                  className="hover:text-foreground transition-colors"
                 >
-                  Privacy Policy
+                  Privacy
+                </Link>
+                <span className="hidden sm:inline">•</span>
+                <Link
+                  href="https://github.com/"
+                  className="hover:text-foreground transition-colors"
+                >
+                  GitHub
                 </Link>
               </div>
-              <p className="text-sm text-[#999999] mb-2">
-                SC Toolkit is not affiliated with SoundCloud.
-              </p>
-              <p className="text-sm text-[#999999]">
-                © {new Date().getFullYear()} SC Toolkit. All rights reserved.
-              </p>
+              <div className="text-center sm:text-right">
+                <p>SC Toolkit is not affiliated with SoundCloud.</p>
+                <p className="mt-1">
+                  © {new Date().getFullYear()} SC Toolkit. All rights reserved.
+                </p>
+              </div>
             </div>
           </div>
         </footer>

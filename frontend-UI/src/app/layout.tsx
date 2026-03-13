@@ -1,14 +1,20 @@
 import type { Metadata, Viewport } from "next";
-import { Inter } from "next/font/google";
+import { Plus_Jakarta_Sans, Space_Grotesk } from "next/font/google";
 import "./globals.css";
 import { GoogleAnalytics } from "@/components/Analytics";
 import { Providers } from "@/components/Providers";
 import { Analytics } from "@vercel/analytics/react";
 
-const inter = Inter({
+const display = Space_Grotesk({
   subsets: ["latin"],
   display: "swap",
-  variable: "--font-inter",
+  variable: "--font-display",
+});
+
+const sans = Plus_Jakarta_Sans({
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--font-sans",
 });
 
 export const viewport: Viewport = {
@@ -88,7 +94,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={inter.variable}>
+    <html lang="en" className={`${display.variable} ${sans.variable}`}>
       <head>
         <link rel="canonical" href="https://www.soundcloudtoolkit.com/" />
         <meta name="theme-color" content="#FF5500" />

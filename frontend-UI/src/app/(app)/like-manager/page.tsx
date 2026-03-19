@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { ArrowLeft, Heart, Music, Search, Trash2, Loader2, Check } from "lucide-react";
+import { ArrowLeft, Heart, Search, Trash2, Loader2, Check } from "lucide-react";
 import { EmptyState, LoadingSpinner } from "@/components/ui";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "";
@@ -18,7 +18,8 @@ interface Track {
 
 interface Like {
   track: Track;
-  created_at: string;
+  liked_at: string;
+  liked_order: number;
 }
 
 type SortOption = "recent" | "oldest" | "alpha";
@@ -43,11 +44,21 @@ export default function LikeManagerPage() {
       if (response.ok) {
         const data = await response.json();
         const collection = data.collection || [];
-        // Normalize: SC returns { track: {...}, created_at } objects
         setLikes(
-          collection.map((item: { track?: Track; created_at?: string } & Track) => {
-            if (item.track) return item as Like;
-            return { track: item, created_at: item.created_at || "" } as Like;
+          collection.map((item: { track?: Track; created_at?: string } & Track, index: number) => {
+            if (item.track) {
+              return {
+                track: item.track,
+                liked_at: item.created_at || "",
+                liked_order: index,
+              };
+            }
+
+            return {
+              track: item,
+              liked_at: "",
+              liked_order: index,
+            };
           })
         );
       }
@@ -119,8 +130,16 @@ export default function LikeManagerPage() {
     )
     .sort((a, b) => {
       if (sort === "alpha") return a.track.title.localeCompare(b.track.title);
-      if (sort === "oldest") return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
-      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+
+      if (a.liked_at && b.liked_at) {
+        const aLikedAt = new Date(a.liked_at).getTime();
+        const bLikedAt = new Date(b.liked_at).getTime();
+        if (sort === "oldest") return aLikedAt - bLikedAt;
+        return bLikedAt - aLikedAt;
+      }
+
+      if (sort === "oldest") return b.liked_order - a.liked_order;
+      return a.liked_order - b.liked_order;
     });
 
   return (

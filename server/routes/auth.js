@@ -134,9 +134,10 @@ router.get('/callback', async (req, res) => {
     // Create session data
     const sessionData = {
       userId: user.id,
+      soundcloudId: user.soundcloudId,
       username: user.username,
       avatarUrl: user.avatarUrl,
-      displayName: user.displayName
+      displayName: user.displayName,
     };
 
     // Sign and set session cookie
@@ -196,7 +197,15 @@ router.get('/me', async (req, res) => {
       return res.status(401).json({ error: 'Invalid session data' });
     }
 
-    res.json(sessionData);
+    const adminIds = (process.env.ADMIN_IDS || '')
+      .split(',')
+      .map(s => Number(s.trim()))
+      .filter(n => !isNaN(n) && n > 0);
+
+    const isAdmin = !!sessionData.soundcloudId &&
+      adminIds.includes(Number(sessionData.soundcloudId));
+
+    res.json({ ...sessionData, isAdmin });
   } catch (error) {
     logger.error('Me error:', error);
     res.status(500).json({ error: 'Failed to get user info' });

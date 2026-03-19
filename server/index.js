@@ -90,6 +90,7 @@ app.use(cookieParser());
 // Import routes
 import authRoutes from './routes/auth.js';
 import apiRoutes from './routes/api.js';
+import adminRoutes from './routes/admin.js';
 
 // Apply rate limiting to API routes
 // Auth routes get stricter rate limiting
@@ -101,6 +102,7 @@ app.use('/api', apiRateLimiter);
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api', apiRoutes);
+app.use('/api/admin', adminRoutes);
 
 // Health check with rate limiting
 app.get('/health', healthCheckRateLimiter, (req, res) => {

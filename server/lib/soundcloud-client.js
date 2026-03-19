@@ -564,25 +564,23 @@ class SoundCloudClient {
    * Handles the redirect manually to ensure we get the final URL
    */
   async getDownloadLink(accessToken, refreshToken, downloadUrl) {
-    // Append client_id if needed, but usually download_url has it or needs auth token
-    // We'll try with auth token primarily
-    
-    // We need to fetch with redirect: manual to capture the location header if it redirects
-    // or just let it follow triggers if the final link doesn't need auth. 
-    // SoundCloud API usually returns a 302 to the actual file (e.g. CF/S3)
-    
-    // NOTE: The download_url from the track object often looks like: 
-    // https://api.soundcloud.com/tracks/123/download
-    
-    // We use scRequest which adds the base URL, but download_url is absolute.
-    // So we use fetch directly or a modified helper.
-    // Let's use a direct fetch with our token.
+    // Only allow SoundCloud API download URLs to prevent SSRF / token leakage
+    try {
+      const u = new URL(downloadUrl);
+      const host = u.hostname.toLowerCase();
+      if (u.protocol !== 'https:' || (host !== 'api.soundcloud.com' && !host.endsWith('.soundcloud.com'))) {
+        throw new Error('Invalid download URL');
+      }
+      if (!/^\/tracks\/\d+\/download(\?|$)/.test(u.pathname)) {
+        throw new Error('Invalid download path');
+      }
+    } catch (e) {
+      if (e.message === 'Invalid download URL' || e.message === 'Invalid download path') throw e;
+      throw new Error('Invalid download URL');
+    }
 
-    const urlWithToken = new URL(downloadUrl);
-    // Some download URLs are already signed or just need OAuth
-    // If we provide the OAuth token in header, it should work.
-
-    const res = await fetch(downloadUrl.replace('https://api.soundcloud.com', this.baseUrl), {
+    const fetchUrl = downloadUrl.replace('https://api.soundcloud.com', this.baseUrl);
+    const res = await fetch(fetchUrl, {
       method: 'GET',
       headers: {
         'Authorization': `OAuth ${accessToken}`,

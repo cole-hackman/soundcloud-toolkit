@@ -1,9 +1,9 @@
 import express from 'express';
-import { unsignSession, parseSessionData } from '../lib/session.js';
-import { decrypt } from '../lib/crypto.js';
 import { soundcloudClient } from '../lib/soundcloud-client.js';
 import prisma from '../lib/prisma.js';
 import { heavyOperationRateLimiter } from '../middleware/rateLimiter.js';
+import { authenticateUser } from '../middleware/auth.js';
+import { logOperation } from '../lib/analytics.js';
 import logger from '../lib/logger.js';
 import {
   validatePlaylistId,
@@ -108,52 +108,6 @@ function normalizeResource(resource) {
   return null;
 }
 
-// Middleware to authenticate requests
-async function authenticateUser(req, res, next) {
-  try {
-    const sessionCookie = req.cookies.session;
-    
-    if (!sessionCookie) {
-      return res.status(401).json({ error: 'Not authenticated' });
-    }
-
-    const sessionValue = unsignSession(sessionCookie, process.env.SESSION_SECRET);
-    if (!sessionValue) {
-      return res.status(401).json({ error: 'Invalid session' });
-    }
-
-    const sessionData = parseSessionData(sessionValue);
-    if (!sessionData) {
-      return res.status(401).json({ error: 'Invalid session data' });
-    }
-
-    // Get user and tokens from database
-    const user = await prisma.user.findUnique({
-      where: { id: sessionData.userId },
-      include: { tokens: true }
-    });
-
-    if (!user || !user.tokens.length) {
-      return res.status(401).json({ error: 'User not found or no tokens' });
-    }
-
-    const token = user.tokens[0];
-    const encryptionKey = process.env.ENCRYPTION_KEY;
-    
-    // Decrypt tokens
-    const accessToken = decrypt(token.encrypted, encryptionKey);
-    const refreshToken = decrypt(token.refresh, encryptionKey);
-
-    req.user = user;
-    req.accessToken = accessToken;
-    req.refreshToken = refreshToken;
-    
-    next();
-  } catch (error) {
-    logger.error('Authentication error:', error);
-    res.status(401).json({ error: 'Authentication failed' });
-  }
-}
 
 /**
  * GET /api/me
@@ -345,6 +299,7 @@ async function handleResolve(req, res) {
     const now = Date.now();
     const cached = resolveCache.get(cleaned);
     if (cached && cached.expiresAt > now) {
+      logOperation({ userId: req.user.id, action: 'resolve', status: 'success' });
       return res.json(cached.data);
     }
 
@@ -383,6 +338,7 @@ async function handleResolve(req, res) {
 
     resolveCache.set(cleaned, { data: normalized, expiresAt: now + RESOLVE_CACHE_TTL_MS });
     res.json(normalized);
+    logOperation({ userId: req.user.id, action: 'resolve', status: 'success' });
   } catch (error) {
     logger.error('Resolve error:', error);
     const msg = String(error?.message || '').toLowerCase();
@@ -397,6 +353,27 @@ router.post('/resolve', authenticateUser, heavyOperationRateLimiter, validateRes
 router.get('/resolve', authenticateUser, heavyOperationRateLimiter, validateResolve, handleResolve);
 
 /**
+ * Allow only SoundCloud API download URLs to prevent SSRF and token leakage.
+ */
+function isAllowedDownloadUrl(input) {
+  if (!input || typeof input !== 'string') return false;
+  const s = input.trim();
+  if (!s) return false;
+  try {
+    const u = new URL(s);
+    if (u.protocol !== 'https:') return false;
+    const host = u.hostname.toLowerCase();
+    // Only allow SoundCloud API download endpoints
+    if (host !== 'api.soundcloud.com' && !host.endsWith('.soundcloud.com')) return false;
+    // Must look like a track download path: /tracks/:id/download or similar
+    if (!/^\/tracks\/\d+\/download(\?|$)/.test(u.pathname)) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * GET /api/proxy-download
  * Proxy a download request to SoundCloud to verify auth and get the final link
  */
@@ -406,11 +383,28 @@ router.get('/proxy-download', authenticateUser, async (req, res) => {
     if (!url) {
       return res.status(400).json({ error: 'Missing url parameter' });
     }
+    if (!isAllowedDownloadUrl(url)) {
+      return res.status(400).json({ error: 'Invalid download URL' });
+    }
 
     const result = await soundcloudClient.getDownloadLink(req.accessToken, req.refreshToken, url);
     
     if (result && result.redirect) {
-      return res.redirect(result.redirect);
+      // Only redirect to known SoundCloud CDN hosts to prevent open redirect
+      const loc = result.redirect;
+      try {
+        const u = new URL(loc);
+        const host = u.hostname.toLowerCase();
+        const allowed =
+          host === 'sndcdn.com' || host.endsWith('.sndcdn.com') ||
+          host === 'cloudfront.net' || host.endsWith('.cloudfront.net') ||
+          host === 'soundcloud.com' || host.endsWith('.soundcloud.com');
+        if (u.protocol === 'https:' && allowed) {
+          logOperation({ userId: req.user.id, action: 'proxy-download', status: 'success' });
+          return res.redirect(loc);
+        }
+      } catch {}
+      return res.status(502).json({ error: 'Invalid download redirect target' });
     }
     
     res.status(404).json({ error: 'Could not resolve download link' });
@@ -552,6 +546,7 @@ router.post('/playlists/merge', authenticateUser, heavyOperationRateLimiter, val
           }))
         }
       });
+      logOperation({ userId: req.user.id, action: 'merge', trackCount: trackIdsArray.length, status: 'split' });
     } else {
       // Single playlist (<= 500 tracks) with 100-track batches
       const playlistTitle = baseTitle;
@@ -616,6 +611,7 @@ router.post('/playlists/merge', authenticateUser, heavyOperationRateLimiter, val
           finalCount: verifiedCount
         }
       });
+      logOperation({ userId: req.user.id, action: 'merge', trackCount: trackIdsArray.length, status: 'success' });
     }
   } catch (error) {
     logger.error('Merge playlists error:', error);
@@ -674,12 +670,14 @@ router.post('/playlists/from-likes', authenticateUser, heavyOperationRateLimiter
         baseTitle,
         `Playlist created from ${trackIds.length} liked tracks\n\nCreated using SC Toolkit. Try it for free soundcloudtoolkit.com`
       );
-      return res.json({
+      res.json({
         playlistId: newPlaylist.id,
         permalink_url: newPlaylist.permalink_url,
         playlist: { id: newPlaylist.id, title: baseTitle, permalink_url: newPlaylist.permalink_url },
         totalTracks: trackIds.length
       });
+      logOperation({ userId: req.user.id, action: 'from-likes', trackCount: trackIds.length, status: 'success' });
+      return;
     }
 
     const numPlaylists = Math.ceil(trackIds.length / MAX_TRACKS_PER_PLAYLIST);
@@ -712,11 +710,13 @@ router.post('/playlists/from-likes', authenticateUser, heavyOperationRateLimiter
       if (i < numPlaylists - 1) await sleep(500);
     }
 
-    return res.json({
+    res.json({
       playlists: createdPlaylists,
       totalTracks: trackIds.length,
       numPlaylistsCreated: numPlaylists
     });
+    logOperation({ userId: req.user.id, action: 'from-likes', trackCount: trackIds.length, status: 'split' });
+    return;
   } catch (error) {
     logger.error('Create playlist from likes error:', error);
     res.status(500).json({ error: 'Failed to create playlist from likes' });
@@ -772,7 +772,9 @@ router.post('/resolve/batch', authenticateUser, heavyOperationRateLimiter, valid
       }
     }
 
+    const failures = results.filter(r => r.status === 'error').length;
     res.json({ results });
+    logOperation({ userId: req.user.id, action: 'batch-resolve', itemCount: urls.length, status: 'success', metadata: { failures } });
   } catch (error) {
     logger.error('Batch resolve error:', error);
     res.status(500).json({ error: 'Batch resolve failed' });
@@ -845,6 +847,7 @@ router.post('/likes/tracks/bulk-unlike', authenticateUser, heavyOperationRateLim
     }
 
     res.json({ results });
+    logOperation({ userId: req.user.id, action: 'bulk-unlike', trackCount: results.filter(r => r.status === 'ok').length, itemCount: results.length, status: 'success' });
   } catch (error) {
     logger.error('Bulk unlike error:', error);
     res.status(500).json({ error: 'Bulk unlike failed' });
@@ -899,6 +902,7 @@ router.post('/followings/bulk-unfollow', authenticateUser, heavyOperationRateLim
     }
 
     res.json({ results });
+    logOperation({ userId: req.user.id, action: 'bulk-unfollow', itemCount: results.filter(r => r.status === 'ok').length, status: 'success' });
   } catch (error) {
     logger.error('Bulk unfollow error:', error);
     res.status(500).json({ error: 'Bulk unfollow failed' });
@@ -1036,6 +1040,7 @@ router.post('/reposts/bulk-remove', authenticateUser, heavyOperationRateLimiter,
     }
 
     res.json({ results });
+    logOperation({ userId: req.user.id, action: 'bulk-remove-reposts', itemCount: items.length, status: 'success' });
   } catch (error) {
     logger.error('Bulk unrepost error:', error);
     res.status(500).json({ error: 'Bulk unrepost failed' });

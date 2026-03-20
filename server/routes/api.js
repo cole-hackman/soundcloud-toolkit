@@ -24,6 +24,7 @@ const router = express.Router();
 
 // Simple in-memory cache for resolve results (5 minutes TTL)
 const RESOLVE_CACHE_TTL_MS = 5 * 60 * 1000;
+const RESOLVE_CACHE_MAX_ENTRIES = 1000;
 const resolveCache = new Map(); // key: normalized input URL, value: { data, expiresAt }
 
 function sanitizeUrl(input = '') {
@@ -56,6 +57,36 @@ function extractNumericId(maybe) {
     if (m) return Number(m[2]);
   }
   return undefined;
+}
+
+function nowIso() {
+  return new Date().toISOString();
+}
+
+function isResolveV2(req) {
+  const queryVersion = String(req.query?.v || '').trim();
+  const headerVersion = String(req.get('x-resolve-version') || '').trim();
+  return queryVersion === '2' || headerVersion === '2';
+}
+
+function pruneResolveCache() {
+  const now = Date.now();
+  for (const [key, value] of resolveCache.entries()) {
+    if (!value || value.expiresAt <= now) resolveCache.delete(key);
+  }
+  if (resolveCache.size <= RESOLVE_CACHE_MAX_ENTRIES) return;
+  const overflow = resolveCache.size - RESOLVE_CACHE_MAX_ENTRIES;
+  let removed = 0;
+  for (const key of resolveCache.keys()) {
+    resolveCache.delete(key);
+    removed += 1;
+    if (removed >= overflow) break;
+  }
+}
+
+function setResolveCache(url, data) {
+  pruneResolveCache();
+  resolveCache.set(url, { data, expiresAt: Date.now() + RESOLVE_CACHE_TTL_MS });
 }
 
 function normalizeResource(resource) {
@@ -106,6 +137,49 @@ function normalizeResource(resource) {
   if (resource.playlist) return normalizeResource({ ...resource.playlist, kind: 'playlist' });
   if (resource.username) return normalizeResource({ ...resource, kind: 'user' });
   return null;
+}
+
+function normalizeResourceV2(resource) {
+  const base = normalizeResource(resource);
+  if (!base) return null;
+
+  if (base.type === 'track') {
+    return {
+      ...base,
+      kind: 'track',
+      duration: base.duration_ms,
+      description: resource.description || null,
+      genre: resource.genre || null,
+      tag_list: resource.tag_list || null,
+      created_at: resource.created_at || null,
+      playback_count: resource.playback_count ?? null,
+      likes_count: resource.likes_count ?? resource.favoritings_count ?? null,
+      reposts_count: resource.reposts_count ?? null,
+      comment_count: resource.comment_count ?? null
+    };
+  }
+  if (base.type === 'playlist') {
+    return {
+      ...base,
+      kind: 'playlist',
+      description: resource.description || null,
+      genre: resource.genre || null,
+      tag_list: resource.tag_list || null,
+      created_at: resource.created_at || null,
+      likes_count: resource.likes_count ?? resource.favoritings_count ?? null,
+      reposts_count: resource.reposts_count ?? null
+    };
+  }
+  return {
+    ...base,
+    kind: 'user',
+    full_name: resource.full_name || null,
+    description: resource.description || null,
+    followings_count: resource.followings_count ?? null,
+    track_count: resource.track_count ?? null,
+    playlist_count: resource.playlist_count ?? null,
+    likes_count: resource.likes_count ?? resource.public_favorites_count ?? null
+  };
 }
 
 
@@ -291,6 +365,7 @@ router.get('/likes/paged', authenticateUser, validateLikesPagination, async (req
  */
 async function handleResolve(req, res) {
   try {
+    const useV2 = isResolveV2(req);
     const rawUrl = req.method === 'GET' ? req.query?.url : req.body?.url;
     // Validation middleware already checked the URL format
     const cleaned = sanitizeUrl(rawUrl);
@@ -300,10 +375,21 @@ async function handleResolve(req, res) {
     const cached = resolveCache.get(cleaned);
     if (cached && cached.expiresAt > now) {
       logOperation({ userId: req.user.id, action: 'resolve', status: 'success' });
-      return res.json(cached.data);
+      if (!useV2) return res.json(cached.data);
+      return res.json({
+        data: normalizeResourceV2(cached.data) || cached.data,
+        meta: {
+          version: '2',
+          source_url: cleaned,
+          resolved_at: nowIso(),
+          cached: true,
+          resolver_path: 'cache'
+        }
+      });
     }
 
     let resource;
+    let resolverPath = 'oauth';
     try {
       resource = await soundcloudClient.resolveAny(req.accessToken, req.refreshToken, cleaned);
     } catch (e) {
@@ -312,6 +398,7 @@ async function handleResolve(req, res) {
       if (msg.includes('invalid_grant') || msg.includes('401')) {
         try {
           resource = await soundcloudClient.resolvePublic(cleaned);
+          resolverPath = 'public_fallback';
         } catch (e2) {
           // bubble up original auth error context
           throw e;
@@ -336,8 +423,21 @@ async function handleResolve(req, res) {
       }
     } catch {}
 
-    resolveCache.set(cleaned, { data: normalized, expiresAt: now + RESOLVE_CACHE_TTL_MS });
-    res.json(normalized);
+    setResolveCache(cleaned, normalized);
+    if (!useV2) {
+      res.json(normalized);
+    } else {
+      res.json({
+        data: normalizeResourceV2(resource),
+        meta: {
+          version: '2',
+          source_url: cleaned,
+          resolved_at: nowIso(),
+          cached: false,
+          resolver_path: resolverPath
+        }
+      });
+    }
     logOperation({ userId: req.user.id, action: 'resolve', status: 'success' });
   } catch (error) {
     logger.error('Resolve error:', error);
@@ -735,45 +835,69 @@ router.post('/playlists/from-likes', authenticateUser, heavyOperationRateLimiter
  */
 router.post('/resolve/batch', authenticateUser, heavyOperationRateLimiter, validateBatchResolve, async (req, res) => {
   try {
+    const useV2 = isResolveV2(req);
     const { urls } = req.body;
     const results = [];
 
     // Process sequentially to avoid SoundCloud rate limits
-    for (const rawUrl of urls) {
+    for (let index = 0; index < urls.length; index += 1) {
+      const rawUrl = urls[index];
       const url = sanitizeUrl(rawUrl);
       if (!url) {
-        results.push({ url: rawUrl, status: 'error', error: 'Invalid SoundCloud URL' });
+        const invalidResult = { url: rawUrl, status: 'error', error: 'Invalid SoundCloud URL' };
+        results.push(useV2 ? { ...invalidResult, index } : invalidResult);
         continue;
       }
 
       // Check cache first
       const cached = resolveCache.get(url);
       if (cached && cached.expiresAt > Date.now()) {
-        results.push({ url: rawUrl, status: 'ok', data: cached.data });
+        const cachedData = useV2 ? (normalizeResourceV2(cached.data) || cached.data) : cached.data;
+        const okResult = { url: rawUrl, status: 'ok', data: cachedData };
+        results.push(useV2 ? { ...okResult, index } : okResult);
         continue;
       }
 
       try {
         let resource;
         try {
-          resource = await soundcloudClient.resolveUrl(req.accessToken, req.refreshToken, url);
+          resource = await soundcloudClient.resolveAny(req.accessToken, req.refreshToken, url);
         } catch {
           resource = await soundcloudClient.resolvePublic(url);
         }
-        const normalized = normalizeResource(resource);
-        if (normalized) {
-          resolveCache.set(url, { data: normalized, expiresAt: Date.now() + RESOLVE_CACHE_TTL_MS });
-          results.push({ url: rawUrl, status: 'ok', data: normalized });
+        const normalizedV1 = normalizeResource(resource);
+        if (normalizedV1) {
+          setResolveCache(url, normalizedV1);
+          const payload = useV2 ? normalizeResourceV2(resource) : normalizedV1;
+          const okResult = { url: rawUrl, status: 'ok', data: payload };
+          results.push(useV2 ? { ...okResult, index } : okResult);
         } else {
-          results.push({ url: rawUrl, status: 'error', error: 'Could not parse resource' });
+          const badResult = { url: rawUrl, status: 'error', error: 'Could not parse resource' };
+          results.push(useV2 ? { ...badResult, index } : badResult);
         }
       } catch (err) {
-        results.push({ url: rawUrl, status: 'error', error: err.message || 'Resolve failed' });
+        const errorResult = { url: rawUrl, status: 'error', error: err.message || 'Resolve failed' };
+        results.push(useV2 ? { ...errorResult, index } : errorResult);
       }
     }
 
     const failures = results.filter(r => r.status === 'error').length;
-    res.json({ results });
+    if (!useV2) {
+      res.json({ results });
+    } else {
+      res.json({
+        results,
+        summary: {
+          total: results.length,
+          ok: results.length - failures,
+          error: failures
+        },
+        meta: {
+          version: '2',
+          resolved_at: nowIso()
+        }
+      });
+    }
     logOperation({ userId: req.user.id, action: 'batch-resolve', itemCount: urls.length, status: 'success', metadata: { failures } });
   } catch (error) {
     logger.error('Batch resolve error:', error);

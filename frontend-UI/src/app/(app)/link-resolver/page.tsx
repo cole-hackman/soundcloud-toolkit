@@ -3,35 +3,15 @@
 import { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { ArrowLeft, Link as LinkIcon, Search, ExternalLink } from "lucide-react";
+import { ArrowLeft, Link as LinkIcon, Search, ExternalLink, Copy, Download, ShoppingBag } from "lucide-react";
 import { LoadingSpinner } from "@/components/ui";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "";
-
-interface ResolvedData {
-  kind: string;
-  id: number;
-  title?: string;
-  username?: string;
-  description?: string;
-  artwork_url?: string;
-  avatar_url?: string;
-  duration?: number;
-  track_count?: number;
-  followers_count?: number;
-  permalink_url?: string;
-  user?: {
-    username: string;
-    avatar_url: string;
-  };
-}
+import type { ResolverResource } from "@/lib/resolver";
+import { formatCompactNumber, formatDate, formatDuration, parseTagList, useSingleResolver } from "@/lib/resolver";
 
 function LinkResolverContent() {
   const searchParams = useSearchParams();
   const [url, setUrl] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<ResolvedData | null>(null);
-  const [error, setError] = useState("");
+  const { loading, error, result, setResult, setError, resolve } = useSingleResolver();
 
   useEffect(() => {
     const urlParam = searchParams.get("url");
@@ -39,44 +19,62 @@ function LinkResolverContent() {
   }, [searchParams]);
 
   const resolveLink = async () => {
-    if (!url.trim()) return;
-    setLoading(true);
-    setError("");
     setResult(null);
+    setError("");
+    await resolve(url);
+  };
 
+  const copyText = async (value?: string | number | null) => {
+    if (value == null) return;
     try {
-      const response = await fetch(`${API_BASE}/api/resolve`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ url }),
-      });
+      await navigator.clipboard.writeText(String(value));
+    } catch {}
+  };
 
-      if (response.ok) {
-        const data = await response.json();
-        setResult(data);
-      } else {
-        const err = await response.json();
-        setError(err.error || "Failed to resolve link");
-      }
-    } catch (err) {
-      console.error("Error resolving link:", err);
-      setError("An error occurred while resolving the link");
-    } finally {
-      setLoading(false);
+  const resource = result?.data;
+  const meta = result?.meta;
+  const tags = resource && (resource.type === "track" || resource.type === "playlist")
+    ? parseTagList(resource.tag_list)
+    : [];
+  const title = resource?.type === "user" ? resource.username || "Unknown user" : resource?.title || "Untitled";
+  const artist =
+    resource?.type === "track" || resource?.type === "playlist"
+      ? resource?.user?.username || resource?.username
+      : resource?.username;
+  const imageUrl = resource?.type === "user" ? resource.avatar_url : resource?.artwork_url;
+
+  const renderStats = (item: ResolverResource) => {
+    if (item.type === "track") {
+      return (
+        <>
+          <StatCard label="Duration" value={formatDuration(item.duration_ms ?? item.duration)} />
+          <StatCard label="Plays" value={formatCompactNumber(item.playback_count)} />
+          <StatCard label="Likes" value={formatCompactNumber(item.likes_count)} />
+          <StatCard label="Reposts" value={formatCompactNumber(item.reposts_count)} />
+          <StatCard label="Comments" value={formatCompactNumber(item.comment_count)} />
+          <StatCard label="Created" value={formatDate(item.created_at)} />
+        </>
+      );
     }
-  };
-
-  const formatDuration = (ms: number) => {
-    const minutes = Math.floor(ms / 60000);
-    const seconds = Math.floor((ms % 60000) / 1000);
-    return `${minutes}:${seconds.toString().padStart(2, "0")}`;
-  };
-
-  const formatNumber = (num: number) => {
-    if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M`;
-    if (num >= 1000) return `${(num / 1000).toFixed(1)}K`;
-    return num.toString();
+    if (item.type === "playlist") {
+      return (
+        <>
+          <StatCard label="Tracks" value={item.track_count?.toString() || "-"} />
+          <StatCard label="Likes" value={formatCompactNumber(item.likes_count)} />
+          <StatCard label="Reposts" value={formatCompactNumber(item.reposts_count)} />
+          <StatCard label="Created" value={formatDate(item.created_at)} />
+        </>
+      );
+    }
+    return (
+      <>
+        <StatCard label="Followers" value={formatCompactNumber(item.followers_count)} />
+        <StatCard label="Following" value={formatCompactNumber(item.followings_count)} />
+        <StatCard label="Tracks" value={formatCompactNumber(item.track_count)} />
+        <StatCard label="Playlists" value={formatCompactNumber(item.playlist_count)} />
+        <StatCard label="Likes" value={formatCompactNumber(item.likes_count)} />
+      </>
+    );
   };
 
   return (
@@ -132,77 +130,93 @@ function LinkResolverContent() {
         </div>
 
         {/* Result */}
-        {result && (
+        {result && resource && (
           <div className="bg-white dark:bg-card rounded-2xl p-8 border-2 border-gray-200 dark:border-border">
             <div className="flex items-start gap-6">
               <img
-                src={
-                  result.artwork_url ||
-                  result.avatar_url ||
-                  "/SC Toolkit Icon.png"
-                }
-                alt={result.title || result.username}
+                src={imageUrl || "/SC Toolkit Icon.png"}
+                alt={title}
                 className="w-32 h-32 rounded-xl object-cover"
               />
               <div className="flex-1">
                 <div className="flex items-center gap-3 mb-2">
                   <span className="px-3 py-1 bg-[#FF5500]/10 text-[#FF5500] rounded-full text-sm font-medium capitalize">
-                    {result.kind}
+                    {resource.kind}
                   </span>
+                  {meta?.cached && (
+                    <span className="px-3 py-1 bg-gray-100 dark:bg-secondary/20 text-[#666666] dark:text-muted-foreground rounded-full text-sm">
+                      Cached
+                    </span>
+                  )}
                 </div>
                 <h2 className="text-2xl font-bold text-[#333333] dark:text-foreground mb-2">
-                  {result.title || result.username}
+                  {title}
                 </h2>
-                {result.user && (
+                {artist && (
                   <p className="text-[#666666] dark:text-muted-foreground mb-4">
-                    by {result.user.username}
+                    by {artist}
                   </p>
                 )}
-                {result.description && (
+                {resource.description && (
                   <p className="text-[#666666] dark:text-muted-foreground text-sm line-clamp-3 mb-4">
-                    {result.description}
+                    {resource.description}
                   </p>
                 )}
 
                 {/* Stats */}
-                <div className="flex flex-wrap gap-4 mb-4">
-                  {result.duration !== undefined && (
-                    <div className="px-4 py-2 bg-gray-50 dark:bg-secondary/20 rounded-lg">
-                      <div className="text-xs text-[#999999] dark:text-muted-foreground">Duration</div>
-                      <div className="font-semibold text-[#333333] dark:text-foreground">
-                        {formatDuration(result.duration)}
-                      </div>
-                    </div>
-                  )}
-                  {result.track_count !== undefined && (
-                    <div className="px-4 py-2 bg-gray-50 dark:bg-secondary/20 rounded-lg">
-                      <div className="text-xs text-[#999999] dark:text-muted-foreground">Tracks</div>
-                      <div className="font-semibold text-[#333333] dark:text-foreground">
-                        {result.track_count}
-                      </div>
-                    </div>
-                  )}
-                  {result.followers_count !== undefined && (
-                    <div className="px-4 py-2 bg-gray-50 dark:bg-secondary/20 rounded-lg">
-                      <div className="text-xs text-[#999999] dark:text-muted-foreground">Followers</div>
-                      <div className="font-semibold text-[#333333] dark:text-foreground">
-                        {formatNumber(result.followers_count)}
-                      </div>
-                    </div>
-                  )}
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4">
+                  {renderStats(resource)}
                 </div>
 
-                {result.permalink_url && (
-                  <a
-                    href={result.permalink_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 text-[#FF5500] hover:underline"
-                  >
-                    Open on SoundCloud
-                    <ExternalLink className="w-4 h-4" />
-                  </a>
+                {tags.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mb-4">
+                    {tags.slice(0, 8).map((tag) => (
+                      <span key={tag} className="text-xs px-2 py-1 rounded-full bg-[#FF5500]/10 text-[#FF5500]">
+                        #{tag}
+                      </span>
+                    ))}
+                  </div>
                 )}
+
+                <div className="flex flex-wrap gap-3">
+                  {resource.permalink_url && (
+                    <a
+                      href={resource.permalink_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 text-[#FF5500] hover:underline"
+                    >
+                      Open on SoundCloud
+                      <ExternalLink className="w-4 h-4" />
+                    </a>
+                  )}
+                  <button
+                    onClick={() => copyText(resource.permalink_url || meta?.source_url || url)}
+                    className="inline-flex items-center gap-2 text-[#666666] dark:text-muted-foreground hover:text-[#FF5500]"
+                  >
+                    <Copy className="w-4 h-4" />
+                    Copy URL
+                  </button>
+                  <button
+                    onClick={() => copyText(resource.id)}
+                    className="inline-flex items-center gap-2 text-[#666666] dark:text-muted-foreground hover:text-[#FF5500]"
+                  >
+                    <Copy className="w-4 h-4" />
+                    Copy ID
+                  </button>
+                  {resource.type === "track" && resource.download_url && (
+                    <a href={resource.download_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 text-[#666666] dark:text-muted-foreground hover:text-[#FF5500]">
+                      <Download className="w-4 h-4" />
+                      Download
+                    </a>
+                  )}
+                  {resource.type === "track" && resource.purchase_url && (
+                    <a href={resource.purchase_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 text-[#666666] dark:text-muted-foreground hover:text-[#FF5500]">
+                      <ShoppingBag className="w-4 h-4" />
+                      {resource.purchase_title || "Purchase"}
+                    </a>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -218,6 +232,15 @@ function LinkResolverContent() {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function StatCard({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="px-4 py-2 bg-gray-50 dark:bg-secondary/20 rounded-lg">
+      <div className="text-xs text-[#999999] dark:text-muted-foreground">{label}</div>
+      <div className="font-semibold text-[#333333] dark:text-foreground">{value}</div>
     </div>
   );
 }

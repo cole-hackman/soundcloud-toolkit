@@ -1,5 +1,20 @@
 import { body, param, query, validationResult } from 'express-validator';
 
+function validateSoundCloudUrl(value) {
+  if (!value) return true;
+  const normalized = value.startsWith('http') ? value : `https://${value}`;
+  try {
+    const url = new URL(normalized);
+    const host = url.hostname.toLowerCase();
+    if (!/(^|\.)soundcloud\.com$/.test(host) && host !== 'on.soundcloud.com') {
+      throw new Error('URL must be a SoundCloud domain');
+    }
+    return true;
+  } catch {
+    throw new Error('Invalid URL format');
+  }
+}
+
 /**
  * Middleware to handle validation errors
  */
@@ -55,38 +70,13 @@ export const validateResolve = [
     .trim()
     .isLength({ min: 1, max: 2048 })
     .withMessage('URL must be between 1 and 2048 characters')
-    .custom((value) => {
-      if (!value) return true;
-      try {
-        const url = new URL(value.startsWith('http') ? value : `https://${value}`);
-        // Only allow SoundCloud domains
-        const host = url.hostname.toLowerCase();
-        if (!/(^|\.)soundcloud\.com$/.test(host) && host !== 'on.soundcloud.com') {
-          throw new Error('URL must be a SoundCloud domain');
-        }
-        return true;
-      } catch (error) {
-        throw new Error('Invalid URL format');
-      }
-    }),
+    .custom((value) => validateSoundCloudUrl(value)),
   query('url')
     .optional()
     .trim()
     .isLength({ min: 1, max: 2048 })
     .withMessage('URL must be between 1 and 2048 characters')
-    .custom((value) => {
-      if (!value) return true;
-      try {
-        const url = new URL(value.startsWith('http') ? value : `https://${value}`);
-        const host = url.hostname.toLowerCase();
-        if (!/(^|\.)soundcloud\.com$/.test(host) && host !== 'on.soundcloud.com') {
-          throw new Error('URL must be a SoundCloud domain');
-        }
-        return true;
-      } catch (error) {
-        throw new Error('Invalid URL format');
-      }
-    }),
+    .custom((value) => validateSoundCloudUrl(value)),
   handleValidationErrors
 ];
 
@@ -230,7 +220,8 @@ export const validateBatchResolve = [
     .isString()
     .trim()
     .isLength({ min: 1, max: 2048 })
-    .withMessage('Each URL must be a non-empty string'),
+    .withMessage('Each URL must be a non-empty string')
+    .custom((value) => validateSoundCloudUrl(value)),
   handleValidationErrors
 ];
 

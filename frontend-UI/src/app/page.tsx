@@ -321,18 +321,14 @@ export default function Home() {
               </p>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-4 sm:grid-cols-2">
               {[
-                { name: "Playlists, without the mess", description: "Combine playlists, remove duplicates, and keep everything in sync.", href: "/combine", Icon: Layers, wide: true },
-                { name: "Likes → playlists, automatically", description: "Turn years of likes into themed, export-ready playlists.", href: "/likes-to-playlist", Icon: Heart, wide: false },
-                { name: "Health checks for every set", description: "Find blocked, deleted, and unstreamable tracks before a show.", href: "/playlist-health-check", Icon: HeartPulse, wide: false },
-                { name: "Social graph control", description: "See who doesn’t follow back, batch unfollow, and clean your feed.", href: "/following-manager", Icon: UserMinus, wide: false },
-              ].map((item, i) => (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={item.wide ? "sm:col-span-2 lg:col-span-2" : ""}
-                >
+                { name: "Playlists, without the mess", description: "Combine playlists, remove duplicates, and keep everything in sync.", href: "/combine", Icon: Layers },
+                { name: "Likes → playlists, automatically", description: "Turn years of likes into themed, export-ready playlists.", href: "/likes-to-playlist", Icon: Heart },
+                { name: "Health checks for every set", description: "Find blocked, deleted, and unstreamable tracks before a show.", href: "/playlist-health-check", Icon: HeartPulse },
+                { name: "Social graph control", description: "See who doesn’t follow back, batch unfollow, and clean your feed.", href: "/following-manager", Icon: UserMinus },
+              ].map((item) => (
+                <Link key={item.href} href={item.href}>
                   <Card
                     interactive
                     className="h-full p-5 transition-all hover:border-primary/60"

@@ -11,7 +11,7 @@
     "build:frontend": "cd frontend-UI && npm install && npm run build",
     "server": "node server/index.js",
     "start": "node server/index.js",
-    "test": "jest",
+    "test": "NODE_OPTIONS=--experimental-vm-modules jest",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev --name init --skip-seed"
   },

@@ -6,11 +6,16 @@ import { authenticateUser } from '../middleware/auth.js';
 import { logOperation } from '../lib/analytics.js';
 import logger from '../lib/logger.js';
 import {
+  duplicateTrackBetweenPlaylists,
+  moveTrackBetweenPlaylists,
+} from '../lib/playlist-transfer.js';
+import {
   validatePlaylistId,
   validatePagination,
   validateResolve,
   validateMergePlaylists,
   validateUpdatePlaylist,
+  validatePlaylistTrackTransfer,
   validateCreateFromLikes,
   validateLikesPagination,
   validateBatchResolve,
@@ -241,6 +246,88 @@ router.get('/playlists', authenticateUser, validatePagination, async (req, res) 
     res.status(500).json({ error: 'Failed to get playlists' });
   }
 });
+
+/**
+ * POST /api/playlists/transfer-track
+ * Move or duplicate a single track to another playlist (user's own playlists only).
+ * Body: { action: 'move' | 'duplicate', trackId, sourcePlaylistId, targetPlaylistId }
+ */
+router.post(
+  '/playlists/transfer-track',
+  authenticateUser,
+  heavyOperationRateLimiter,
+  validatePlaylistTrackTransfer,
+  async (req, res) => {
+    const { action, trackId, sourcePlaylistId, targetPlaylistId } = req.body;
+    const client = soundcloudClient;
+
+    try {
+      if (action === 'duplicate') {
+        const result = await duplicateTrackBetweenPlaylists({
+          accessToken: req.accessToken,
+          refreshToken: req.refreshToken,
+          client,
+          trackId,
+          targetPlaylistId,
+        });
+
+        if (result.ok) {
+          logOperation({
+            userId: req.user.id,
+            action: 'playlist-transfer',
+            trackCount: result.noop ? 0 : 1,
+            status: 'success',
+            metadata: { kind: 'duplicate', noop: !!result.noop },
+          });
+          return res.json(result);
+        }
+
+        return res.status(400).json(result);
+      }
+
+      if (action === 'move') {
+        const result = await moveTrackBetweenPlaylists({
+          accessToken: req.accessToken,
+          refreshToken: req.refreshToken,
+          client,
+          trackId,
+          sourcePlaylistId,
+          targetPlaylistId,
+        });
+
+        if (result.ok) {
+          logOperation({
+            userId: req.user.id,
+            action: 'playlist-transfer',
+            trackCount: 1,
+            status: 'success',
+            metadata: { kind: 'move' },
+          });
+          return res.json(result);
+        }
+
+        if (result.partial) {
+          logOperation({
+            userId: req.user.id,
+            action: 'playlist-transfer',
+            trackCount: 1,
+            status: 'error',
+            metadata: { kind: 'move', partial: true, stage: result.stage },
+          });
+          return res.json(result);
+        }
+
+        const status = result.error && result.error.includes('not in the source') ? 404 : 400;
+        return res.status(status).json(result);
+      }
+
+      return res.status(400).json({ ok: false, error: 'Invalid action' });
+    } catch (error) {
+      logger.error('Playlist transfer error:', error);
+      res.status(500).json({ ok: false, error: 'Playlist transfer failed' });
+    }
+  }
+);
 
 /**
  * GET /api/playlists/:id

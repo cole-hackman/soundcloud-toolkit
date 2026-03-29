@@ -152,6 +152,28 @@ export const validateUpdatePlaylist = [
 ];
 
 /**
+ * POST /api/playlists/transfer-track — move or duplicate one track between playlists
+ */
+export const validatePlaylistTrackTransfer = [
+  body('action')
+    .isIn(['move', 'duplicate'])
+    .withMessage('action must be move or duplicate'),
+  body('trackId')
+    .isInt({ min: 1 })
+    .withMessage('trackId must be a positive integer')
+    .toInt(),
+  body('sourcePlaylistId')
+    .isInt({ min: 1 })
+    .withMessage('sourcePlaylistId must be a positive integer')
+    .toInt(),
+  body('targetPlaylistId')
+    .isInt({ min: 1 })
+    .withMessage('targetPlaylistId must be a positive integer')
+    .toInt(),
+  handleValidationErrors
+];
+
+/**
  * Validation rules for create playlist from likes endpoint
  */
 export const validateCreateFromLikes = [

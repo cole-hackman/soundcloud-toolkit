@@ -2,7 +2,20 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { ArrowLeft, Shuffle, Save, ArrowUpDown, Trash2, Music, Download, ExternalLink } from "lucide-react";
+import {
+  ArrowLeft,
+  Shuffle,
+  Save,
+  ArrowUpDown,
+  Trash2,
+  Music,
+  Download,
+  ExternalLink,
+  MoreVertical,
+  Copy,
+  ArrowRightLeft,
+  X,
+} from "lucide-react";
 import { EmptyState, LoadingSpinner, Skeleton } from "@/components/ui";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "";
@@ -29,6 +42,10 @@ interface Track {
 
 type TrackFilter = "all" | "downloadable" | "buylink";
 
+type TransferAction = "move" | "duplicate";
+
+type BannerState = { tone: "success" | "warning" | "error"; text: string } | null;
+
 export default function PlaylistModifierPage() {
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [selectedPlaylist, setSelectedPlaylist] = useState<Playlist | null>(null);
@@ -39,6 +56,14 @@ export default function PlaylistModifierPage() {
   const [trackFilter, setTrackFilter] = useState<TrackFilter>("all");
   const [loadError, setLoadError] = useState(false);
   const [tracksError, setTracksError] = useState(false);
+  const [openMenuTrackId, setOpenMenuTrackId] = useState<number | null>(null);
+  const [transfer, setTransfer] = useState<{
+    action: TransferAction;
+    track: Track;
+  } | null>(null);
+  const [transferTargetId, setTransferTargetId] = useState<number | "">("");
+  const [transferLoading, setTransferLoading] = useState(false);
+  const [banner, setBanner] = useState<BannerState>(null);
 
   const filteredTracks = tracks.filter((t) => {
     if (trackFilter === "downloadable") return Boolean(t.downloadable) || t.downloadable === "true";
@@ -53,6 +78,31 @@ export default function PlaylistModifierPage() {
     fetchPlaylists();
   }, []);
 
+  useEffect(() => {
+    if (!banner) return;
+    const t = window.setTimeout(() => setBanner(null), 9000);
+    return () => clearTimeout(t);
+  }, [banner]);
+
+  useEffect(() => {
+    const onDoc = (e: MouseEvent) => {
+      const t = e.target;
+      if (t instanceof Element && t.closest("[data-track-menu]")) return;
+      setOpenMenuTrackId(null);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, []);
+
+  useEffect(() => {
+    if (!transfer) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setTransfer(null);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [transfer]);
+
   const fetchPlaylists = async () => {
     try {
       setLoadError(false);
@@ -61,7 +111,13 @@ export default function PlaylistModifierPage() {
       });
       if (response.ok) {
         const data = await response.json();
-        setPlaylists(data.collection || []);
+        const coll: Playlist[] = data.collection || [];
+        setPlaylists(coll);
+        setSelectedPlaylist((prev) => {
+          if (!prev) return prev;
+          const next = coll.find((p) => p.id === prev.id);
+          return next ? { ...prev, ...next } : prev;
+        });
       } else {
         setLoadError(true);
       }
@@ -127,6 +183,108 @@ export default function PlaylistModifierPage() {
     setTracks(shuffled);
   };
 
+  const openTransferModal = (action: TransferAction, track: Track) => {
+    if (!selectedPlaylist) return;
+    setOpenMenuTrackId(null);
+    setTransfer({ action, track });
+    const others = playlists.filter((p) => p.id !== selectedPlaylist.id);
+    const defaultTarget =
+      action === "move"
+        ? others[0]?.id
+        : playlists.find((p) => p.id !== selectedPlaylist.id)?.id ?? playlists[0]?.id;
+    setTransferTargetId(defaultTarget ?? "");
+  };
+
+  const submitTransfer = async () => {
+    if (!selectedPlaylist || !transfer || transferTargetId === "") return;
+    const targetId = Number(transferTargetId);
+    if (transfer.action === "move" && targetId === selectedPlaylist.id) return;
+
+    setTransferLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/playlists/transfer-track`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: transfer.action,
+          trackId: transfer.track.id,
+          sourcePlaylistId: selectedPlaylist.id,
+          targetPlaylistId: targetId,
+        }),
+      });
+      let data: Record<string, unknown> = {};
+      try {
+        data = await res.json();
+      } catch {
+        /* ignore */
+      }
+
+      if (!res.ok) {
+        setBanner({
+          tone: "error",
+          text: typeof data.error === "string" ? data.error : "Transfer failed",
+        });
+        return;
+      }
+
+      if (data.partial) {
+        setBanner({
+          tone: "warning",
+          text:
+            typeof data.message === "string"
+              ? data.message
+              : typeof data.error === "string"
+                ? data.error
+                : "The track may have been added to the target playlist, but the source could not be updated.",
+        });
+        setTransfer(null);
+        await fetchTracks(selectedPlaylist.id);
+        await fetchPlaylists();
+        return;
+      }
+
+      if (data.ok === false) {
+        setBanner({
+          tone: "error",
+          text: typeof data.error === "string" ? data.error : "Transfer failed",
+        });
+        return;
+      }
+
+      const targetTitle =
+        (typeof data.targetTitle === "string" && data.targetTitle) ||
+        playlists.find((p) => p.id === targetId)?.title ||
+        "playlist";
+
+      if (data.noop && typeof data.message === "string") {
+        setBanner({ tone: "success", text: data.message });
+      } else if (transfer.action === "move") {
+        setBanner({ tone: "success", text: `Track moved to “${targetTitle}”.` });
+      } else {
+        setBanner({ tone: "success", text: `Track duplicated to “${targetTitle}”.` });
+      }
+
+      setTransfer(null);
+      await fetchTracks(selectedPlaylist.id);
+      await fetchPlaylists();
+    } catch {
+      setBanner({ tone: "error", text: "Network error — try again." });
+    } finally {
+      setTransferLoading(false);
+    }
+  };
+
+  const transferTargetOptions =
+    transfer?.action === "move"
+      ? playlists.filter((p) => p.id !== selectedPlaylist?.id)
+      : playlists;
+
+  const transferSubmitDisabled =
+    transferLoading ||
+    transferTargetId === "" ||
+    (transfer?.action === "move" && Number(transferTargetId) === selectedPlaylist?.id);
+
   const savePlaylist = async () => {
     if (!selectedPlaylist) return;
     if (
@@ -182,9 +340,32 @@ export default function PlaylistModifierPage() {
             Playlist Modifier
           </h1>
           <p className="text-lg text-[#666666] dark:text-muted-foreground">
-            Reorder, remove, and reorganize tracks in your playlists.
+            Reorder, remove, move, or duplicate tracks between your playlists.
           </p>
         </div>
+
+        {banner && (
+          <div
+            role="status"
+            className={`mb-6 rounded-xl border-2 px-4 py-3 flex items-start justify-between gap-3 ${
+              banner.tone === "success"
+                ? "border-green-200 bg-green-50 text-green-900 dark:border-green-900/50 dark:bg-green-950/40 dark:text-green-100"
+                : banner.tone === "warning"
+                  ? "border-amber-200 bg-amber-50 text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-100"
+                  : "border-red-200 bg-red-50 text-red-900 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-100"
+            }`}
+          >
+            <span className="text-sm font-medium">{banner.text}</span>
+            <button
+              type="button"
+              onClick={() => setBanner(null)}
+              className="shrink-0 p-1 rounded hover:bg-black/5 dark:hover:bg-white/10"
+              aria-label="Dismiss"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
 
         {!selectedPlaylist ? (
           /* Playlist Selection */
@@ -402,7 +583,43 @@ export default function PlaylistModifierPage() {
                           {formatDuration(track.duration)}
                         </div>
                       </div>
-                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition">
+                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 sm:opacity-100 transition">
+                        <div className="relative" data-track-menu>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setOpenMenuTrackId(
+                                openMenuTrackId === track.id ? null : track.id
+                              )
+                            }
+                            className="p-2 hover:bg-gray-200 dark:hover:bg-secondary/40 rounded text-[#333333] dark:text-foreground"
+                            title="More actions"
+                            aria-expanded={openMenuTrackId === track.id}
+                            aria-haspopup="true"
+                          >
+                            <MoreVertical className="w-4 h-4" />
+                          </button>
+                          {openMenuTrackId === track.id && (
+                            <div className="absolute right-0 top-full z-30 mt-1 w-52 rounded-xl border-2 border-gray-200 dark:border-border bg-white dark:bg-card shadow-lg py-1 text-left">
+                              <button
+                                type="button"
+                                className="w-full px-3 py-2 text-sm text-left hover:bg-gray-100 dark:hover:bg-secondary/40 flex items-center gap-2 text-[#333333] dark:text-foreground"
+                                onClick={() => openTransferModal("move", track)}
+                              >
+                                <ArrowRightLeft className="w-4 h-4 shrink-0" />
+                                Move to playlist…
+                              </button>
+                              <button
+                                type="button"
+                                className="w-full px-3 py-2 text-sm text-left hover:bg-gray-100 dark:hover:bg-secondary/40 flex items-center gap-2 text-[#333333] dark:text-foreground"
+                                onClick={() => openTransferModal("duplicate", track)}
+                              >
+                                <Copy className="w-4 h-4 shrink-0" />
+                                Duplicate to playlist…
+                              </button>
+                            </div>
+                          )}
+                        </div>
                         <button
                           onClick={() => moveTrack(globalIndex, "up")}
                           disabled={globalIndex === 0}
@@ -433,6 +650,90 @@ export default function PlaylistModifierPage() {
           </div>
         )}
       </div>
+
+      {transfer && selectedPlaylist && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="transfer-dialog-title"
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !transferLoading) setTransfer(null);
+          }}
+        >
+          <div
+            className="bg-white dark:bg-card rounded-2xl border-2 border-gray-200 dark:border-border max-w-md w-full p-6 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3
+              id="transfer-dialog-title"
+              className="text-lg font-bold text-[#333333] dark:text-foreground mb-2"
+            >
+              {transfer.action === "move"
+                ? "Move track to playlist"
+                : "Duplicate track to playlist"}
+            </h3>
+            <p
+              className="text-sm text-[#666666] dark:text-muted-foreground mb-4 truncate"
+              title={transfer.track.title}
+            >
+              {transfer.track.title}
+            </p>
+            {transferTargetOptions.length === 0 ? (
+              <p className="text-sm text-red-600 dark:text-red-400 mb-4">
+                No target playlist available. Create another playlist on SoundCloud first.
+              </p>
+            ) : (
+              <label className="block mb-4">
+                <span className="text-sm font-medium text-[#333333] dark:text-foreground mb-1 block">
+                  Target playlist
+                </span>
+                <select
+                  className="w-full rounded-lg border-2 border-gray-200 dark:border-border bg-white dark:bg-background px-3 py-2 text-[#333333] dark:text-foreground"
+                  value={transferTargetId === "" ? "" : String(transferTargetId)}
+                  onChange={(e) =>
+                    setTransferTargetId(
+                      e.target.value ? Number(e.target.value) : ""
+                    )
+                  }
+                  disabled={transferLoading}
+                >
+                  {transferTargetOptions.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.title} ({p.track_count} tracks)
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            <p className="text-xs text-[#666666] dark:text-muted-foreground mb-4">
+              {transfer.action === "move"
+                ? "The track is added to the target playlist first, then removed from this one."
+                : "The track is copied to the end of the target playlist. Playlists you don’t own aren’t listed."}
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                type="button"
+                className="px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-border text-[#333333] dark:text-foreground hover:bg-gray-50 dark:hover:bg-secondary/40 disabled:opacity-50"
+                onClick={() => !transferLoading && setTransfer(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={transferSubmitDisabled || transferTargetOptions.length === 0}
+                onClick={() => void submitTransfer()}
+                className="px-4 py-2 rounded-lg bg-gradient-to-r from-[#FF5500] to-[#E64A00] text-white font-semibold hover:shadow-md disabled:opacity-50 flex items-center gap-2"
+              >
+                {transferLoading ? (
+                  <LoadingSpinner size="sm" className="w-4 h-4 border-white" />
+                ) : null}
+                {transfer.action === "move" ? "Move" : "Duplicate"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

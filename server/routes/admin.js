@@ -9,6 +9,7 @@ const router = express.Router();
 const ACTION_NAMES = {
   'merge': 'Playlist Merge',
   'from-likes': 'Likes → Playlist',
+  'playlist-transfer': 'Playlist track move/duplicate',
   'bulk-unlike': 'Bulk Unlike',
   'bulk-unfollow': 'Bulk Unfollow',
   'resolve': 'URL Resolve',
@@ -20,6 +21,7 @@ const ACTION_NAMES = {
 const ACTION_COLORS = {
   'merge': '#FF5500',
   'from-likes': '#2ECC71',
+  'playlist-transfer': '#9B59B6',
   'bulk-unlike': '#00D4AA',
   'bulk-unfollow': '#E066FF',
   'resolve': '#F1C40F',

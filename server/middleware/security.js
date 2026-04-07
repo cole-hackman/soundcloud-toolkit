@@ -1,5 +1,6 @@
 import helmet from 'helmet';
 import logger from '../lib/logger.js';
+import { safeError } from '../lib/safe-error.js';
 
 /**
  * Security headers middleware

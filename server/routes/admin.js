@@ -1,6 +1,7 @@
 import express from 'express';
 import prisma from '../lib/prisma.js';
 import logger from '../lib/logger.js';
+import { safeError } from '../lib/safe-error.js';
 import { authenticateUser } from '../middleware/auth.js';
 import { adminAuth } from '../middleware/adminAuth.js';
 
@@ -112,7 +113,7 @@ router.get('/stats', authenticateUser, adminAuth, async (req, res) => {
       topFeature,
     });
   } catch (err) {
-    logger.error('[admin/stats] Error:', err);
+    logger.error('[admin/stats] Error:', safeError(err));
     res.status(500).json({ error: 'Failed to fetch stats' });
   }
 });
@@ -174,7 +175,7 @@ router.get('/daily', authenticateUser, adminAuth, async (req, res) => {
 
     res.json({ daily: result });
   } catch (err) {
-    logger.error('[admin/daily] Error:', err);
+    logger.error('[admin/daily] Error:', safeError(err));
     res.status(500).json({ error: 'Failed to fetch daily data' });
   }
 });
@@ -219,7 +220,7 @@ router.get('/operations', authenticateUser, adminAuth, async (req, res) => {
 
     res.json({ operations });
   } catch (err) {
-    logger.error('[admin/operations] Error:', err);
+    logger.error('[admin/operations] Error:', safeError(err));
     res.status(500).json({ error: 'Failed to fetch operations' });
   }
 });

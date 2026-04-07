@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { apiFetch } from "@/lib/api";
 import {
   Combine,
   Heart,
@@ -168,10 +169,10 @@ export default function DashboardPage() {
     try {
       // Fetch user profile from SC API for follower/following/likes counts
       const [meRes, playlistsRes, likesRes, followingsRes] = await Promise.all([
-        fetch(`${API_BASE}/api/me`, { credentials: "include" }),
-        fetch(`${API_BASE}/api/playlists?limit=1&offset=0`, { credentials: "include" }),
-        fetch(`${API_BASE}/api/likes/paged?limit=1&offset=0`, { credentials: "include" }),
-        fetch(`${API_BASE}/api/followings?limit=1&offset=0`, { credentials: "include" }),
+        apiFetch("/api/me"),
+        apiFetch("/api/playlists?limit=1&offset=0"),
+        apiFetch("/api/likes/paged?limit=1&offset=0"),
+        apiFetch("/api/followings?limit=1&offset=0"),
       ]);
 
       let followers = 0;

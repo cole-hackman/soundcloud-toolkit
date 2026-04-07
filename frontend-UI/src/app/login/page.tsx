@@ -9,11 +9,8 @@ import { Card, CardContent, CardHeader, CardFooter, LoadingSpinner, Button } fro
 import {
   ArrowUpRight,
   EyeOff,
-  Heart,
-  Layers,
   Lock,
   ShieldCheck,
-  Sparkles,
 } from "lucide-react";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "";
@@ -22,27 +19,6 @@ const trustItems = [
   { icon: ShieldCheck, label: "Secure OAuth" },
   { icon: EyeOff, label: "Read-only access" },
   { icon: Lock, label: "Revoke anytime" },
-];
-
-const desktopHighlights = [
-  {
-    icon: Layers,
-    title: "Merge and clean large libraries",
-    description:
-      "Combine playlists, remove duplicates, and keep every set organized without manual cleanup.",
-  },
-  {
-    icon: Heart,
-    title: "Turn likes into usable crates",
-    description:
-      "Convert years of liked tracks into export-ready playlists built around moods, gigs, and workflows.",
-  },
-  {
-    icon: Sparkles,
-    title: "Stay show-ready",
-    description:
-      "Catch broken tracks, reshape playlists, and keep your collection tight before you hit play.",
-  },
 ];
 
 export default function LoginPage() {
@@ -100,78 +76,27 @@ export default function LoginPage() {
       />
 
       <div className="relative z-10 mx-auto flex min-h-screen w-full max-w-6xl flex-col justify-center px-4 py-4 sm:px-6 sm:py-8 lg:px-8 lg:py-10">
-        <div className="grid items-center gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(380px,440px)] lg:gap-12">
-          <section className="order-2 flex flex-col lg:order-1 lg:pr-4">
-            <Link
-              href="/"
-              className="inline-flex w-fit items-center gap-3 rounded-full border border-border/70 bg-surface/75 px-4 py-2 text-sm text-muted-foreground backdrop-blur transition-colors hover:text-foreground"
-            >
-              <Image
-                src="/sc toolkit transparent .png"
-                alt="SC Toolkit"
-                width={120}
-                height={40}
-                className="h-7 w-auto object-contain"
-                priority
-                unoptimized
-              />
-              <span className="hidden sm:inline">Back to home</span>
-            </Link>
+        <div className="grid items-center gap-10 lg:grid-cols-[minmax(0,1.1fr)_minmax(380px,440px)] lg:gap-16">
+          <section className="order-2 flex flex-col items-start lg:order-1 lg:pr-8">
+            <Image
+              src="/sc toolkit transparent .png"
+              alt="SC Toolkit"
+              width={140}
+              height={46}
+              className="h-8 w-auto object-contain"
+              priority
+              unoptimized
+            />
 
-            <div className="mt-6 max-w-2xl">
-              <p className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-surface/60 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
-                <span className="h-2 w-2 rounded-full bg-primary" />
-                Secure access
-              </p>
-              <h1 className="mt-4 text-balance font-display text-3xl font-semibold leading-tight sm:text-4xl lg:text-5xl xl:text-6xl">
-                Connect once.
-                <br />
-                <span className="text-gradient">Control every playlist.</span>
-              </h1>
-              <p className="mt-4 max-w-xl text-sm leading-6 text-muted-foreground sm:text-base">
-                Securely link your SoundCloud account to merge playlists, clean
-                your library, and keep every set show-ready.
-              </p>
-            </div>
+            <h1 className="mt-10 text-balance font-display text-3xl font-semibold leading-tight sm:text-4xl lg:text-5xl xl:text-6xl">
+              Connect once.
+              <br />
+              <span className="text-gradient">Control every playlist.</span>
+            </h1>
 
-            <div className="mt-6 grid gap-3 sm:grid-cols-3 lg:mt-8">
-              {trustItems.map((item) => (
-                <div
-                  key={item.label}
-                  className="flex items-center gap-3 rounded-2xl border border-border/60 bg-surface/70 px-4 py-3 backdrop-blur"
-                >
-                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-primary">
-                    <item.icon className="h-4 w-4" />
-                  </div>
-                  <span className="text-sm font-medium text-foreground">
-                    {item.label}
-                  </span>
-                </div>
-              ))}
-            </div>
-
-            <div className="mt-6 hidden gap-4 lg:grid">
-              {desktopHighlights.map((item) => (
-                <div
-                  key={item.title}
-                  className="rounded-3xl border border-border/60 bg-surface/65 p-5 backdrop-blur"
-                >
-                  <div className="flex items-start gap-4">
-                    <div className="mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-                      <item.icon className="h-5 w-5" />
-                    </div>
-                    <div>
-                      <h2 className="text-base font-semibold text-foreground">
-                        {item.title}
-                      </h2>
-                      <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                        {item.description}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
+            <p className="mt-6 max-w-lg text-base leading-relaxed text-muted-foreground sm:text-lg">
+              Merge playlists, clean up likes, and keep your library show-ready.
+            </p>
           </section>
 
           <section className="order-1 flex w-full justify-center lg:order-2 lg:justify-end">

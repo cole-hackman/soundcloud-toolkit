@@ -6,20 +6,11 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardHeader, CardFooter, LoadingSpinner, Button } from "@/components/ui";
-import {
-  ArrowUpRight,
-  EyeOff,
-  Lock,
-  ShieldCheck,
-} from "lucide-react";
+import { ArrowUpRight } from "lucide-react";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "";
 
-const trustItems = [
-  { icon: ShieldCheck, label: "Secure OAuth" },
-  { icon: EyeOff, label: "Read-only access" },
-  { icon: Lock, label: "Revoke anytime" },
-];
+
 
 export default function LoginPage() {
   const { isAuthenticated, loading, login, apiUnreachable, retryAuth } = useAuth();
@@ -127,17 +118,7 @@ export default function LoginPage() {
                 </CardHeader>
 
                 <CardContent className="space-y-5 px-5 py-5 sm:px-6">
-                  <div className="flex flex-wrap gap-2 lg:hidden">
-                    {trustItems.map((item) => (
-                      <span
-                        key={item.label}
-                        className="inline-flex items-center gap-1 rounded-full border border-border/70 bg-surface/80 px-3 py-1 text-[11px] text-foreground"
-                      >
-                        <item.icon className="h-3.5 w-3.5 text-primary" />
-                        {item.label}
-                      </span>
-                    ))}
-                  </div>
+
 
                   {apiUnreachable && (
                     <div className="rounded-2xl border border-amber-300/70 bg-amber-50/80 p-3 text-amber-950 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-100">

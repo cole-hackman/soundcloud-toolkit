@@ -14,6 +14,7 @@ dotenv.config();
 import { apiRateLimiter, authRateLimiter, heavyOperationRateLimiter, healthCheckRateLimiter } from './middleware/rateLimiter.js';
 import { securityHeaders, preventKeyLeakage, validateEnv } from './middleware/security.js';
 import logger from './lib/logger.js';
+import { safeError } from './lib/safe-error.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -169,7 +170,7 @@ if (existsSync(FRONTEND_BUILD_PATH)) {
 
 // Error handling middleware
 app.use((err, req, res, next) => {
-  logger.error('Unhandled error:', err);
+  logger.error('Unhandled error:', safeError(err));
   
   // Sanitize error message to prevent information leakage
   let errorMessage = 'Something went wrong';

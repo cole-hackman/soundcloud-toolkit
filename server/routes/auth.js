@@ -5,6 +5,7 @@ import { encrypt } from '../lib/crypto.js';
 import { soundcloudClient } from '../lib/soundcloud-client.js';
 import prisma from '../lib/prisma.js';
 import logger from '../lib/logger.js';
+import { safeError } from '../lib/safe-error.js';
 
 const router = express.Router();
 
@@ -54,7 +55,7 @@ router.get('/login', async (req, res) => {
 
     res.redirect(authUrl.toString());
   } catch (error) {
-    logger.error('Login error:', error);
+    logger.error('Login error:', safeError(error));
     res.status(500).json({ error: 'Failed to initiate login' });
   }
 });
@@ -71,7 +72,7 @@ router.get('/callback', async (req, res) => {
     const appUrl = appUrlCookie || process.env.APP_URL;
 
     if (error) {
-      logger.error('OAuth error:', error);
+      logger.error('OAuth error:', safeError(error));
       res.clearCookie('pkce_verifier');
       res.clearCookie('app_url');
       return res.redirect(`${appUrl}/login?error=${encodeURIComponent(error)}`);
@@ -151,7 +152,7 @@ router.get('/callback', async (req, res) => {
     // Redirect to dashboard
     res.redirect(`${appUrl}/dashboard`);
   } catch (error) {
-    logger.error('Callback error:', error);
+    logger.error('Callback error:', safeError(error));
     const appUrl = req.cookies.app_url || process.env.APP_URL;
     res.clearCookie('pkce_verifier');
     res.clearCookie('app_url');
@@ -170,14 +171,14 @@ router.post('/logout', async (req, res) => {
     
     res.json({ success: true });
   } catch (error) {
-    logger.error('Logout error:', error);
+    logger.error('Logout error:', safeError(error));
     res.status(500).json({ error: 'Failed to logout' });
   }
 });
 
 /**
  * GET /api/auth/me
- * Get current user session
+ * Get current user session — validates session cookie AND token expiry in DB
  */
 router.get('/me', async (req, res) => {
   try {
@@ -189,12 +190,31 @@ router.get('/me', async (req, res) => {
 
     const sessionValue = unsignSession(sessionCookie, process.env.SESSION_SECRET);
     if (!sessionValue) {
+      res.clearCookie('session');
       return res.status(401).json({ error: 'Invalid session' });
     }
 
     const sessionData = parseSessionData(sessionValue);
     if (!sessionData) {
+      res.clearCookie('session');
       return res.status(401).json({ error: 'Invalid session data' });
+    }
+
+    // Verify user and tokens exist in the database and aren't expired
+    const user = await prisma.user.findUnique({
+      where: { id: sessionData.userId },
+      include: { tokens: true },
+    });
+
+    if (!user || !user.tokens.length) {
+      res.clearCookie('session');
+      return res.status(401).json({ error: 'Session expired' });
+    }
+
+    const token = user.tokens[0];
+    if (token.expiresAt && new Date(token.expiresAt) <= new Date()) {
+      res.clearCookie('session');
+      return res.status(401).json({ error: 'Session expired' });
     }
 
     const adminIds = (process.env.ADMIN_IDS || '')
@@ -207,7 +227,7 @@ router.get('/me', async (req, res) => {
 
     res.json({ ...sessionData, isAdmin });
   } catch (error) {
-    logger.error('Me error:', error);
+    logger.error('Me error:', safeError(error));
     res.status(500).json({ error: 'Failed to get user info' });
   }
 });

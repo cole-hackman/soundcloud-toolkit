@@ -5,6 +5,7 @@ import { heavyOperationRateLimiter } from '../middleware/rateLimiter.js';
 import { authenticateUser } from '../middleware/auth.js';
 import { logOperation } from '../lib/analytics.js';
 import logger from '../lib/logger.js';
+import { safeError } from '../lib/safe-error.js';
 import {
   duplicateTrackBetweenPlaylists,
   moveTrackBetweenPlaylists,
@@ -206,7 +207,7 @@ router.get('/me', authenticateUser, async (req, res) => {
     });
     res.json(userInfo);
   } catch (error) {
-    logger.error('Get me error:', error);
+    logger.error('Get me error:', safeError(error));
     res.status(500).json({ error: 'Failed to get user info' });
   }
 });
@@ -242,7 +243,7 @@ router.get('/playlists', authenticateUser, validatePagination, async (req, res) 
     }));
     res.json(withCovers);
   } catch (error) {
-    logger.error('Get playlists error:', error);
+    logger.error('Get playlists error:', safeError(error));
     res.status(500).json({ error: 'Failed to get playlists' });
   }
 });
@@ -323,7 +324,7 @@ router.post(
 
       return res.status(400).json({ ok: false, error: 'Invalid action' });
     } catch (error) {
-      logger.error('Playlist transfer error:', error);
+      logger.error('Playlist transfer error:', safeError(error));
       res.status(500).json({ ok: false, error: 'Playlist transfer failed' });
     }
   }
@@ -343,7 +344,7 @@ router.get('/playlists/:id', authenticateUser, validatePlaylistId, async (req, r
     );
     res.json(playlist);
   } catch (error) {
-    logger.error('Get playlist with tracks error:', error);
+    logger.error('Get playlist with tracks error:', safeError(error));
     res.status(500).json({ error: 'Failed to get playlist' });
   }
 });
@@ -380,7 +381,7 @@ router.put('/playlists/:id', authenticateUser, validateUpdatePlaylist, async (re
 
     res.json(updated);
   } catch (error) {
-    logger.error('Update playlist error:', error);
+    logger.error('Update playlist error:', safeError(error));
     res.status(500).json({ error: 'Failed to update playlist' });
   }
 });
@@ -405,7 +406,7 @@ router.get('/likes', authenticateUser, async (req, res) => {
     ));
     res.json({ collection: items, total_results: items.length });
   } catch (error) {
-    logger.error('Get likes error:', error);
+    logger.error('Get likes error:', safeError(error));
     res.status(500).json({ error: 'Failed to get likes' });
   }
 });
@@ -441,7 +442,7 @@ router.get('/likes/paged', authenticateUser, validateLikesPagination, async (req
       total: page.total_results || undefined
     });
   } catch (error) {
-    logger.error('Get likes paged error:', error);
+    logger.error('Get likes paged error:', safeError(error));
     res.status(500).json({ error: 'Failed to get likes page' });
   }
 });
@@ -527,7 +528,7 @@ async function handleResolve(req, res) {
     }
     logOperation({ userId: req.user.id, action: 'resolve', status: 'success' });
   } catch (error) {
-    logger.error('Resolve error:', error);
+    logger.error('Resolve error:', safeError(error));
     const msg = String(error?.message || '').toLowerCase();
     if (msg.includes('invalid_grant')) return res.status(401).json({ error: 'Session expired. Please log in again.' });
     if (msg.includes('401')) return res.status(401).json({ error: 'Unauthorized to resolve this URL. Sign in and try again.' });
@@ -596,7 +597,7 @@ router.get('/proxy-download', authenticateUser, async (req, res) => {
     
     res.status(404).json({ error: 'Could not resolve download link' });
   } catch (error) {
-    logger.error('Proxy download error:', error);
+    logger.error('Proxy download error:', safeError(error));
     res.status(500).json({ error: 'Failed to proxy download' });
   }
 });
@@ -801,7 +802,7 @@ router.post('/playlists/merge', authenticateUser, heavyOperationRateLimiter, val
       logOperation({ userId: req.user.id, action: 'merge', trackCount: trackIdsArray.length, status: 'success' });
     }
   } catch (error) {
-    logger.error('Merge playlists error:', error);
+    logger.error('Merge playlists error:', safeError(error));
     res.status(500).json({ error: 'Failed to merge playlists' });
   }
 });
@@ -905,7 +906,7 @@ router.post('/playlists/from-likes', authenticateUser, heavyOperationRateLimiter
     logOperation({ userId: req.user.id, action: 'from-likes', trackCount: trackIds.length, status: 'split' });
     return;
   } catch (error) {
-    logger.error('Create playlist from likes error:', error);
+    logger.error('Create playlist from likes error:', safeError(error));
     res.status(500).json({ error: 'Failed to create playlist from likes' });
   }
 });
@@ -987,7 +988,7 @@ router.post('/resolve/batch', authenticateUser, heavyOperationRateLimiter, valid
     }
     logOperation({ userId: req.user.id, action: 'batch-resolve', itemCount: urls.length, status: 'success', metadata: { failures } });
   } catch (error) {
-    logger.error('Batch resolve error:', error);
+    logger.error('Batch resolve error:', safeError(error));
     res.status(500).json({ error: 'Batch resolve failed' });
   }
 });
@@ -1033,7 +1034,7 @@ router.get('/activities', authenticateUser, validateActivities, async (req, res)
     logger.info(`[/api/activities] Returning ${trackActivities.length} valid track activities`);
     res.json({ collection: trackActivities });
   } catch (error) {
-    logger.error('Get activities error:', error);
+    logger.error('Get activities error:', safeError(error));
     res.status(500).json({ error: 'Failed to fetch activities' });
   }
 });
@@ -1060,7 +1061,7 @@ router.post('/likes/tracks/bulk-unlike', authenticateUser, heavyOperationRateLim
     res.json({ results });
     logOperation({ userId: req.user.id, action: 'bulk-unlike', trackCount: results.filter(r => r.status === 'ok').length, itemCount: results.length, status: 'success' });
   } catch (error) {
-    logger.error('Bulk unlike error:', error);
+    logger.error('Bulk unlike error:', safeError(error));
     res.status(500).json({ error: 'Bulk unlike failed' });
   }
 });
@@ -1074,7 +1075,7 @@ router.get('/followers', authenticateUser, async (req, res) => {
     const followers = await soundcloudClient.getFollowers(req.accessToken, req.refreshToken);
     res.json({ collection: followers, total: followers.length });
   } catch (error) {
-    logger.error('Get followers error:', error);
+    logger.error('Get followers error:', safeError(error));
     res.status(500).json({ error: 'Failed to fetch followers' });
   }
 });
@@ -1088,7 +1089,7 @@ router.get('/followings', authenticateUser, async (req, res) => {
     const followings = await soundcloudClient.getFollowings(req.accessToken, req.refreshToken);
     res.json({ collection: followings, total: followings.length });
   } catch (error) {
-    logger.error('Get followings error:', error);
+    logger.error('Get followings error:', safeError(error));
     res.status(500).json({ error: 'Failed to fetch followings' });
   }
 });
@@ -1115,7 +1116,7 @@ router.post('/followings/bulk-unfollow', authenticateUser, heavyOperationRateLim
     res.json({ results });
     logOperation({ userId: req.user.id, action: 'bulk-unfollow', itemCount: results.filter(r => r.status === 'ok').length, status: 'success' });
   } catch (error) {
-    logger.error('Bulk unfollow error:', error);
+    logger.error('Bulk unfollow error:', safeError(error));
     res.status(500).json({ error: 'Bulk unfollow failed' });
   }
 });
@@ -1130,7 +1131,7 @@ router.get('/reposts', authenticateUser, async (req, res) => {
     logger.info(`[GET /api/reposts] returning ${reposts.length} reposts`);
     res.json({ collection: reposts, total_results: reposts.length });
   } catch (error) {
-    logger.error('Get reposts error:', error);
+    logger.error('Get reposts error:', safeError(error));
     res.status(500).json({ error: 'Failed to fetch reposts' });
   }
 });
@@ -1253,7 +1254,7 @@ router.post('/reposts/bulk-remove', authenticateUser, heavyOperationRateLimiter,
     res.json({ results });
     logOperation({ userId: req.user.id, action: 'bulk-remove-reposts', itemCount: items.length, status: 'success' });
   } catch (error) {
-    logger.error('Bulk unrepost error:', error);
+    logger.error('Bulk unrepost error:', safeError(error));
     res.status(500).json({ error: 'Bulk unrepost failed' });
   }
 });

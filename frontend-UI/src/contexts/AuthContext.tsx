@@ -1,6 +1,7 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
+import { registerSessionExpiredHandler } from "@/lib/api";
 
 interface User {
   id: string;
@@ -31,6 +32,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [apiUnreachable, setApiUnreachable] = useState(false);
 
+  /** Clear local auth state without redirecting (the api interceptor handles redirects) */
+  const clearAuthState = useCallback(() => {
+    setUser(null);
+    setIsAuthenticated(false);
+  }, []);
+
+  // Register the session-expired handler so the global 401 interceptor
+  // can reset React state when *any* API call returns 401
+  useEffect(() => {
+    registerSessionExpiredHandler(clearAuthState);
+  }, [clearAuthState]);
+
   useEffect(() => {
     checkAuthStatus();
   }, []);
@@ -52,8 +65,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         });
         setIsAuthenticated(true);
       } else {
+        // 401 or any other error — clear local state
         setIsAuthenticated(false);
         setUser(null);
+
+        // If the server told us the session is invalid, clear the cookie
+        // so we don't keep sending a stale token
+        if (response.status === 401) {
+          document.cookie =
+            "session=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+        }
       }
     } catch (error) {
       console.error("Auth check failed:", error);
@@ -105,4 +126,3 @@ export function useAuth() {
   }
   return context;
 }
-

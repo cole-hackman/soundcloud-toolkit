@@ -2,6 +2,7 @@ import { unsignSession, parseSessionData } from '../lib/session.js';
 import { decrypt } from '../lib/crypto.js';
 import prisma from '../lib/prisma.js';
 import logger from '../lib/logger.js';
+import { safeError } from '../lib/safe-error.js';
 
 /**
  * Middleware to authenticate requests via signed session cookie.
@@ -48,7 +49,7 @@ export async function authenticateUser(req, res, next) {
 
     next();
   } catch (error) {
-    logger.error('Authentication error:', error);
+    logger.error('Authentication error:', safeError(error));
     res.status(401).json({ error: 'Authentication failed' });
   }
 }

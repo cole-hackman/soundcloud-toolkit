@@ -248,6 +248,25 @@ export const validateBatchResolve = [
 ];
 
 /**
+ * Validate clone playlist request
+ */
+export const validateClonePlaylist = [
+  body('url')
+    .isString()
+    .trim()
+    .isLength({ min: 1, max: 2048 })
+    .withMessage('url must be a valid SoundCloud URL string')
+    .custom((value) => validateSoundCloudUrl(value)),
+  body('title')
+    .optional()
+    .trim()
+    .isLength({ min: 1, max: 200 })
+    .withMessage('Title must be between 1 and 200 characters')
+    .escape(),
+  handleValidationErrors
+];
+
+/**
  * Validate activities request
  */
 export const validateActivities = [

@@ -111,6 +111,13 @@ const FEATURES: FeatureCard[] = [
     icon: ListChecks,
     path: "/batch-link-resolver",
   },
+  {
+    id: "playlist-cloner",
+    title: "Playlist Cloner",
+    description: "Clone any public playlist to your account",
+    icon: Combine,
+    path: "/playlist-cloner",
+  },
 ];
 
 const RECENT_LABELS: Record<string, string> = {
@@ -124,6 +131,7 @@ const RECENT_LABELS: Record<string, string> = {
   "following-manager": "Following Manager",
   "health-check": "Playlist Health Check",
   "batch-resolver": "Batch Link Resolver",
+  "playlist-cloner": "Playlist Cloner",
 };
 
 const RECENT_PATHS: Record<string, string> = {
@@ -137,6 +145,7 @@ const RECENT_PATHS: Record<string, string> = {
   "following-manager": "/following-manager",
   "health-check": "/playlist-health-check",
   "batch-resolver": "/batch-link-resolver",
+  "playlist-cloner": "/playlist-cloner",
 };
 
 const COMING_SOON: FeatureCard[] = [];

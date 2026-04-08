@@ -32,9 +32,9 @@ Another challenge was handling API rate limits during bulk operations like unlik
 
 ## 5. What Did You Implement?
 
-- **Playlist Management**: Combine multiple playlists, auto-split large playlists, remove duplicates, and health-check playlists for dead tracks.
+- **Playlist Management**: Combine multiple playlists, auto-split large playlists, remove duplicates, health-check playlists for dead tracks, clone any public playlist, and securely transfer/copy/duplicate tracks across your playlists.
 - **Likes & Activity**: Convert liked tracks to playlists, batch unlike tracks, and capture recent activity feeds into playlists.
-- **Social Management**: Identify non-followers and bulk unfollow accounts to clean up your social graph.
+- **Social & Profile Management**: Identify non-followers, bulk unfollow accounts to clean up your social graph, and batch unrepost content from your profile.
 - **Link & Metadata Tools**: Resolve any SoundCloud URL (track, playlist, or user) to normalized metadata instantly, with batching and in-memory caching.
 - **Secure Authentication**: End-to-end OAuth flow with AES-256-GCM token encryption and CSRF-protected HttpOnly cookies.
 
@@ -129,6 +129,8 @@ npm run server
 | `/api/playlists/:id`            | GET      | Single playlist with tracks (normalized)                                |
 | `/api/playlists/:id`            | PUT      | Overwrite playlist order/title by sending full `tracks` list            |
 | `/api/playlists/merge`          | POST     | Merge multiple playlists into a new one (dedupe, auto-split >500)       |
+| `/api/playlists/clone`          | POST     | Clones an external public playlist to the user's account                |
+| `/api/playlists/transfer-track` | POST     | Move or duplicate a single track across the user's playlists            |
 | `/api/playlists/from-likes`     | POST     | Create playlist from selected like IDs (batched PUTs)                   |
 | `/api/likes`                    | GET      | All user likes                                                          |
 | `/api/likes/paged`              | GET      | Cursor-based likes pagination                                           |
@@ -140,6 +142,9 @@ npm run server
 | `/api/followers`                | GET      | User's followers list                                                   |
 | `/api/followings`               | GET      | User's followings list                                                  |
 | `/api/followings/bulk-unfollow` | POST     | Bulk unfollow users by ID list                                          |
+| `/api/reposts`                  | GET      | User's reposted tracks list                                             |
+| `/api/reposts/debug`            | GET      | Tooling debug endpoint for analyzing repost data payload                |
+| `/api/reposts/bulk-remove`      | POST     | Bulk remover for unreposting tracks by ID list                          |
 
 ### Data Model (Prisma)
 

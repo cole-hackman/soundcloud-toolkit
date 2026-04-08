@@ -24,6 +24,7 @@ import {
   validateBulkUnlike,
   validateBulkUnfollow,
   validateBulkUnrepost,
+  validateClonePlaylist,
 } from '../middleware/validation.js';
 
 const router = express.Router();
@@ -245,6 +246,151 @@ router.get('/playlists', authenticateUser, validatePagination, async (req, res) 
   } catch (error) {
     logger.error('Get playlists error:', safeError(error));
     res.status(500).json({ error: 'Failed to get playlists' });
+  }
+});
+
+/**
+ * POST /api/playlists/clone
+ * Clones another user's playlist to the current user's account
+ */
+router.post('/playlists/clone', authenticateUser, heavyOperationRateLimiter, validateClonePlaylist, async (req, res) => {
+  try {
+    const { url, title } = req.body;
+    const cleaned = sanitizeUrl(url);
+
+    // 1. Resolve URL
+    let resource;
+    try {
+      resource = await soundcloudClient.resolveAny(req.accessToken, req.refreshToken, cleaned);
+    } catch (e) {
+      if (String(e?.message).includes('401')) {
+        resource = await soundcloudClient.resolvePublic(cleaned);
+      } else {
+        throw e;
+      }
+    }
+
+    if (resource.kind !== 'playlist') {
+      return res.status(400).json({ error: 'URL must point to a playlist.' });
+    }
+
+    const sourceId = extractNumericId(resource.id || resource.urn);
+
+    // 2. Fetch full playlist containing all tracks
+    const playlist = await soundcloudClient.getPlaylistWithTracks(
+      req.accessToken,
+      req.refreshToken,
+      sourceId
+    );
+
+    const all = Array.isArray(playlist.tracks) ? playlist.tracks : [];
+    const filtered = all.filter(t => t && !t.blocked_at && t.streamable !== false);
+    const trackIdsArray = filtered.map(t => t.id).filter(id => id != null);
+
+    if (trackIdsArray.length === 0) {
+      return res.status(400).json({ error: 'Playlist has no streamable tracks to clone.' });
+    }
+
+    // Helper to slow down between API calls
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    const baseTitle = title || `Clone of ${playlist.title}`;
+
+    if (trackIdsArray.length > 500) {
+      const numPlaylists = Math.ceil(trackIdsArray.length / 500);
+      const createdPlaylists = [];
+
+      for (let i = 0; i < numPlaylists; i++) {
+        const startIdx = i * 500;
+        const endIdx = Math.min(startIdx + 500, trackIdsArray.length);
+        const batch = trackIdsArray.slice(startIdx, endIdx);
+        
+        const playlistTitle = numPlaylists > 1 
+          ? `${baseTitle} (${i + 1}/${numPlaylists})`
+          : baseTitle;
+
+        const mergeBatchSize = 100;
+        const initialBatch = batch.slice(0, mergeBatchSize);
+        const newPlaylist = await soundcloudClient.createPlaylist(
+          req.accessToken,
+          req.refreshToken,
+          playlistTitle,
+          `Cloned from ${cleaned}\n\nCreated using SC Toolkit. Try it for free soundcloudtoolkit.com`,
+          initialBatch
+        );
+
+        await sleep(500);
+
+        let addIndex = mergeBatchSize;
+        while (addIndex < batch.length) {
+          await sleep(300);
+          const addBatch = batch.slice(0, addIndex + mergeBatchSize);
+          await soundcloudClient.addTracksToPlaylist(
+            req.accessToken,
+            req.refreshToken,
+            newPlaylist.id,
+            addBatch
+          );
+          addIndex += mergeBatchSize;
+        }
+
+        createdPlaylists.push({
+          playlist: newPlaylist,
+          partNumber: i + 1
+        });
+
+        if (i < numPlaylists - 1) {
+          await sleep(500);
+        }
+      }
+
+      logOperation({ userId: req.user.id, action: 'clone', trackCount: trackIdsArray.length, status: 'split' });
+      res.json({
+        playlists: createdPlaylists.map(p => p.playlist),
+        stats: {
+          totalTracks: trackIdsArray.length,
+          numPlaylistsCreated: numPlaylists,
+        }
+      });
+    } else {
+      const mergeBatchSize = 100;
+      const initialBatch = trackIdsArray.slice(0, mergeBatchSize);
+      const newPlaylist = await soundcloudClient.createPlaylist(
+        req.accessToken,
+        req.refreshToken,
+        baseTitle,
+        `Cloned from ${cleaned}\n\nCreated using SC Toolkit. Try it for free soundcloudtoolkit.com`,
+        initialBatch
+      );
+
+      await sleep(500);
+
+      let addIndex = mergeBatchSize;
+      while (addIndex < trackIdsArray.length) {
+        await sleep(300);
+        const addBatch = trackIdsArray.slice(0, addIndex + mergeBatchSize);
+        await soundcloudClient.addTracksToPlaylist(
+          req.accessToken,
+          req.refreshToken,
+          newPlaylist.id,
+          addBatch
+        );
+        addIndex += mergeBatchSize;
+      }
+
+      logOperation({ userId: req.user.id, action: 'clone', trackCount: trackIdsArray.length, status: 'success' });
+      res.json({
+        playlist: newPlaylist,
+        stats: {
+          totalTracks: trackIdsArray.length,
+        }
+      });
+    }
+  } catch (error) {
+    logger.error('Clone playlist error:', safeError(error));
+    if (String(error?.message).includes('404')) {
+      return res.status(404).json({ error: 'Source playlist not found or private.' });
+    }
+    res.status(500).json({ error: 'Failed to clone playlist' });
   }
 });
 

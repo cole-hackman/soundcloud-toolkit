@@ -502,7 +502,7 @@ export default function Home() {
                 </Link>
                 <span className="hidden sm:inline">•</span>
                 <Link
-                  href="https://github.com/"
+                  href="https://github.com/cole-hackman/soundcloud-toolkit"
                   className="hover:text-foreground transition-colors"
                 >
                   GitHub

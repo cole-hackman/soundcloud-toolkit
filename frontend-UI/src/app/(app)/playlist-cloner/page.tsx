@@ -3,7 +3,7 @@
 import { useState, FormEvent, useEffect } from "react";
 import { CopyPlus, Check, ArrowRight, Music, Link as LinkIcon, Loader2, Link2 } from "lucide-react";
 import { apiFetch } from "@/lib/api";
-import { Card, Input, Label, StatsCard, EmptyState } from "@/components/ui";
+import { Card, Input, EmptyState } from "@/components/ui";
 
 const LAST_TOOLS_KEY = "sc-toolkit-last-tools";
 
@@ -14,8 +14,8 @@ export default function PlaylistClonerPage() {
   const [error, setError] = useState<string | null>(null);
   
   // Results
-  const [resultPlaylists, setResultPlaylists] = useState<any[]>([]);
-  const [stats, setStats] = useState<any>(null);
+  const [resultPlaylists, setResultPlaylists] = useState<Record<string, unknown>[]>([]);
+  const [stats, setStats] = useState<Record<string, unknown> | null>(null);
 
   useEffect(() => {
     try {
@@ -36,7 +36,7 @@ export default function PlaylistClonerPage() {
     setStats(null);
 
     try {
-      const body: any = { url: url.trim() };
+      const body: Record<string, string> = { url: url.trim() };
       if (customTitle.trim()) {
         body.title = customTitle.trim();
       }
@@ -56,8 +56,8 @@ export default function PlaylistClonerPage() {
       setStats(data.stats);
       setUrl("");
       setCustomTitle("");
-    } catch (err: any) {
-      setError(err.message || "An unexpected error occurred");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "An unexpected error occurred");
     } finally {
       setIsCloning(false);
     }
@@ -79,7 +79,7 @@ export default function PlaylistClonerPage() {
         <form onSubmit={handleClone} className="space-y-6">
           <div className="space-y-4">
             <div>
-              <Label className="text-sm font-semibold mb-1.5 block">Original Playlist URL</Label>
+              <label className="text-sm font-semibold mb-1.5 block">Original Playlist URL</label>
               <div className="relative">
                 <LinkIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
@@ -94,7 +94,7 @@ export default function PlaylistClonerPage() {
             </div>
 
             <div>
-              <Label className="text-sm font-semibold mb-1.5 block">Custom Name (Optional)</Label>
+              <label className="text-sm font-semibold mb-1.5 block">Custom Name (Optional)</label>
               <Input
                 type="text"
                 placeholder="Leave blank to use 'Clone of [Original Name]'"
@@ -140,17 +140,25 @@ export default function PlaylistClonerPage() {
           </h2>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <StatsCard
-              icon={Music}
-              label="Tracks Cloned"
-              value={stats?.totalTracks?.toString() || "0"}
-            />
-            {stats?.numPlaylistsCreated > 1 && (
-               <StatsCard
-                 icon={CopyPlus}
-                 label="Parts Created"
-                 value={stats?.numPlaylistsCreated?.toString() || "0"}
-               />
+            <Card className="p-4 flex items-center gap-4">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-orange-500/10 text-orange-500">
+                <Music className="w-6 h-6" />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-muted-foreground">Tracks Cloned</p>
+                <h3 className="text-2xl font-bold">{stats?.totalTracks?.toString() || "0"}</h3>
+              </div>
+            </Card>
+            {Number(stats?.numPlaylistsCreated) > 1 && (
+               <Card className="p-4 flex items-center gap-4">
+                 <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-orange-500/10 text-orange-500">
+                   <CopyPlus className="w-6 h-6" />
+                 </div>
+                 <div>
+                   <p className="text-sm font-medium text-muted-foreground">Parts Created</p>
+                   <h3 className="text-2xl font-bold">{stats?.numPlaylistsCreated?.toString() || "0"}</h3>
+                 </div>
+               </Card>
             )}
           </div>
 

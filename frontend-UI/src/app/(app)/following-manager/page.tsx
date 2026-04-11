@@ -153,16 +153,29 @@ export default function FollowingManagerPage() {
     return n.toString();
   };
 
-  const formatDate = (dateStr?: string) => {
+  const formatDate = (dateStr?: string | number | null) => {
     if (!dateStr) return "N/A";
     try {
-      return new Date(dateStr).toLocaleDateString(undefined, { 
+      let d = new Date(dateStr);
+      
+      // Fallback for Safari not parsing SC API "YYYY/MM/DD HH:MM:SS +0000" correctly
+      if (isNaN(d.getTime()) && typeof dateStr === "string" && dateStr.includes("/")) {
+        d = new Date(dateStr.replace(/\//g, "-").replace(" ", "T"));
+      }
+      
+      // Re-check validity
+      if (isNaN(d.getTime())) return "N/A";
+      
+      // Prevent "Dec 31, 1969" issue by rejecting zero or epoch-close dates
+      if (d.getFullYear() <= 1970) return "N/A";
+
+      return d.toLocaleDateString(undefined, { 
         year: 'numeric', 
         month: 'short', 
         day: 'numeric' 
       });
     } catch {
-      return "Invalid Date";
+      return "N/A";
     }
   };
 
@@ -178,8 +191,17 @@ export default function FollowingManagerPage() {
       if (sort === "tracks") return (b.track_count || 0) - (a.track_count || 0);
       if (sort === "reposts") return (b.reposts_count || 0) - (a.reposts_count || 0);
       if (sort === "last_modified") {
-        const dateA = a.last_modified ? new Date(a.last_modified).getTime() : 0;
-        const dateB = b.last_modified ? new Date(b.last_modified).getTime() : 0;
+        const getParseableTime = (d?: string | null) => {
+          if (!d) return 0;
+          let parsed = new Date(d);
+          if (isNaN(parsed.getTime()) && typeof d === 'string' && d.includes('/')) {
+            parsed = new Date(d.replace(/\//g, '-').replace(' ', 'T'));
+          }
+          const time = parsed.getTime();
+          return isNaN(time) ? 0 : time;
+        };
+        const dateA = getParseableTime(a.last_modified);
+        const dateB = getParseableTime(b.last_modified);
         return dateB - dateA; // Newest first
       }
       return 0;

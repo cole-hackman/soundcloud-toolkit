@@ -91,8 +91,8 @@ export const validateMergePlaylists = [
       if (!Array.isArray(value) || value.length < 2) {
         throw new Error('sourcePlaylistIds must be an array with at least 2 items');
       }
-      if (value.length > 10) {
-        throw new Error('Cannot merge more than 10 playlists at once');
+      if (value.length > 20) {
+        throw new Error('Cannot merge more than 20 playlists at once');
       }
       // Validate each ID is a positive integer
       for (const id of value) {
@@ -103,12 +103,41 @@ export const validateMergePlaylists = [
       }
       return true;
     }),
+  body('targetPlaylistId')
+    .optional()
+    .isInt({ min: 1 })
+    .withMessage('targetPlaylistId must be a positive integer')
+    .toInt(),
+  body('deleteAfterMerge')
+    .optional()
+    .isBoolean()
+    .withMessage('deleteAfterMerge must be a boolean')
+    .toBoolean(),
   body('title')
     .optional()
     .trim()
     .isLength({ min: 1, max: 200 })
     .withMessage('Title must be between 1 and 200 characters')
-    .escape(), // Sanitize to prevent XSS
+    .escape(),
+  // Custom: title is required when targetPlaylistId is absent
+  body('title').custom((value, { req }) => {
+    if (!req.body.targetPlaylistId && !value) {
+      throw new Error('title is required when targetPlaylistId is not provided');
+    }
+    return true;
+  }),
+  // Custom: targetPlaylistId must not appear in sourcePlaylistIds (Requirement 1.6)
+  body('targetPlaylistId').custom((value, { req }) => {
+    if (value && Array.isArray(req.body.sourcePlaylistIds)) {
+      const sourceIds = req.body.sourcePlaylistIds.map((id) =>
+        typeof id === 'string' ? parseInt(id, 10) : id
+      );
+      if (sourceIds.includes(value)) {
+        throw new Error('targetPlaylistId must not be one of the sourcePlaylistIds');
+      }
+    }
+    return true;
+  }),
   handleValidationErrors
 ];
 
@@ -184,8 +213,8 @@ export const validateCreateFromLikes = [
       if (!Array.isArray(value) || value.length === 0) {
         throw new Error('trackIds must be a non-empty array');
       }
-      if (value.length > 2000) {
-        throw new Error('Cannot have more than 2000 tracks in one request');
+      if (value.length > 5000) {
+        throw new Error('Cannot have more than 5000 tracks in one request');
       }
       // Validate each track ID is a positive integer
       for (const trackId of value) {
@@ -196,12 +225,24 @@ export const validateCreateFromLikes = [
       }
       return true;
     }),
+  body('targetPlaylistId')
+    .optional()
+    .isInt({ min: 1 })
+    .withMessage('targetPlaylistId must be a positive integer')
+    .toInt(),
   body('title')
     .optional()
     .trim()
     .isLength({ min: 1, max: 200 })
     .withMessage('Title must be between 1 and 200 characters')
     .escape(),
+  // Custom: title is required when targetPlaylistId is absent
+  body('title').custom((value, { req }) => {
+    if (!req.body.targetPlaylistId && !value) {
+      throw new Error('title is required when targetPlaylistId is not provided');
+    }
+    return true;
+  }),
   handleValidationErrors
 ];
 
@@ -317,6 +358,98 @@ export const validateBulkUnrepost = [
   body('items.*.resourceType')
     .isIn(['track', 'playlist'])
     .withMessage('Each item resourceType must be track or playlist'),
+  handleValidationErrors
+];
+
+/**
+ * Validation rules for track search endpoint (GET /api/tracks/search)
+ */
+export const validateTrackSearch = [
+  query('genres')
+    .optional()
+    .trim()
+    .isLength({ max: 200 })
+    .withMessage('genres must be at most 200 characters'),
+  query('tags')
+    .optional()
+    .trim()
+    .isLength({ max: 200 })
+    .withMessage('tags must be at most 200 characters'),
+  query('q')
+    .optional()
+    .trim()
+    .isLength({ max: 200 })
+    .withMessage('q must be at most 200 characters'),
+  query('bpm_from')
+    .optional()
+    .isInt({ min: 1, max: 300 })
+    .withMessage('bpm_from must be an integer between 1 and 300')
+    .toInt(),
+  query('bpm_to')
+    .optional()
+    .isInt({ min: 1, max: 300 })
+    .withMessage('bpm_to must be an integer between 1 and 300')
+    .toInt(),
+  query('duration_from')
+    .optional()
+    .isInt({ min: 0 })
+    .withMessage('duration_from must be a non-negative integer')
+    .toInt(),
+  query('duration_to')
+    .optional()
+    .isInt({ min: 0 })
+    .withMessage('duration_to must be a non-negative integer')
+    .toInt(),
+  query('limit')
+    .optional()
+    .isInt({ min: 1, max: 200 })
+    .withMessage('limit must be between 1 and 200')
+    .toInt(),
+  query('offset')
+    .optional()
+    .isInt({ min: 0 })
+    .withMessage('offset must be a non-negative integer')
+    .toInt(),
+  // Require at least one of genres, tags, or q
+  query('genres').custom((value, { req }) => {
+    if (!value && !req.query.tags && !req.query.q) {
+      throw new Error('At least one of genres, tags, or q is required');
+    }
+    return true;
+  }),
+  // Validate bpm_from <= bpm_to when both provided
+  query('bpm_from').custom((value, { req }) => {
+    if (value && req.query.bpm_to) {
+      const from = Number(value);
+      const to = Number(req.query.bpm_to);
+      if (from > to) {
+        throw new Error('bpm_from must be less than or equal to bpm_to');
+      }
+    }
+    return true;
+  }),
+  // Validate duration_from <= duration_to when both provided
+  query('duration_from').custom((value, { req }) => {
+    if (value && req.query.duration_to) {
+      const from = Number(value);
+      const to = Number(req.query.duration_to);
+      if (from > to) {
+        throw new Error('duration_from must be less than or equal to duration_to');
+      }
+    }
+    return true;
+  }),
+  handleValidationErrors
+];
+
+/**
+ * Validation rules for delete playlist endpoint (DELETE /api/playlists/:id)
+ */
+export const validateDeletePlaylist = [
+  param('id')
+    .isInt({ min: 1 })
+    .withMessage('Playlist ID must be a positive integer')
+    .toInt(),
   handleValidationErrors
 ];
 

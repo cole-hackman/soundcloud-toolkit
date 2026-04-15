@@ -560,6 +560,34 @@ class SoundCloudClient {
   }
 
   /**
+   * Delete a playlist by its ID
+   */
+  async deletePlaylist(accessToken, refreshToken, playlistId) {
+    return this.scRequest(`/playlists/${playlistId}`, accessToken, refreshToken, { method: 'DELETE' });
+  }
+
+  /**
+   * Search tracks by genre, tags, and other filters
+   */
+  async searchTracks(accessToken, refreshToken, params = {}) {
+    const queryParams = new URLSearchParams();
+
+    if (params.genres) queryParams.set('genres', params.genres);
+    if (params.tags) queryParams.set('tags', params.tags);
+    if (params.q) queryParams.set('q', params.q);
+    if (params.bpm_from) queryParams.set('bpm[from]', String(params.bpm_from));
+    if (params.bpm_to) queryParams.set('bpm[to]', String(params.bpm_to));
+    if (params.duration_from) queryParams.set('duration[from]', String(params.duration_from));
+    if (params.duration_to) queryParams.set('duration[to]', String(params.duration_to));
+    if (params.limit) queryParams.set('limit', String(params.limit));
+    if (params.offset) queryParams.set('offset', String(params.offset));
+
+    queryParams.set('linked_partitioning', '1');
+
+    return this.scRequest(`/tracks?${queryParams.toString()}`, accessToken, refreshToken);
+  }
+
+  /**
    * Get the final download link for a track
    * Handles the redirect manually to ensure we get the final URL
    */

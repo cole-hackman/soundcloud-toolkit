@@ -3,9 +3,8 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { ArrowLeft, Check, Plus, Music } from "lucide-react";
+import { apiFetch } from "@/lib/api";
 import { EmptyState, LoadingSpinner } from "@/components/ui";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "";
 
 interface Track {
   id: number;
@@ -15,6 +14,13 @@ interface Track {
   duration: number;
 }
 
+interface Playlist {
+  id: number;
+  title: string;
+  track_count: number;
+  artwork_url: string;
+}
+
 interface CreatedPlaylist {
   id: number;
   title: string;
@@ -22,17 +28,25 @@ interface CreatedPlaylist {
   trackCount: number;
 }
 
+type AddMode = "new" | "existing";
+
 export default function LikesToPlaylistPage() {
   const [likes, setLikes] = useState<Track[]>([]);
   const [selectedTracks, setSelectedTracks] = useState<Set<number>>(new Set());
   const [playlistName, setPlaylistName] = useState("");
+  const [addMode, setAddMode] = useState<AddMode>("new");
+  const [userPlaylists, setUserPlaylists] = useState<Playlist[]>([]);
+  const [targetPlaylist, setTargetPlaylist] = useState<Playlist | null>(null);
+  const [loadingPlaylists, setLoadingPlaylists] = useState(false);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [success, setSuccess] = useState(false);
   const [result, setResult] = useState<{
     playlist?: { id: number; title: string; permalink_url: string };
     playlists?: CreatedPlaylist[];
+    overflowPlaylists?: CreatedPlaylist[];
     totalTracks?: number;
+    addedCount?: number;
     numPlaylistsCreated?: number;
   } | null>(null);
 
@@ -40,11 +54,16 @@ export default function LikesToPlaylistPage() {
     fetchLikes();
   }, []);
 
+  // Fetch user playlists when switching to "existing" mode
+  useEffect(() => {
+    if (addMode === "existing" && userPlaylists.length === 0) {
+      fetchUserPlaylists();
+    }
+  }, [addMode]);
+
   const fetchLikes = async () => {
     try {
-      const response = await fetch(`${API_BASE}/api/likes`, {
-        credentials: "include",
-      });
+      const response = await apiFetch("/api/likes");
       if (response.ok) {
         const data = await response.json();
         setLikes(data.collection || []);
@@ -56,14 +75,26 @@ export default function LikesToPlaylistPage() {
     }
   };
 
+  const fetchUserPlaylists = async () => {
+    setLoadingPlaylists(true);
+    try {
+      const response = await apiFetch("/api/playlists");
+      if (response.ok) {
+        const data = await response.json();
+        setUserPlaylists(data.collection || []);
+      }
+    } catch (error) {
+      console.error("Failed to fetch playlists:", error);
+    } finally {
+      setLoadingPlaylists(false);
+    }
+  };
+
   const toggleTrack = (id: number) => {
     setSelectedTracks((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   };
@@ -76,18 +107,27 @@ export default function LikesToPlaylistPage() {
     }
   };
 
-  const createPlaylist = async () => {
-    if (selectedTracks.size === 0 || !playlistName.trim()) return;
+  const canCreate =
+    selectedTracks.size > 0 &&
+    (addMode === "existing" ? targetPlaylist !== null : playlistName.trim().length > 0);
+
+  const handleCreate = async () => {
+    if (!canCreate) return;
     setCreating(true);
     try {
-      const response = await fetch(`${API_BASE}/api/playlists/from-likes`, {
+      const body: Record<string, unknown> = {
+        trackIds: Array.from(selectedTracks),
+      };
+      if (addMode === "existing" && targetPlaylist) {
+        body.targetPlaylistId = targetPlaylist.id;
+      } else {
+        body.title = playlistName.trim();
+      }
+
+      const response = await apiFetch("/api/playlists/from-likes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          trackIds: Array.from(selectedTracks),
-          title: playlistName,
-        }),
+        body: JSON.stringify(body),
       });
       const data = await response.json().catch(() => ({}));
       if (response.ok) {
@@ -111,10 +151,12 @@ export default function LikesToPlaylistPage() {
     return `${minutes}:${seconds.toString().padStart(2, "0")}`;
   };
 
+  // ── SUCCESS SCREEN ──────────────────────────────────────────────────────────
   if (success && result) {
     const multiple = result.playlists && result.playlists.length > 1;
-    return (
+    const isExisting = addMode === "existing";
 
+    return (
       <div className="min-h-screen flex items-center justify-center px-6 py-12 bg-[#F2F2F2] dark:bg-background">
         <div className="max-w-2xl w-full text-center">
           <div className="bg-white dark:bg-card rounded-2xl p-10 shadow-xl border-2 border-gray-200 dark:border-border">
@@ -122,12 +164,20 @@ export default function LikesToPlaylistPage() {
               <Check className="w-12 h-12 text-white" />
             </div>
             <h1 className="text-4xl font-bold mb-4 text-[#333333] dark:text-foreground">
-              {multiple ? "Playlists Created!" : "Playlist Created!"}
+              {isExisting ? "Tracks Added!" : multiple ? "Playlists Created!" : "Playlist Created!"}
             </h1>
             <p className="text-lg mb-6 text-[#666666] dark:text-muted-foreground">
-              {multiple
-                ? `${result.totalTracks ?? selectedTracks.size} tracks across ${result.numPlaylistsCreated} playlists.`
-                : `"${playlistName}" has been created with ${result.totalTracks ?? selectedTracks.size} tracks.`}
+              {isExisting ? (
+                <>
+                  Added {result.addedCount ?? selectedTracks.size} new track{(result.addedCount ?? 1) !== 1 ? "s" : ""} to &quot;{targetPlaylist?.title}&quot;.
+                  {result.overflowPlaylists && result.overflowPlaylists.length > 0 &&
+                    ` ${result.overflowPlaylists.length} overflow playlist(s) created for tracks beyond the 500-track limit.`}
+                </>
+              ) : multiple ? (
+                `${result.totalTracks ?? selectedTracks.size} tracks across ${result.numPlaylistsCreated} playlists.`
+              ) : (
+                `"${playlistName}" has been created with ${result.totalTracks ?? selectedTracks.size} tracks.`
+              )}
             </p>
             {multiple && result.playlists && (
               <div className="mb-6 space-y-2 text-left">
@@ -145,7 +195,7 @@ export default function LikesToPlaylistPage() {
                 ))}
               </div>
             )}
-            {!multiple && result.playlist?.permalink_url && (
+            {!multiple && !isExisting && result.playlist?.permalink_url && (
               <div className="mb-6">
                 <a
                   href={result.playlist.permalink_url}
@@ -170,10 +220,11 @@ export default function LikesToPlaylistPage() {
                   setResult(null);
                   setSelectedTracks(new Set());
                   setPlaylistName("");
+                  setTargetPlaylist(null);
                 }}
                 className="px-8 py-3 rounded-lg font-semibold border-2 border-gray-200 dark:border-border text-[#333333] dark:text-foreground hover:border-[#FF5500] transition"
               >
-                Create Another
+                {isExisting ? "Add More" : "Create Another"}
               </button>
             </div>
           </div>
@@ -182,6 +233,7 @@ export default function LikesToPlaylistPage() {
     );
   }
 
+  // ── MAIN PAGE ───────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-[#F2F2F2] dark:bg-background">
       <div className="container mx-auto px-6 py-12 max-w-6xl">
@@ -210,30 +262,19 @@ export default function LikesToPlaylistPage() {
                 <h2 className="text-xl font-bold text-[#333333] dark:text-foreground">
                   Your Liked Tracks ({likes.length})
                 </h2>
-                <button
-                  onClick={selectAll}
-                  className="text-sm text-[#FF5500] hover:underline"
-                >
-                  {selectedTracks.size === likes.length
-                    ? "Deselect All"
-                    : "Select All"}
+                <button onClick={selectAll} className="text-sm text-[#FF5500] hover:underline">
+                  {selectedTracks.size === likes.length ? "Deselect All" : "Select All"}
                 </button>
               </div>
 
               {loading ? (
                 <div className="space-y-3">
                   {Array.from({ length: 10 }).map((_, i) => (
-                    <div
-                      key={i}
-                      className="h-16 bg-gray-100 dark:bg-secondary/50 rounded-lg animate-pulse"
-                    />
+                    <div key={i} className="h-16 bg-gray-100 dark:bg-secondary/50 rounded-lg animate-pulse" />
                   ))}
                 </div>
               ) : likes.length === 0 ? (
-                <EmptyState
-                  icon={<Music className="w-12 h-12" />}
-                  title="No liked tracks found"
-                />
+                <EmptyState icon={<Music className="w-12 h-12" />} title="No liked tracks found" />
               ) : (
                 <div className="space-y-2 max-h-[600px] overflow-y-auto">
                   {likes.map((track) => {
@@ -258,8 +299,7 @@ export default function LikesToPlaylistPage() {
                             {track.title}
                           </div>
                           <div className="text-sm text-[#666666] dark:text-muted-foreground truncate">
-                            {track.user?.username} •{" "}
-                            {formatDuration(track.duration)}
+                            {track.user?.username} • {formatDuration(track.duration)}
                           </div>
                         </div>
                         {isSelected && (
@@ -277,55 +317,118 @@ export default function LikesToPlaylistPage() {
 
           {/* Create Panel */}
           <div className="lg:col-span-1">
-            <div className="bg-white dark:bg-card rounded-2xl p-6 border-2 border-gray-200 dark:border-border sticky top-24">
-              <h2 className="text-xl font-bold mb-4 text-[#333333] dark:text-foreground">
-                Create Playlist
+            <div className="bg-white dark:bg-card rounded-2xl p-6 border-2 border-gray-200 dark:border-border sticky top-24 space-y-5">
+              <h2 className="text-xl font-bold text-[#333333] dark:text-foreground">
+                {addMode === "existing" ? "Add to Playlist" : "Create Playlist"}
               </h2>
 
-              <div className="mb-6 p-4 bg-gray-50 dark:bg-secondary/20 rounded-lg">
+              <div className="p-4 bg-gray-50 dark:bg-secondary/20 rounded-lg">
                 <div className="text-sm text-[#666666] dark:text-muted-foreground">Selected Tracks</div>
                 <div className="text-2xl font-bold text-[#333333] dark:text-foreground">
                   {selectedTracks.size}
                 </div>
               </div>
 
-              {selectedTracks.size > 500 && (
-                <p className="mb-4 text-sm text-[#FF5500]">
+              {selectedTracks.size > 500 && addMode === "new" && (
+                <p className="text-sm text-[#FF5500]">
                   Selection exceeds 500 tracks; multiple playlists will be created.
                 </p>
               )}
 
-              <div className="mb-6">
+              {/* Mode Toggle */}
+              <div>
                 <label className="block text-sm font-medium mb-2 text-[#666666] dark:text-muted-foreground">
-                  Playlist Name
+                  Add to
                 </label>
-                <input
-                  type="text"
-                  value={playlistName}
-                  onChange={(e) => setPlaylistName(e.target.value)}
-                  placeholder="Enter playlist name..."
-                  className="w-full px-4 py-3 rounded-lg border-2 border-gray-200 dark:border-border focus:border-[#FF5500] focus:outline-none transition dark:bg-secondary/20 dark:text-foreground"
-                />
+                <div className="flex rounded-lg border-2 border-gray-200 dark:border-border overflow-hidden">
+                  <button
+                    onClick={() => setAddMode("new")}
+                    className={`flex-1 py-2 text-sm font-medium transition ${
+                      addMode === "new"
+                        ? "bg-[#FF5500] text-white"
+                        : "text-[#666666] dark:text-muted-foreground hover:bg-gray-50 dark:hover:bg-secondary/20"
+                    }`}
+                  >
+                    New playlist
+                  </button>
+                  <button
+                    onClick={() => setAddMode("existing")}
+                    className={`flex-1 py-2 text-sm font-medium transition ${
+                      addMode === "existing"
+                        ? "bg-[#FF5500] text-white"
+                        : "text-[#666666] dark:text-muted-foreground hover:bg-gray-50 dark:hover:bg-secondary/20"
+                    }`}
+                  >
+                    Existing playlist
+                  </button>
+                </div>
               </div>
 
+              {/* New Playlist Name (only in "new" mode) */}
+              {addMode === "new" && (
+                <div>
+                  <label className="block text-sm font-medium mb-2 text-[#666666] dark:text-muted-foreground">
+                    Playlist Name
+                  </label>
+                  <input
+                    type="text"
+                    value={playlistName}
+                    onChange={(e) => setPlaylistName(e.target.value)}
+                    placeholder="Enter playlist name..."
+                    className="w-full px-4 py-3 rounded-lg border-2 border-gray-200 dark:border-border focus:border-[#FF5500] focus:outline-none transition dark:bg-secondary/20 dark:text-foreground"
+                  />
+                </div>
+              )}
+
+              {/* Target Playlist Picker (only in "existing" mode) */}
+              {addMode === "existing" && (
+                <div>
+                  <label className="block text-sm font-medium mb-2 text-[#666666] dark:text-muted-foreground">
+                    Target Playlist
+                  </label>
+                  {loadingPlaylists ? (
+                    <div className="flex items-center gap-2 py-3 text-sm text-[#999999] dark:text-muted-foreground">
+                      <LoadingSpinner size="sm" />
+                      Loading playlists…
+                    </div>
+                  ) : userPlaylists.length === 0 ? (
+                    <p className="text-sm text-[#999999] dark:text-muted-foreground py-3 text-center border-2 border-dashed border-gray-200 dark:border-border rounded-lg">
+                      No playlists found
+                    </p>
+                  ) : (
+                    <select
+                      value={targetPlaylist?.id ?? ""}
+                      onChange={(e) => {
+                        const id = Number(e.target.value);
+                        setTargetPlaylist(userPlaylists.find((p) => Number(p.id) === id) || null);
+                      }}
+                      className="w-full px-3 py-2.5 rounded-lg border-2 border-gray-200 dark:border-border focus:border-[#FF5500] focus:outline-none transition dark:bg-secondary/20 dark:text-foreground text-sm"
+                    >
+                      <option value="">Select a playlist…</option>
+                      {userPlaylists.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.title} ({p.track_count} tracks)
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              )}
+
               <button
-                onClick={createPlaylist}
-                disabled={
-                  selectedTracks.size === 0 ||
-                  !playlistName.trim() ||
-                  creating
-                }
+                onClick={handleCreate}
+                disabled={!canCreate || creating}
                 className="w-full py-4 rounded-lg font-semibold transition-all bg-gradient-to-r from-[#FF5500] to-[#E64A00] text-white hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
                 {creating ? (
                   <>
                     <LoadingSpinner size="sm" className="border-white" />
-                    Creating...
+                    {addMode === "existing" ? "Adding..." : "Creating..."}
                   </>
                 ) : (
                   <>
                     <Plus className="w-5 h-5" />
-                    Create Playlist
+                    {addMode === "existing" ? "Add to Playlist" : "Create Playlist"}
                   </>
                 )}
               </button>

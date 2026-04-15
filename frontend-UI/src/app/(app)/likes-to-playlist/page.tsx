@@ -59,6 +59,7 @@ export default function LikesToPlaylistPage() {
     if (addMode === "existing" && userPlaylists.length === 0) {
       fetchUserPlaylists();
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [addMode]);
 
   const fetchLikes = async () => {

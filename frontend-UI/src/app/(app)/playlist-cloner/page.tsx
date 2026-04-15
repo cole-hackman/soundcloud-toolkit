@@ -164,7 +164,7 @@ export default function PlaylistClonerPage() {
 
           <div className="space-y-3">
             {resultPlaylists.map((pl, i) => (
-              <Card key={pl.id || i} className="p-4 flex items-center justify-between border border-green-500/20 bg-green-50/50 dark:bg-green-950/10">
+              <Card key={pl.id != null ? String(pl.id) : i} className="p-4 flex items-center justify-between border border-green-500/20 bg-green-50/50 dark:bg-green-950/10">
                 <div>
                   <div className="font-semibold text-green-800 dark:text-green-400">
                     {pl.title}

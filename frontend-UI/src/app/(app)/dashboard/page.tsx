@@ -17,6 +17,7 @@ import {
   Stethoscope,
   ListChecks,
   Download,
+  Music,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Card, EmptyState, Input, Skeleton } from "@/components/ui";
@@ -118,6 +119,13 @@ const FEATURES: FeatureCard[] = [
     icon: Combine,
     path: "/playlist-cloner",
   },
+  {
+    id: "genre-search",
+    title: "Genre Search",
+    description: "Discover tracks by genre or tag and add them to your playlists",
+    icon: Music,
+    path: "/genre-search",
+  },
 ];
 
 const RECENT_LABELS: Record<string, string> = {
@@ -132,6 +140,7 @@ const RECENT_LABELS: Record<string, string> = {
   "health-check": "Playlist Health Check",
   "batch-resolver": "Batch Link Resolver",
   "playlist-cloner": "Playlist Cloner",
+  "genre-search": "Genre Search",
 };
 
 const RECENT_PATHS: Record<string, string> = {
@@ -146,6 +155,7 @@ const RECENT_PATHS: Record<string, string> = {
   "health-check": "/playlist-health-check",
   "batch-resolver": "/batch-link-resolver",
   "playlist-cloner": "/playlist-cloner",
+  "genre-search": "/genre-search",
 };
 
 const COMING_SOON: FeatureCard[] = [];

@@ -7,6 +7,12 @@ import { Card, Input, EmptyState } from "@/components/ui";
 
 const LAST_TOOLS_KEY = "sc-toolkit-last-tools";
 
+interface ClonedPlaylist {
+  id?: number | string;
+  title?: string;
+  permalink_url?: string;
+}
+
 export default function PlaylistClonerPage() {
   const [url, setUrl] = useState("");
   const [customTitle, setCustomTitle] = useState("");
@@ -14,7 +20,7 @@ export default function PlaylistClonerPage() {
   const [error, setError] = useState<string | null>(null);
   
   // Results
-  const [resultPlaylists, setResultPlaylists] = useState<Record<string, unknown>[]>([]);
+  const [resultPlaylists, setResultPlaylists] = useState<ClonedPlaylist[]>([]);
   const [stats, setStats] = useState<Record<string, unknown> | null>(null);
 
   useEffect(() => {
@@ -164,7 +170,7 @@ export default function PlaylistClonerPage() {
 
           <div className="space-y-3">
             {resultPlaylists.map((pl, i) => (
-              <Card key={pl.id != null ? String(pl.id) : i} className="p-4 flex items-center justify-between border border-green-500/20 bg-green-50/50 dark:bg-green-950/10">
+              <Card key={pl.id ?? i} className="p-4 flex items-center justify-between border border-green-500/20 bg-green-50/50 dark:bg-green-950/10">
                 <div>
                   <div className="font-semibold text-green-800 dark:text-green-400">
                     {pl.title}

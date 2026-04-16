@@ -10,6 +10,7 @@ import {
   duplicateTrackBetweenPlaylists,
   moveTrackBetweenPlaylists,
 } from '../lib/playlist-transfer.js';
+import { mergeIntoExisting, splitIntoChunks } from '../lib/merge-utils.js';
 import {
   validatePlaylistId,
   validatePagination,
@@ -25,6 +26,8 @@ import {
   validateBulkUnfollow,
   validateBulkUnrepost,
   validateClonePlaylist,
+  validateTrackSearch,
+  validateDeletePlaylist,
 } from '../middleware/validation.js';
 
 const router = express.Router();
@@ -750,11 +753,11 @@ router.get('/proxy-download', authenticateUser, async (req, res) => {
 
 /**
  * POST /api/playlists/merge
- * Merge multiple playlists
+ * Merge multiple playlists (into new or existing playlist)
  */
 router.post('/playlists/merge', authenticateUser, heavyOperationRateLimiter, validateMergePlaylists, async (req, res) => {
   try {
-    const { sourcePlaylistIds, title } = req.body;
+    const { sourcePlaylistIds, title, targetPlaylistId, deleteAfterMerge } = req.body;
     // Validation middleware already checked the input
 
     // Helper to slow down between API calls
@@ -781,6 +784,113 @@ router.post('/playlists/merge', authenticateUser, heavyOperationRateLimiter, val
       }
       await sleep(300); // small pause between playlist fetches
     }
+
+    // ── MERGE INTO EXISTING PLAYLIST ──────────────────────────────────────────
+    if (targetPlaylistId) {
+      // Fetch existing target playlist tracks
+      const targetPlaylist = await soundcloudClient.getPlaylistWithTracks(
+        req.accessToken,
+        req.refreshToken,
+        targetPlaylistId
+      );
+      const existingIds = (Array.isArray(targetPlaylist.tracks) ? targetPlaylist.tracks : [])
+        .filter(t => t && t.id != null)
+        .map(t => t.id);
+      const existingTrackCount = existingIds.length;
+
+      // Merge: preserve existing order, append new unique source tracks
+      const { mergedIds, addedCount } = mergeIntoExisting(existingIds, Array.from(trackIdSet));
+
+      // Split into 500-track chunks (target gets first chunk, overflow gets new playlists)
+      const chunks = splitIntoChunks(mergedIds, 500);
+      const targetChunk = chunks[0] || [];
+      const overflowChunks = chunks.slice(1);
+
+      // Update target playlist in 100-track batches
+      const mergeBatchSize = 100;
+      for (let i = mergeBatchSize; i <= targetChunk.length; i += mergeBatchSize) {
+        await sleep(300);
+        await soundcloudClient.addTracksToPlaylist(
+          req.accessToken,
+          req.refreshToken,
+          targetPlaylistId,
+          targetChunk.slice(0, i)
+        );
+      }
+      // Final batch if not a clean multiple
+      if (targetChunk.length % mergeBatchSize !== 0) {
+        await sleep(300);
+        await soundcloudClient.addTracksToPlaylist(
+          req.accessToken,
+          req.refreshToken,
+          targetPlaylistId,
+          targetChunk
+        );
+      }
+
+      // Create overflow playlists for tracks beyond 500
+      const overflowPlaylists = [];
+      const baseTitle = targetPlaylist.title || `Merged Playlist`;
+      for (let i = 0; i < overflowChunks.length; i++) {
+        await sleep(500);
+        const overflowTitle = `${baseTitle} (overflow ${i + 1})`;
+        const overflowPlaylist = await createPlaylistFromTrackIds(
+          req.accessToken,
+          req.refreshToken,
+          overflowChunks[i],
+          overflowTitle,
+          `Overflow from merge into "${baseTitle}"\n\nCreated using SC Toolkit. soundcloudtoolkit.com`
+        );
+        overflowPlaylists.push(overflowPlaylist);
+      }
+
+      // Optionally delete source playlists (never delete the target)
+      let deletedPlaylistIds = [];
+      let deleteErrors = [];
+      if (deleteAfterMerge) {
+        const toDelete = sourcePlaylistIds.filter(id => id !== targetPlaylistId);
+        for (const id of toDelete) {
+          await sleep(300);
+          try {
+            await soundcloudClient.deletePlaylist(req.accessToken, req.refreshToken, id);
+            deletedPlaylistIds.push(id);
+          } catch (err) {
+            deleteErrors.push({ id, error: safeError(err).message || 'Delete failed' });
+          }
+        }
+      }
+
+      const finalCount = mergedIds.length;
+      logger.info('[merge] merged into existing playlist', {
+        targetPlaylistId,
+        existingTrackCount,
+        addedCount,
+        finalCount,
+        overflowPlaylists: overflowPlaylists.length,
+        deletedCount: deletedPlaylistIds.length,
+      });
+
+      logOperation({ userId: req.user.id, action: 'merge', trackCount: addedCount, status: 'success' });
+
+      return res.json({
+        playlist: { id: targetPlaylistId, title: targetPlaylist.title },
+        overflowPlaylists: overflowPlaylists.length > 0 ? overflowPlaylists : undefined,
+        deletedPlaylistIds: deletedPlaylistIds.length > 0 ? deletedPlaylistIds : undefined,
+        deleteErrors: deleteErrors.length > 0 ? deleteErrors : undefined,
+        stats: {
+          sourcePlaylists: sourcePlaylistIds.length,
+          perPlaylistCounts,
+          fetchedTotal,
+          acceptedTotal,
+          uniqueBeforeCap: trackIdSet.size,
+          existingTrackCount,
+          addedCount,
+          finalCount,
+          numOverflowPlaylists: overflowPlaylists.length,
+        },
+      });
+    }
+    // ── END MERGE INTO EXISTING ───────────────────────────────────────────────
 
     const uniqueBeforeCap = trackIdSet.size;
     const trackIdsArray = Array.from(trackIdSet);
@@ -988,12 +1098,85 @@ async function createPlaylistFromTrackIds(accessToken, refreshToken, trackIds, t
 
 /**
  * POST /api/playlists/from-likes
- * Create playlist(s) from liked tracks. Uses 100-track batches. If >500 tracks, creates multiple playlists.
+ * Create playlist(s) from liked tracks, or append to an existing playlist.
+ * Uses 100-track batches. If >500 tracks, creates multiple playlists.
  */
 router.post('/playlists/from-likes', authenticateUser, heavyOperationRateLimiter, validateCreateFromLikes, async (req, res) => {
   try {
-    const { title, trackIds } = req.body;
+    const { title, trackIds, targetPlaylistId } = req.body;
     const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+    // ── ADD TO EXISTING PLAYLIST ──────────────────────────────────────────────
+    if (targetPlaylistId) {
+      // Fetch existing target playlist tracks
+      const targetPlaylist = await soundcloudClient.getPlaylistWithTracks(
+        req.accessToken,
+        req.refreshToken,
+        targetPlaylistId
+      );
+      const existingIds = (Array.isArray(targetPlaylist.tracks) ? targetPlaylist.tracks : [])
+        .filter(t => t && t.id != null)
+        .map(t => t.id);
+      const existingTrackCount = existingIds.length;
+
+      // Merge: preserve existing order, append new unique tracks
+      const { mergedIds, addedCount } = mergeIntoExisting(existingIds, trackIds);
+
+      // Split into 500-track chunks
+      const chunks = splitIntoChunks(mergedIds, MAX_TRACKS_PER_PLAYLIST);
+      const targetChunk = chunks[0] || [];
+      const overflowChunks = chunks.slice(1);
+
+      // Update target playlist in 100-track batches
+      const batchSize = 100;
+      let i = batchSize;
+      while (i < targetChunk.length) {
+        await sleep(300);
+        await soundcloudClient.addTracksToPlaylist(
+          req.accessToken,
+          req.refreshToken,
+          targetPlaylistId,
+          targetChunk.slice(0, i)
+        );
+        i += batchSize;
+      }
+      // Final PUT with full target chunk
+      await sleep(300);
+      await soundcloudClient.addTracksToPlaylist(
+        req.accessToken,
+        req.refreshToken,
+        targetPlaylistId,
+        targetChunk
+      );
+
+      // Create overflow playlists for tracks beyond 500
+      const overflowPlaylists = [];
+      const baseTitle = targetPlaylist.title || 'Playlist';
+      for (let j = 0; j < overflowChunks.length; j++) {
+        await sleep(500);
+        const overflowTitle = `${baseTitle} (overflow ${j + 1})`;
+        const overflowPlaylist = await createPlaylistFromTrackIds(
+          req.accessToken,
+          req.refreshToken,
+          overflowChunks[j],
+          overflowTitle,
+          `Overflow from adding likes to "${baseTitle}"\n\nCreated using SC Toolkit. soundcloudtoolkit.com`
+        );
+        overflowPlaylists.push({ id: overflowPlaylist.id, title: overflowTitle, permalink_url: overflowPlaylist.permalink_url, trackCount: overflowChunks[j].length });
+      }
+
+      logOperation({ userId: req.user.id, action: 'from-likes', trackCount: addedCount, status: 'success' });
+
+      return res.json({
+        playlist: { id: targetPlaylistId, title: targetPlaylist.title },
+        overflowPlaylists: overflowPlaylists.length > 0 ? overflowPlaylists : undefined,
+        totalTracks: mergedIds.length,
+        addedCount,
+        existingTrackCount,
+      });
+    }
+    // ── END ADD TO EXISTING ───────────────────────────────────────────────────
+
     const baseTitle = title?.trim() || `My Liked Tracks - ${new Date().toLocaleDateString()}`;
 
     if (trackIds.length <= MAX_TRACKS_PER_PLAYLIST) {
@@ -1054,6 +1237,60 @@ router.post('/playlists/from-likes', authenticateUser, heavyOperationRateLimiter
   } catch (error) {
     logger.error('Create playlist from likes error:', safeError(error));
     res.status(500).json({ error: 'Failed to create playlist from likes' });
+  }
+});
+
+/**
+ * DELETE /api/playlists/:id
+ * Delete a user-owned playlist via the SoundCloud API
+ */
+router.delete('/playlists/:id', authenticateUser, validateDeletePlaylist, async (req, res) => {
+  try {
+    const playlistId = req.params.id;
+    await soundcloudClient.deletePlaylist(req.accessToken, req.refreshToken, playlistId);
+    logOperation({ userId: req.user.id, action: 'delete-playlist', itemCount: 1, status: 'success' });
+    res.json({ ok: true });
+  } catch (error) {
+    logger.error('Delete playlist error:', safeError(error));
+    const status = error?.status || error?.statusCode || 500;
+    res.status(typeof status === 'number' && status >= 400 && status < 600 ? status : 500)
+      .json({ error: 'Failed to delete playlist' });
+  }
+});
+
+/**
+ * GET /api/tracks/search
+ * Search SoundCloud tracks by genre, tags, and other filters
+ */
+router.get('/tracks/search', authenticateUser, validateTrackSearch, async (req, res) => {
+  try {
+    const { genres, tags, q, bpm_from, bpm_to, duration_from, duration_to, limit, offset } = req.query;
+    const params = {};
+    if (genres) params.genres = genres;
+    if (tags) params.tags = tags;
+    if (q) params.q = q;
+    if (bpm_from) params.bpm_from = Number(bpm_from);
+    if (bpm_to) params.bpm_to = Number(bpm_to);
+    if (duration_from) params.duration_from = Number(duration_from);
+    if (duration_to) params.duration_to = Number(duration_to);
+    params.limit = limit ? Math.min(Number(limit), 200) : 50;
+    if (offset) params.offset = Number(offset);
+
+    const data = await soundcloudClient.searchTracks(req.accessToken, req.refreshToken, params);
+    const collection = (Array.isArray(data.collection) ? data.collection : [])
+      .map(normalizeResource)
+      .filter(Boolean);
+
+    logOperation({ userId: req.user.id, action: 'genre-search', itemCount: collection.length, status: 'success' });
+
+    res.json({
+      collection,
+      next_href: data.next_href || null,
+      total_results: data.total_results || null,
+    });
+  } catch (error) {
+    logger.error('Track search error:', safeError(error));
+    res.status(500).json({ error: 'Failed to search tracks' });
   }
 });
 

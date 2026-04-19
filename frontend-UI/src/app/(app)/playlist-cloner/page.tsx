@@ -3,7 +3,7 @@
 import { useState, FormEvent, useEffect } from "react";
 import { CopyPlus, Check, ArrowRight, Music, Link as LinkIcon, Loader2, Link2 } from "lucide-react";
 import { apiFetch } from "@/lib/api";
-import { Card, Input, EmptyState } from "@/components/ui";
+import { Button, Card, CardContent, CardHeader, Input } from "@/components/ui";
 
 const LAST_TOOLS_KEY = "sc-toolkit-last-tools";
 
@@ -81,7 +81,14 @@ export default function PlaylistClonerPage() {
         </p>
       </div>
 
-      <Card className="p-6 mb-8">
+      <Card className="mb-8">
+        <CardHeader>
+          <div className="flex items-center gap-2 text-base font-semibold text-[#333] dark:text-foreground">
+            <Link2 className="h-4 w-4 text-[#FF5500]" />
+            Clone a public playlist
+          </div>
+        </CardHeader>
+        <CardContent>
         <form onSubmit={handleClone} className="space-y-6">
           <div className="space-y-4">
             <div>
@@ -93,7 +100,7 @@ export default function PlaylistClonerPage() {
                   placeholder="https://soundcloud.com/username/sets/playlist-name"
                   value={url}
                   onChange={(e) => setUrl(e.target.value)}
-                  className="pl-9 h-11"
+                  className="h-10 pl-9"
                   required
                 />
               </div>
@@ -106,15 +113,15 @@ export default function PlaylistClonerPage() {
                 placeholder="Leave blank to use 'Clone of [Original Name]'"
                 value={customTitle}
                 onChange={(e) => setCustomTitle(e.target.value)}
-                className="h-11"
+                className="h-10"
               />
             </div>
           </div>
 
-          <button
+          <Button
             type="submit"
             disabled={!url.trim() || isCloning}
-            className="w-full sm:w-auto px-6 py-2.5 rounded-lg font-semibold bg-[#FF5500] hover:bg-[#FF3300] text-white disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center justify-center gap-2"
+            className="h-10 w-full px-4 sm:w-auto"
           >
             {isCloning ? (
               <>
@@ -127,73 +134,79 @@ export default function PlaylistClonerPage() {
                 Clone Playlist
               </>
             )}
-          </button>
+          </Button>
         </form>
 
         {error && (
-          <div className="mt-4 p-4 rounded-xl bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/50 text-red-600 dark:text-red-400 text-sm flex items-center gap-2 animate-in fade-in slide-in-from-top-2">
+          <div className="mt-4 flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-600 animate-in fade-in slide-in-from-top-2 dark:border-red-900/50 dark:bg-red-950/20 dark:text-red-400">
             <span className="w-1.5 h-1.5 rounded-full bg-red-500 shrink-0" />
             {error}
           </div>
         )}
+        </CardContent>
       </Card>
 
       {resultPlaylists.length > 0 && (
-        <div className="space-y-6 animate-in slide-in-from-bottom-4 fade-in duration-500">
-          <h2 className="text-xl font-bold flex items-center gap-2">
-            <Check className="w-5 h-5 text-green-500" />
-            Cloning Complete
-          </h2>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Card className="p-4 flex items-center gap-4">
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-orange-500/10 text-orange-500">
-                <Music className="w-6 h-6" />
-              </div>
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">Tracks Cloned</p>
-                <h3 className="text-2xl font-bold">{stats?.totalTracks?.toString() || "0"}</h3>
-              </div>
-            </Card>
-            {Number(stats?.numPlaylistsCreated) > 1 && (
-               <Card className="p-4 flex items-center gap-4">
-                 <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-orange-500/10 text-orange-500">
-                   <CopyPlus className="w-6 h-6" />
-                 </div>
-                 <div>
-                   <p className="text-sm font-medium text-muted-foreground">Parts Created</p>
-                   <h3 className="text-2xl font-bold">{stats?.numPlaylistsCreated?.toString() || "0"}</h3>
-                 </div>
-               </Card>
-            )}
-          </div>
-
-          <div className="space-y-3">
-            {resultPlaylists.map((pl, i) => (
-              <Card key={pl.id ?? i} className="p-4 flex items-center justify-between border border-green-500/20 bg-green-50/50 dark:bg-green-950/10">
-                <div>
-                  <div className="font-semibold text-green-800 dark:text-green-400">
-                    {pl.title}
-                  </div>
-                  <div className="text-sm text-green-600/80 dark:text-green-500/80">
-                    ID: {pl.id}
-                  </div>
+        <Card className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <CardHeader>
+            <div className="flex items-center gap-2 text-xl font-bold text-[#333] dark:text-foreground">
+              <Check className="h-5 w-5 text-green-500" />
+              Cloning Complete
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <Card className="flex items-center gap-4 p-4">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-orange-500/10 text-orange-500">
+                  <Music className="w-6 h-6" />
                 </div>
-                {pl.permalink_url && (
-                  <a
-                    href={pl.permalink_url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="flex shrink-0 items-center gap-1 px-3 py-1.5 text-sm font-medium text-green-700 bg-green-100 dark:bg-green-900/40 dark:text-green-400 rounded hover:bg-green-200 dark:hover:bg-green-900/60 transition"
-                  >
-                    Open
-                    <ArrowRight className="w-4 h-4 ml-1" />
-                  </a>
-                )}
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">Tracks Cloned</p>
+                  <h3 className="text-2xl font-bold text-[#333] dark:text-foreground">{stats?.totalTracks?.toString() || "0"}</h3>
+                </div>
               </Card>
-            ))}
-          </div>
-        </div>
+              {Number(stats?.numPlaylistsCreated) > 1 && (
+                <Card className="flex items-center gap-4 p-4">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-orange-500/10 text-orange-500">
+                    <CopyPlus className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground">Parts Created</p>
+                    <h3 className="text-2xl font-bold text-[#333] dark:text-foreground">{stats?.numPlaylistsCreated?.toString() || "0"}</h3>
+                  </div>
+                </Card>
+              )}
+            </div>
+
+            <div className="space-y-3">
+              {resultPlaylists.map((pl, i) => (
+                <Card key={pl.id ?? i} className="p-4">
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <div className="font-semibold text-[#333] dark:text-foreground">
+                        {pl.title}
+                      </div>
+                      <div className="text-sm text-muted-foreground">
+                        ID: {pl.id}
+                      </div>
+                    </div>
+                    {pl.permalink_url && (
+                      <a
+                        href={pl.permalink_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex h-10 shrink-0 items-center gap-2 rounded-lg border border-border/70 bg-surface px-4 text-sm font-semibold text-foreground transition hover:border-primary/40 hover:bg-surface-hover"
+                      >
+                        Open
+                        <ArrowRight className="h-4 w-4" />
+                      </a>
+                    )}
+                  </div>
+                </Card>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
       )}
     </div>
   );

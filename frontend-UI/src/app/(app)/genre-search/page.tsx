@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Search, Check, Plus, Music, ChevronDown } from "lucide-react";
 import { apiFetch } from "@/lib/api";
-import { EmptyState, LoadingSpinner } from "@/components/ui";
+import { Button, EmptyState, LoadingSpinner, SelectionBanner, TrackRow } from "@/components/ui";
 
 const COMMON_GENRES = [
   "house", "techno", "ambient", "hip-hop", "drum-and-bass",
@@ -197,7 +197,7 @@ export default function GenreSearchPage() {
 
   return (
     <div className="min-h-screen bg-[#F2F2F2] dark:bg-background">
-      <div className="container mx-auto px-6 py-12 max-w-5xl">
+      <div className={`container mx-auto max-w-5xl px-6 py-12 ${selectedTracks.size > 0 ? "pb-28" : ""}`}>
         {/* Header */}
         <div className="mb-10">
           <Link
@@ -313,10 +313,10 @@ export default function GenreSearchPage() {
             <p className="text-sm text-red-500 mb-3">{searchError}</p>
           )}
 
-          <button
+          <Button
             onClick={handleSearch}
             disabled={searching}
-            className="px-6 py-2.5 rounded-lg font-semibold bg-gradient-to-r from-[#FF5500] to-[#E64A00] text-white hover:shadow-md transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+            className="h-10 px-4"
           >
             {searching ? (
               <>
@@ -329,28 +329,12 @@ export default function GenreSearchPage() {
                 Search
               </>
             )}
-          </button>
+          </Button>
         </div>
 
         {/* Results */}
         {hasSearched && (
           <>
-            {/* Selection bar */}
-            {selectedTracks.size > 0 && (
-              <div className="flex items-center justify-between bg-[#FF5500]/10 border-2 border-[#FF5500]/30 rounded-xl px-4 py-3 mb-4">
-                <span className="text-sm font-medium text-[#FF5500]">
-                  {selectedTracks.size} track{selectedTracks.size !== 1 ? "s" : ""} selected
-                </span>
-                <button
-                  onClick={handleOpenAddPanel}
-                  className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-[#FF5500] text-white text-sm font-semibold hover:bg-[#E64A00] transition"
-                >
-                  <Plus className="w-4 h-4" />
-                  Add to playlist
-                </button>
-              </div>
-            )}
-
             {/* Add success banner */}
             {addSuccess && (
               <div className="flex items-center gap-2 bg-green-50 dark:bg-green-900/20 border-2 border-green-200 dark:border-green-800 rounded-xl px-4 py-3 mb-4">
@@ -371,46 +355,34 @@ export default function GenreSearchPage() {
                   {results.map((track) => {
                     const isSelected = selectedTracks.has(track.id);
                     return (
-                      <button
+                      <TrackRow
                         key={track.id}
-                        onClick={() => toggleTrack(track.id)}
-                        className={`w-full flex items-center gap-4 p-3 rounded-xl transition-all text-left ${
-                          isSelected
-                            ? "bg-[#FF5500]/10 border-2 border-[#FF5500]"
-                            : "bg-white dark:bg-card border-2 border-gray-200 dark:border-border hover:border-[#FF5500]/40"
-                        }`}
-                      >
-                        <img
-                          src={track.artwork_url || "/SC Toolkit Icon.png"}
-                          alt={track.title}
-                          className="w-12 h-12 rounded-lg object-cover shrink-0"
-                        />
-                        <div className="flex-1 min-w-0">
-                          <div className="font-semibold text-[#333333] dark:text-foreground truncate">
-                            {track.title}
-                          </div>
-                          <div className="text-sm text-[#666666] dark:text-muted-foreground truncate">
-                            {track.user?.username}
-                            {track.duration ? ` • ${formatDuration(track.duration)}` : ""}
-                            {track.genre ? ` • ${track.genre}` : ""}
-                          </div>
-                        </div>
-                        {isSelected && (
-                          <div className="w-6 h-6 rounded-full bg-[#FF5500] flex items-center justify-center shrink-0">
-                            <Check className="w-4 h-4 text-white" />
-                          </div>
-                        )}
-                      </button>
+                        track={{
+                          ...track,
+                          subtitle: [track.user?.username, track.genre].filter(Boolean).join(" • "),
+                        }}
+                        isSelected={isSelected}
+                        onToggle={() => toggleTrack(track.id)}
+                        rightSlot={
+                          track.duration ? (
+                            <span className="text-xs text-[#666666] dark:text-muted-foreground">
+                              {formatDuration(track.duration)}
+                            </span>
+                          ) : null
+                        }
+                        className={!isSelected ? "bg-white dark:bg-card" : undefined}
+                      />
                     );
                   })}
                 </div>
 
                 {nextHref && (
                   <div className="mt-6 text-center">
-                    <button
+                    <Button
                       onClick={handleLoadMore}
                       disabled={loadingMore}
-                      className="px-6 py-2.5 rounded-lg font-semibold border-2 border-gray-200 dark:border-border text-[#333333] dark:text-foreground hover:border-[#FF5500] transition disabled:opacity-50 flex items-center gap-2 mx-auto"
+                      variant="outline"
+                      className="mx-auto h-10 px-4"
                     >
                       {loadingMore ? (
                         <>
@@ -420,7 +392,7 @@ export default function GenreSearchPage() {
                       ) : (
                         "Load more"
                       )}
-                    </button>
+                    </Button>
                   </div>
                 )}
               </>
@@ -505,18 +477,24 @@ export default function GenreSearchPage() {
                 >
                   Cancel
                 </button>
-                <button
+                <Button
                   onClick={handleAddToPlaylist}
                   disabled={adding || (addMode === "new" ? !playlistName.trim() : !targetPlaylist)}
-                  className="flex-1 py-2.5 rounded-lg font-semibold bg-gradient-to-r from-[#FF5500] to-[#E64A00] text-white hover:shadow-md transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-sm"
+                  className="flex-1 h-10 px-4"
                 >
                   {adding ? <><LoadingSpinner size="sm" className="border-white" /> Adding…</> : "Add tracks"}
-                </button>
+                </Button>
               </div>
             </div>
           </div>
         )}
       </div>
+      <SelectionBanner
+        count={selectedTracks.size}
+        actionLabel="Add to Playlist"
+        onAction={handleOpenAddPanel}
+        actionIcon={<Plus className="h-4 w-4" />}
+      />
     </div>
   );
 }

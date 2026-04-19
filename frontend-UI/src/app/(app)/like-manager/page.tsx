@@ -2,8 +2,8 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { ArrowLeft, Heart, Search, Trash2, Loader2, Check } from "lucide-react";
-import { EmptyState, LoadingSpinner } from "@/components/ui";
+import { ArrowLeft, Heart, Search, Trash2, Loader2 } from "lucide-react";
+import { EmptyState, LoadingSpinner, SelectionBanner, TrackRow } from "@/components/ui";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "";
 
@@ -144,7 +144,7 @@ export default function LikeManagerPage() {
 
   return (
     <div className="min-h-screen bg-[#F2F2F2] dark:bg-background">
-      <div className="container mx-auto px-6 py-12 max-w-6xl">
+      <div className={`container mx-auto max-w-6xl px-6 py-12 ${selected.size > 0 ? "pb-28" : ""}`}>
         <div className="mb-12">
           <Link
             href="/dashboard"
@@ -204,27 +204,6 @@ export default function LikeManagerPage() {
               </button>
             </div>
 
-            {/* Action bar */}
-            {selected.size > 0 && (
-              <div className="flex items-center justify-between bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-900/30 rounded-xl p-3 mb-4">
-                <span className="text-sm font-medium text-red-700 dark:text-red-400">
-                  {selected.size} track{selected.size > 1 ? "s" : ""} selected
-                </span>
-                <button
-                  onClick={handleBulkUnlike}
-                  disabled={removing}
-                  className="px-4 py-1.5 rounded-lg bg-red-500 text-white text-sm font-medium hover:bg-red-600 transition disabled:opacity-50 flex items-center gap-2"
-                >
-                  {removing ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <Trash2 className="w-4 h-4" />
-                  )}
-                  Unlike Selected
-                </button>
-              </div>
-            )}
-
             <div className="text-sm text-[#999999] dark:text-muted-foreground mb-2">
               {filteredLikes.length} of {likes.length} tracks
             </div>
@@ -234,38 +213,31 @@ export default function LikeManagerPage() {
                 const track = like.track;
                 const isSelected = selected.has(track.id);
                 return (
-                  <button
+                  <TrackRow
                     key={track.id}
-                    onClick={() => toggleTrack(track.id)}
-                    className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all text-left ${
-                      isSelected
-                        ? "bg-red-50 dark:bg-red-900/10 border-2 border-red-200 dark:border-red-900/30"
-                        : "bg-gray-50 dark:bg-secondary/20 border-2 border-transparent hover:border-gray-200 dark:hover:border-border"
-                    }`}
-                  >
-                    <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${
-                      isSelected ? "bg-red-500 text-white" : "bg-gray-200 dark:bg-secondary"
-                    }`}>
-                      {isSelected && <Check className="w-3.5 h-3.5" />}
-                    </div>
-                    <img
-                      src={track.artwork_url || "/SC Toolkit Icon.png"}
-                      alt={track.title}
-                      className="w-10 h-10 rounded-lg object-cover"
-                    />
-                    <div className="flex-1 min-w-0">
-                      <div className="font-semibold text-[#333333] dark:text-foreground text-sm truncate">{track.title}</div>
-                      <div className="text-xs text-[#666666] dark:text-muted-foreground truncate">
-                        {track.user?.username} • {formatDuration(track.duration)}
-                      </div>
-                    </div>
-                  </button>
+                    track={{ ...track, subtitle: track.user?.username }}
+                    isSelected={isSelected}
+                    onToggle={() => toggleTrack(track.id)}
+                    rightSlot={
+                      <span className="text-xs text-[#666666] dark:text-muted-foreground">
+                        {formatDuration(track.duration)}
+                      </span>
+                    }
+                  />
                 );
               })}
             </div>
           </div>
         )}
       </div>
+      <SelectionBanner
+        count={selected.size}
+        actionLabel="Unlike Selected"
+        actionVariant="destructive"
+        onAction={handleBulkUnlike}
+        disabled={removing}
+        actionIcon={removing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+      />
     </div>
   );
 }

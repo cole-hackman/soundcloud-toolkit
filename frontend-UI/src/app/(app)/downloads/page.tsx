@@ -121,23 +121,22 @@ export default function DownloadsPage() {
   const handleRemoveSelected = async () => {
     if (!selectedSource || selectedSource.id === -1 || selectedTrackIds.size === 0) return;
     
+    const remainingTracks = tracks.filter(t => !selectedTrackIds.has(t.id));
+    const remainingIds = remainingTracks.map(t => t.id);
+
+    // Prevent removing all tracks — SoundCloud API doesn't allow empty playlists
+    if (remainingIds.length === 0) {
+      alert("Cannot remove all tracks from a playlist. Delete the playlist instead.");
+      return;
+    }
+
     if (!confirm(`Remove ${selectedTrackIds.size} tracks from "${selectedSource.title}"?`)) return;
 
     setIsRemoving(true);
     try {
-        // Calculate the new track list
-        // We need to preserve the order of the remaining tracks
-        // The backend expects an array of IDs
-        
-        // IMPORTANT: We need all tracks for the playlist update, not just downloadable ones
-        // But `tracks` state currently holds what we fetched.
-        // Assuming `fetchTracks` fetches ALL tracks, not just downloadable (filtering happens in render/variable)
-        
-        const remainingTracks = tracks.filter(t => !selectedTrackIds.has(t.id));
-        const remainingIds = remainingTracks.map(t => t.id);
-
         const response = await fetch(`${API_BASE}/api/playlists/${selectedSource.id}`, {
             method: 'PUT',
+            credentials: 'include',
             headers: {
                 'Content-Type': 'application/json',
             },

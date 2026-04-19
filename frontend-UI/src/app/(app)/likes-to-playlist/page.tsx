@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { ArrowLeft, Check, Plus, Music } from "lucide-react";
+import { ArrowLeft, Check, Plus, Music, X } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { EmptyState, LoadingSpinner } from "@/components/ui";
 
@@ -19,6 +19,7 @@ interface Playlist {
   title: string;
   track_count: number;
   artwork_url: string;
+  coverUrl?: string;
 }
 
 interface CreatedPlaylist {
@@ -38,6 +39,7 @@ export default function LikesToPlaylistPage() {
   const [userPlaylists, setUserPlaylists] = useState<Playlist[]>([]);
   const [targetPlaylist, setTargetPlaylist] = useState<Playlist | null>(null);
   const [loadingPlaylists, setLoadingPlaylists] = useState(false);
+  const [showPlaylistPicker, setShowPlaylistPicker] = useState(false);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -396,22 +398,33 @@ export default function LikesToPlaylistPage() {
                     <p className="text-sm text-[#999999] dark:text-muted-foreground py-3 text-center border-2 border-dashed border-gray-200 dark:border-border rounded-lg">
                       No playlists found
                     </p>
-                  ) : (
-                    <select
-                      value={targetPlaylist?.id ?? ""}
-                      onChange={(e) => {
-                        const id = Number(e.target.value);
-                        setTargetPlaylist(userPlaylists.find((p) => Number(p.id) === id) || null);
-                      }}
-                      className="w-full px-3 py-2.5 rounded-lg border-2 border-gray-200 dark:border-border focus:border-[#FF5500] focus:outline-none transition dark:bg-secondary/20 dark:text-foreground text-sm"
+                  ) : targetPlaylist ? (
+                    <button
+                      onClick={() => setShowPlaylistPicker(true)}
+                      className="w-full flex items-center gap-3 p-3 rounded-xl bg-[#FF5500]/10 border-2 border-[#FF5500] transition-all hover:bg-[#FF5500]/15 text-left"
                     >
-                      <option value="">Select a playlist…</option>
-                      {userPlaylists.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.title} ({p.track_count} tracks)
-                        </option>
-                      ))}
-                    </select>
+                      <img
+                        src={targetPlaylist.coverUrl || targetPlaylist.artwork_url || "/SC Toolkit Icon.png"}
+                        alt={targetPlaylist.title}
+                        className="w-10 h-10 rounded-lg object-cover"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="font-semibold text-[#333333] dark:text-foreground text-sm truncate">
+                          {targetPlaylist.title}
+                        </div>
+                        <div className="text-xs text-[#666666] dark:text-muted-foreground">
+                          {targetPlaylist.track_count} tracks
+                        </div>
+                      </div>
+                      <span className="text-xs text-[#FF5500] font-medium shrink-0">Change</span>
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => setShowPlaylistPicker(true)}
+                      className="w-full px-4 py-3 rounded-lg border-2 border-dashed border-gray-300 dark:border-border text-sm text-[#999999] dark:text-muted-foreground hover:border-[#FF5500] hover:text-[#FF5500] transition-all text-center"
+                    >
+                      Choose a playlist…
+                    </button>
                   )}
                 </div>
               )}
@@ -437,6 +450,76 @@ export default function LikesToPlaylistPage() {
           </div>
         </div>
       </div>
+
+      {/* ── PLAYLIST PICKER MODAL ──────────────────────────────────────────── */}
+      {showPlaylistPicker && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          onClick={() => setShowPlaylistPicker(false)}
+        >
+          {/* Backdrop */}
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+
+          {/* Modal */}
+          <div
+            className="relative w-full max-w-lg bg-white dark:bg-card rounded-2xl shadow-2xl border-2 border-gray-200 dark:border-border overflow-hidden animate-in fade-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 pt-6 pb-4">
+              <h3 className="text-xl font-bold text-[#333333] dark:text-foreground">
+                Your Playlists
+              </h3>
+              <button
+                onClick={() => setShowPlaylistPicker(false)}
+                className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-secondary/40 transition"
+              >
+                <X className="w-5 h-5 text-[#666666] dark:text-muted-foreground" />
+              </button>
+            </div>
+
+            {/* Playlist list */}
+            <div className="px-6 pb-6 space-y-2 max-h-[60vh] overflow-y-auto">
+              {userPlaylists.map((playlist) => {
+                const isSelected = targetPlaylist && Number(targetPlaylist.id) === Number(playlist.id);
+                return (
+                  <button
+                    key={playlist.id}
+                    onClick={() => {
+                      setTargetPlaylist(playlist);
+                      setShowPlaylistPicker(false);
+                    }}
+                    className={`w-full flex items-center gap-4 p-4 rounded-xl transition-all ${
+                      isSelected
+                        ? "bg-[#FF5500]/10 border-2 border-[#FF5500]"
+                        : "bg-gray-50 dark:bg-secondary/20 border-2 border-transparent hover:border-gray-200 dark:hover:border-border"
+                    }`}
+                  >
+                    <img
+                      src={playlist.coverUrl || playlist.artwork_url || "/SC Toolkit Icon.png"}
+                      alt={playlist.title}
+                      className="w-12 h-12 rounded-lg object-cover"
+                    />
+                    <div className="flex-1 text-left min-w-0">
+                      <div className="font-semibold text-[#333333] dark:text-foreground truncate">
+                        {playlist.title}
+                      </div>
+                      <div className="text-sm text-[#666666] dark:text-muted-foreground">
+                        {playlist.track_count} tracks
+                      </div>
+                    </div>
+                    {isSelected && (
+                      <div className="w-6 h-6 rounded-full bg-[#FF5500] flex items-center justify-center shrink-0">
+                        <Check className="w-4 h-4 text-white" />
+                      </div>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

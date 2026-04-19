@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { ArrowLeft, ArrowRight, Download, Music, ExternalLink, Heart, ListMusic, Trash2, X, CheckSquare } from "lucide-react";
-import { EmptyState, LoadingSpinner } from "@/components/ui";
+import { Button, EmptyState, LoadingSpinner, TrackRow } from "@/components/ui";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "";
 
@@ -253,30 +253,33 @@ export default function DownloadsPage() {
                     {selectedSource.id !== -1 && downloadableTracks.length > 0 && (
                         <div className="flex items-center gap-4 mb-6">
                             {!selectionMode ? (
-                                <button
+                                <Button
                                     onClick={toggleSelectionMode}
-                                    className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-[#666666] dark:text-muted-foreground bg-white dark:bg-card border border-gray-200 dark:border-border rounded-lg hover:bg-gray-50 dark:hover:bg-accent transition"
+                                    variant="secondary"
+                                    className="h-10 px-4 text-[#666666] dark:text-muted-foreground"
                                 >
                                     <CheckSquare className="w-4 h-4" />
                                     Select to Remove
-                                </button>
+                                </Button>
                             ) : (
                                 <>
-                                    <button
+                                    <Button
                                         onClick={toggleSelectionMode}
-                                        className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-[#666666] dark:text-muted-foreground bg-white dark:bg-card border border-gray-200 dark:border-border rounded-lg hover:bg-gray-50 dark:hover:bg-accent transition"
+                                        variant="secondary"
+                                        className="h-10 px-4 text-[#666666] dark:text-muted-foreground"
                                     >
                                         <X className="w-4 h-4" />
                                         Cancel
-                                    </button>
-                                    <button
+                                    </Button>
+                                    <Button
                                         onClick={handleRemoveSelected}
                                         disabled={selectedTrackIds.size === 0 || isRemoving}
-                                        className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-red-500 rounded-lg hover:bg-red-600 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                        variant="destructive"
+                                        className="h-10 px-4"
                                     >
                                         {isRemoving ? <LoadingSpinner className="w-4 h-4 text-white" /> : <Trash2 className="w-4 h-4" />}
                                         Remove ({selectedTrackIds.size})
-                                    </button>
+                                    </Button>
                                 </>
                             )}
                         </div>
@@ -295,59 +298,85 @@ export default function DownloadsPage() {
                             />
                         ) : (
                             <div className="space-y-2">
-                                {downloadableTracks.map((track, index) => (
-                                    <div key={track.id} className={`flex items-center gap-4 p-3 rounded-xl transition-colors group ${selectedTrackIds.has(track.id) ? "bg-orange-50 dark:bg-orange-900/20" : "bg-gray-50 dark:bg-secondary/20 hover:bg-gray-100 dark:hover:bg-secondary/40"}`}>
-                                         {selectionMode && (
-                                            <div className="pl-1 pr-2">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={selectedTrackIds.has(track.id)}
-                                                    onChange={() => toggleTrackSelection(track.id)}
-                                                    className="w-5 h-5 rounded border-gray-300 text-[#FF5500] focus:ring-[#FF5500]"
-                                                />
+                                {downloadableTracks.map((track, index) => {
+                                    const downloadHref = track.download_url
+                                        ? `${API_BASE}/api/proxy-download?url=${encodeURIComponent(track.download_url)}`
+                                        : (track.purchase_url || track.permalink_url);
+
+                                    if (selectionMode) {
+                                        return (
+                                            <TrackRow
+                                                key={track.id}
+                                                track={{ ...track, subtitle: track.user?.username }}
+                                                isSelected={selectedTrackIds.has(track.id)}
+                                                onToggle={() => toggleTrackSelection(track.id)}
+                                                rightSlot={
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-xs text-[#666666] dark:text-muted-foreground">
+                                                            {formatDuration(track.duration)}
+                                                        </span>
+                                                        <a
+                                                            href={downloadHref}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            onClick={(event) => event.stopPropagation()}
+                                                            className={`rounded-lg p-2 text-white transition ${
+                                                                track.download_url
+                                                                    ? "bg-green-500 hover:bg-green-600"
+                                                                    : "bg-[#FF5500] hover:bg-[#E64D00]"
+                                                            }`}
+                                                            title={track.download_url ? "Download directly" : (track.purchase_url ? "Go to download/buy" : "Go to track")}
+                                                        >
+                                                            <Download className="h-5 w-5" />
+                                                        </a>
+                                                    </div>
+                                                }
+                                            />
+                                        );
+                                    }
+
+                                    return (
+                                        <div key={track.id} className="group flex items-center gap-4 rounded-xl bg-gray-50 p-3 transition-colors hover:bg-gray-100 dark:bg-secondary/20 dark:hover:bg-secondary/40">
+                                            <span className="w-8 text-center text-sm text-[#999999] dark:text-muted-foreground">{index + 1}</span>
+
+                                            <img src={track.artwork_url || "/SC Toolkit Icon.png"} alt={track.title} className="h-10 w-10 rounded-lg object-cover" />
+                                            <div className="min-w-0 flex-1">
+                                                <div className="flex items-center gap-2 truncate font-semibold text-[#333333] dark:text-foreground">
+                                                    {track.title}
+                                                    {(Boolean(track.downloadable) || track.downloadable === "true" || !!track.download_url) && (
+                                                        <a
+                                                            href={track.download_url ? `${API_BASE}/api/proxy-download?url=${encodeURIComponent(track.download_url)}` : track.permalink_url}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            className="inline-flex items-center gap-0.5 rounded bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-900/50"
+                                                            title={track.download_url ? "Direct Download" : "Visit page to download"}
+                                                        >
+                                                            <Download className="w-3 h-3" /> DL
+                                                        </a>
+                                                    )}
+                                                </div>
+                                                <div className="truncate text-sm text-[#666666] dark:text-muted-foreground">
+                                                    {track.user?.username} • {formatDuration(track.duration)}
+                                                </div>
                                             </div>
-                                         )}
-                                         {!selectionMode && <span className="w-8 text-center text-sm text-[#999999] dark:text-muted-foreground">{index + 1}</span>}
-                                         
-                                         <img src={track.artwork_url || "/SC Toolkit Icon.png"} alt={track.title} className="w-12 h-12 rounded-lg object-cover" />
-                                         <div className="flex-1 min-w-0">
-                                            <div className="font-semibold text-[#333333] dark:text-foreground truncate flex items-center gap-2">
-                                                {track.title}
-                                                {/* Labels */}
-                                                {(Boolean(track.downloadable) || track.downloadable === "true" || !!track.download_url) && (
-                                                    <a
-                                                        href={track.download_url ? `${API_BASE}/api/proxy-download?url=${encodeURIComponent(track.download_url)}` : track.permalink_url}
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
-                                                        className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-xs font-medium hover:bg-green-200 dark:hover:bg-green-900/50"
-                                                        title={track.download_url ? "Direct Download" : "Visit page to download"}
-                                                    >
-                                                        <Download className="w-3 h-3" /> DL
-                                                    </a>
-                                                )}
+                                            <div className="flex gap-2">
+                                                <a
+                                                    href={downloadHref}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className={`rounded-lg p-2 text-white transition ${
+                                                        track.download_url
+                                                            ? "bg-green-500 hover:bg-green-600"
+                                                            : "bg-[#FF5500] hover:bg-[#E64D00]"
+                                                    }`}
+                                                    title={track.download_url ? "Download directly" : (track.purchase_url ? "Go to download/buy" : "Go to track")}
+                                                >
+                                                    <Download className="w-5 h-5" />
+                                                </a>
                                             </div>
-                                            <div className="text-sm text-[#666666] dark:text-muted-foreground truncate">
-                                                {track.user?.username} • {formatDuration(track.duration)}
-                                            </div>
-                                         </div>
-                                         {/* Action Button */}
-                                         <div className="flex gap-2">
-                                            <a 
-                                                href={track.download_url ? `${API_BASE}/api/proxy-download?url=${encodeURIComponent(track.download_url)}` : (track.purchase_url || track.permalink_url)} 
-                                                target="_blank" 
-                                                rel="noopener noreferrer" 
-                                                className={`p-2 rounded-lg transition text-white ${
-                                                    track.download_url 
-                                                        ? "bg-green-500 hover:bg-green-600" 
-                                                        : "bg-[#FF5500] hover:bg-[#E64D00]"
-                                                }`}
-                                                title={track.download_url ? "Download directly" : (track.purchase_url ? "Go to download/buy" : "Go to track")}
-                                            >
-                                                <Download className="w-5 h-5" />
-                                            </a>
-                                         </div>
-                                    </div>
-                                ))}
+                                        </div>
+                                    );
+                                })}
                             </div>
                         )}
                     </div>

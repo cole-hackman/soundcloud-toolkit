@@ -20,13 +20,15 @@ import {
   LogOut,
   Moon,
   Sun,
-  Activity,
   ThumbsUp,
   Users,
   Stethoscope,
   ListChecks,
   Download,
-  Repeat2,
+  Copy,
+  Repeat,
+  Activity,
+  Music,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/contexts/ThemeContext";
@@ -59,17 +61,24 @@ const NAV: NavEntry[] = [
     items: [
       { href: "/combine", label: "Combine Playlists", icon: Combine },
       { href: "/playlist-modifier", label: "Playlist Modifier", icon: Shuffle },
+      { href: "/playlist-cloner", label: "Playlist Cloner", icon: Copy },
       { href: "/playlist-health-check", label: "Health Check", icon: Stethoscope },
+    ],
+  },
+  {
+    label: "Social & Activity",
+    items: [
+      { href: "/likes-to-playlist", label: "Likes → Playlist", icon: Heart },
+      { href: "/like-manager", label: "Like Manager", icon: ThumbsUp },
+      { href: "/following-manager", label: "Following Manager", icon: Users },
+      { href: "/repost-manager", label: "Repost Manager", icon: Repeat },
       { href: "/activity-to-playlist", label: "Activity → Playlist", icon: Activity },
     ],
   },
   {
-    label: "Likes & Following",
+    label: "Discovery",
     items: [
-      { href: "/likes-to-playlist", label: "Likes → Playlist", icon: Heart },
-      { href: "/like-manager", label: "Like Manager", icon: ThumbsUp },
-      { href: "/repost-manager", label: "Repost Manager", icon: Repeat2 },
-      { href: "/following-manager", label: "Following Manager", icon: Users },
+      { href: "/genre-search", label: "Genre Search", icon: Music },
     ],
   },
   {

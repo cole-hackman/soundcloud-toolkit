@@ -262,18 +262,14 @@ export default function Home() {
                 See what it does
               </Button>
             </div>
-
-            <p className="mt-4 text-xs text-muted-foreground sm:text-sm">
-              Free to use. No credit card. Just OAuth.
-            </p>
           </div>
         </section>
 
         {/* Social proof / trust bar */}
         <section className="border-y border-border/60 bg-surface px-4 py-6 sm:px-6">
           <div className="mx-auto max-w-5xl">
-            <p className="mb-4 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Trusted by SoundCloud power users
+            <p className="mb-6 text-center text-sm font-semibold uppercase tracking-wider text-muted-foreground sm:text-base">
+              Trusted by 2,000+ DJs & producers
             </p>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               {[
@@ -395,12 +391,8 @@ export default function Home() {
             <h2 className="text-center text-3xl font-semibold tracking-tight sm:text-4xl md:text-5xl">
               How it works
             </h2>
-            <p className="mx-auto mt-4 max-w-2xl text-center text-base text-muted-foreground sm:text-lg">
-              Three steps, one clean library. No spreadsheets, no hacks — just
-              tools that speak SoundCloud.
-            </p>
 
-            <div className="relative mt-14 grid gap-8 rounded-3xl border border-border/70 bg-surface/70 p-8 shadow-elevation-1 sm:grid-cols-3 sm:p-10">
+            <div className="relative mt-12 grid gap-8 rounded-3xl border border-border/70 bg-surface/70 p-8 shadow-elevation-1 sm:grid-cols-3 sm:p-10">
               {steps.map((item, i) => {
                 const IconComponent = item.icon;
                 return (

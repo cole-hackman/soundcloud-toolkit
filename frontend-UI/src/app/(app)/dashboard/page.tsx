@@ -11,13 +11,15 @@ import {
   ArrowRight,
   Shuffle,
   Search,
-  Activity,
   ThumbsUp,
   Users,
   Stethoscope,
   ListChecks,
   Download,
   Music,
+  Copy,
+  Repeat,
+  Activity,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Card, EmptyState, Input, Skeleton } from "@/components/ui";
@@ -78,13 +80,6 @@ const FEATURES: FeatureCard[] = [
     path: "/link-resolver",
   },
   {
-    id: "activity",
-    title: "Activity → Playlist",
-    description: "Save tracks from your activity feed into a playlist",
-    icon: Activity,
-    path: "/activity-to-playlist",
-  },
-  {
     id: "like-manager",
     title: "Like Manager",
     description: "Browse, search, and bulk-unlike your liked tracks",
@@ -116,7 +111,7 @@ const FEATURES: FeatureCard[] = [
     id: "playlist-cloner",
     title: "Playlist Cloner",
     description: "Clone any public playlist to your account",
-    icon: Combine,
+    icon: Copy,
     path: "/playlist-cloner",
   },
   {
@@ -126,6 +121,20 @@ const FEATURES: FeatureCard[] = [
     icon: Music,
     path: "/genre-search",
   },
+  {
+    id: "repost-manager",
+    title: "Repost Manager",
+    description: "Browse and bulk-remove your reposts",
+    icon: Repeat,
+    path: "/repost-manager",
+  },
+  {
+    id: "activity-to-playlist",
+    title: "Activity → Playlist",
+    description: "Create playlists directly from your feed",
+    icon: Activity,
+    path: "/activity-to-playlist",
+  },
 ];
 
 const RECENT_LABELS: Record<string, string> = {
@@ -134,13 +143,14 @@ const RECENT_LABELS: Record<string, string> = {
   likes: "Likes → Playlist",
   modifier: "Playlist Modifier",
   resolver: "Link Resolver",
-  activity: "Activity → Playlist",
   "like-manager": "Like Manager",
   "following-manager": "Following Manager",
   "health-check": "Playlist Health Check",
   "batch-resolver": "Batch Link Resolver",
   "playlist-cloner": "Playlist Cloner",
   "genre-search": "Genre Search",
+  "repost-manager": "Repost Manager",
+  "activity-to-playlist": "Activity → Playlist",
 };
 
 const RECENT_PATHS: Record<string, string> = {
@@ -149,13 +159,14 @@ const RECENT_PATHS: Record<string, string> = {
   likes: "/likes-to-playlist",
   modifier: "/playlist-modifier",
   resolver: "/link-resolver",
-  activity: "/activity-to-playlist",
   "like-manager": "/like-manager",
   "following-manager": "/following-manager",
   "health-check": "/playlist-health-check",
   "batch-resolver": "/batch-link-resolver",
   "playlist-cloner": "/playlist-cloner",
   "genre-search": "/genre-search",
+  "repost-manager": "/repost-manager",
+  "activity-to-playlist": "/activity-to-playlist",
 };
 
 const COMING_SOON: FeatureCard[] = [];

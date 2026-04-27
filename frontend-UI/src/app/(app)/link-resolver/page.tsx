@@ -1,10 +1,9 @@
 "use client";
 
 import { useState, useEffect, Suspense } from "react";
-import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { ArrowLeft, Link as LinkIcon, Search, ExternalLink, Copy, Download, ShoppingBag } from "lucide-react";
-import { LoadingSpinner } from "@/components/ui";
+import { Link as LinkIcon, Search, ExternalLink, Copy, Download, ShoppingBag } from "lucide-react";
+import { Button, InlineAlert, Input, LoadingSpinner, PageHeader, ResultPanel } from "@/components/ui";
 import type { ResolverResource } from "@/lib/resolver";
 import { formatCompactNumber, formatDate, formatDuration, parseTagList, useSingleResolver } from "@/lib/resolver";
 
@@ -78,43 +77,31 @@ function LinkResolverContent() {
   };
 
   return (
-    <div className="min-h-screen bg-[#F2F2F2] dark:bg-background">
-      <div className="container mx-auto px-6 py-12 max-w-4xl">
-        {/* Header */}
-        <div className="mb-12">
-          <Link
-            href="/dashboard"
-            className="inline-flex items-center gap-2 text-[#666666] dark:text-muted-foreground hover:text-[#FF5500] transition mb-6"
-          >
-            <ArrowLeft className="w-5 h-5" />
-            Back to Dashboard
-          </Link>
-          <h1 className="text-4xl md:text-5xl font-bold mb-4 text-[#333333] dark:text-foreground">
-            Link Resolver
-          </h1>
-          <p className="text-lg text-[#666666] dark:text-muted-foreground">
-            Get detailed information from any SoundCloud URL.
-          </p>
-        </div>
+    <div className="min-h-screen bg-background">
+      <div className="container mx-auto px-6 py-6 max-w-4xl">
+        <PageHeader
+          title="Link Resolver"
+          description="Get detailed information from any SoundCloud URL."
+        />
 
         {/* Input */}
         <div className="bg-white dark:bg-card rounded-2xl p-6 border-2 border-gray-200 dark:border-border mb-8">
-          <div className="flex gap-4">
+          <div className="flex flex-col gap-3 sm:flex-row">
             <div className="flex-1 relative">
               <LinkIcon className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-[#999999] dark:text-muted-foreground" />
-              <input
+              <Input
                 type="text"
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && resolveLink()}
                 placeholder="Paste a SoundCloud URL..."
-                className="w-full pl-12 pr-4 py-4 rounded-lg border-2 border-gray-200 dark:border-border focus:border-[#FF5500] focus:outline-none transition text-lg bg-transparent text-[#333333] dark:text-foreground"
+                className="h-12 pl-12 text-base"
               />
             </div>
-            <button
+            <Button
               onClick={resolveLink}
               disabled={!url.trim() || loading}
-              className="px-8 py-4 rounded-lg bg-gradient-to-r from-[#FF5500] to-[#E64A00] text-white hover:shadow-lg transition flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed font-semibold"
+              className="h-12 px-6"
             >
               {loading ? (
                 <LoadingSpinner size="sm" className="border-white" />
@@ -122,16 +109,18 @@ function LinkResolverContent() {
                 <Search className="w-5 h-5" />
               )}
               Resolve
-            </button>
+            </Button>
           </div>
           {error && (
-            <p className="mt-4 text-red-500 text-sm">{error}</p>
+            <InlineAlert variant="error" className="mt-4" onDismiss={() => setError("")}>
+              {error}
+            </InlineAlert>
           )}
         </div>
 
         {/* Result */}
         {result && resource && (
-          <div className="bg-white dark:bg-card rounded-2xl p-8 border-2 border-gray-200 dark:border-border">
+          <ResultPanel>
             <div className="flex items-start gap-6">
               <img
                 src={imageUrl || "/SC Toolkit Icon.png"}
@@ -229,7 +218,7 @@ function LinkResolverContent() {
                 {JSON.stringify(result, null, 2)}
               </pre>
             </details>
-          </div>
+          </ResultPanel>
         )}
       </div>
     </div>
@@ -247,7 +236,7 @@ function StatCard({ label, value }: { label: string; value: string }) {
 
 export default function LinkResolverPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-[#F2F2F2] dark:bg-background flex items-center justify-center"><LoadingSpinner /></div>}>
+    <Suspense fallback={<div className="min-h-screen bg-background flex items-center justify-center"><LoadingSpinner /></div>}>
       <LinkResolverContent />
     </Suspense>
   );

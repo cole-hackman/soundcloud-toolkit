@@ -4,9 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { ArrowLeft, Download, Heart, ListMusic, Trash2, X, CheckSquare, Search } from "lucide-react";
 import { apiFetch } from "@/lib/api";
-import { Button, ConfirmDialog, EmptyState, Input, LoadingSpinner, TrackRow } from "@/components/ui";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "";
+import { Button, BulkReviewDetails, ConfirmDialog, EmptyState, Input, LoadingSpinner, PageContainer, PageHeader, TrackRow } from "@/components/ui";
 
 interface Playlist {
   id: number;
@@ -49,10 +47,16 @@ export default function DownloadsPage() {
   // Confirmation dialog + inline error
   const [showRemoveConfirm, setShowRemoveConfirm] = useState(false);
   const [inlineError, setInlineError] = useState<string | null>(null);
+  const [downloadingTrackId, setDownloadingTrackId] = useState<number | null>(null);
 
   useEffect(() => {
     fetchPlaylists();
     fetchLikesCount();
+  }, []);
+
+  useEffect(() => {
+    const urlParam = new URLSearchParams(window.location.search).get("url");
+    if (urlParam) setSourceSearch(urlParam);
   }, []);
 
   const fetchPlaylists = async () => {
@@ -191,25 +195,53 @@ export default function DownloadsPage() {
     return `${minutes}:${seconds.toString().padStart(2, "0")}`;
   };
 
+  const getDownloadLabel = (track: Track) => {
+    if (track.download_url) return "Download directly";
+    if (track.purchase_url) return track.purchase_title || "Go to download/buy";
+    return "Open on SoundCloud";
+  };
+
+  const getDownloadTone = (track: Track) =>
+    track.download_url ? "bg-green-500 hover:bg-green-600" : "bg-[#FF5500] hover:bg-[#E64D00]";
+
+  const handleDownload = async (track: Track) => {
+    setInlineError(null);
+
+    if (!track.download_url) {
+      window.open(track.purchase_url || track.permalink_url, "_blank", "noopener,noreferrer");
+      return;
+    }
+
+    setDownloadingTrackId(track.id);
+    try {
+      const response = await apiFetch(
+        `/api/proxy-download?format=json&url=${encodeURIComponent(track.download_url)}`
+      );
+      const data = await response.json().catch(() => null);
+
+      if (!response.ok || !data?.url) {
+        setInlineError(
+          data?.error ||
+            "SoundCloud did not provide a valid download link for this track. Try opening it on SoundCloud."
+        );
+        return;
+      }
+
+      window.open(data.url, "_blank", "noopener,noreferrer");
+    } catch (error) {
+      console.error("Failed to start download:", error);
+      setInlineError("Could not start the download. Try again or open the track on SoundCloud.");
+    } finally {
+      setDownloadingTrackId(null);
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-[#F2F2F2] dark:bg-background">
-      <div className="container mx-auto px-6 py-6 max-w-5xl">
-        {/* Header */}
-        <div className="mb-6">
-          <Link
-            href="/dashboard"
-            className="lg:hidden inline-flex items-center gap-2 text-[#666666] dark:text-muted-foreground hover:text-[#FF5500] transition mb-4"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            Back to Dashboard
-          </Link>
-          <h1 className="text-2xl md:text-3xl font-bold mb-2 text-[#333333] dark:text-foreground">
-            Downloads
-          </h1>
-          <p className="text-sm text-[#666666] dark:text-muted-foreground">
-            Find downloadable tracks in your library.
-          </p>
-        </div>
+    <PageContainer maxWidth="default">
+        <PageHeader
+          title="Downloads"
+          description="Find downloadable tracks in your library."
+        />
 
         {!selectedSource ? (
           /* Source Selection */
@@ -395,10 +427,6 @@ export default function DownloadsPage() {
               ) : (
                 <div className="space-y-2">
                   {downloadableTracks.map((track, index) => {
-                    const downloadHref = track.download_url
-                      ? `${API_BASE}/api/proxy-download?url=${encodeURIComponent(track.download_url)}`
-                      : track.purchase_url || track.permalink_url;
-
                     if (selectionMode) {
                       return (
                         <TrackRow
@@ -411,26 +439,22 @@ export default function DownloadsPage() {
                               <span className="text-xs text-[#666666] dark:text-muted-foreground">
                                 {formatDuration(track.duration)}
                               </span>
-                              <a
-                                href={downloadHref}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                onClick={(e) => e.stopPropagation()}
-                                className={`rounded-lg p-2 text-white transition ${
-                                  track.download_url
-                                    ? "bg-green-500 hover:bg-green-600"
-                                    : "bg-[#FF5500] hover:bg-[#E64D00]"
-                                }`}
-                                title={
-                                  track.download_url
-                                    ? "Download directly"
-                                    : track.purchase_url
-                                    ? "Go to download/buy"
-                                    : "Go to track"
-                                }
+                              <button
+                                type="button"
+                                disabled={downloadingTrackId === track.id}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDownload(track);
+                                }}
+                                className={`rounded-lg p-2 text-white transition disabled:cursor-not-allowed disabled:opacity-60 ${getDownloadTone(track)}`}
+                                title={getDownloadLabel(track)}
                               >
-                                <Download className="h-5 w-5" />
-                              </a>
+                                {downloadingTrackId === track.id ? (
+                                  <LoadingSpinner className="h-5 w-5 text-white" />
+                                ) : (
+                                  <Download className="h-5 w-5" />
+                                )}
+                              </button>
                             </div>
                           }
                         />
@@ -458,25 +482,19 @@ export default function DownloadsPage() {
                             {track.user?.username} • {formatDuration(track.duration)}
                           </div>
                         </div>
-                        <a
-                          href={downloadHref}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className={`rounded-lg p-2 text-white transition ${
-                            track.download_url
-                              ? "bg-green-500 hover:bg-green-600"
-                              : "bg-[#FF5500] hover:bg-[#E64D00]"
-                          }`}
-                          title={
-                            track.download_url
-                              ? "Download directly"
-                              : track.purchase_url
-                              ? "Go to download/buy"
-                              : "Go to track"
-                          }
+                        <button
+                          type="button"
+                          disabled={downloadingTrackId === track.id}
+                          onClick={() => handleDownload(track)}
+                          className={`rounded-lg p-2 text-white transition disabled:cursor-not-allowed disabled:opacity-60 ${getDownloadTone(track)}`}
+                          title={getDownloadLabel(track)}
                         >
-                          <Download className="w-5 h-5" />
-                        </a>
+                          {downloadingTrackId === track.id ? (
+                            <LoadingSpinner className="h-5 w-5 text-white" />
+                          ) : (
+                            <Download className="w-5 h-5" />
+                          )}
+                        </button>
                       </div>
                     );
                   })}
@@ -485,7 +503,6 @@ export default function DownloadsPage() {
             </div>
           </div>
         )}
-      </div>
 
       <ConfirmDialog
         open={showRemoveConfirm}
@@ -495,7 +512,20 @@ export default function DownloadsPage() {
         variant="destructive"
         onConfirm={executeRemove}
         onCancel={() => setShowRemoveConfirm(false)}
-      />
-    </div>
+      >
+        <BulkReviewDetails
+          action="removing"
+          warning="This updates the playlist on SoundCloud. Export the selection first if you need a record."
+          exportFilename="downloads-remove-selection.csv"
+          items={tracks
+            .filter((track) => selectedTrackIds.has(track.id))
+            .map((track) => ({
+              id: track.id,
+              label: track.title,
+              meta: track.user?.username,
+            }))}
+        />
+      </ConfirmDialog>
+    </PageContainer>
   );
 }

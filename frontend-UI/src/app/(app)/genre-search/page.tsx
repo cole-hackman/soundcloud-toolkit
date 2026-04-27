@@ -8,6 +8,7 @@ import {
   EmptyState,
   InlineAlert,
   LoadingSpinner,
+  PageContainer,
   PageHeader,
   SelectionBanner,
   TrackRow,
@@ -208,8 +209,7 @@ export default function GenreSearchPage() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className={`container mx-auto max-w-5xl px-6 py-6 ${selectedTracks.size > 0 ? "pb-28" : ""}`}>
+    <PageContainer maxWidth="default" className={selectedTracks.size > 0 ? "pb-28" : ""}>
         <PageHeader
           title="Genre Search"
           description="Discover tracks by genre or tag and add them to your playlists."
@@ -496,7 +496,6 @@ export default function GenreSearchPage() {
             </div>
           </div>
         )}
-      </div>
       <SelectionBanner
         count={selectedTracks.size}
         entityName="track"
@@ -504,6 +503,6 @@ export default function GenreSearchPage() {
         onAction={handleOpenAddPanel}
         actionIcon={<Plus className="h-4 w-4" />}
       />
-    </div>
+    </PageContainer>
   );
 }

@@ -8,11 +8,11 @@ import {
   InlineAlert,
   Input,
   LoadingSpinner,
+  PageContainer,
   PageHeader,
   TrackRow,
 } from "@/components/ui";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "";
+import { apiFetch } from "@/lib/api";
 
 interface Track {
   id: number;
@@ -54,8 +54,8 @@ export default function ActivityToPlaylistPage() {
   const fetchData = async () => {
     try {
       const [actRes, plRes] = await Promise.all([
-        fetch(`${API_BASE}/api/activities?limit=200`, { credentials: "include" }),
-        fetch(`${API_BASE}/api/playlists`, { credentials: "include" }),
+        apiFetch("/api/activities?limit=200"),
+        apiFetch("/api/playlists"),
       ]);
 
       if (actRes.ok) {
@@ -115,10 +115,9 @@ export default function ActivityToPlaylistPage() {
 
       if (mode === "new") {
         const title = newPlaylistName.trim() || `Activity Tracks ${new Date().toLocaleDateString()}`;
-        const response = await fetch(`${API_BASE}/api/playlists/from-likes`, {
+        const response = await apiFetch("/api/playlists/from-likes", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          credentials: "include",
           body: JSON.stringify({ trackIds, title }),
         });
         if (response.ok) {
@@ -129,15 +128,14 @@ export default function ActivityToPlaylistPage() {
         }
       } else if (selectedPlaylistId) {
         // Get existing tracks and append
-        const plRes = await fetch(`${API_BASE}/api/playlists/${selectedPlaylistId}`, { credentials: "include" });
+        const plRes = await apiFetch(`/api/playlists/${selectedPlaylistId}`);
         if (plRes.ok) {
           const plData = await plRes.json();
           const existingIds = (plData.tracks || []).map((t: Track) => t.id);
           const mergedIds = [...existingIds, ...trackIds];
-          const response = await fetch(`${API_BASE}/api/playlists/${selectedPlaylistId}`, {
+          const response = await apiFetch(`/api/playlists/${selectedPlaylistId}`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
-            credentials: "include",
             body: JSON.stringify({ tracks: mergedIds }),
           });
           if (response.ok) {
@@ -159,8 +157,7 @@ export default function ActivityToPlaylistPage() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="container mx-auto px-6 py-6 max-w-6xl">
+    <PageContainer maxWidth="wide">
         <PageHeader
           title="Activity → Playlist"
           description="Select tracks from your activity feed and save them to a playlist."
@@ -189,7 +186,7 @@ export default function ActivityToPlaylistPage() {
             />
           </div>
         ) : (
-          <div className="grid lg:grid-cols-3 gap-6">
+          <div className="grid lg:grid-cols-3 gap-8">
             {/* Track list */}
             <div className="lg:col-span-2 bg-white dark:bg-card rounded-2xl p-6 border-2 border-gray-200 dark:border-border">
               <div className="flex items-center gap-3 mb-4">
@@ -231,7 +228,7 @@ export default function ActivityToPlaylistPage() {
             </div>
 
             {/* Save panel */}
-            <div className="bg-white dark:bg-card rounded-2xl p-6 border-2 border-gray-200 dark:border-border h-fit sticky top-6">
+            <div className="bg-white dark:bg-card rounded-2xl p-6 border-2 border-gray-200 dark:border-border h-fit sticky top-24">
               <h2 className="text-lg font-bold text-[#333333] dark:text-foreground mb-4">
                 Save to Playlist
               </h2>
@@ -301,7 +298,6 @@ export default function ActivityToPlaylistPage() {
             </div>
           </div>
         )}
-      </div>
-    </div>
+    </PageContainer>
   );
 }

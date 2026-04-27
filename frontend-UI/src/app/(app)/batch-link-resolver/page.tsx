@@ -1,8 +1,9 @@
 "use client";
 
 import { useMemo, useState, type ReactNode } from "react";
+import NextLink from "next/link";
 import { Link2, ExternalLink, Music, Users, ListMusic, Loader2, X, Download, Search, RotateCcw, Copy } from "lucide-react";
-import { Button, EmptyState, InlineAlert, PageHeader, ResultPanel } from "@/components/ui";
+import { Button, EmptyState, InlineAlert, PageContainer, PageHeader, ResultPanel } from "@/components/ui";
 import { formatCompactNumber, formatDuration, useBatchResolver, type BatchResolveRow } from "@/lib/resolver";
 
 export default function BatchLinkResolverPage() {
@@ -113,8 +114,7 @@ export default function BatchLinkResolverPage() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="container mx-auto px-6 py-6 max-w-4xl">
+    <PageContainer maxWidth="narrow">
         <PageHeader
           title="Batch Link Resolver"
           description="Paste up to 50 SoundCloud URLs to resolve them all at once."
@@ -223,8 +223,7 @@ export default function BatchLinkResolverPage() {
             />
           </div>
         )}
-      </div>
-    </div>
+    </PageContainer>
   );
 }
 
@@ -286,6 +285,24 @@ function ResultRow({
         >
           <ExternalLink className="w-4 h-4" />
         </a>
+      )}
+
+      {result.status === "ok" && result.data?.type === "playlist" && result.data.permalink_url && (
+        <NextLink
+          href={`/playlist-cloner?url=${encodeURIComponent(result.data.permalink_url)}`}
+          className="text-xs font-medium text-[#666666] hover:text-[#FF5500] dark:text-muted-foreground"
+        >
+          Clone
+        </NextLink>
+      )}
+
+      {result.status === "ok" && result.data?.type === "track" && (
+        <NextLink
+          href="/downloads"
+          className="text-xs font-medium text-[#666666] hover:text-[#FF5500] dark:text-muted-foreground"
+        >
+          Downloads
+        </NextLink>
       )}
 
       <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${

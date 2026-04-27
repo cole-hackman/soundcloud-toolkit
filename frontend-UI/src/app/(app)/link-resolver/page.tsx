@@ -2,6 +2,7 @@
 
 import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
+import NextLink from "next/link";
 import { Link as LinkIcon, Search, ExternalLink, Copy, Download, ShoppingBag } from "lucide-react";
 import { Button, InlineAlert, Input, LoadingSpinner, PageHeader, ResultPanel } from "@/components/ui";
 import type { ResolverResource } from "@/lib/resolver";
@@ -205,6 +206,55 @@ function LinkResolverContent() {
                       {resource.purchase_title || "Purchase"}
                     </a>
                   )}
+                </div>
+                <div className="mt-4 border-t border-gray-200 pt-4 dark:border-border">
+                  <div className="mb-2 text-sm font-semibold text-[#333333] dark:text-foreground">
+                    Next actions
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {resource.type === "playlist" && resource.permalink_url && (
+                      <NextLink
+                        href={`/playlist-cloner?url=${encodeURIComponent(resource.permalink_url)}`}
+                        className="rounded-lg border border-gray-200 px-3 py-2 text-sm text-[#333333] hover:border-[#FF5500] hover:text-[#FF5500] dark:border-border dark:text-foreground"
+                      >
+                        Clone playlist
+                      </NextLink>
+                    )}
+                    {resource.type === "playlist" && (
+                      <NextLink
+                        href="/playlist-health-check"
+                        className="rounded-lg border border-gray-200 px-3 py-2 text-sm text-[#333333] hover:border-[#FF5500] hover:text-[#FF5500] dark:border-border dark:text-foreground"
+                      >
+                        Check playlist health
+                      </NextLink>
+                    )}
+                    {resource.type === "track" && (
+                      <NextLink
+                        href="/downloads"
+                        className="rounded-lg border border-gray-200 px-3 py-2 text-sm text-[#333333] hover:border-[#FF5500] hover:text-[#FF5500] dark:border-border dark:text-foreground"
+                      >
+                        Check download availability
+                      </NextLink>
+                    )}
+                    {resource.type === "track" && (
+                      <NextLink
+                        href="/likes-to-playlist"
+                        className="rounded-lg border border-gray-200 px-3 py-2 text-sm text-[#333333] hover:border-[#FF5500] hover:text-[#FF5500] dark:border-border dark:text-foreground"
+                      >
+                        Add tracks to playlist
+                      </NextLink>
+                    )}
+                    {resource.type === "user" && resource.permalink_url && (
+                      <a
+                        href={resource.permalink_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="rounded-lg border border-gray-200 px-3 py-2 text-sm text-[#333333] hover:border-[#FF5500] hover:text-[#FF5500] dark:border-border dark:text-foreground"
+                      >
+                        Open profile
+                      </a>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>

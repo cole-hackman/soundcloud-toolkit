@@ -1,6 +1,5 @@
 import type { BatchResolveV2Response, ResolveV2Response } from "./types";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "";
+import { apiFetch } from "@/lib/api";
 
 async function parseError(response: Response): Promise<string> {
   try {
@@ -12,10 +11,9 @@ async function parseError(response: Response): Promise<string> {
 }
 
 export async function resolveSingleV2(url: string): Promise<ResolveV2Response> {
-  const response = await fetch(`${API_BASE}/api/resolve?v=2`, {
+  const response = await apiFetch("/api/resolve?v=2", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    credentials: "include",
     body: JSON.stringify({ url }),
   });
 
@@ -26,10 +24,9 @@ export async function resolveSingleV2(url: string): Promise<ResolveV2Response> {
 }
 
 export async function resolveBatchV2(urls: string[]): Promise<BatchResolveV2Response> {
-  const response = await fetch(`${API_BASE}/api/resolve/batch?v=2`, {
+  const response = await apiFetch("/api/resolve/batch?v=2", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    credentials: "include",
     body: JSON.stringify({ urls }),
   });
 

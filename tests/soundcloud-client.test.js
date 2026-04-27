@@ -40,6 +40,20 @@ describe('soundcloud client behaviors', () => {
     expect(res).toEqual(okJson);
     expect(fetch).toHaveBeenCalledTimes(2);
   });
+
+  test('stops retrying after repeated 429 responses', async () => {
+    jest.useFakeTimers();
+    fetch
+      .mockReturnValueOnce(Promise.resolve(new Response('', { status: 429 })))
+      .mockReturnValueOnce(Promise.resolve(new Response('', { status: 429 })));
+
+    const request = soundcloudClient.scRequest(endpoint, 'a', 'r', { max429Retries: 1 });
+    await Promise.resolve();
+    jest.advanceTimersByTime(1000);
+
+    await expect(request).rejects.toThrow('API request failed: 429');
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
 });
 
 

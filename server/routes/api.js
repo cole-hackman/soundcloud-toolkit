@@ -6,6 +6,9 @@ import { authenticateUser } from '../middleware/auth.js';
 import { logOperation } from '../lib/analytics.js';
 import logger from '../lib/logger.js';
 import { safeError } from '../lib/safe-error.js';
+import { isAllowedDownloadRedirectTarget, isAllowedDownloadUrl } from '../lib/download-utils.js';
+import { summarizeLibraryAudit } from '../lib/library-audit.js';
+import { comparePlaylists } from '../lib/playlist-compare.js';
 import {
   duplicateTrackBetweenPlaylists,
   moveTrackBetweenPlaylists,
@@ -213,6 +216,68 @@ router.get('/me', authenticateUser, async (req, res) => {
   } catch (error) {
     logger.error('Get me error:', safeError(error));
     res.status(500).json({ error: 'Failed to get user info' });
+  }
+});
+
+router.get('/library/audit', authenticateUser, heavyOperationRateLimiter, async (req, res) => {
+  try {
+    const limit = Math.min(Math.max(Number(req.query.limit) || 20, 1), 50);
+    const playlistPage = await soundcloudClient.getPlaylists(req.accessToken, req.refreshToken, limit, 0);
+    const playlists = playlistPage.collection || playlistPage || [];
+    const fullPlaylists = [];
+
+    for (const playlist of playlists.slice(0, limit)) {
+      try {
+        const full = await soundcloudClient.getPlaylistWithTracks(req.accessToken, req.refreshToken, playlist.id);
+        fullPlaylists.push(full);
+      } catch (error) {
+        logger.warn('Library audit playlist fetch failed:', { playlistId: playlist.id, error: safeError(error) });
+      }
+    }
+
+    const audit = summarizeLibraryAudit(fullPlaylists);
+    logOperation({
+      userId: req.user.id,
+      action: 'library-audit',
+      itemCount: audit.summary.playlists,
+      trackCount: audit.summary.tracks,
+      status: 'success',
+    });
+    res.json(audit);
+  } catch (error) {
+    logger.error('Library audit error:', safeError(error));
+    res.status(500).json({ error: 'Failed to audit library' });
+  }
+});
+
+router.post('/playlists/compare', authenticateUser, heavyOperationRateLimiter, async (req, res) => {
+  try {
+    const playlistAId = Number(req.body?.playlistAId);
+    const playlistBId = Number(req.body?.playlistBId);
+    if (!Number.isInteger(playlistAId) || playlistAId < 1 || !Number.isInteger(playlistBId) || playlistBId < 1) {
+      return res.status(400).json({ error: 'playlistAId and playlistBId are required positive integers' });
+    }
+    if (playlistAId === playlistBId) {
+      return res.status(400).json({ error: 'Choose two different playlists to compare' });
+    }
+
+    const [playlistA, playlistB] = await Promise.all([
+      soundcloudClient.getPlaylistWithTracks(req.accessToken, req.refreshToken, playlistAId),
+      soundcloudClient.getPlaylistWithTracks(req.accessToken, req.refreshToken, playlistBId),
+    ]);
+
+    const comparison = comparePlaylists(playlistA, playlistB);
+    logOperation({
+      userId: req.user.id,
+      action: 'playlist-compare',
+      itemCount: 2,
+      trackCount: comparison.summary.playlistA.trackCount + comparison.summary.playlistB.trackCount,
+      status: 'success',
+    });
+    res.json(comparison);
+  } catch (error) {
+    logger.error('Playlist compare error:', safeError(error));
+    res.status(500).json({ error: 'Failed to compare playlists' });
   }
 });
 
@@ -690,27 +755,6 @@ router.post('/resolve', authenticateUser, heavyOperationRateLimiter, validateRes
 router.get('/resolve', authenticateUser, heavyOperationRateLimiter, validateResolve, handleResolve);
 
 /**
- * Allow only SoundCloud API download URLs to prevent SSRF and token leakage.
- */
-function isAllowedDownloadUrl(input) {
-  if (!input || typeof input !== 'string') return false;
-  const s = input.trim();
-  if (!s) return false;
-  try {
-    const u = new URL(s);
-    if (u.protocol !== 'https:') return false;
-    const host = u.hostname.toLowerCase();
-    // Only allow SoundCloud API download endpoints
-    if (host !== 'api.soundcloud.com' && !host.endsWith('.soundcloud.com')) return false;
-    // Must look like a track download path: /tracks/:id/download or similar
-    if (!/^\/tracks\/\d+\/download(\?|$)/.test(u.pathname)) return false;
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/**
  * GET /api/proxy-download
  * Proxy a download request to SoundCloud to verify auth and get the final link
  */
@@ -727,20 +771,20 @@ router.get('/proxy-download', authenticateUser, async (req, res) => {
     const result = await soundcloudClient.getDownloadLink(req.accessToken, req.refreshToken, url);
     
     if (result && result.redirect) {
-      // Only redirect to known SoundCloud CDN hosts to prevent open redirect
       const loc = result.redirect;
-      try {
-        const u = new URL(loc);
-        const host = u.hostname.toLowerCase();
-        const allowed =
-          host === 'sndcdn.com' || host.endsWith('.sndcdn.com') ||
-          host === 'cloudfront.net' || host.endsWith('.cloudfront.net') ||
-          host === 'soundcloud.com' || host.endsWith('.soundcloud.com');
-        if (u.protocol === 'https:' && allowed) {
-          logOperation({ userId: req.user.id, action: 'proxy-download', status: 'success' });
-          return res.redirect(loc);
+      if (isAllowedDownloadRedirectTarget(loc)) {
+        logOperation({ userId: req.user.id, action: 'proxy-download', status: 'success' });
+        if (req.query.format === 'json') {
+          return res.json({ url: loc });
         }
-      } catch {}
+        return res.redirect(loc);
+      }
+      logOperation({
+        userId: req.user.id,
+        action: 'proxy-download',
+        status: 'error',
+        metadata: { reason: 'invalid_redirect_target' },
+      });
       return res.status(502).json({ error: 'Invalid download redirect target' });
     }
     

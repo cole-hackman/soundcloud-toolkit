@@ -11,7 +11,7 @@ function uniqueTracks(tracks) {
   const unique = [];
 
   for (const track of tracks) {
-    if (!track?.id || seen.has(track.id)) continue;
+    if (track?.id == null || seen.has(track.id)) continue;
     seen.add(track.id);
     unique.push(track);
   }
@@ -19,6 +19,13 @@ function uniqueTracks(tracks) {
   return unique;
 }
 
+/**
+ * Compare two SoundCloud playlists by unique track id.
+ *
+ * Expected input shape: `{ id, title, tracks }`, where `tracks` is an array of
+ * track objects with an `id` field or numeric track ids. `overlapPercent` is the
+ * Jaccard overlap: `|A intersect B| / |A union B|`, expressed as a percentage.
+ */
 export function comparePlaylists(playlistA, playlistB) {
   const tracksA = uniqueTracks((playlistA.tracks || []).map(normalizeTrack));
   const tracksB = uniqueTracks((playlistB.tracks || []).map(normalizeTrack));

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { ArrowRightLeft, Download, ListPlus } from "lucide-react";
 import { apiFetch } from "@/lib/api";
+import { downloadCsv } from "@/lib/csv";
 import { Button, EmptyState, InlineAlert, LoadingSpinner, PageHeader } from "@/components/ui";
 
 interface Playlist {
@@ -87,14 +88,7 @@ export default function PlaylistComparePage() {
       ...result.uniqueToA.map((track) => ["unique_to_a", track.id, track.title || "", track.user?.username || ""]),
       ...result.uniqueToB.map((track) => ["unique_to_b", track.id, track.title || "", track.user?.username || ""]),
     ];
-    const csv = rows.map((row) => row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(",")).join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "playlist-comparison.csv";
-    link.click();
-    URL.revokeObjectURL(url);
+    downloadCsv("playlist-comparison.csv", rows);
   };
 
   return (
@@ -138,16 +132,17 @@ export default function PlaylistComparePage() {
           </div>
         ) : (
           <div className="space-y-6">
-            <div className="grid gap-3 md:grid-cols-4">
+            <div className="flex justify-end">
+              <Button variant="outline" onClick={exportCsv}>
+                <Download className="h-4 w-4" />
+                Export CSV
+              </Button>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-3">
               <Metric label="Overlap" value={`${result.summary.overlapCount}`} detail={`${result.summary.overlapPercent}% of combined tracks`} />
               <Metric label="Only in A" value={`${result.summary.uniqueToACount}`} detail={result.summary.playlistA.title} />
               <Metric label="Only in B" value={`${result.summary.uniqueToBCount}`} detail={result.summary.playlistB.title} />
-              <div className="rounded-xl border border-border bg-card p-4">
-                <Button variant="outline" onClick={exportCsv}>
-                  <Download className="h-4 w-4" />
-                  Export
-                </Button>
-              </div>
             </div>
 
             <TrackSection title={`Only in ${result.summary.playlistA.title}`} tracks={result.uniqueToA} />

@@ -47,10 +47,10 @@ export async function authenticateUser(req, res, next) {
     req.user = user;
     req.accessToken = accessToken;
     req.refreshToken = refreshToken;
-
-    runWithTokenContext({ userId: user.id }, next);
   } catch (error) {
     logger.error('Authentication error:', safeError(error));
-    res.status(401).json({ error: 'Authentication failed' });
+    return res.status(401).json({ error: 'Authentication failed' });
   }
+
+  runWithTokenContext({ userId: req.user.id }, next);
 }

@@ -1,4 +1,4 @@
-const DOWNLOAD_PATH_RE = /^\/tracks\/\d+\/download(\?|$)/;
+const DOWNLOAD_PATH_RE = /^\/tracks\/\d+\/download$/;
 
 export function isAllowedDownloadUrl(input) {
   if (!input || typeof input !== 'string') return false;

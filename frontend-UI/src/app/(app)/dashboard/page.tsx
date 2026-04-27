@@ -15,6 +15,7 @@ import {
   Users,
   Stethoscope,
   ListChecks,
+  ClipboardCheck,
   Download,
   Music,
   Copy,
@@ -25,7 +26,7 @@ import {
   ArrowRightLeft,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
-import { Card, EmptyState, Input, Skeleton } from "@/components/ui";
+import { Card, EmptyState, Input, PageContainer, Skeleton } from "@/components/ui";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "";
 const LAST_TOOLS_KEY = "sc-toolkit-last-tools";
@@ -65,7 +66,7 @@ const FEATURES: FeatureCard[] = [
     id: "library-audit",
     title: "Library Audit",
     description: "Scan playlists for duplicates, unavailable tracks, and download links",
-    icon: ListChecks,
+    icon: ClipboardCheck,
     path: "/library-audit",
   },
   {
@@ -311,8 +312,7 @@ export default function DashboardPage() {
   }, [toolQuery]);
 
   return (
-    <div className="min-h-screen bg-[#F2F2F2] dark:bg-background">
-      <div className="mx-auto px-4 sm:px-6 py-5 sm:py-6 max-w-5xl">
+    <PageContainer maxWidth="default">
         {/* Welcome Section */}
         <div className="flex items-start justify-between gap-4 mb-5">
           <div className="min-w-0">
@@ -514,7 +514,6 @@ export default function DashboardPage() {
           </div>
         </div>
         )}
-      </div>
-    </div>
+    </PageContainer>
   );
 }

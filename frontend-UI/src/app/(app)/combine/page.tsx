@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { ArrowLeft, X, Combine, Check, Music, Trash2, AlertTriangle } from "lucide-react";
 import { apiFetch } from "@/lib/api";
-import { BulkReviewDetails, ConfirmDialog, EmptyState, LoadingSpinner, Skeleton } from "@/components/ui";
+import { BulkReviewDetails, ConfirmDialog, EmptyState, LoadingSpinner, PageContainer, PageHeader, Skeleton } from "@/components/ui";
 
 interface Playlist {
   id: number;
@@ -161,7 +161,7 @@ export default function CombinePlaylistsPage() {
     const deleteErrors = result?.deleteErrors || [];
 
     return (
-      <div className="min-h-screen flex items-center justify-center px-6 py-12 bg-[#F2F2F2] dark:bg-background">
+      <div className="flex items-center justify-center px-6 py-12">
         <div className="max-w-2xl w-full">
           <div className="text-center rounded-2xl p-10 shadow-xl border-2 bg-white dark:bg-card border-gray-200 dark:border-border">
             <div className="w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-6 bg-gradient-to-br from-[#22c55e] to-[#16a34a] shadow-lg">
@@ -237,24 +237,11 @@ export default function CombinePlaylistsPage() {
 
   // ── MAIN PAGE ───────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-[#F2F2F2] dark:bg-background">
-      <div className="container mx-auto px-6 py-5 max-w-6xl">
-        {/* Header */}
-        <div className="mb-6">
-          <Link
-            href="/dashboard"
-            className="lg:hidden inline-flex items-center gap-2 text-[#666666] dark:text-muted-foreground hover:text-[#FF5500] transition mb-4"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            Back to Dashboard
-          </Link>
-          <h1 className="text-2xl md:text-3xl font-bold mb-2 text-[#333333] dark:text-foreground">
-            Combine Playlists
-          </h1>
-          <p className="text-sm text-[#666666] dark:text-muted-foreground">
-            Select playlists to merge. Duplicates will be automatically removed.
-          </p>
-        </div>
+    <PageContainer maxWidth="wide">
+        <PageHeader
+          title="Combine Playlists"
+          description="Select playlists to merge. Duplicates will be automatically removed."
+        />
 
         <div className="grid lg:grid-cols-3 gap-8">
           {/* Playlist Selection */}
@@ -291,7 +278,7 @@ export default function CombinePlaylistsPage() {
                 />
               ) : (
                 <div className="relative">
-                <div className="space-y-2 max-h-[500px] overflow-y-auto pr-1">
+                <div className="space-y-2 max-h-[600px] overflow-y-auto pr-1">
                   {userPlaylists.map((playlist) => {
                     const isSelected = selectedPlaylists.some(
                       (p) => Number(p.id) === Number(playlist.id)
@@ -522,7 +509,6 @@ export default function CombinePlaylistsPage() {
             </div>
           </div>
         </div>
-      </div>
 
       {/* ── DELETE CONFIRMATION DIALOG ─────────────────────────────────────── */}
       <ConfirmDialog
@@ -621,6 +607,6 @@ export default function CombinePlaylistsPage() {
           </div>
         </div>
       )}
-    </div>
+    </PageContainer>
   );
 }

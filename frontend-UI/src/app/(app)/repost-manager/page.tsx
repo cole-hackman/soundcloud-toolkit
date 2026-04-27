@@ -1,9 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import Link from "next/link";
 import {
-  ArrowLeft,
   Repeat2,
   Music,
   ListMusic,
@@ -11,9 +9,15 @@ import {
   Trash2,
   Loader2,
   Check,
-  Info,
 } from "lucide-react";
-import { EmptyState, LoadingSpinner } from "@/components/ui";
+import {
+  ConfirmDialog,
+  EmptyState,
+  InlineAlert,
+  LoadingSpinner,
+  PageHeader,
+  SelectionBanner,
+} from "@/components/ui";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "";
 
@@ -37,6 +41,8 @@ export default function RepostManagerPage() {
   const [removing, setRemoving] = useState(false);
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<SortOption>("recent");
+  const [showRemoveConfirm, setShowRemoveConfirm] = useState(false);
+  const [notice, setNotice] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   useEffect(() => {
     fetchReposts();
@@ -51,9 +57,12 @@ export default function RepostManagerPage() {
       if (response.ok) {
         const data = await response.json();
         setReposts(data.collection || []);
+      } else {
+        setNotice({ type: "error", text: "Couldn’t load your reposts. Try refreshing the page." });
       }
     } catch (error) {
       console.error("Failed to fetch reposts:", error);
+      setNotice({ type: "error", text: "Couldn’t load your reposts. Try refreshing the page." });
     } finally {
       setLoading(false);
     }
@@ -78,14 +87,13 @@ export default function RepostManagerPage() {
 
   const handleBulkRemove = async () => {
     if (selected.size === 0) return;
-    if (
-      !confirm(
-        `Remove ${selected.size} repost${selected.size > 1 ? "s" : ""}? This cannot be undone.`
-      )
-    )
-      return;
+    setShowRemoveConfirm(true);
+  };
 
+  const executeBulkRemove = async () => {
+    setShowRemoveConfirm(false);
     setRemoving(true);
+    setNotice(null);
     try {
       const items = reposts
         .filter((r) => selected.has(r.id))
@@ -107,12 +115,20 @@ export default function RepostManagerPage() {
         );
         setReposts((prev) => prev.filter((r) => !removedIds.has(r.id)));
         setSelected(new Set());
+        if (removedIds.size === items.length) {
+          setNotice({ type: "success", text: `Removed ${removedIds.size} repost${removedIds.size === 1 ? "" : "s"}.` });
+        } else {
+          setNotice({
+            type: "error",
+            text: `Removed ${removedIds.size} of ${items.length} reposts. Some failed.`,
+          });
+        }
       } else {
-        alert("Bulk remove failed");
+        setNotice({ type: "error", text: "Bulk remove failed. Please try again." });
       }
     } catch (error) {
       console.error("Bulk remove error:", error);
-      alert("An error occurred");
+      setNotice({ type: "error", text: "An error occurred while removing reposts." });
     } finally {
       setRemoving(false);
     }
@@ -134,32 +150,28 @@ export default function RepostManagerPage() {
     });
 
   return (
-    <div className="min-h-screen bg-[#F2F2F2] dark:bg-background">
-      <div className="container mx-auto px-6 py-12 max-w-6xl">
-        <div className="mb-12">
-          <Link
-            href="/dashboard"
-            className="inline-flex items-center gap-2 text-[#666666] dark:text-muted-foreground hover:text-[#FF5500] transition mb-6"
-          >
-            <ArrowLeft className="w-5 h-5" />
-            Back to Dashboard
-          </Link>
-          <h1 className="text-4xl md:text-5xl font-bold mb-4 text-[#333333] dark:text-foreground">
-            Repost Manager
-          </h1>
-          <p className="text-lg text-[#666666] dark:text-muted-foreground">
-            Browse, search, and manage your reposted tracks and playlists. Remove in bulk.
-          </p>
-        </div>
+    <div className="min-h-screen bg-background">
+      <div className={`container mx-auto px-6 py-6 max-w-6xl ${selected.size > 0 ? "pb-28" : ""}`}>
+        <PageHeader
+          title="Repost Manager"
+          description="Browse, search, and manage your reposted tracks and playlists. Remove in bulk."
+        />
 
         {/* Info notice about activity-feed limitation */}
-        <div className="flex items-start gap-3 bg-blue-50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-900/30 rounded-xl p-4 mb-6 text-sm text-blue-700 dark:text-blue-400">
-          <Info className="w-4 h-4 mt-0.5 shrink-0" />
-          <span>
-            Reposts are loaded from your recent SoundCloud activity feed. Very old reposts
-            may not appear here due to API limitations.
-          </span>
-        </div>
+        <InlineAlert variant="info" className="mb-6">
+          Reposts are loaded from your recent SoundCloud activity feed. Very old reposts
+          may not appear here due to API limitations.
+        </InlineAlert>
+
+        {notice && (
+          <InlineAlert
+            variant={notice.type}
+            className="mb-6"
+            onDismiss={() => setNotice(null)}
+          >
+            {notice.text}
+          </InlineAlert>
+        )}
 
         {loading ? (
           <div className="bg-white dark:bg-card rounded-2xl p-12 border-2 border-gray-200 dark:border-border flex items-center justify-center">
@@ -203,27 +215,6 @@ export default function RepostManagerPage() {
                 {selected.size === filteredReposts.length ? "Deselect All" : "Select All"}
               </button>
             </div>
-
-            {/* Action bar */}
-            {selected.size > 0 && (
-              <div className="flex items-center justify-between bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-900/30 rounded-xl p-3 mb-4">
-                <span className="text-sm font-medium text-red-700 dark:text-red-400">
-                  {selected.size} repost{selected.size > 1 ? "s" : ""} selected
-                </span>
-                <button
-                  onClick={handleBulkRemove}
-                  disabled={removing}
-                  className="px-4 py-1.5 rounded-lg bg-red-500 text-white text-sm font-medium hover:bg-red-600 transition disabled:opacity-50 flex items-center gap-2"
-                >
-                  {removing ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <Trash2 className="w-4 h-4" />
-                  )}
-                  Remove Reposts
-                </button>
-              </div>
-            )}
 
             <div className="text-sm text-[#999999] dark:text-muted-foreground mb-2">
               {filteredReposts.length} of {reposts.length} reposts
@@ -282,7 +273,7 @@ export default function RepostManagerPage() {
 
                     {/* Type badge */}
                     <span
-                      className={`text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full shrink-0 ${
+                      className={`text-xs font-semibold uppercase tracking-wide px-2 py-1 rounded-full shrink-0 ${
                         repost.resourceType === "playlist"
                           ? "bg-purple-100 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400"
                           : "bg-orange-100 dark:bg-orange-900/20 text-[#FF5500]"
@@ -297,6 +288,24 @@ export default function RepostManagerPage() {
           </div>
         )}
       </div>
+      <SelectionBanner
+        count={selected.size}
+        entityName="repost"
+        actionLabel="Remove Reposts"
+        actionVariant="destructive"
+        onAction={handleBulkRemove}
+        disabled={removing}
+        actionIcon={removing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+      />
+      <ConfirmDialog
+        open={showRemoveConfirm}
+        title="Remove selected reposts?"
+        description={`Remove ${selected.size} repost${selected.size === 1 ? "" : "s"}? This cannot be undone.`}
+        confirmLabel="Remove"
+        variant="destructive"
+        onConfirm={executeBulkRemove}
+        onCancel={() => setShowRemoveConfirm(false)}
+      />
     </div>
   );
 }

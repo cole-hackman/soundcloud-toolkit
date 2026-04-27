@@ -1,9 +1,16 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import Link from "next/link";
-import { ArrowLeft, Radio, Music, Loader2, Search, SquarePlus, Check } from "lucide-react";
-import { EmptyState, LoadingSpinner } from "@/components/ui";
+import { Radio, Music, Loader2, Search, SquarePlus } from "lucide-react";
+import {
+  Button,
+  EmptyState,
+  InlineAlert,
+  Input,
+  LoadingSpinner,
+  PageHeader,
+  TrackRow,
+} from "@/components/ui";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "";
 
@@ -38,7 +45,7 @@ export default function ActivityToPlaylistPage() {
   const [mode, setMode] = useState<"new" | "existing">("new");
   const [newPlaylistName, setNewPlaylistName] = useState("");
   const [selectedPlaylistId, setSelectedPlaylistId] = useState<number | null>(null);
-  const [success, setSuccess] = useState(false);
+  const [notice, setNotice] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   useEffect(() => {
     fetchData();
@@ -59,8 +66,12 @@ export default function ActivityToPlaylistPage() {
         const plData = await plRes.json();
         setPlaylists(plData.collection || []);
       }
+      if (!actRes.ok) {
+        setNotice({ type: "error", text: "Couldn’t load your activity feed. Try refreshing the page." });
+      }
     } catch (error) {
       console.error("Failed to fetch data:", error);
+      setNotice({ type: "error", text: "Couldn’t load your activity feed. Try refreshing the page." });
     } finally {
       setLoading(false);
     }
@@ -97,7 +108,7 @@ export default function ActivityToPlaylistPage() {
   const handleSave = async () => {
     if (selected.size === 0) return;
     setSaving(true);
-    setSuccess(false);
+    setNotice(null);
 
     try {
       const trackIds = Array.from(selected);
@@ -111,10 +122,10 @@ export default function ActivityToPlaylistPage() {
           body: JSON.stringify({ trackIds, title }),
         });
         if (response.ok) {
-          setSuccess(true);
+          setNotice({ type: "success", text: "Playlist saved successfully." });
           setSelected(new Set());
         } else {
-          alert("Failed to create playlist");
+          setNotice({ type: "error", text: "Failed to create playlist." });
         }
       } else if (selectedPlaylistId) {
         // Get existing tracks and append
@@ -130,39 +141,40 @@ export default function ActivityToPlaylistPage() {
             body: JSON.stringify({ tracks: mergedIds }),
           });
           if (response.ok) {
-            setSuccess(true);
+            setNotice({ type: "success", text: "Playlist saved successfully." });
             setSelected(new Set());
           } else {
-            alert("Failed to update playlist");
+            setNotice({ type: "error", text: "Failed to update playlist." });
           }
+        } else {
+          setNotice({ type: "error", text: "Couldn’t load the selected playlist." });
         }
       }
     } catch (error) {
       console.error("Save error:", error);
-      alert("An error occurred");
+      setNotice({ type: "error", text: "An error occurred while saving the playlist." });
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-[#F2F2F2] dark:bg-background">
-      <div className="container mx-auto px-6 py-12 max-w-6xl">
-        <div className="mb-12">
-          <Link
-            href="/dashboard"
-            className="inline-flex items-center gap-2 text-[#666666] dark:text-muted-foreground hover:text-[#FF5500] transition mb-6"
+    <div className="min-h-screen bg-background">
+      <div className="container mx-auto px-6 py-6 max-w-6xl">
+        <PageHeader
+          title="Activity → Playlist"
+          description="Select tracks from your activity feed and save them to a playlist."
+        />
+
+        {notice && (
+          <InlineAlert
+            variant={notice.type}
+            className="mb-6"
+            onDismiss={() => setNotice(null)}
           >
-            <ArrowLeft className="w-5 h-5" />
-            Back to Dashboard
-          </Link>
-          <h1 className="text-4xl md:text-5xl font-bold mb-4 text-[#333333] dark:text-foreground">
-            Activity → Playlist
-          </h1>
-          <p className="text-lg text-[#666666] dark:text-muted-foreground">
-            Select tracks from your activity feed and save them to a playlist.
-          </p>
-        </div>
+            {notice.text}
+          </InlineAlert>
+        )}
 
         {loading ? (
           <div className="bg-white dark:bg-card rounded-2xl p-12 border-2 border-gray-200 dark:border-border flex items-center justify-center">
@@ -183,12 +195,12 @@ export default function ActivityToPlaylistPage() {
               <div className="flex items-center gap-3 mb-4">
                 <div className="relative flex-1">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#999999] dark:text-muted-foreground" />
-                  <input
+                  <Input
                     type="text"
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                     placeholder="Search tracks..."
-                    className="w-full pl-10 pr-3 py-2 border-2 border-gray-200 dark:border-border rounded-lg text-sm text-[#333333] dark:text-foreground bg-gray-50 dark:bg-secondary/20 focus:border-[#FF5500] focus:outline-none"
+                    className="pl-10"
                   />
                 </div>
                 <button
@@ -204,32 +216,15 @@ export default function ActivityToPlaylistPage() {
                   const track = activity.origin;
                   const isSelected = selected.has(track.id);
                   return (
-                    <button
+                    <TrackRow
                       key={track.id}
-                      onClick={() => toggleTrack(track.id)}
-                      className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all text-left ${
-                        isSelected
-                          ? "bg-[#FF5500]/10 border-2 border-[#FF5500]/30"
-                          : "bg-gray-50 dark:bg-secondary/20 border-2 border-transparent hover:border-gray-200 dark:hover:border-border"
-                      }`}
-                    >
-                      <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${
-                        isSelected ? "bg-[#FF5500] text-white" : "bg-gray-200 dark:bg-secondary"
-                      }`}>
-                        {isSelected && <Check className="w-3.5 h-3.5" />}
-                      </div>
-                      <img
-                        src={track.artwork_url || "/SC Toolkit Icon.png"}
-                        alt={track.title}
-                        className="w-10 h-10 rounded-lg object-cover"
-                      />
-                      <div className="flex-1 min-w-0">
-                        <div className="font-semibold text-[#333333] dark:text-foreground text-sm truncate">{track.title}</div>
-                        <div className="text-xs text-[#666666] dark:text-muted-foreground truncate">
-                          {track.user?.username} • {formatDuration(track.duration)}
-                        </div>
-                      </div>
-                    </button>
+                      track={{
+                        ...track,
+                        subtitle: `${track.user?.username || "Unknown"} • ${formatDuration(track.duration)}`,
+                      }}
+                      isSelected={isSelected}
+                      onToggle={() => toggleTrack(track.id)}
+                    />
                   );
                 })}
               </div>
@@ -286,16 +281,10 @@ export default function ActivityToPlaylistPage() {
                 </select>
               )}
 
-              {success && (
-                <div className="bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 rounded-lg p-3 mb-4 text-sm text-green-700 dark:text-green-400">
-                  ✓ Playlist saved successfully!
-                </div>
-              )}
-
-              <button
+              <Button
                 onClick={handleSave}
                 disabled={saving || selected.size === 0 || (mode === "existing" && !selectedPlaylistId)}
-                className="w-full px-4 py-2.5 rounded-lg bg-[#FF5500] text-white font-semibold hover:bg-[#E64D00] transition disabled:opacity-50 flex items-center justify-center gap-2"
+                className="w-full"
               >
                 {saving ? (
                   <>
@@ -308,7 +297,7 @@ export default function ActivityToPlaylistPage() {
                     Save to Playlist
                   </>
                 )}
-              </button>
+              </Button>
             </div>
           </div>
         )}

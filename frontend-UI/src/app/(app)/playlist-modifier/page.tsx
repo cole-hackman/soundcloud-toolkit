@@ -22,6 +22,7 @@ import {
   EmptyState,
   InlineAlert,
   LoadingSpinner,
+  PageContainer,
   PageHeader,
   Skeleton,
 } from "@/components/ui";
@@ -346,8 +347,7 @@ export default function PlaylistModifierPage() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="container mx-auto px-6 py-6 max-w-6xl">
+    <PageContainer maxWidth="wide">
         <PageHeader
           title="Playlist Modifier"
           description="Reorder, remove, move, or duplicate tracks between your playlists."
@@ -648,7 +648,6 @@ export default function PlaylistModifierPage() {
             </div>
           </div>
         )}
-      </div>
 
       {transfer && selectedPlaylist && (
         <div
@@ -773,6 +772,6 @@ export default function PlaylistModifierPage() {
           }))}
         />
       </ConfirmDialog>
-    </div>
+    </PageContainer>
   );
 }

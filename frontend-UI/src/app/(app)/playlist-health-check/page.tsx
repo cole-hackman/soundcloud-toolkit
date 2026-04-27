@@ -9,6 +9,7 @@ import {
   EmptyState,
   InlineAlert,
   LoadingSpinner,
+  PageContainer,
   PageHeader,
   Skeleton,
 } from "@/components/ui";
@@ -158,8 +159,7 @@ export default function PlaylistHealthCheckPage() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="container mx-auto px-6 py-6 max-w-6xl">
+    <PageContainer maxWidth="wide">
         <PageHeader
           title="Playlist Health Check"
           description="Scan your playlists for blocked, preview-only, or unavailable tracks."
@@ -363,7 +363,6 @@ export default function PlaylistHealthCheckPage() {
             </div>
           </div>
         )}
-      </div>
       <ConfirmDialog
         open={showRemoveConfirm}
         title="Remove unavailable tracks?"
@@ -386,6 +385,6 @@ export default function PlaylistHealthCheckPage() {
             }))}
         />
       </ConfirmDialog>
-    </div>
+    </PageContainer>
   );
 }

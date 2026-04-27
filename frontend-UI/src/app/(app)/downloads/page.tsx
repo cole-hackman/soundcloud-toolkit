@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { ArrowLeft, Download, Heart, ListMusic, Trash2, X, CheckSquare, Search } from "lucide-react";
 import { apiFetch } from "@/lib/api";
-import { Button, BulkReviewDetails, ConfirmDialog, EmptyState, Input, LoadingSpinner, TrackRow } from "@/components/ui";
+import { Button, BulkReviewDetails, ConfirmDialog, EmptyState, Input, LoadingSpinner, PageContainer, PageHeader, TrackRow } from "@/components/ui";
 
 interface Playlist {
   id: number;
@@ -52,6 +52,11 @@ export default function DownloadsPage() {
   useEffect(() => {
     fetchPlaylists();
     fetchLikesCount();
+  }, []);
+
+  useEffect(() => {
+    const urlParam = new URLSearchParams(window.location.search).get("url");
+    if (urlParam) setSourceSearch(urlParam);
   }, []);
 
   const fetchPlaylists = async () => {
@@ -232,24 +237,11 @@ export default function DownloadsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#F2F2F2] dark:bg-background">
-      <div className="container mx-auto px-6 py-6 max-w-5xl">
-        {/* Header */}
-        <div className="mb-6">
-          <Link
-            href="/dashboard"
-            className="lg:hidden inline-flex items-center gap-2 text-[#666666] dark:text-muted-foreground hover:text-[#FF5500] transition mb-4"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            Back to Dashboard
-          </Link>
-          <h1 className="text-2xl md:text-3xl font-bold mb-2 text-[#333333] dark:text-foreground">
-            Downloads
-          </h1>
-          <p className="text-sm text-[#666666] dark:text-muted-foreground">
-            Find downloadable tracks in your library.
-          </p>
-        </div>
+    <PageContainer maxWidth="default">
+        <PageHeader
+          title="Downloads"
+          description="Find downloadable tracks in your library."
+        />
 
         {!selectedSource ? (
           /* Source Selection */
@@ -511,7 +503,6 @@ export default function DownloadsPage() {
             </div>
           </div>
         )}
-      </div>
 
       <ConfirmDialog
         open={showRemoveConfirm}
@@ -535,6 +526,6 @@ export default function DownloadsPage() {
             }))}
         />
       </ConfirmDialog>
-    </div>
+    </PageContainer>
   );
 }

@@ -9,6 +9,12 @@ describe('soundcloud client behaviors', () => {
 
   beforeEach(() => {
     global.fetch = jest.fn();
+    jest.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+    jest.restoreAllMocks();
   });
 
   test('refreshes on 401 and retries once', async () => {
@@ -53,6 +59,18 @@ describe('soundcloud client behaviors', () => {
 
     await expect(request).rejects.toThrow('API request failed: 429');
     expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  test('refreshes download token only once on repeated 401 responses', async () => {
+    fetch
+      .mockReturnValueOnce(Promise.resolve(new Response('', { status: 401 })))
+      .mockReturnValueOnce(Promise.resolve(new Response(JSON.stringify({ access_token: 'new', refresh_token: 'r2' }), { status: 200 })))
+      .mockReturnValueOnce(Promise.resolve(new Response('', { status: 401 })));
+
+    await expect(
+      soundcloudClient.getDownloadLink('old', 'r1', 'https://api.soundcloud.com/tracks/123/download')
+    ).rejects.toThrow('Download request failed: 401');
+    expect(fetch).toHaveBeenCalledTimes(3);
   });
 });
 

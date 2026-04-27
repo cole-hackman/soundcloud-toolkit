@@ -8,6 +8,7 @@ import {
   EmptyState,
   InlineAlert,
   LoadingSpinner,
+  PageContainer,
   PageHeader,
   SelectionBanner,
 } from "@/components/ui";
@@ -229,8 +230,7 @@ export default function FollowingManagerPage() {
     });
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className={`container mx-auto px-6 py-6 max-w-6xl ${selected.size > 0 ? "pb-28" : ""}`}>
+    <PageContainer maxWidth="wide" className={selected.size > 0 ? "pb-28" : ""}>
         <PageHeader
           title="Following Manager"
           description="Browse and manage who you follow. Unfollow accounts in bulk."
@@ -374,7 +374,6 @@ export default function FollowingManagerPage() {
             </div>
           </div>
         )}
-      </div>
       <SelectionBanner
         count={selected.size}
         entityName="user"
@@ -406,6 +405,6 @@ export default function FollowingManagerPage() {
             }))}
         />
       </ConfirmDialog>
-    </div>
+    </PageContainer>
   );
 }

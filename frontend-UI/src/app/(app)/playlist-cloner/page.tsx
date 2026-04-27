@@ -3,7 +3,7 @@
 import { useEffect, useState, FormEvent } from "react";
 import { CopyPlus, ArrowRight, Music, Link as LinkIcon, Loader2, Link2 } from "lucide-react";
 import { apiFetch } from "@/lib/api";
-import { Button, Card, CardContent, CardHeader, InlineAlert, Input, PageHeader, ResultPanel } from "@/components/ui";
+import { Button, Card, CardContent, CardHeader, InlineAlert, Input, PageContainer, PageHeader, ResultPanel } from "@/components/ui";
 
 interface ClonedPlaylist {
   id?: number | string;
@@ -65,8 +65,7 @@ export default function PlaylistClonerPage() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="container mx-auto max-w-4xl px-6 py-6">
+    <PageContainer maxWidth="narrow">
       <PageHeader
         title="Playlist Cloner"
         description="Paste a public playlist link to clone it into your own account."
@@ -196,7 +195,6 @@ export default function PlaylistClonerPage() {
           </div>
         </ResultPanel>
       )}
-      </div>
-    </div>
+    </PageContainer>
   );
 }

@@ -11,11 +11,12 @@ import {
   Check,
 } from "lucide-react";
 import {
-  ConfirmDialog,
   BulkReviewDetails,
+  ConfirmDialog,
   EmptyState,
   InlineAlert,
   LoadingSpinner,
+  PageContainer,
   PageHeader,
   SelectionBanner,
 } from "@/components/ui";
@@ -147,8 +148,7 @@ export default function RepostManagerPage() {
     });
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className={`container mx-auto px-6 py-6 max-w-6xl ${selected.size > 0 ? "pb-28" : ""}`}>
+    <PageContainer maxWidth="wide" className={selected.size > 0 ? "pb-28" : ""}>
         <PageHeader
           title="Repost Manager"
           description="Browse, search, and manage your reposted tracks and playlists. Remove in bulk."
@@ -284,7 +284,6 @@ export default function RepostManagerPage() {
             </div>
           </div>
         )}
-      </div>
       <SelectionBanner
         count={selected.size}
         entityName="repost"
@@ -316,6 +315,6 @@ export default function RepostManagerPage() {
             }))}
         />
       </ConfirmDialog>
-    </div>
+    </PageContainer>
   );
 }

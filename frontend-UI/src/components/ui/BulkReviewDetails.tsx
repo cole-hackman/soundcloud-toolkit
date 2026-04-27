@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "./Button";
+import { downloadCsv } from "@/lib/csv";
 
 interface BulkReviewItem {
   id: string | number;
@@ -13,10 +14,6 @@ interface BulkReviewDetailsProps {
   items: BulkReviewItem[];
   warning?: string;
   exportFilename?: string;
-}
-
-function csvEscape(value: string) {
-  return `"${value.replace(/"/g, '""')}"`;
 }
 
 export function BulkReviewDetails({
@@ -37,14 +34,7 @@ export function BulkReviewDetails({
         item.meta || "",
       ]),
     ];
-    const csv = rows.map((row) => row.map(csvEscape).join(",")).join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = exportFilename || "selected-items.csv";
-    link.click();
-    URL.revokeObjectURL(url);
+    downloadCsv(exportFilename || "selected-items.csv", rows);
   };
 
   return (

@@ -3,7 +3,7 @@
 import { useMemo, useState, type ReactNode } from "react";
 import NextLink from "next/link";
 import { Link2, ExternalLink, Music, Users, ListMusic, Loader2, X, Download, Search, RotateCcw, Copy } from "lucide-react";
-import { Button, EmptyState, InlineAlert, PageHeader, ResultPanel } from "@/components/ui";
+import { Button, EmptyState, InlineAlert, PageContainer, PageHeader, ResultPanel } from "@/components/ui";
 import { formatCompactNumber, formatDuration, useBatchResolver, type BatchResolveRow } from "@/lib/resolver";
 
 export default function BatchLinkResolverPage() {
@@ -114,8 +114,7 @@ export default function BatchLinkResolverPage() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="container mx-auto px-6 py-6 max-w-4xl">
+    <PageContainer maxWidth="narrow">
         <PageHeader
           title="Batch Link Resolver"
           description="Paste up to 50 SoundCloud URLs to resolve them all at once."
@@ -224,8 +223,7 @@ export default function BatchLinkResolverPage() {
             />
           </div>
         )}
-      </div>
-    </div>
+    </PageContainer>
   );
 }
 

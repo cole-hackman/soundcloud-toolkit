@@ -8,6 +8,7 @@ import {
   InlineAlert,
   BulkReviewDetails,
   LoadingSpinner,
+  PageContainer,
   PageHeader,
   SelectionBanner,
   TrackRow,
@@ -164,8 +165,7 @@ export default function LikeManagerPage() {
     });
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className={`container mx-auto max-w-6xl px-6 py-6 ${selected.size > 0 ? "pb-28" : ""}`}>
+    <PageContainer maxWidth="wide" className={selected.size > 0 ? "pb-28" : ""}>
         <PageHeader
           title="Like Manager"
           description="Browse, search, and manage your liked tracks. Unlike in bulk."
@@ -249,7 +249,6 @@ export default function LikeManagerPage() {
             </div>
           </div>
         )}
-      </div>
       <SelectionBanner
         count={selected.size}
         entityName="track"
@@ -281,6 +280,6 @@ export default function LikeManagerPage() {
             }))}
         />
       </ConfirmDialog>
-    </div>
+    </PageContainer>
   );
 }

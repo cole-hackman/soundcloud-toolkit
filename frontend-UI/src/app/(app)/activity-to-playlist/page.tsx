@@ -8,6 +8,7 @@ import {
   InlineAlert,
   Input,
   LoadingSpinner,
+  PageContainer,
   PageHeader,
   TrackRow,
 } from "@/components/ui";
@@ -156,8 +157,7 @@ export default function ActivityToPlaylistPage() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="container mx-auto px-6 py-6 max-w-6xl">
+    <PageContainer maxWidth="wide">
         <PageHeader
           title="Activity → Playlist"
           description="Select tracks from your activity feed and save them to a playlist."
@@ -186,7 +186,7 @@ export default function ActivityToPlaylistPage() {
             />
           </div>
         ) : (
-          <div className="grid lg:grid-cols-3 gap-6">
+          <div className="grid lg:grid-cols-3 gap-8">
             {/* Track list */}
             <div className="lg:col-span-2 bg-white dark:bg-card rounded-2xl p-6 border-2 border-gray-200 dark:border-border">
               <div className="flex items-center gap-3 mb-4">
@@ -228,7 +228,7 @@ export default function ActivityToPlaylistPage() {
             </div>
 
             {/* Save panel */}
-            <div className="bg-white dark:bg-card rounded-2xl p-6 border-2 border-gray-200 dark:border-border h-fit sticky top-6">
+            <div className="bg-white dark:bg-card rounded-2xl p-6 border-2 border-gray-200 dark:border-border h-fit sticky top-24">
               <h2 className="text-lg font-bold text-[#333333] dark:text-foreground mb-4">
                 Save to Playlist
               </h2>
@@ -298,7 +298,6 @@ export default function ActivityToPlaylistPage() {
             </div>
           </div>
         )}
-      </div>
-    </div>
+    </PageContainer>
   );
 }

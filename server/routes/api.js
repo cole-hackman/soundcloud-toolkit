@@ -223,10 +223,14 @@ router.get('/library/audit', authenticateUser, heavyOperationRateLimiter, async 
   try {
     const limit = Math.min(Math.max(Number(req.query.limit) || 20, 1), 50);
     const playlistPage = await soundcloudClient.getPlaylists(req.accessToken, req.refreshToken, limit, 0);
-    const playlists = playlistPage.collection || playlistPage || [];
+    const playlists = Array.isArray(playlistPage?.collection)
+      ? playlistPage.collection
+      : Array.isArray(playlistPage)
+        ? playlistPage
+        : [];
     const fullPlaylists = [];
 
-    for (const playlist of playlists.slice(0, limit)) {
+    for (const playlist of playlists) {
       try {
         const full = await soundcloudClient.getPlaylistWithTracks(req.accessToken, req.refreshToken, playlist.id);
         fullPlaylists.push(full);

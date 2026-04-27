@@ -1,3 +1,6 @@
+const PLAYLIST_CAP = 500;
+const NEAR_PLAYLIST_CAP = 450;
+
 function isUnavailable(track) {
   return track?.access === 'blocked' || track?.access === 'preview' || track?.streamable === false || Boolean(track?.blocked_at);
 }
@@ -12,17 +15,17 @@ export function analyzePlaylistForAudit(playlist) {
   let purchaseLinks = 0;
 
   for (const track of tracks) {
-    if (!track?.id) continue;
-
-    if (seen.has(track.id)) {
-      duplicateTracks += 1;
-      issues.push({
-        type: 'duplicate',
-        trackId: track.id,
-        title: track.title,
-      });
-    } else {
-      seen.add(track.id);
+    if (track?.id != null) {
+      if (seen.has(track.id)) {
+        duplicateTracks += 1;
+        issues.push({
+          type: 'duplicate',
+          trackId: track.id,
+          title: track.title,
+        });
+      } else {
+        seen.add(track.id);
+      }
     }
 
     if (isUnavailable(track)) {
@@ -43,19 +46,21 @@ export function analyzePlaylistForAudit(playlist) {
     }
   }
 
+  const totalTracks = tracks.length || playlist.track_count || 0;
+
   return {
     id: playlist.id,
     title: playlist.title,
-    trackCount: tracks.length || playlist.track_count || 0,
+    trackCount: totalTracks,
     permalink_url: playlist.permalink_url,
     artwork_url: playlist.artwork_url,
     summary: {
-      totalTracks: tracks.length,
+      totalTracks,
       duplicateTracks,
       unavailableTracks,
       directDownloads,
       purchaseLinks,
-      nearCap: tracks.length >= 450,
+      nearCap: totalTracks >= NEAR_PLAYLIST_CAP && totalTracks <= PLAYLIST_CAP,
     },
     issues,
   };

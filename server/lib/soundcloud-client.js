@@ -83,7 +83,16 @@ class SoundCloudClient {
     const newTokens = await this.refreshTokens(refreshToken);
     const context = getTokenContext();
 
-    if (context?.userId && newTokens.access_token && newTokens.refresh_token) {
+    if (!context?.userId) {
+      console.warn('Token refresh completed without user context; refreshed tokens were not persisted', {
+        hasAccessToken: Boolean(newTokens.access_token),
+        hasRefreshToken: Boolean(newTokens.refresh_token),
+        expiresIn: newTokens.expires_in,
+      });
+      return newTokens;
+    }
+
+    if (newTokens.access_token && newTokens.refresh_token) {
       const expiresAt = new Date(Date.now() + ((newTokens.expires_in || 3600) * 1000));
       await prisma.token.update({
         where: { userId: context.userId },
@@ -620,7 +629,7 @@ class SoundCloudClient {
    * Get the final download link for a track
    * Handles the redirect manually to ensure we get the final URL
    */
-  async getDownloadLink(accessToken, refreshToken, downloadUrl) {
+  async getDownloadLink(accessToken, refreshToken, downloadUrl, triedRefresh = false) {
     // Only allow SoundCloud API download URLs to prevent SSRF / token leakage
     try {
       const u = new URL(downloadUrl);
@@ -628,7 +637,7 @@ class SoundCloudClient {
       if (u.protocol !== 'https:' || host !== 'api.soundcloud.com') {
         throw new Error('Invalid download URL');
       }
-      if (!/^\/tracks\/\d+\/download(\?|$)/.test(u.pathname)) {
+      if (!/^\/tracks\/\d+\/download$/.test(u.pathname)) {
         throw new Error('Invalid download path');
       }
     } catch (e) {
@@ -666,10 +675,10 @@ class SoundCloudClient {
         // Let's assume correct auth gets us a redirect.
     }
 
-    if (res.status === 401) {
+    if (res.status === 401 && !triedRefresh) {
         // Try refreshing
         const refreshed = await this.refreshTokensAndPersist(refreshToken);
-        return this.getDownloadLink(refreshed.access_token, refreshed.refresh_token || refreshToken, downloadUrl);
+        return this.getDownloadLink(refreshed.access_token, refreshed.refresh_token || refreshToken, downloadUrl, true);
     }
     
     throw new Error(`Download request failed: ${res.status}`);

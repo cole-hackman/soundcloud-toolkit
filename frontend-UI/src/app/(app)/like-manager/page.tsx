@@ -6,13 +6,13 @@ import {
   ConfirmDialog,
   EmptyState,
   InlineAlert,
+  BulkReviewDetails,
   LoadingSpinner,
   PageHeader,
   SelectionBanner,
   TrackRow,
 } from "@/components/ui";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "";
+import { apiFetch } from "@/lib/api";
 
 interface Track {
   id: number;
@@ -47,9 +47,7 @@ export default function LikeManagerPage() {
 
   const fetchLikes = async () => {
     try {
-      const response = await fetch(`${API_BASE}/api/likes?limit=200`, {
-        credentials: "include",
-      });
+      const response = await apiFetch("/api/likes");
       if (response.ok) {
         const data = await response.json();
         const collection = data.collection || [];
@@ -109,10 +107,9 @@ export default function LikeManagerPage() {
     setNotice(null);
     try {
       const trackIds = Array.from(selected);
-      const response = await fetch(`${API_BASE}/api/likes/tracks/bulk-unlike`, {
+      const response = await apiFetch("/api/likes/tracks/bulk-unlike", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        credentials: "include",
         body: JSON.stringify({ trackIds }),
       });
       if (response.ok) {
@@ -270,7 +267,20 @@ export default function LikeManagerPage() {
         variant="destructive"
         onConfirm={executeBulkUnlike}
         onCancel={() => setShowUnlikeConfirm(false)}
-      />
+      >
+        <BulkReviewDetails
+          action="unliking"
+          warning="SoundCloud does not provide a reliable undo for bulk unlikes. Export the selection if you want a record first."
+          exportFilename="tracks-to-unlike.csv"
+          items={likes
+            .filter((like) => selected.has(like.track.id))
+            .map((like) => ({
+              id: like.track.id,
+              label: like.track.title,
+              meta: like.track.user?.username,
+            }))}
+        />
+      </ConfirmDialog>
     </div>
   );
 }

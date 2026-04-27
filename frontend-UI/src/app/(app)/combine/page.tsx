@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { ArrowLeft, X, Combine, Check, Music, Trash2, AlertTriangle } from "lucide-react";
 import { apiFetch } from "@/lib/api";
-import { ConfirmDialog, EmptyState, LoadingSpinner, Skeleton } from "@/components/ui";
+import { BulkReviewDetails, ConfirmDialog, EmptyState, LoadingSpinner, Skeleton } from "@/components/ui";
 
 interface Playlist {
   id: number;
@@ -534,21 +534,16 @@ export default function CombinePlaylistsPage() {
         onConfirm={executeMerge}
         onCancel={() => setShowDeleteConfirm(false)}
       >
-        <ul className="space-y-1.5">
-          {selectedPlaylists.map((p) => (
-            <li key={p.id} className="flex items-center gap-2 text-sm text-[#333333] dark:text-foreground">
-              <img
-                src={p.artwork_url || p.coverUrl || "/SC Toolkit Icon.png"}
-                alt={p.title}
-                className="w-7 h-7 rounded object-cover shrink-0"
-              />
-              {p.title}
-            </li>
-          ))}
-        </ul>
-        <p className="text-xs text-[#999999] dark:text-muted-foreground mt-1">
-          This cannot be undone. The merge proceeds even if some deletions fail.
-        </p>
+        <BulkReviewDetails
+          action="merging and deleting"
+          warning="This cannot be undone. The merge proceeds even if some deletions fail."
+          exportFilename="playlists-to-delete-after-merge.csv"
+          items={selectedPlaylists.map((playlist) => ({
+            id: playlist.id,
+            label: playlist.title,
+            meta: `${playlist.track_count} tracks`,
+          }))}
+        />
       </ConfirmDialog>
 
       {/* ── PLAYLIST PICKER MODAL ──────────────────────────────────────────── */}

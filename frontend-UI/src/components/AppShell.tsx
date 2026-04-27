@@ -29,6 +29,7 @@ import {
   Repeat,
   Activity,
   Music,
+  ArrowRightLeft,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/contexts/ThemeContext";
@@ -56,12 +57,14 @@ function isGroup(entry: NavEntry): entry is NavGroup {
 const NAV: NavEntry[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/downloads", label: "Downloads", icon: Download },
+  { href: "/library-audit", label: "Library Audit", icon: ListChecks },
   {
     label: "Playlists",
     items: [
       { href: "/combine", label: "Combine Playlists", icon: Combine },
       { href: "/playlist-modifier", label: "Playlist Modifier", icon: Shuffle },
       { href: "/playlist-cloner", label: "Playlist Cloner", icon: Copy },
+      { href: "/playlist-compare", label: "Playlist Compare", icon: ArrowRightLeft },
       { href: "/playlist-health-check", label: "Health Check", icon: Stethoscope },
     ],
   },

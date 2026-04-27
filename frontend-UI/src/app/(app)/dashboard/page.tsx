@@ -20,6 +20,8 @@ import {
   Copy,
   Repeat,
   Activity,
+  ListMusic,
+  Star,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Card, EmptyState, Input, Skeleton } from "@/components/ui";
@@ -272,10 +274,10 @@ export default function DashboardPage() {
 
   const statsData = useMemo(
     () => [
-      { label: "Playlists", value: stats?.playlist_count ?? 0, icon: "📋" },
-      { label: "Liked tracks", value: stats?.public_favorites_count ?? 0, icon: "❤️" },
-      { label: "Following", value: stats?.followings_count ?? 0, icon: "👥" },
-      { label: "Followers", value: stats?.followers_count ?? 0, icon: "⭐" },
+      { label: "Playlists", value: stats?.playlist_count ?? 0, icon: ListMusic, link: "/combine" },
+      { label: "Liked tracks", value: stats?.public_favorites_count ?? 0, icon: Heart, link: "/like-manager" },
+      { label: "Following", value: stats?.followings_count ?? 0, icon: Users, link: "/following-manager" },
+      { label: "Followers", value: stats?.followers_count ?? 0, icon: Star, link: null },
     ],
     [stats]
   );
@@ -368,20 +370,29 @@ export default function DashboardPage() {
                     <Skeleton className="mx-auto h-3 w-20" />
                   </Card>
                 ))
-              : statsData.map((stat, index) => (
-                  <Card
-                    key={index}
-                    className="p-3 sm:p-4 text-center hover:-translate-y-0.5"
-                  >
-                    <div className="text-lg mb-1">{stat.icon}</div>
-                    <div className="text-xl sm:text-2xl font-bold mb-0.5 text-[#333333] dark:text-foreground">
-                      {stat.value.toLocaleString()}
-                    </div>
-                    <div className="text-[11px] font-medium text-[#999999] dark:text-muted-foreground uppercase tracking-wide">
-                      {stat.label}
-                    </div>
-                  </Card>
-                ))}
+              : statsData.map((stat, index) => {
+                  const cardContent = (
+                    <Card
+                      key={index}
+                      className={`p-3 sm:p-4 text-center hover:-translate-y-0.5 ${stat.link ? "cursor-pointer" : ""}`}
+                    >
+                      <div className="w-8 h-8 rounded-lg bg-[#FF5500]/10 dark:bg-[#FF5500]/15 flex items-center justify-center mb-2 mx-auto">
+                        <stat.icon className="w-4 h-4 text-[#FF5500]" />
+                      </div>
+                      <div className="text-xl sm:text-2xl font-bold mb-0.5 text-[#333333] dark:text-foreground">
+                        {stat.value.toLocaleString()}
+                      </div>
+                      <div className="text-[11px] font-medium text-[#999999] dark:text-muted-foreground uppercase tracking-wide">
+                        {stat.label}
+                      </div>
+                    </Card>
+                  );
+                  return stat.link ? (
+                    <Link key={index} href={stat.link}>{cardContent}</Link>
+                  ) : (
+                    <div key={index}>{cardContent}</div>
+                  );
+                })}
           </div>
         )}
 
@@ -396,7 +407,7 @@ export default function DashboardPage() {
                 <Link
                   key={slug}
                   href={RECENT_PATHS[slug] || "#"}
-                  className="px-3 py-1.5 rounded-lg bg-white dark:bg-card border border-gray-200 dark:border-border hover:border-[#FF5500]/50 dark:hover:border-[#FF5500]/50 text-[#555555] dark:text-muted-foreground text-xs font-medium transition shadow-sm"
+                  className="px-3 py-2 rounded-lg bg-white dark:bg-card border border-gray-300 dark:border-border hover:border-[#FF5500]/50 dark:hover:border-[#FF5500]/50 text-[#333333] dark:text-foreground hover:text-[#FF5500] text-sm font-medium transition shadow-sm"
                 >
                   {RECENT_LABELS[slug] || slug}
                 </Link>
@@ -419,6 +430,11 @@ export default function DashboardPage() {
         </div>
 
         {/* Quick Actions - Feature Cards */}
+        {!toolQuery && (
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-[#999999] dark:text-muted-foreground mb-3">
+            All Tools
+          </h2>
+        )}
         {filteredFeatures.length === 0 ? (
           <Card className="p-6">
             <EmptyState title="No tools match your search" description="Try a different keyword." />

@@ -1,10 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
-import { ArrowLeft, Search, Check, Plus, Music, ChevronDown } from "lucide-react";
+import { Search, Plus, Music, ChevronDown, X } from "lucide-react";
 import { apiFetch } from "@/lib/api";
-import { Button, EmptyState, LoadingSpinner, SelectionBanner, TrackRow } from "@/components/ui";
+import {
+  Button,
+  EmptyState,
+  InlineAlert,
+  LoadingSpinner,
+  PageHeader,
+  SelectionBanner,
+  TrackRow,
+} from "@/components/ui";
 
 const COMMON_GENRES = [
   "house", "techno", "ambient", "hip-hop", "drum-and-bass",
@@ -64,6 +71,7 @@ export default function GenreSearchPage() {
   const [loadingPlaylists, setLoadingPlaylists] = useState(false);
   const [adding, setAdding] = useState(false);
   const [addSuccess, setAddSuccess] = useState("");
+  const [addError, setAddError] = useState("");
 
   const buildSearchParams = () => {
     const params = new URLSearchParams();
@@ -118,9 +126,11 @@ export default function GenreSearchPage() {
         const data = await res.json();
         setResults((prev) => [...prev, ...(data.collection || [])]);
         setNextHref(data.next_href || null);
+      } else {
+        setSearchError("Couldn’t load more tracks. Please try again.");
       }
     } catch {
-      // silently fail load more
+      setSearchError("Couldn’t load more tracks. Please try again.");
     } finally {
       setLoadingMore(false);
     }
@@ -154,6 +164,7 @@ export default function GenreSearchPage() {
   const handleOpenAddPanel = () => {
     setShowAddPanel(true);
     setAddSuccess("");
+    setAddError("");
     if (addMode === "existing") fetchUserPlaylists();
   };
 
@@ -163,6 +174,7 @@ export default function GenreSearchPage() {
     if (!canAdd) return;
 
     setAdding(true);
+    setAddError("");
     try {
       const body: Record<string, unknown> = {
         trackIds: Array.from(selectedTracks),
@@ -186,34 +198,22 @@ export default function GenreSearchPage() {
         setSelectedTracks(new Set());
         setPlaylistName("");
       } else {
-        alert(typeof data?.error === "string" ? data.error : "Failed to add tracks.");
+        setAddError(typeof data?.error === "string" ? data.error : "Failed to add tracks.");
       }
     } catch {
-      alert("An error occurred. Please try again.");
+      setAddError("An error occurred. Please try again.");
     } finally {
       setAdding(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-[#F2F2F2] dark:bg-background">
-      <div className={`container mx-auto max-w-5xl px-6 py-12 ${selectedTracks.size > 0 ? "pb-28" : ""}`}>
-        {/* Header */}
-        <div className="mb-10">
-          <Link
-            href="/dashboard"
-            className="inline-flex items-center gap-2 text-[#666666] dark:text-muted-foreground hover:text-[#FF5500] transition mb-6"
-          >
-            <ArrowLeft className="w-5 h-5" />
-            Back to Dashboard
-          </Link>
-          <h1 className="text-4xl md:text-5xl font-bold mb-3 text-[#333333] dark:text-foreground">
-            Genre Search
-          </h1>
-          <p className="text-lg text-[#666666] dark:text-muted-foreground">
-            Discover tracks by genre or tag and add them to your playlists.
-          </p>
-        </div>
+    <div className="min-h-screen bg-background">
+      <div className={`container mx-auto max-w-5xl px-6 py-6 ${selectedTracks.size > 0 ? "pb-28" : ""}`}>
+        <PageHeader
+          title="Genre Search"
+          description="Discover tracks by genre or tag and add them to your playlists."
+        />
 
         {/* Search Form */}
         <div className="bg-white dark:bg-card rounded-2xl p-6 border-2 border-gray-200 dark:border-border mb-8">
@@ -310,7 +310,9 @@ export default function GenreSearchPage() {
           )}
 
           {searchError && (
-            <p className="text-sm text-red-500 mb-3">{searchError}</p>
+            <InlineAlert variant="error" className="mb-3" onDismiss={() => setSearchError("")}>
+              {searchError}
+            </InlineAlert>
           )}
 
           <Button
@@ -337,10 +339,9 @@ export default function GenreSearchPage() {
           <>
             {/* Add success banner */}
             {addSuccess && (
-              <div className="flex items-center gap-2 bg-green-50 dark:bg-green-900/20 border-2 border-green-200 dark:border-green-800 rounded-xl px-4 py-3 mb-4">
-                <Check className="w-4 h-4 text-green-600 dark:text-green-400 shrink-0" />
-                <span className="text-sm text-green-700 dark:text-green-400">{addSuccess}</span>
-              </div>
+              <InlineAlert variant="success" className="mb-4" onDismiss={() => setAddSuccess("")}>
+                {addSuccess}
+              </InlineAlert>
             )}
 
             {results.length === 0 && !searching ? (
@@ -410,11 +411,18 @@ export default function GenreSearchPage() {
                 </h3>
                 <button
                   onClick={() => setShowAddPanel(false)}
-                  className="text-[#999999] hover:text-[#333333] dark:hover:text-foreground transition text-xl leading-none"
+                  className="rounded-lg p-1.5 text-muted-foreground transition hover:bg-surface-hover hover:text-foreground"
+                  aria-label="Close"
                 >
-                  ×
+                  <X className="h-4 w-4" />
                 </button>
               </div>
+
+              {addError && (
+                <InlineAlert variant="error" onDismiss={() => setAddError("")}>
+                  {addError}
+                </InlineAlert>
+              )}
 
               {/* Mode toggle */}
               <div className="flex rounded-lg border-2 border-gray-200 dark:border-border overflow-hidden">
@@ -491,6 +499,7 @@ export default function GenreSearchPage() {
       </div>
       <SelectionBanner
         count={selectedTracks.size}
+        entityName="track"
         actionLabel="Add to Playlist"
         onAction={handleOpenAddPanel}
         actionIcon={<Plus className="h-4 w-4" />}

@@ -109,7 +109,7 @@ export default function LoginPage() {
                     </div>
                     <Link
                       href="/"
-                      className="hidden items-center gap-1 rounded-full border border-border/70 bg-surface/70 px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground sm:inline-flex"
+                      className="hidden items-center gap-1 rounded-lg border border-border/70 bg-surface/70 px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground sm:inline-flex"
                     >
                       Home
                       <ArrowUpRight className="h-3.5 w-3.5" />
@@ -173,7 +173,7 @@ export default function LoginPage() {
                       type="button"
                       onClick={prewarmAndLogin}
                       disabled={apiUnreachable || prewarming}
-                      className="h-12 w-full rounded-2xl px-6 text-sm shadow-elevation-2 hover:shadow-glow-sm sm:h-13 sm:text-base"
+                      className="h-12 w-full rounded-lg px-6 text-sm shadow-elevation-2 hover:shadow-glow-sm sm:h-13 sm:text-base"
                     >
                       {prewarming ? (
                         <span className="inline-flex items-center gap-2">

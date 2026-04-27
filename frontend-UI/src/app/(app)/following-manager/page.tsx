@@ -1,9 +1,15 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import Link from "next/link";
-import { ArrowLeft, Users, Search, UserMinus, Loader2, Check, ExternalLink } from "lucide-react";
-import { EmptyState, LoadingSpinner } from "@/components/ui";
+import { Users, Search, UserMinus, Loader2, Check, ExternalLink } from "lucide-react";
+import {
+  ConfirmDialog,
+  EmptyState,
+  InlineAlert,
+  LoadingSpinner,
+  PageHeader,
+  SelectionBanner,
+} from "@/components/ui";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "";
 
@@ -30,6 +36,8 @@ export default function FollowingManagerPage() {
   const [followers, setFollowers] = useState<Set<number>>(new Set());
   const [filterMode, setFilterMode] = useState<"all" | "not-following-back">("all");
   const [progress, setProgress] = useState<{ current: number; total: number } | null>(null);
+  const [showUnfollowConfirm, setShowUnfollowConfirm] = useState(false);
+  const [notice, setNotice] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   useEffect(() => {
     fetchFollowings();
@@ -52,8 +60,12 @@ export default function FollowingManagerPage() {
         const followerIds = new Set<number>((data.collection || []).map((u: Following) => u.id));
         setFollowers(followerIds);
       }
+      if (!followingsRes.ok) {
+        setNotice({ type: "error", text: "Couldn’t load the accounts you follow. Try refreshing the page." });
+      }
     } catch (error) {
       console.error("Failed to fetch data:", error);
+      setNotice({ type: "error", text: "Couldn’t load your social data. Try refreshing the page." });
     } finally {
       setLoading(false);
     }
@@ -78,10 +90,14 @@ export default function FollowingManagerPage() {
 
   const handleBulkUnfollow = async () => {
     if (selected.size === 0) return;
-    if (!confirm(`Unfollow ${selected.size} user${selected.size > 1 ? "s" : ""}? This cannot be undone.`)) return;
+    setShowUnfollowConfirm(true);
+  };
 
+  const executeBulkUnfollow = async () => {
+    setShowUnfollowConfirm(false);
     setRemoving(true);
     setProgress({ current: 0, total: selected.size });
+    setNotice(null);
     
     // Chunk size for bulk operations (SoundCloud API limit usually 50-100)
     // We use smaller chunks to be safe and show progress
@@ -130,17 +146,23 @@ export default function FollowingManagerPage() {
         });
 
         if (successfullyRemoved.size < allUserIds.length) {
-          alert(`Unfollowed ${successfullyRemoved.size} users. Some failed.`);
+          setNotice({
+            type: "error",
+            text: `Unfollowed ${successfullyRemoved.size} of ${allUserIds.length} users. Some failed.`,
+          });
         } else {
-          // Success toast or just clear selection (already done above)
+          setNotice({
+            type: "success",
+            text: `Unfollowed ${successfullyRemoved.size} user${successfullyRemoved.size === 1 ? "" : "s"}.`,
+          });
         }
       } else {
-        alert("Bulk unfollow failed completely");
+        setNotice({ type: "error", text: "Bulk unfollow failed. Please try again." });
       }
 
     } catch (error) {
       console.error("Bulk unfollow error:", error);
-      alert("An error occurred during bulk unfollow");
+      setNotice({ type: "error", text: "An error occurred during bulk unfollow." });
     } finally {
       setRemoving(false);
       setProgress(null);
@@ -208,23 +230,22 @@ export default function FollowingManagerPage() {
     });
 
   return (
-    <div className="min-h-screen bg-[#F2F2F2] dark:bg-background">
-      <div className="container mx-auto px-6 py-12 max-w-6xl">
-        <div className="mb-12">
-          <Link
-            href="/dashboard"
-            className="inline-flex items-center gap-2 text-[#666666] dark:text-muted-foreground hover:text-[#FF5500] transition mb-6"
+    <div className="min-h-screen bg-background">
+      <div className={`container mx-auto px-6 py-6 max-w-6xl ${selected.size > 0 ? "pb-28" : ""}`}>
+        <PageHeader
+          title="Following Manager"
+          description="Browse and manage who you follow. Unfollow accounts in bulk."
+        />
+
+        {notice && (
+          <InlineAlert
+            variant={notice.type}
+            className="mb-6"
+            onDismiss={() => setNotice(null)}
           >
-            <ArrowLeft className="w-5 h-5" />
-            Back to Dashboard
-          </Link>
-          <h1 className="text-4xl md:text-5xl font-bold mb-4 text-[#333333] dark:text-foreground">
-            Following Manager
-          </h1>
-          <p className="text-lg text-[#666666] dark:text-muted-foreground">
-            Browse and manage who you follow. Unfollow accounts in bulk.
-          </p>
-        </div>
+            {notice.text}
+          </InlineAlert>
+        )}
 
         {loading ? (
           <div className="bg-white dark:bg-card rounded-2xl p-12 border-2 border-gray-200 dark:border-border flex items-center justify-center">
@@ -291,32 +312,6 @@ export default function FollowingManagerPage() {
               </button>
             </div>
 
-            {/* Action bar */}
-            {selected.size > 0 && (
-              <div className="flex items-center justify-between bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-900/30 rounded-xl p-3 mb-4">
-                <span className="text-sm font-medium text-red-700 dark:text-red-400">
-                  {selected.size} user{selected.size > 1 ? "s" : ""} selected
-                </span>
-                <button
-                  onClick={handleBulkUnfollow}
-                  disabled={removing}
-                  className="px-4 py-1.5 rounded-lg bg-red-500 text-white text-sm font-medium hover:bg-red-600 transition disabled:opacity-50 flex items-center gap-2"
-                >
-                  {removing ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      {progress ? `Unfollowing ${progress.current}/${progress.total}...` : "Unfollowing..."}
-                    </>
-                  ) : (
-                    <>
-                      <UserMinus className="w-4 h-4" />
-                      Unfollow Selected
-                    </>
-                  )}
-                </button>
-              </div>
-            )}
-
             <div className="text-sm text-[#999999] dark:text-muted-foreground mb-2">
               {filteredFollowings.length} of {followings.length} followings
             </div>
@@ -381,6 +376,24 @@ export default function FollowingManagerPage() {
           </div>
         )}
       </div>
+      <SelectionBanner
+        count={selected.size}
+        entityName="user"
+        actionLabel={progress ? `Unfollowing ${progress.current}/${progress.total}...` : "Unfollow Selected"}
+        actionVariant="destructive"
+        onAction={handleBulkUnfollow}
+        disabled={removing}
+        actionIcon={removing ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserMinus className="h-4 w-4" />}
+      />
+      <ConfirmDialog
+        open={showUnfollowConfirm}
+        title="Unfollow selected users?"
+        description={`Unfollow ${selected.size} user${selected.size === 1 ? "" : "s"}? This cannot be undone.`}
+        confirmLabel="Unfollow"
+        variant="destructive"
+        onConfirm={executeBulkUnfollow}
+        onCancel={() => setShowUnfollowConfirm(false)}
+      />
     </div>
   );
 }

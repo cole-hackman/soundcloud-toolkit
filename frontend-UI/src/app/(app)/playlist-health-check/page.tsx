@@ -1,9 +1,16 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import Link from "next/link";
 import { ArrowLeft, Stethoscope, Music, AlertTriangle, CheckCircle, Trash2 } from "lucide-react";
-import { EmptyState, LoadingSpinner } from "@/components/ui";
+import {
+  Button,
+  ConfirmDialog,
+  EmptyState,
+  InlineAlert,
+  LoadingSpinner,
+  PageHeader,
+  Skeleton,
+} from "@/components/ui";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "";
 
@@ -33,6 +40,8 @@ export default function PlaylistHealthCheckPage() {
   const [loadingTracks, setLoadingTracks] = useState(false);
   const [saving, setSaving] = useState(false);
   const [filter, setFilter] = useState<HealthFilter>("all");
+  const [showRemoveConfirm, setShowRemoveConfirm] = useState(false);
+  const [notice, setNotice] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   useEffect(() => {
     fetchPlaylists();
@@ -46,9 +55,12 @@ export default function PlaylistHealthCheckPage() {
       if (response.ok) {
         const data = await response.json();
         setPlaylists(data.collection || []);
+      } else {
+        setNotice({ type: "error", text: "Couldn’t load your playlists. Try refreshing the page." });
       }
     } catch (error) {
       console.error("Failed to fetch playlists:", error);
+      setNotice({ type: "error", text: "Couldn’t load your playlists. Try refreshing the page." });
     } finally {
       setLoading(false);
     }
@@ -64,9 +76,12 @@ export default function PlaylistHealthCheckPage() {
       if (response.ok) {
         const data = await response.json();
         setTracks(data.tracks || []);
+      } else {
+        setNotice({ type: "error", text: "Couldn’t load tracks for this playlist." });
       }
     } catch (error) {
       console.error("Failed to fetch tracks:", error);
+      setNotice({ type: "error", text: "Couldn’t load tracks for this playlist." });
     } finally {
       setLoadingTracks(false);
     }
@@ -103,10 +118,16 @@ export default function PlaylistHealthCheckPage() {
     if (!selectedPlaylist) return;
     const healthyTracks = tracks.filter(isHealthy);
     if (healthyTracks.length === tracks.length) return;
+    setShowRemoveConfirm(true);
+  };
 
-    if (!confirm(`Remove ${issueCount} unavailable track${issueCount > 1 ? "s" : ""} from "${selectedPlaylist.title}"?`)) return;
-
+  const executeRemoveDeadTracks = async () => {
+    if (!selectedPlaylist) return;
+    const healthyTracks = tracks.filter(isHealthy);
+    const removedCount = tracks.length - healthyTracks.length;
+    setShowRemoveConfirm(false);
     setSaving(true);
+    setNotice(null);
     try {
       const response = await fetch(
         `${API_BASE}/api/playlists/${selectedPlaylist.id}`,
@@ -119,13 +140,16 @@ export default function PlaylistHealthCheckPage() {
       );
       if (response.ok) {
         setTracks(healthyTracks);
-        alert(`Removed ${issueCount} unavailable tracks.`);
+        setNotice({
+          type: "success",
+          text: `Removed ${removedCount} unavailable track${removedCount === 1 ? "" : "s"}.`,
+        });
       } else {
-        alert("Failed to update playlist");
+        setNotice({ type: "error", text: "Failed to update playlist." });
       }
     } catch (error) {
       console.error("Error updating playlist:", error);
-      alert("An error occurred");
+      setNotice({ type: "error", text: "An error occurred while updating the playlist." });
     } finally {
       setSaving(false);
     }
@@ -138,24 +162,22 @@ export default function PlaylistHealthCheckPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#F2F2F2] dark:bg-background">
-      <div className="container mx-auto px-6 py-12 max-w-6xl">
-        {/* Header */}
-        <div className="mb-12">
-          <Link
-            href="/dashboard"
-            className="inline-flex items-center gap-2 text-[#666666] dark:text-muted-foreground hover:text-[#FF5500] transition mb-6"
+    <div className="min-h-screen bg-background">
+      <div className="container mx-auto px-6 py-6 max-w-6xl">
+        <PageHeader
+          title="Playlist Health Check"
+          description="Scan your playlists for blocked, preview-only, or unavailable tracks."
+        />
+
+        {notice && (
+          <InlineAlert
+            variant={notice.type}
+            className="mb-6"
+            onDismiss={() => setNotice(null)}
           >
-            <ArrowLeft className="w-5 h-5" />
-            Back to Dashboard
-          </Link>
-          <h1 className="text-4xl md:text-5xl font-bold mb-4 text-[#333333] dark:text-foreground">
-            Playlist Health Check
-          </h1>
-          <p className="text-lg text-[#666666] dark:text-muted-foreground">
-            Scan your playlists for blocked, preview-only, or unavailable tracks.
-          </p>
-        </div>
+            {notice.text}
+          </InlineAlert>
+        )}
 
         {!selectedPlaylist ? (
           /* Playlist Selection */
@@ -166,9 +188,9 @@ export default function PlaylistHealthCheckPage() {
             {loading ? (
               <div className="space-y-3">
                 {Array.from({ length: 5 }).map((_, i) => (
-                  <div
+                  <Skeleton
                     key={i}
-                    className="h-16 bg-gray-100 dark:bg-secondary/50 rounded-lg animate-pulse"
+                    className="h-16 rounded-lg bg-gray-100 dark:bg-secondary/50"
                   />
                 ))}
               </div>
@@ -213,19 +235,20 @@ export default function PlaylistHealthCheckPage() {
                     setSelectedPlaylist(null);
                     setTracks([]);
                   }}
-                  className="text-[#666666] dark:text-muted-foreground hover:text-[#FF5500] transition"
+                  className="inline-flex items-center gap-2 text-muted-foreground transition hover:text-primary"
                 >
-                  ← Back to playlists
+                  <ArrowLeft className="h-4 w-4" />
+                  Back to playlists
                 </button>
                 <h2 className="text-2xl font-bold text-[#333333] dark:text-foreground">
                   {selectedPlaylist.title}
                 </h2>
               </div>
               {issueCount > 0 && (
-                <button
+                <Button
                   onClick={removeDeadTracks}
                   disabled={saving}
-                  className="px-4 py-2 rounded-lg bg-red-500 text-white hover:bg-red-600 transition flex items-center gap-2 disabled:opacity-50"
+                  variant="destructive"
                 >
                   {saving ? (
                     <LoadingSpinner size="sm" className="w-4 h-4 border-white" />
@@ -233,7 +256,7 @@ export default function PlaylistHealthCheckPage() {
                     <Trash2 className="w-4 h-4" />
                   )}
                   Remove {issueCount} Dead Track{issueCount > 1 ? "s" : ""}
-                </button>
+                </Button>
               )}
             </div>
 
@@ -264,19 +287,20 @@ export default function PlaylistHealthCheckPage() {
             {!loadingTracks && tracks.length > 0 && (
               <div className="flex items-center gap-2 mb-4">
                 {([
-                  { key: "all" as HealthFilter, label: "All", count: tracks.length },
-                  { key: "healthy" as HealthFilter, label: "🟢 Healthy", count: healthyCount },
-                  { key: "issues" as HealthFilter, label: "⚠️ Issues", count: issueCount },
-                ]).map(({ key, label, count }) => (
+                  { key: "all" as HealthFilter, label: "All", count: tracks.length, icon: null },
+                  { key: "healthy" as HealthFilter, label: "Healthy", count: healthyCount, icon: CheckCircle },
+                  { key: "issues" as HealthFilter, label: "Issues", count: issueCount, icon: AlertTriangle },
+                ]).map(({ key, label, count, icon: Icon }) => (
                   <button
                     key={key}
                     onClick={() => setFilter(key)}
-                    className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all ${
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-all ${
                       filter === key
                         ? "bg-[#FF5500] text-white"
                         : "bg-gray-100 dark:bg-secondary/20 text-[#666666] dark:text-muted-foreground hover:bg-gray-200 dark:hover:bg-secondary/40"
                     }`}
                   >
+                    {Icon ? <Icon className="h-3.5 w-3.5" /> : null}
                     {label} ({count})
                   </button>
                 ))}
@@ -287,9 +311,9 @@ export default function PlaylistHealthCheckPage() {
               {loadingTracks ? (
                 <div className="space-y-3">
                   {Array.from({ length: 10 }).map((_, i) => (
-                    <div
+                    <Skeleton
                       key={i}
-                      className="h-16 bg-gray-100 dark:bg-secondary/50 rounded-lg animate-pulse"
+                      className="h-16 rounded-lg bg-gray-100 dark:bg-secondary/50"
                     />
                   ))}
                 </div>
@@ -344,6 +368,15 @@ export default function PlaylistHealthCheckPage() {
           </div>
         )}
       </div>
+      <ConfirmDialog
+        open={showRemoveConfirm}
+        title="Remove unavailable tracks?"
+        description={`Remove ${issueCount} unavailable track${issueCount === 1 ? "" : "s"} from "${selectedPlaylist?.title}"?`}
+        confirmLabel="Remove"
+        variant="destructive"
+        onConfirm={executeRemoveDeadTracks}
+        onCancel={() => setShowRemoveConfirm(false)}
+      />
     </div>
   );
 }

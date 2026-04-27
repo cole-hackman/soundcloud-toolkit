@@ -22,6 +22,7 @@ import {
   Activity,
   ListMusic,
   Star,
+  ArrowRightLeft,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Card, EmptyState, Input, Skeleton } from "@/components/ui";
@@ -59,6 +60,13 @@ const FEATURES: FeatureCard[] = [
     description: "Find downloadable tracks in your library",
     icon: Download,
     path: "/downloads",
+  },
+  {
+    id: "library-audit",
+    title: "Library Audit",
+    description: "Scan playlists for duplicates, unavailable tracks, and download links",
+    icon: ListChecks,
+    path: "/library-audit",
   },
   {
     id: "likes",
@@ -117,6 +125,13 @@ const FEATURES: FeatureCard[] = [
     path: "/playlist-cloner",
   },
   {
+    id: "playlist-compare",
+    title: "Playlist Compare",
+    description: "Compare two playlists for overlap and missing tracks",
+    icon: ArrowRightLeft,
+    path: "/playlist-compare",
+  },
+  {
     id: "genre-search",
     title: "Genre Search",
     description: "Discover tracks by genre or tag and add them to your playlists",
@@ -142,6 +157,7 @@ const FEATURES: FeatureCard[] = [
 const RECENT_LABELS: Record<string, string> = {
   combine: "Combine Playlists",
   downloads: "Downloads",
+  "library-audit": "Library Audit",
   likes: "Likes → Playlist",
   modifier: "Playlist Modifier",
   resolver: "Link Resolver",
@@ -150,6 +166,7 @@ const RECENT_LABELS: Record<string, string> = {
   "health-check": "Playlist Health Check",
   "batch-resolver": "Batch Link Resolver",
   "playlist-cloner": "Playlist Cloner",
+  "playlist-compare": "Playlist Compare",
   "genre-search": "Genre Search",
   "repost-manager": "Repost Manager",
   "activity-to-playlist": "Activity → Playlist",
@@ -158,6 +175,7 @@ const RECENT_LABELS: Record<string, string> = {
 const RECENT_PATHS: Record<string, string> = {
   combine: "/combine",
   downloads: "/downloads",
+  "library-audit": "/library-audit",
   likes: "/likes-to-playlist",
   modifier: "/playlist-modifier",
   resolver: "/link-resolver",
@@ -166,6 +184,7 @@ const RECENT_PATHS: Record<string, string> = {
   "health-check": "/playlist-health-check",
   "batch-resolver": "/batch-link-resolver",
   "playlist-cloner": "/playlist-cloner",
+  "playlist-compare": "/playlist-compare",
   "genre-search": "/genre-search",
   "repost-manager": "/repost-manager",
   "activity-to-playlist": "/activity-to-playlist",

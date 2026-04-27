@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, FormEvent } from "react";
+import { useEffect, useState, FormEvent } from "react";
 import { CopyPlus, ArrowRight, Music, Link as LinkIcon, Loader2, Link2 } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { Button, Card, CardContent, CardHeader, InlineAlert, Input, PageHeader, ResultPanel } from "@/components/ui";
@@ -20,6 +20,12 @@ export default function PlaylistClonerPage() {
   // Results
   const [resultPlaylists, setResultPlaylists] = useState<ClonedPlaylist[]>([]);
   const [stats, setStats] = useState<Record<string, unknown> | null>(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const initialUrl = params.get("url");
+    if (initialUrl) setUrl(initialUrl);
+  }, []);
 
   const handleClone = async (e: FormEvent) => {
     e.preventDefault();

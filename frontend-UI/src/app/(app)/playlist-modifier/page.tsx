@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import {
   Button,
+  BulkReviewDetails,
   ConfirmDialog,
   EmptyState,
   InlineAlert,
@@ -24,8 +25,7 @@ import {
   PageHeader,
   Skeleton,
 } from "@/components/ui";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "";
+import { apiFetch } from "@/lib/api";
 
 interface Playlist {
   id: number;
@@ -73,6 +73,7 @@ export default function PlaylistModifierPage() {
   const [banner, setBanner] = useState<BannerState>(null);
   const [trackToRemove, setTrackToRemove] = useState<number | null>(null);
   const [showSaveConfirm, setShowSaveConfirm] = useState(false);
+  const [downloadingTrackId, setDownloadingTrackId] = useState<number | null>(null);
 
   const filteredTracks = tracks.filter((t) => {
     if (trackFilter === "downloadable") return Boolean(t.downloadable) || t.downloadable === "true";
@@ -115,9 +116,7 @@ export default function PlaylistModifierPage() {
   const fetchPlaylists = async () => {
     try {
       setLoadError(false);
-      const response = await fetch(`${API_BASE}/api/playlists`, {
-        credentials: "include",
-      });
+      const response = await apiFetch("/api/playlists");
       if (response.ok) {
         const data = await response.json();
         const coll: Playlist[] = data.collection || [];
@@ -142,10 +141,7 @@ export default function PlaylistModifierPage() {
     setLoadingTracks(true);
     setTracksError(false);
     try {
-      const response = await fetch(
-        `${API_BASE}/api/playlists/${playlistId}`,
-        { credentials: "include" }
-      );
+      const response = await apiFetch(`/api/playlists/${playlistId}`);
       if (response.ok) {
         const data = await response.json();
         setTracks(data.tracks || []);
@@ -210,9 +206,8 @@ export default function PlaylistModifierPage() {
 
     setTransferLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/playlists/transfer-track`, {
+      const res = await apiFetch("/api/playlists/transfer-track", {
         method: "POST",
-        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: transfer.action,
@@ -303,15 +298,11 @@ export default function PlaylistModifierPage() {
     setShowSaveConfirm(false);
     setSaving(true);
     try {
-      const response = await fetch(
-        `${API_BASE}/api/playlists/${selectedPlaylist.id}`,
-        {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({ tracks: tracks.map((t) => t.id) }),
-        }
-      );
+      const response = await apiFetch(`/api/playlists/${selectedPlaylist.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tracks: tracks.map((t) => t.id) }),
+      });
       if (response.ok) {
         setBanner({ tone: "success", text: "Playlist saved successfully." });
       } else {
@@ -329,6 +320,29 @@ export default function PlaylistModifierPage() {
     const minutes = Math.floor(ms / 60000);
     const seconds = Math.floor((ms % 60000) / 1000);
     return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+  };
+
+  const handleDownload = async (track: Track) => {
+    if (!track.download_url) return;
+    setDownloadingTrackId(track.id);
+    try {
+      const response = await apiFetch(
+        `/api/proxy-download?format=json&url=${encodeURIComponent(track.download_url)}`
+      );
+      const data = await response.json().catch(() => null);
+      if (!response.ok || !data?.url) {
+        setBanner({
+          tone: "error",
+          text: data?.error || "SoundCloud did not provide a valid download link for this track.",
+        });
+        return;
+      }
+      window.open(data.url, "_blank", "noopener,noreferrer");
+    } catch {
+      setBanner({ tone: "error", text: "Could not start the download. Try again." });
+    } finally {
+      setDownloadingTrackId(null);
+    }
   };
 
   return (
@@ -531,16 +545,19 @@ export default function PlaylistModifierPage() {
                         <div className="font-semibold text-[#333333] dark:text-foreground truncate flex items-center gap-2">
                           {track.title}
                           {(Boolean(track.downloadable) || track.downloadable === "true") && track.download_url && (
-                            <a 
-                              href={track.download_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              onClick={(e) => e.stopPropagation()}
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDownload(track);
+                              }}
+                              onMouseDown={(e) => e.stopPropagation()}
+                              disabled={downloadingTrackId === track.id}
                               title="Download track" 
-                              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-xs font-medium flex-shrink-0 hover:bg-green-200 dark:hover:bg-green-900/50 transition"
+                              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-xs font-medium flex-shrink-0 hover:bg-green-200 dark:hover:bg-green-900/50 transition disabled:cursor-not-allowed disabled:opacity-60"
                             >
                               <Download className="w-3 h-3" /> DL
-                            </a>
+                            </button>
                           )}
                           {(Boolean(track.downloadable) || track.downloadable === "true") && !track.download_url && (
                             <span title="Downloadable (no direct link)" className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 text-xs font-medium flex-shrink-0">
@@ -724,7 +741,19 @@ export default function PlaylistModifierPage() {
         variant="destructive"
         onConfirm={executeRemoveTrack}
         onCancel={() => setTrackToRemove(null)}
-      />
+      >
+        <BulkReviewDetails
+          action="removing"
+          warning="This removes the track locally first. The playlist is not changed on SoundCloud until you save."
+          items={tracks
+            .filter((track) => track.id === trackToRemove)
+            .map((track) => ({
+              id: track.id,
+              label: track.title,
+              meta: track.user?.username,
+            }))}
+        />
+      </ConfirmDialog>
       <ConfirmDialog
         open={showSaveConfirm}
         title="Save playlist changes?"
@@ -732,7 +761,18 @@ export default function PlaylistModifierPage() {
         confirmLabel="Save Changes"
         onConfirm={executeSavePlaylist}
         onCancel={() => setShowSaveConfirm(false)}
-      />
+      >
+        <BulkReviewDetails
+          action="saving"
+          warning="This writes the visible playlist order to SoundCloud. Export the current track list first if you want a record."
+          exportFilename="playlist-save-review.csv"
+          items={tracks.map((track, index) => ({
+            id: track.id,
+            label: `${index + 1}. ${track.title}`,
+            meta: track.user?.username,
+          }))}
+        />
+      </ConfirmDialog>
     </div>
   );
 }

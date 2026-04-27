@@ -3,6 +3,7 @@ import { decrypt } from '../lib/crypto.js';
 import prisma from '../lib/prisma.js';
 import logger from '../lib/logger.js';
 import { safeError } from '../lib/safe-error.js';
+import { runWithTokenContext } from '../lib/token-context.js';
 
 /**
  * Middleware to authenticate requests via signed session cookie.
@@ -47,7 +48,7 @@ export async function authenticateUser(req, res, next) {
     req.accessToken = accessToken;
     req.refreshToken = refreshToken;
 
-    next();
+    runWithTokenContext({ userId: user.id }, next);
   } catch (error) {
     logger.error('Authentication error:', safeError(error));
     res.status(401).json({ error: 'Authentication failed' });

@@ -17,6 +17,8 @@ const ACTION_NAMES = {
   'batch-resolve': 'Batch Resolve',
   'proxy-download': 'Proxy Download',
   'bulk-remove-reposts': 'Remove Reposts',
+  'library-audit': 'Library Audit',
+  'playlist-compare': 'Playlist Compare',
 };
 
 const ACTION_COLORS = {
@@ -29,6 +31,8 @@ const ACTION_COLORS = {
   'batch-resolve': '#F19A0F',
   'proxy-download': '#4DA6FF',
   'bulk-remove-reposts': '#E74C3C',
+  'library-audit': '#16A34A',
+  'playlist-compare': '#7C3AED',
 };
 
 function periodToCutoff(period) {

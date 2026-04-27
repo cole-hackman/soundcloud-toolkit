@@ -12,14 +12,14 @@ import {
 } from "lucide-react";
 import {
   ConfirmDialog,
+  BulkReviewDetails,
   EmptyState,
   InlineAlert,
   LoadingSpinner,
   PageHeader,
   SelectionBanner,
 } from "@/components/ui";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "";
+import { apiFetch } from "@/lib/api";
 
 interface Repost {
   id: number;
@@ -51,9 +51,7 @@ export default function RepostManagerPage() {
   const fetchReposts = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`${API_BASE}/api/reposts`, {
-        credentials: "include",
-      });
+      const response = await apiFetch("/api/reposts");
       if (response.ok) {
         const data = await response.json();
         setReposts(data.collection || []);
@@ -99,10 +97,9 @@ export default function RepostManagerPage() {
         .filter((r) => selected.has(r.id))
         .map((r) => ({ id: r.id, resourceType: r.resourceType }));
 
-      const response = await fetch(`${API_BASE}/api/reposts/bulk-remove`, {
+      const response = await apiFetch("/api/reposts/bulk-remove", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        credentials: "include",
         body: JSON.stringify({ items }),
       });
 
@@ -305,7 +302,20 @@ export default function RepostManagerPage() {
         variant="destructive"
         onConfirm={executeBulkRemove}
         onCancel={() => setShowRemoveConfirm(false)}
-      />
+      >
+        <BulkReviewDetails
+          action="removing reposts"
+          warning="Removed reposts are no longer visible on your profile. Export the selection if you need a record."
+          exportFilename="reposts-to-remove.csv"
+          items={reposts
+            .filter((repost) => selected.has(repost.id))
+            .map((repost) => ({
+              id: repost.id,
+              label: repost.title,
+              meta: `${repost.resourceType} by ${repost.user?.username || "Unknown"}`,
+            }))}
+        />
+      </ConfirmDialog>
     </div>
   );
 }

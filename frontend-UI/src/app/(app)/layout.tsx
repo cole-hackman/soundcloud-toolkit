@@ -7,6 +7,8 @@ import { AppShell } from "@/components/AppShell";
 
 const TOOL_SLUGS: Record<string, string> = {
   "/combine": "combine",
+  "/library-audit": "library-audit",
+  "/downloads": "downloads",
   "/likes-to-playlist": "likes",
   "/playlist-modifier": "modifier",
   "/link-resolver": "resolver",
@@ -15,6 +17,10 @@ const TOOL_SLUGS: Record<string, string> = {
   "/following-manager": "following-manager",
   "/playlist-health-check": "health-check",
   "/batch-link-resolver": "batch-resolver",
+  "/playlist-cloner": "playlist-cloner",
+  "/playlist-compare": "playlist-compare",
+  "/genre-search": "genre-search",
+  "/repost-manager": "repost-manager",
 };
 
 const LAST_TOOLS_KEY = "sc-toolkit-last-tools";

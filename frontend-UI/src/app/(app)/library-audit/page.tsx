@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { AlertTriangle, CheckCircle, Download, ListChecks, RefreshCw } from "lucide-react";
 import { apiFetch } from "@/lib/api";
+import { downloadCsv } from "@/lib/csv";
 import { Button, EmptyState, InlineAlert, LoadingSpinner, PageHeader } from "@/components/ui";
 
 interface AuditPlaylist {
@@ -72,14 +73,7 @@ export default function LibraryAuditPage() {
         playlist.summary.nearCap ? "yes" : "no",
       ]),
     ];
-    const csv = rows.map((row) => row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(",")).join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "library-audit.csv";
-    link.click();
-    URL.revokeObjectURL(url);
+    downloadCsv("library-audit.csv", rows);
   };
 
   return (

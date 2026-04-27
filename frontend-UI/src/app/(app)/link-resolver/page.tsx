@@ -4,7 +4,7 @@ import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import NextLink from "next/link";
 import { Link as LinkIcon, Search, ExternalLink, Copy, Download, ShoppingBag } from "lucide-react";
-import { Button, InlineAlert, Input, LoadingSpinner, PageHeader, ResultPanel } from "@/components/ui";
+import { Button, InlineAlert, Input, LoadingSpinner, PageContainer, PageHeader, ResultPanel } from "@/components/ui";
 import type { ResolverResource } from "@/lib/resolver";
 import { formatCompactNumber, formatDate, formatDuration, parseTagList, useSingleResolver } from "@/lib/resolver";
 
@@ -78,8 +78,7 @@ function LinkResolverContent() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="container mx-auto px-6 py-6 max-w-4xl">
+    <PageContainer maxWidth="narrow">
         <PageHeader
           title="Link Resolver"
           description="Get detailed information from any SoundCloud URL."
@@ -212,6 +211,22 @@ function LinkResolverContent() {
                     Next actions
                   </div>
                   <div className="flex flex-wrap gap-2">
+                    {resource.type === "track" && resource.permalink_url && (
+                      <NextLink
+                        href="/downloads"
+                        className="rounded-lg border border-gray-200 px-3 py-2 text-sm text-[#333333] hover:border-[#FF5500] hover:text-[#FF5500] dark:border-border dark:text-foreground"
+                      >
+                        Open downloads tool
+                      </NextLink>
+                    )}
+                    {resource.type === "track" && resource.id && (
+                      <NextLink
+                        href={`/likes-to-playlist?id=${encodeURIComponent(String(resource.id))}`}
+                        className="rounded-lg border border-gray-200 px-3 py-2 text-sm text-[#333333] hover:border-[#FF5500] hover:text-[#FF5500] dark:border-border dark:text-foreground"
+                      >
+                        Add this liked track
+                      </NextLink>
+                    )}
                     {resource.type === "playlist" && resource.permalink_url && (
                       <NextLink
                         href={`/playlist-cloner?url=${encodeURIComponent(resource.permalink_url)}`}
@@ -226,22 +241,6 @@ function LinkResolverContent() {
                         className="rounded-lg border border-gray-200 px-3 py-2 text-sm text-[#333333] hover:border-[#FF5500] hover:text-[#FF5500] dark:border-border dark:text-foreground"
                       >
                         Check playlist health
-                      </NextLink>
-                    )}
-                    {resource.type === "track" && (
-                      <NextLink
-                        href="/downloads"
-                        className="rounded-lg border border-gray-200 px-3 py-2 text-sm text-[#333333] hover:border-[#FF5500] hover:text-[#FF5500] dark:border-border dark:text-foreground"
-                      >
-                        Check download availability
-                      </NextLink>
-                    )}
-                    {resource.type === "track" && (
-                      <NextLink
-                        href="/likes-to-playlist"
-                        className="rounded-lg border border-gray-200 px-3 py-2 text-sm text-[#333333] hover:border-[#FF5500] hover:text-[#FF5500] dark:border-border dark:text-foreground"
-                      >
-                        Add tracks to playlist
                       </NextLink>
                     )}
                     {resource.type === "user" && resource.permalink_url && (
@@ -270,8 +269,7 @@ function LinkResolverContent() {
             </details>
           </ResultPanel>
         )}
-      </div>
-    </div>
+    </PageContainer>
   );
 }
 
@@ -286,7 +284,7 @@ function StatCard({ label, value }: { label: string; value: string }) {
 
 export default function LinkResolverPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-background flex items-center justify-center"><LoadingSpinner /></div>}>
+    <Suspense fallback={<div className="flex items-center justify-center py-24"><LoadingSpinner /></div>}>
       <LinkResolverContent />
     </Suspense>
   );

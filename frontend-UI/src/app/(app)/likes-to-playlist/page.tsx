@@ -9,6 +9,7 @@ import {
   EmptyState,
   InlineAlert,
   LoadingSpinner,
+  PageContainer,
   PageHeader,
   ResultPanel,
   Skeleton,
@@ -41,6 +42,7 @@ interface CreatedPlaylist {
 type AddMode = "new" | "existing";
 
 export default function LikesToPlaylistPage() {
+  const [prefillTrackId, setPrefillTrackId] = useState<number | null>(null);
   const [likes, setLikes] = useState<Track[]>([]);
   const [selectedTracks, setSelectedTracks] = useState<Set<number>>(new Set());
   const [playlistName, setPlaylistName] = useState("");
@@ -65,6 +67,18 @@ export default function LikesToPlaylistPage() {
   useEffect(() => {
     fetchLikes();
   }, []);
+
+  useEffect(() => {
+    const idParam = new URLSearchParams(window.location.search).get("id");
+    const trackId = idParam ? Number(idParam) : NaN;
+    if (Number.isInteger(trackId)) setPrefillTrackId(trackId);
+  }, []);
+
+  useEffect(() => {
+    if (prefillTrackId != null && likes.some((track) => track.id === prefillTrackId)) {
+      setSelectedTracks(new Set([prefillTrackId]));
+    }
+  }, [likes, prefillTrackId]);
 
   // Fetch user playlists when switching to "existing" mode
   useEffect(() => {
@@ -174,7 +188,7 @@ export default function LikesToPlaylistPage() {
     const isExisting = addMode === "existing";
 
     return (
-      <div className="min-h-screen flex items-center justify-center px-6 py-6 bg-background">
+      <div className="flex items-center justify-center px-6 py-6">
         <div className="max-w-2xl w-full text-center">
           <ResultPanel tone="success" className="p-5">
             <div className="w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-6 bg-gradient-to-br from-[#22c55e] to-[#16a34a] shadow-lg">
@@ -252,8 +266,7 @@ export default function LikesToPlaylistPage() {
 
   // ── MAIN PAGE ───────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-background">
-      <div className="container mx-auto px-6 py-6 max-w-6xl">
+    <PageContainer maxWidth="wide">
         <PageHeader
           title="Likes → Playlist"
           description="Convert your liked tracks into an organized playlist."
@@ -444,7 +457,6 @@ export default function LikesToPlaylistPage() {
             </div>
           </div>
         </div>
-      </div>
 
       {/* ── PLAYLIST PICKER MODAL ──────────────────────────────────────────── */}
       {showPlaylistPicker && (
@@ -515,6 +527,6 @@ export default function LikesToPlaylistPage() {
           </div>
         </div>
       )}
-    </div>
+    </PageContainer>
   );
 }

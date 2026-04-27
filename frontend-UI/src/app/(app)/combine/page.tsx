@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { ArrowLeft, X, Combine, Check, Music, Trash2, AlertTriangle } from "lucide-react";
 import { apiFetch } from "@/lib/api";
-import { EmptyState, LoadingSpinner, Skeleton } from "@/components/ui";
+import { ConfirmDialog, EmptyState, LoadingSpinner, Skeleton } from "@/components/ui";
 
 interface Playlist {
   id: number;
@@ -29,6 +29,7 @@ export default function CombinePlaylistsPage() {
   const [userPlaylists, setUserPlaylists] = useState<Playlist[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
+  const [mergeError, setMergeError] = useState<string | null>(null);
   const [result, setResult] = useState<{
     playlists?: { title: string }[];
     playlist?: { title: string };
@@ -100,6 +101,7 @@ export default function CombinePlaylistsPage() {
 
   const executeMerge = async () => {
     setShowDeleteConfirm(false);
+    setMergeError(null);
     setIsProcessing(true);
     try {
       const body: Record<string, unknown> = {
@@ -124,7 +126,7 @@ export default function CombinePlaylistsPage() {
         setIsComplete(true);
       } else {
         const error = await response.json().catch(() => ({}));
-        alert(
+        setMergeError(
           typeof error?.error === "string"
             ? error.error
             : "Failed to merge playlists. Please try again."
@@ -132,7 +134,7 @@ export default function CombinePlaylistsPage() {
       }
     } catch (error) {
       console.error("Error merging playlists:", error);
-      alert("An error occurred. Please try again.");
+      setMergeError("An error occurred. Please try again.");
     } finally {
       setIsProcessing(false);
     }
@@ -233,67 +235,23 @@ export default function CombinePlaylistsPage() {
     );
   }
 
-  // ── DELETE CONFIRMATION DIALOG ──────────────────────────────────────────────
-  if (showDeleteConfirm) {
-    return (
-      <div className="min-h-screen flex items-center justify-center px-6 py-12 bg-[#F2F2F2] dark:bg-background">
-        <div className="max-w-md w-full bg-white dark:bg-card rounded-2xl p-8 shadow-xl border-2 border-gray-200 dark:border-border">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="w-10 h-10 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
-              <Trash2 className="w-5 h-5 text-red-600 dark:text-red-400" />
-            </div>
-            <h2 className="text-xl font-bold text-[#333333] dark:text-foreground">Confirm Deletion</h2>
-          </div>
-          <p className="text-[#666666] dark:text-muted-foreground mb-4">
-            After merging, the following source playlists will be permanently deleted:
-          </p>
-          <ul className="mb-6 space-y-1">
-            {selectedPlaylists.map((p) => (
-              <li key={p.id} className="text-sm text-[#333333] dark:text-foreground flex items-center gap-2">
-                <Trash2 className="w-3.5 h-3.5 text-red-500 shrink-0" />
-                {p.title}
-              </li>
-            ))}
-          </ul>
-          <p className="text-xs text-[#999999] dark:text-muted-foreground mb-6">
-            This action cannot be undone. The merge will proceed even if some deletions fail.
-          </p>
-          <div className="flex gap-3">
-            <button
-              onClick={() => setShowDeleteConfirm(false)}
-              className="flex-1 py-3 rounded-lg font-semibold border-2 border-gray-200 dark:border-border text-[#333333] dark:text-foreground hover:border-[#FF5500] transition"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={executeMerge}
-              className="flex-1 py-3 rounded-lg font-semibold bg-red-600 hover:bg-red-700 text-white transition"
-            >
-              Merge &amp; Delete
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   // ── MAIN PAGE ───────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-[#F2F2F2] dark:bg-background">
-      <div className="container mx-auto px-6 py-12 max-w-6xl">
+      <div className="container mx-auto px-6 py-5 max-w-6xl">
         {/* Header */}
-        <div className="mb-12">
+        <div className="mb-6">
           <Link
             href="/dashboard"
-            className="inline-flex items-center gap-2 text-[#666666] dark:text-muted-foreground hover:text-[#FF5500] transition mb-6"
+            className="lg:hidden inline-flex items-center gap-2 text-[#666666] dark:text-muted-foreground hover:text-[#FF5500] transition mb-4"
           >
-            <ArrowLeft className="w-5 h-5" />
+            <ArrowLeft className="w-4 h-4" />
             Back to Dashboard
           </Link>
-          <h1 className="text-4xl md:text-5xl font-bold mb-4 text-[#333333] dark:text-foreground">
+          <h1 className="text-2xl md:text-3xl font-bold mb-2 text-[#333333] dark:text-foreground">
             Combine Playlists
           </h1>
-          <p className="text-lg text-[#666666] dark:text-muted-foreground">
+          <p className="text-sm text-[#666666] dark:text-muted-foreground">
             Select playlists to merge. Duplicates will be automatically removed.
           </p>
         </div>
@@ -332,7 +290,8 @@ export default function CombinePlaylistsPage() {
                   description="Create some playlists on SoundCloud first."
                 />
               ) : (
-                <div className="space-y-2 max-h-[500px] overflow-y-auto">
+                <div className="relative">
+                <div className="space-y-2 max-h-[500px] overflow-y-auto pr-1">
                   {userPlaylists.map((playlist) => {
                     const isSelected = selectedPlaylists.some(
                       (p) => Number(p.id) === Number(playlist.id)
@@ -374,6 +333,8 @@ export default function CombinePlaylistsPage() {
                     );
                   })}
                 </div>
+                <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-white dark:from-card to-transparent rounded-b-xl" />
+                </div>
               )}
             </div>
           </div>
@@ -399,14 +360,19 @@ export default function CombinePlaylistsPage() {
                     {selectedPlaylists.map((playlist) => (
                       <div
                         key={playlist.id}
-                        className="flex items-center justify-between p-2 bg-gray-50 dark:bg-secondary/20 rounded-lg"
+                        className="flex items-center gap-2 p-2 bg-gray-50 dark:bg-secondary/20 rounded-lg"
                       >
+                        <img
+                          src={playlist.artwork_url || playlist.coverUrl || "/SC Toolkit Icon.png"}
+                          alt={playlist.title}
+                          className="w-7 h-7 rounded object-cover shrink-0"
+                        />
                         <span className="text-sm truncate flex-1 text-[#333333] dark:text-foreground">
                           {playlist.title}
                         </span>
                         <button
                           onClick={() => handlePlaylistToggle(playlist)}
-                          className="p-1 hover:bg-gray-200 dark:hover:bg-secondary/50 rounded"
+                          className="p-1 hover:bg-gray-200 dark:hover:bg-secondary/50 rounded shrink-0"
                         >
                           <X className="w-4 h-4 text-[#666666] dark:text-muted-foreground" />
                         </button>
@@ -528,6 +494,13 @@ export default function CombinePlaylistsPage() {
                 </label>
               )}
 
+              {/* Inline merge error */}
+              {mergeError && (
+                <div className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-900/30 rounded-lg px-4 py-3">
+                  {mergeError}
+                </div>
+              )}
+
               {/* Merge Button */}
               <button
                 onClick={handleMergeClick}
@@ -550,6 +523,33 @@ export default function CombinePlaylistsPage() {
           </div>
         </div>
       </div>
+
+      {/* ── DELETE CONFIRMATION DIALOG ─────────────────────────────────────── */}
+      <ConfirmDialog
+        open={showDeleteConfirm}
+        title="Confirm Deletion"
+        description="After merging, these source playlists will be permanently deleted:"
+        confirmLabel="Merge & Delete"
+        variant="destructive"
+        onConfirm={executeMerge}
+        onCancel={() => setShowDeleteConfirm(false)}
+      >
+        <ul className="space-y-1.5">
+          {selectedPlaylists.map((p) => (
+            <li key={p.id} className="flex items-center gap-2 text-sm text-[#333333] dark:text-foreground">
+              <img
+                src={p.artwork_url || p.coverUrl || "/SC Toolkit Icon.png"}
+                alt={p.title}
+                className="w-7 h-7 rounded object-cover shrink-0"
+              />
+              {p.title}
+            </li>
+          ))}
+        </ul>
+        <p className="text-xs text-[#999999] dark:text-muted-foreground mt-1">
+          This cannot be undone. The merge proceeds even if some deletions fail.
+        </p>
+      </ConfirmDialog>
 
       {/* ── PLAYLIST PICKER MODAL ──────────────────────────────────────────── */}
       {showPlaylistPicker && (

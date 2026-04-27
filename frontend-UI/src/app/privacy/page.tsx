@@ -1,9 +1,9 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
 
 export default function PrivacyPage() {
-  const router = useRouter();
   const lastUpdated = new Date().toLocaleDateString("en-US", {
     year: "numeric",
     month: "long",
@@ -11,28 +11,29 @@ export default function PrivacyPage() {
   });
 
   return (
-    <div className="min-h-screen bg-[#F2F2F2]">
-      <div className="max-w-4xl mx-auto px-6 py-20">
-        <article className="bg-white rounded-2xl p-8 md:p-12 shadow-lg">
+    <div className="min-h-screen bg-background text-foreground">
+      <div className="max-w-4xl mx-auto px-6 py-10 md:py-16">
+        <article className="rounded-xl border border-border bg-surface p-8 shadow-elevation-1 md:p-12 dark:glass-card">
           <div className="mb-6">
-            <button
-              onClick={() => router.back()}
-              className="text-[#FF5500] hover:text-[#E64A00] transition inline-flex items-center gap-2"
+            <Link
+              href="/"
+              className="inline-flex items-center gap-2 text-sm font-medium text-muted-foreground transition hover:text-primary"
             >
-              <span>←</span> Back
-            </button>
+              <ArrowLeft className="h-4 w-4" />
+              Home
+            </Link>
           </div>
 
-          <h1 className="text-4xl md:text-5xl font-bold mb-6 text-[#333333]">
+          <h1 className="text-3xl md:text-4xl font-bold mb-6 text-foreground">
             Privacy Policy
           </h1>
-          <p className="text-sm text-[#999999] mb-8">
+          <p className="text-sm text-muted-foreground mb-8">
             Last updated: {lastUpdated}
           </p>
 
-          <div className="space-y-8 text-[#666666] leading-relaxed">
+          <div className="space-y-8 text-muted-foreground leading-relaxed">
             <section>
-              <h2 className="text-2xl font-bold mb-4 text-[#333333]">
+              <h2 className="text-2xl font-bold mb-4 text-foreground">
                 Introduction
               </h2>
               <p>
@@ -46,7 +47,7 @@ export default function PrivacyPage() {
             </section>
 
             <section>
-              <h2 className="text-2xl font-bold mb-4 text-[#333333]">
+              <h2 className="text-2xl font-bold mb-4 text-foreground">
                 Authentication & Account Access
               </h2>
               <p>
@@ -56,7 +57,7 @@ export default function PrivacyPage() {
               </p>
               <ul className="list-disc list-inside space-y-2 ml-4 mt-2">
                 <li>
-                  We <strong className="text-[#333333]">never</strong> see,
+                  We <strong className="text-foreground">never</strong> see,
                   store, or have access to your SoundCloud password
                 </li>
                 <li>
@@ -74,7 +75,7 @@ export default function PrivacyPage() {
             </section>
 
             <section>
-              <h2 className="text-2xl font-bold mb-4 text-[#333333]">
+              <h2 className="text-2xl font-bold mb-4 text-foreground">
                 Data We Access
               </h2>
               <p>
@@ -83,32 +84,32 @@ export default function PrivacyPage() {
               </p>
               <ul className="list-disc list-inside space-y-2 ml-4 mt-2">
                 <li>
-                  <strong className="text-[#333333]">
+                  <strong className="text-foreground">
                     Read access to your playlists:
                   </strong>{" "}
                   To display and manage your playlists
                 </li>
                 <li>
-                  <strong className="text-[#333333]">
+                  <strong className="text-foreground">
                     Read access to your likes:
                   </strong>{" "}
                   To convert liked tracks into playlists
                 </li>
                 <li>
-                  <strong className="text-[#333333]">
+                  <strong className="text-foreground">
                     Write access to playlists:
                   </strong>{" "}
                   To create, modify, and organize playlists
                 </li>
                 <li>
-                  <strong className="text-[#333333]">
+                  <strong className="text-foreground">
                     Read access to your profile:
                   </strong>{" "}
                   To display your username and basic account information
                 </li>
               </ul>
               <p className="mt-4">
-                We do <strong className="text-[#333333]">not</strong> access
+                We do <strong className="text-foreground">not</strong> access
                 your private messages, comments, reposts, or any other
                 SoundCloud data beyond what is necessary for playlist
                 management.
@@ -116,7 +117,7 @@ export default function PrivacyPage() {
             </section>
 
             <section>
-              <h2 className="text-2xl font-bold mb-4 text-[#333333]">
+              <h2 className="text-2xl font-bold mb-4 text-foreground">
                 How We Store Your Data
               </h2>
               <p>
@@ -141,7 +142,7 @@ export default function PrivacyPage() {
             </section>
 
             <section>
-              <h2 className="text-2xl font-bold mb-4 text-[#333333]">
+              <h2 className="text-2xl font-bold mb-4 text-foreground">
                 Data Usage
               </h2>
               <p>We use your data solely to:</p>
@@ -155,7 +156,7 @@ export default function PrivacyPage() {
                 <li>Maintain your session while using the application</li>
               </ul>
               <p className="mt-4">
-                We do <strong className="text-[#333333]">not</strong>:
+                We do <strong className="text-foreground">not</strong>:
               </p>
               <ul className="list-disc list-inside space-y-2 ml-4 mt-2">
                 <li>Sell, rent, or share your data with third parties</li>
@@ -169,7 +170,7 @@ export default function PrivacyPage() {
             </section>
 
             <section>
-              <h2 className="text-2xl font-bold mb-4 text-[#333333]">
+              <h2 className="text-2xl font-bold mb-4 text-foreground">
                 Data Retention
               </h2>
               <p>
@@ -191,7 +192,7 @@ export default function PrivacyPage() {
             </section>
 
             <section>
-              <h2 className="text-2xl font-bold mb-4 text-[#333333]">
+              <h2 className="text-2xl font-bold mb-4 text-foreground">
                 Cookies & Session Management
               </h2>
               <p>
@@ -213,17 +214,17 @@ export default function PrivacyPage() {
             </section>
 
             <section>
-              <h2 className="text-2xl font-bold mb-4 text-[#333333]">
+              <h2 className="text-2xl font-bold mb-4 text-foreground">
                 Third-Party Services
               </h2>
               <p>SC Toolkit integrates with:</p>
               <ul className="list-disc list-inside space-y-2 ml-4 mt-2">
                 <li>
-                  <strong className="text-[#333333]">SoundCloud API:</strong>{" "}
+                  <strong className="text-foreground">SoundCloud API:</strong>{" "}
                   For authentication and playlist management
                 </li>
                 <li>
-                  <strong className="text-[#333333]">Vercel Analytics:</strong>{" "}
+                  <strong className="text-foreground">Vercel Analytics:</strong>{" "}
                   For anonymous usage analytics (no personal data collected)
                 </li>
               </ul>
@@ -234,7 +235,7 @@ export default function PrivacyPage() {
             </section>
 
             <section>
-              <h2 className="text-2xl font-bold mb-4 text-[#333333]">
+              <h2 className="text-2xl font-bold mb-4 text-foreground">
                 Your Rights
               </h2>
               <p>You have the right to:</p>
@@ -248,7 +249,7 @@ export default function PrivacyPage() {
             </section>
 
             <section>
-              <h2 className="text-2xl font-bold mb-4 text-[#333333]">
+              <h2 className="text-2xl font-bold mb-4 text-foreground">
                 Security Measures
               </h2>
               <p>
@@ -265,7 +266,7 @@ export default function PrivacyPage() {
             </section>
 
             <section>
-              <h2 className="text-2xl font-bold mb-4 text-[#333333]">
+              <h2 className="text-2xl font-bold mb-4 text-foreground">
                 Children&apos;s Privacy
               </h2>
               <p>
@@ -278,7 +279,7 @@ export default function PrivacyPage() {
             </section>
 
             <section>
-              <h2 className="text-2xl font-bold mb-4 text-[#333333]">
+              <h2 className="text-2xl font-bold mb-4 text-foreground">
                 Changes to This Policy
               </h2>
               <p>
@@ -291,7 +292,7 @@ export default function PrivacyPage() {
             </section>
 
             <section>
-              <h2 className="text-2xl font-bold mb-4 text-[#333333]">
+              <h2 className="text-2xl font-bold mb-4 text-foreground">
                 Contact Us
               </h2>
               <p>
@@ -302,9 +303,9 @@ export default function PrivacyPage() {
               </p>
             </section>
 
-            <div className="pt-6 border-t border-gray-200">
-              <p className="text-sm text-[#999999]">
-                <strong className="text-[#333333]">Disclaimer:</strong> SC
+            <div className="pt-6 border-t border-border">
+              <p className="text-sm text-muted-foreground">
+                <strong className="text-foreground">Disclaimer:</strong> SC
                 Toolkit is not affiliated with, endorsed by, or connected to
                 SoundCloud. This is an independent tool created to enhance the
                 SoundCloud user experience. Your use of SC Toolkit is subject to

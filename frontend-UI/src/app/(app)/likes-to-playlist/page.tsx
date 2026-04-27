@@ -2,9 +2,18 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { ArrowLeft, Check, Plus, Music, X } from "lucide-react";
+import { Check, Plus, Music, X } from "lucide-react";
 import { apiFetch } from "@/lib/api";
-import { Button, EmptyState, LoadingSpinner, TrackRow } from "@/components/ui";
+import {
+  Button,
+  EmptyState,
+  InlineAlert,
+  LoadingSpinner,
+  PageHeader,
+  ResultPanel,
+  Skeleton,
+  TrackRow,
+} from "@/components/ui";
 
 interface Track {
   id: number;
@@ -42,6 +51,7 @@ export default function LikesToPlaylistPage() {
   const [showPlaylistPicker, setShowPlaylistPicker] = useState(false);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
+  const [notice, setNotice] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [success, setSuccess] = useState(false);
   const [result, setResult] = useState<{
     playlist?: { id: number; title: string; permalink_url: string };
@@ -70,9 +80,12 @@ export default function LikesToPlaylistPage() {
       if (response.ok) {
         const data = await response.json();
         setLikes(data.collection || []);
+      } else {
+        setNotice({ type: "error", text: "Couldn’t load your liked tracks. Try refreshing the page." });
       }
     } catch (error) {
       console.error("Failed to fetch likes:", error);
+      setNotice({ type: "error", text: "Couldn’t load your liked tracks. Try refreshing the page." });
     } finally {
       setLoading(false);
     }
@@ -117,6 +130,7 @@ export default function LikesToPlaylistPage() {
   const handleCreate = async () => {
     if (!canCreate) return;
     setCreating(true);
+    setNotice(null);
     try {
       const body: Record<string, unknown> = {
         trackIds: Array.from(selectedTracks),
@@ -138,11 +152,11 @@ export default function LikesToPlaylistPage() {
         setSuccess(true);
       } else {
         const message = typeof data?.error === "string" ? data.error : "Failed to create playlist";
-        alert(message);
+        setNotice({ type: "error", text: message });
       }
     } catch (error) {
       console.error("Error creating playlist:", error);
-      alert("An error occurred. Please try again.");
+      setNotice({ type: "error", text: "An error occurred. Please try again." });
     } finally {
       setCreating(false);
     }
@@ -160,16 +174,16 @@ export default function LikesToPlaylistPage() {
     const isExisting = addMode === "existing";
 
     return (
-      <div className="min-h-screen flex items-center justify-center px-6 py-12 bg-[#F2F2F2] dark:bg-background">
+      <div className="min-h-screen flex items-center justify-center px-6 py-6 bg-background">
         <div className="max-w-2xl w-full text-center">
-          <div className="bg-white dark:bg-card rounded-2xl p-10 shadow-xl border-2 border-gray-200 dark:border-border">
+          <ResultPanel tone="success" className="p-5">
             <div className="w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-6 bg-gradient-to-br from-[#22c55e] to-[#16a34a] shadow-lg">
               <Check className="w-12 h-12 text-white" />
             </div>
-            <h1 className="text-4xl font-bold mb-4 text-[#333333] dark:text-foreground">
+            <h1 className="text-2xl md:text-3xl font-bold mb-4 text-foreground">
               {isExisting ? "Tracks Added!" : multiple ? "Playlists Created!" : "Playlist Created!"}
             </h1>
-            <p className="text-lg mb-6 text-[#666666] dark:text-muted-foreground">
+            <p className="text-sm mb-6 text-muted-foreground">
               {isExisting ? (
                 <>
                   Added {result.addedCount ?? selectedTracks.size} new track{(result.addedCount ?? 1) !== 1 ? "s" : ""} to &quot;{targetPlaylist?.title}&quot;.
@@ -230,7 +244,7 @@ export default function LikesToPlaylistPage() {
                 {isExisting ? "Add More" : "Create Another"}
               </button>
             </div>
-          </div>
+          </ResultPanel>
         </div>
       </div>
     );
@@ -238,24 +252,22 @@ export default function LikesToPlaylistPage() {
 
   // ── MAIN PAGE ───────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-[#F2F2F2] dark:bg-background">
-      <div className="container mx-auto px-6 py-12 max-w-6xl">
-        {/* Header */}
-        <div className="mb-12">
-          <Link
-            href="/dashboard"
-            className="inline-flex items-center gap-2 text-[#666666] dark:text-muted-foreground hover:text-[#FF5500] transition mb-6"
+    <div className="min-h-screen bg-background">
+      <div className="container mx-auto px-6 py-6 max-w-6xl">
+        <PageHeader
+          title="Likes → Playlist"
+          description="Convert your liked tracks into an organized playlist."
+        />
+
+        {notice && (
+          <InlineAlert
+            variant={notice.type}
+            className="mb-6"
+            onDismiss={() => setNotice(null)}
           >
-            <ArrowLeft className="w-5 h-5" />
-            Back to Dashboard
-          </Link>
-          <h1 className="text-4xl md:text-5xl font-bold mb-4 text-[#333333] dark:text-foreground">
-            Likes → Playlist
-          </h1>
-          <p className="text-lg text-[#666666] dark:text-muted-foreground">
-            Convert your liked tracks into an organized playlist.
-          </p>
-        </div>
+            {notice.text}
+          </InlineAlert>
+        )}
 
         <div className="grid lg:grid-cols-3 gap-8">
           {/* Track List */}
@@ -273,7 +285,7 @@ export default function LikesToPlaylistPage() {
               {loading ? (
                 <div className="space-y-3">
                   {Array.from({ length: 10 }).map((_, i) => (
-                    <div key={i} className="h-16 bg-gray-100 dark:bg-secondary/50 rounded-lg animate-pulse" />
+                    <Skeleton key={i} className="h-16 rounded-lg bg-gray-100 dark:bg-secondary/50" />
                   ))}
                 </div>
               ) : likes.length === 0 ? (

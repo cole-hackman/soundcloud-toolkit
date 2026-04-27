@@ -2,8 +2,9 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { ArrowLeft, ArrowRight, Download, Music, ExternalLink, Heart, ListMusic, Trash2, X, CheckSquare } from "lucide-react";
-import { Button, EmptyState, LoadingSpinner, TrackRow } from "@/components/ui";
+import { ArrowLeft, Download, Heart, ListMusic, Trash2, X, CheckSquare, Search } from "lucide-react";
+import { apiFetch } from "@/lib/api";
+import { Button, ConfirmDialog, EmptyState, Input, LoadingSpinner, TrackRow } from "@/components/ui";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "";
 
@@ -12,7 +13,7 @@ interface Playlist {
   title: string;
   track_count: number;
   artwork_url: string;
-  coverUrl?: string; // Backend computed fallback
+  coverUrl?: string;
   kind?: "playlist";
 }
 
@@ -29,13 +30,7 @@ interface Track {
   permalink_url: string;
 }
 
-const LIKED_TRACKS_PLAYLIST: Playlist = {
-  id: -1,
-  title: "Liked Tracks",
-  track_count: 0,
-  artwork_url: "",
-  kind: "playlist" // Pseudo-playlist
-};
+const LIKED_TRACKS_ID = -1;
 
 export default function DownloadsPage() {
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
@@ -43,20 +38,26 @@ export default function DownloadsPage() {
   const [tracks, setTracks] = useState<Track[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingTracks, setLoadingTracks] = useState(false);
-  
-  // Selection Mode State
+  const [likesCount, setLikesCount] = useState<number | null>(null);
+  const [sourceSearch, setSourceSearch] = useState("");
+
+  // Selection mode
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedTrackIds, setSelectedTrackIds] = useState<Set<number>>(new Set());
   const [isRemoving, setIsRemoving] = useState(false);
-  
-  // Fetch playlists on mount
+
+  // Confirmation dialog + inline error
+  const [showRemoveConfirm, setShowRemoveConfirm] = useState(false);
+  const [inlineError, setInlineError] = useState<string | null>(null);
+
   useEffect(() => {
     fetchPlaylists();
+    fetchLikesCount();
   }, []);
 
   const fetchPlaylists = async () => {
     try {
-      const response = await fetch(`${API_BASE}/api/playlists`, { credentials: "include" });
+      const response = await apiFetch("/api/playlists");
       if (response.ok) {
         const data = await response.json();
         setPlaylists(data.collection || []);
@@ -68,44 +69,52 @@ export default function DownloadsPage() {
     }
   };
 
-  const fetchTracks = async (source: Playlist) => {
-    setLoadingTracks(true);
-    setTracks([]); // Reset
+  const fetchLikesCount = async () => {
     try {
-      let endpoint = "";
-      if (source.id === -1) {
-        endpoint = `${API_BASE}/api/likes`; // Or /api/likes/paged if available/needed
-      } else {
-        endpoint = `${API_BASE}/api/playlists/${source.id}`;
-      }
-
-      const response = await fetch(endpoint, { credentials: "include" });
+      const response = await apiFetch("/api/me");
       if (response.ok) {
         const data = await response.json();
-        // Handle different response structures
-        if (source.id === -1) {
-             setTracks(data.collection || []); // Likes returns collection
-        } else {
-             setTracks(data.tracks || []); // Playlist returns tracks array
-        }
+        setLikesCount(data.public_favorites_count ?? data.likes_count ?? null);
+      }
+    } catch {
+      // non-critical — card just shows "All your likes"
+    }
+  };
+
+  const fetchTracks = async (source: Playlist) => {
+    setLoadingTracks(true);
+    setTracks([]);
+    try {
+      const endpoint =
+        source.id === LIKED_TRACKS_ID
+          ? "/api/likes"
+          : `/api/playlists/${source.id}`;
+      const response = await apiFetch(endpoint);
+      if (response.ok) {
+        const data = await response.json();
+        setTracks(
+          source.id === LIKED_TRACKS_ID ? data.collection || [] : data.tracks || []
+        );
       }
     } catch (error) {
-        console.error("Failed to fetch tracks:", error);
+      console.error("Failed to fetch tracks:", error);
     } finally {
-        setLoadingTracks(false);
+      setLoadingTracks(false);
     }
   };
 
   const handleSelectSource = (p: Playlist) => {
-      setSelectedSource(p);
-      fetchTracks(p);
-      setSelectionMode(false);
-      setSelectedTrackIds(new Set());
+    setSelectedSource(p);
+    fetchTracks(p);
+    setSelectionMode(false);
+    setSelectedTrackIds(new Set());
+    setInlineError(null);
   };
 
   const toggleSelectionMode = () => {
     setSelectionMode(!selectionMode);
     setSelectedTrackIds(new Set());
+    setInlineError(null);
   };
 
   const toggleTrackSelection = (id: number) => {
@@ -118,56 +127,62 @@ export default function DownloadsPage() {
     setSelectedTrackIds(newSelected);
   };
 
-  const handleRemoveSelected = async () => {
-    if (!selectedSource || selectedSource.id === -1 || selectedTrackIds.size === 0) return;
-    
-    const remainingTracks = tracks.filter(t => !selectedTrackIds.has(t.id));
-    const remainingIds = remainingTracks.map(t => t.id);
+  const handleRemoveSelected = () => {
+    if (!selectedSource || selectedSource.id === LIKED_TRACKS_ID || selectedTrackIds.size === 0) return;
 
-    // Prevent removing all tracks — SoundCloud API doesn't allow empty playlists
-    if (remainingIds.length === 0) {
-      alert("Cannot remove all tracks from a playlist. Delete the playlist instead.");
+    const remainingCount = tracks.filter((t) => !selectedTrackIds.has(t.id)).length;
+    if (remainingCount === 0) {
+      setInlineError("Cannot remove all tracks from a playlist. Delete the playlist on SoundCloud instead.");
       return;
     }
 
-    if (!confirm(`Remove ${selectedTrackIds.size} tracks from "${selectedSource.title}"?`)) return;
+    setShowRemoveConfirm(true);
+  };
+
+  const executeRemove = async () => {
+    if (!selectedSource) return;
+    setShowRemoveConfirm(false);
+    setInlineError(null);
+
+    const remainingTracks = tracks.filter((t) => !selectedTrackIds.has(t.id));
+    const remainingIds = remainingTracks.map((t) => t.id);
 
     setIsRemoving(true);
     try {
-        const response = await fetch(`${API_BASE}/api/playlists/${selectedSource.id}`, {
-            method: 'PUT',
-            credentials: 'include',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ tracks: remainingIds }),
-        });
+      const response = await apiFetch(`/api/playlists/${selectedSource.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tracks: remainingIds }),
+      });
 
-        if (response.ok) {
-            // Update local state
-            setTracks(remainingTracks);
-            setSelectedTrackIds(new Set());
-            setSelectionMode(false);
-            // Optionally update playlist track count in `playlists` state
-            setPlaylists(prev => prev.map(p => 
-                p.id === selectedSource.id 
-                    ? { ...p, track_count: remainingTracks.length } 
-                    : p
-            ));
-        } else {
-            alert("Failed to update playlist. Please try again.");
-        }
+      if (response.ok) {
+        setTracks(remainingTracks);
+        setSelectedTrackIds(new Set());
+        setSelectionMode(false);
+        setPlaylists((prev) =>
+          prev.map((p) =>
+            p.id === selectedSource.id
+              ? { ...p, track_count: remainingTracks.length }
+              : p
+          )
+        );
+      } else {
+        setInlineError("Failed to update playlist. Please try again.");
+      }
     } catch (error) {
-        console.error("Failed to remove tracks:", error);
-        alert("An error occurred while removing tracks.");
+      console.error("Failed to remove tracks:", error);
+      setInlineError("An error occurred while removing tracks.");
     } finally {
-        setIsRemoving(false);
+      setIsRemoving(false);
     }
   };
 
-  // Filter only downloadable or purchasable tracks
-  const downloadableTracks = tracks.filter(t => 
-    (Boolean(t.downloadable) || t.downloadable === "true" || !!t.download_url) || !!t.purchase_url
+  const downloadableTracks = tracks.filter(
+    (t) => Boolean(t.downloadable) || t.downloadable === "true" || !!t.download_url || !!t.purchase_url
+  );
+
+  const filteredPlaylists = playlists.filter((p) =>
+    p.title.toLowerCase().includes(sourceSearch.toLowerCase())
   );
 
   const formatDuration = (ms: number) => {
@@ -178,211 +193,309 @@ export default function DownloadsPage() {
 
   return (
     <div className="min-h-screen bg-[#F2F2F2] dark:bg-background">
-        <div className="container mx-auto px-6 py-12 max-w-6xl">
-            {/* Header */}
-            <div className="mb-12">
-            <Link href="/dashboard" className="inline-flex items-center gap-2 text-[#666666] dark:text-muted-foreground hover:text-[#FF5500] transition mb-6">
-                <ArrowLeft className="w-5 h-5" />
-                Back to Dashboard
-            </Link>
-            <h1 className="text-4xl md:text-5xl font-bold mb-4 text-[#333333] dark:text-foreground">Downloads</h1>
-            <p className="text-lg text-[#666666] dark:text-muted-foreground">Find downloadable tracks in your library.</p>
-            </div>
-
-            {!selectedSource ? (
-                /* Source Selection */
-                <div className="bg-white dark:bg-card rounded-2xl p-6 border-2 border-gray-200 dark:border-border">
-                    <h2 className="text-xl font-bold mb-4 text-[#333333] dark:text-foreground">Select Source</h2>
-                    {loading ? (
-                         <div className="space-y-3">
-                            {Array.from({ length: 3 }).map((_, i) => <div key={i} className="h-16 bg-gray-100 dark:bg-secondary/50 rounded-lg animate-pulse" />)}
-                         </div>
-                    ) : (
-                        <div className="grid md:grid-cols-2 gap-4">
-                            {/* Liked Tracks Option */}
-                            <button
-                                onClick={() => handleSelectSource(LIKED_TRACKS_PLAYLIST)}
-                                className="flex items-center gap-4 p-4 rounded-xl bg-gray-50 dark:bg-secondary/20 border-2 border-transparent hover:border-[#FF5500] transition-all text-left"
-                            >
-                                <div className="w-16 h-16 rounded-lg bg-gradient-to-br from-orange-400 to-red-500 flex items-center justify-center text-white">
-                                    <Heart className="w-8 h-8" fill="currentColor" />
-                                </div>
-                                <div>
-                                    <div className="font-semibold text-[#333333] dark:text-foreground">Liked Tracks</div>
-                                    <div className="text-sm text-[#666666] dark:text-muted-foreground">All your likes</div>
-                                </div>
-                            </button>
-
-                            {playlists.map((playlist) => (
-                                <button
-                                    key={playlist.id}
-                                    onClick={() => handleSelectSource(playlist)}
-                                    className="flex items-center gap-4 p-4 rounded-xl bg-gray-50 dark:bg-secondary/20 border-2 border-transparent hover:border-[#FF5500] transition-all text-left"
-                                >
-                                    <img
-                                        src={playlist.coverUrl || playlist.artwork_url || "/SC Toolkit Icon.png"}
-                                        alt={playlist.title}
-                                        className="w-16 h-16 rounded-lg object-cover"
-                                    />
-                                    <div>
-                                        <div className="font-semibold text-[#333333] dark:text-foreground">{playlist.title}</div>
-                                        <div className="text-sm text-[#666666] dark:text-muted-foreground">{playlist.track_count} tracks</div>
-                                    </div>
-                                </button>
-                            ))}
-                        </div>
-                    )}
-                </div>
-            ) : (
-                /* Track List */
-                <div>
-                     <button
-                        onClick={() => { setSelectedSource(null); setTracks([]); }}
-                        className="text-[#666666] dark:text-muted-foreground hover:text-[#FF5500] transition mb-4 flex items-center gap-2"
-                     >
-                        ← Back to sources
-                    </button>
-                    
-                    <h2 className="text-2xl font-bold text-[#333333] dark:text-foreground mb-6 flex items-center gap-3">
-                        {selectedSource.id === -1 ? <Heart className="w-6 h-6 text-[#FF5500]" fill="currentColor"/> : <ListMusic className="w-6 h-6" />}
-                        {selectedSource.title}
-                        <span className="text-lg font-normal text-[#666666] dark:text-muted-foreground ml-2">({downloadableTracks.length} downloadable)</span>
-                    </h2>
-                    
-                    {/* Toolbar */}
-                    {selectedSource.id !== -1 && downloadableTracks.length > 0 && (
-                        <div className="flex items-center gap-4 mb-6">
-                            {!selectionMode ? (
-                                <Button
-                                    onClick={toggleSelectionMode}
-                                    variant="secondary"
-                                    className="h-10 px-4 text-[#666666] dark:text-muted-foreground"
-                                >
-                                    <CheckSquare className="w-4 h-4" />
-                                    Select to Remove
-                                </Button>
-                            ) : (
-                                <>
-                                    <Button
-                                        onClick={toggleSelectionMode}
-                                        variant="secondary"
-                                        className="h-10 px-4 text-[#666666] dark:text-muted-foreground"
-                                    >
-                                        <X className="w-4 h-4" />
-                                        Cancel
-                                    </Button>
-                                    <Button
-                                        onClick={handleRemoveSelected}
-                                        disabled={selectedTrackIds.size === 0 || isRemoving}
-                                        variant="destructive"
-                                        className="h-10 px-4"
-                                    >
-                                        {isRemoving ? <LoadingSpinner className="w-4 h-4 text-white" /> : <Trash2 className="w-4 h-4" />}
-                                        Remove ({selectedTrackIds.size})
-                                    </Button>
-                                </>
-                            )}
-                        </div>
-                    )}
-
-                    <div className="bg-white dark:bg-card rounded-2xl p-6 border-2 border-gray-200 dark:border-border">
-                        {loadingTracks ? (
-                             <div className="space-y-3">
-                                {Array.from({ length: 5 }).map((_, i) => <div key={i} className="h-16 bg-gray-100 dark:bg-secondary/50 rounded-lg animate-pulse" />)}
-                             </div>
-                        ) : downloadableTracks.length === 0 ? (
-                            <EmptyState
-                                icon={<Download className="w-12 h-12" />}
-                                title="No downloadable tracks found"
-                                description="Try another playlist or source."
-                            />
-                        ) : (
-                            <div className="space-y-2">
-                                {downloadableTracks.map((track, index) => {
-                                    const downloadHref = track.download_url
-                                        ? `${API_BASE}/api/proxy-download?url=${encodeURIComponent(track.download_url)}`
-                                        : (track.purchase_url || track.permalink_url);
-
-                                    if (selectionMode) {
-                                        return (
-                                            <TrackRow
-                                                key={track.id}
-                                                track={{ ...track, subtitle: track.user?.username }}
-                                                isSelected={selectedTrackIds.has(track.id)}
-                                                onToggle={() => toggleTrackSelection(track.id)}
-                                                rightSlot={
-                                                    <div className="flex items-center gap-2">
-                                                        <span className="text-xs text-[#666666] dark:text-muted-foreground">
-                                                            {formatDuration(track.duration)}
-                                                        </span>
-                                                        <a
-                                                            href={downloadHref}
-                                                            target="_blank"
-                                                            rel="noopener noreferrer"
-                                                            onClick={(event) => event.stopPropagation()}
-                                                            className={`rounded-lg p-2 text-white transition ${
-                                                                track.download_url
-                                                                    ? "bg-green-500 hover:bg-green-600"
-                                                                    : "bg-[#FF5500] hover:bg-[#E64D00]"
-                                                            }`}
-                                                            title={track.download_url ? "Download directly" : (track.purchase_url ? "Go to download/buy" : "Go to track")}
-                                                        >
-                                                            <Download className="h-5 w-5" />
-                                                        </a>
-                                                    </div>
-                                                }
-                                            />
-                                        );
-                                    }
-
-                                    return (
-                                        <div key={track.id} className="group flex items-center gap-4 rounded-xl bg-gray-50 p-3 transition-colors hover:bg-gray-100 dark:bg-secondary/20 dark:hover:bg-secondary/40">
-                                            <span className="w-8 text-center text-sm text-[#999999] dark:text-muted-foreground">{index + 1}</span>
-
-                                            <img src={track.artwork_url || "/SC Toolkit Icon.png"} alt={track.title} className="h-10 w-10 rounded-lg object-cover" />
-                                            <div className="min-w-0 flex-1">
-                                                <div className="flex items-center gap-2 truncate font-semibold text-[#333333] dark:text-foreground">
-                                                    {track.title}
-                                                    {(Boolean(track.downloadable) || track.downloadable === "true" || !!track.download_url) && (
-                                                        <a
-                                                            href={track.download_url ? `${API_BASE}/api/proxy-download?url=${encodeURIComponent(track.download_url)}` : track.permalink_url}
-                                                            target="_blank"
-                                                            rel="noopener noreferrer"
-                                                            className="inline-flex items-center gap-0.5 rounded bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-900/50"
-                                                            title={track.download_url ? "Direct Download" : "Visit page to download"}
-                                                        >
-                                                            <Download className="w-3 h-3" /> DL
-                                                        </a>
-                                                    )}
-                                                </div>
-                                                <div className="truncate text-sm text-[#666666] dark:text-muted-foreground">
-                                                    {track.user?.username} • {formatDuration(track.duration)}
-                                                </div>
-                                            </div>
-                                            <div className="flex gap-2">
-                                                <a
-                                                    href={downloadHref}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    className={`rounded-lg p-2 text-white transition ${
-                                                        track.download_url
-                                                            ? "bg-green-500 hover:bg-green-600"
-                                                            : "bg-[#FF5500] hover:bg-[#E64D00]"
-                                                    }`}
-                                                    title={track.download_url ? "Download directly" : (track.purchase_url ? "Go to download/buy" : "Go to track")}
-                                                >
-                                                    <Download className="w-5 h-5" />
-                                                </a>
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        )}
-                    </div>
-                </div>
-            )}
+      <div className="container mx-auto px-6 py-6 max-w-5xl">
+        {/* Header */}
+        <div className="mb-6">
+          <Link
+            href="/dashboard"
+            className="lg:hidden inline-flex items-center gap-2 text-[#666666] dark:text-muted-foreground hover:text-[#FF5500] transition mb-4"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            Back to Dashboard
+          </Link>
+          <h1 className="text-2xl md:text-3xl font-bold mb-2 text-[#333333] dark:text-foreground">
+            Downloads
+          </h1>
+          <p className="text-sm text-[#666666] dark:text-muted-foreground">
+            Find downloadable tracks in your library.
+          </p>
         </div>
+
+        {!selectedSource ? (
+          /* Source Selection */
+          <div className="bg-white dark:bg-card rounded-2xl p-6 border-2 border-gray-200 dark:border-border">
+            <h2 className="text-xl font-bold mb-4 text-[#333333] dark:text-foreground">
+              Select Source
+            </h2>
+            {loading ? (
+              <div className="space-y-3">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <div key={i} className="h-16 bg-gray-100 dark:bg-secondary/50 rounded-lg animate-pulse" />
+                ))}
+              </div>
+            ) : (
+              <>
+                {/* Search filter */}
+                {playlists.length > 5 && (
+                  <div className="relative mb-4">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#999999] dark:text-muted-foreground" />
+                    <Input
+                      type="text"
+                      value={sourceSearch}
+                      onChange={(e) => setSourceSearch(e.target.value)}
+                      placeholder="Search playlists…"
+                      className="pl-9 h-9 bg-transparent dark:text-foreground dark:border-border"
+                    />
+                  </div>
+                )}
+
+                <div className="grid md:grid-cols-2 gap-4">
+                  {/* Liked Tracks — always shown */}
+                  <button
+                    onClick={() =>
+                      handleSelectSource({
+                        id: LIKED_TRACKS_ID,
+                        title: "Liked Tracks",
+                        track_count: likesCount ?? 0,
+                        artwork_url: "",
+                        kind: "playlist",
+                      })
+                    }
+                    className="flex items-center gap-4 p-4 rounded-xl bg-gray-50 dark:bg-secondary/20 border-2 border-transparent hover:border-[#FF5500] transition-all text-left"
+                  >
+                    <div className="w-16 h-16 rounded-lg bg-gradient-to-br from-orange-400 to-red-500 flex items-center justify-center text-white shrink-0">
+                      <Heart className="w-8 h-8" fill="currentColor" />
+                    </div>
+                    <div>
+                      <div className="font-semibold text-[#333333] dark:text-foreground">
+                        Liked Tracks
+                      </div>
+                      <div className="text-sm text-[#666666] dark:text-muted-foreground">
+                        {likesCount !== null
+                          ? `${likesCount.toLocaleString()} liked tracks`
+                          : "All your likes"}
+                      </div>
+                    </div>
+                  </button>
+
+                  {filteredPlaylists.map((playlist) => (
+                    <button
+                      key={playlist.id}
+                      onClick={() => handleSelectSource(playlist)}
+                      className="flex items-center gap-4 p-4 rounded-xl bg-gray-50 dark:bg-secondary/20 border-2 border-transparent hover:border-[#FF5500] transition-all text-left"
+                    >
+                      <img
+                        src={playlist.coverUrl || playlist.artwork_url || "/SC Toolkit Icon.png"}
+                        alt={playlist.title}
+                        className="w-16 h-16 rounded-lg object-cover shrink-0"
+                      />
+                      <div>
+                        <div className="font-semibold text-[#333333] dark:text-foreground">
+                          {playlist.title}
+                        </div>
+                        <div className="text-sm text-[#666666] dark:text-muted-foreground">
+                          {playlist.track_count} tracks
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+
+                  {sourceSearch && filteredPlaylists.length === 0 && (
+                    <div className="md:col-span-2">
+                      <EmptyState
+                        title="No playlists match your search"
+                        description="Try a different keyword."
+                      />
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        ) : (
+          /* Track List */
+          <div>
+            <button
+              onClick={() => {
+                setSelectedSource(null);
+                setTracks([]);
+                setInlineError(null);
+              }}
+              className="text-[#666666] dark:text-muted-foreground hover:text-[#FF5500] transition mb-4 flex items-center gap-2"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              Back to sources
+            </button>
+
+            <h2 className="text-2xl font-bold text-[#333333] dark:text-foreground mb-6 flex items-center gap-3">
+              {selectedSource.id === LIKED_TRACKS_ID ? (
+                <Heart className="w-6 h-6 text-[#FF5500]" fill="currentColor" />
+              ) : (
+                <ListMusic className="w-6 h-6" />
+              )}
+              {selectedSource.title}
+              <span className="text-lg font-normal text-[#666666] dark:text-muted-foreground ml-2">
+                ({downloadableTracks.length} downloadable)
+              </span>
+            </h2>
+
+            {/* Inline error */}
+            {inlineError && (
+              <div className="flex items-start gap-3 mb-4 text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-900/30 rounded-lg px-4 py-3">
+                <span className="flex-1">{inlineError}</span>
+                <button onClick={() => setInlineError(null)} className="shrink-0 hover:opacity-70 transition">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+
+            {/* Toolbar */}
+            {selectedSource.id !== LIKED_TRACKS_ID && downloadableTracks.length > 0 && (
+              <div className="flex items-center gap-4 mb-6">
+                {!selectionMode ? (
+                  <Button
+                    onClick={toggleSelectionMode}
+                    variant="secondary"
+                    className="h-10 px-4 text-[#666666] dark:text-muted-foreground"
+                  >
+                    <CheckSquare className="w-4 h-4" />
+                    Select to Remove
+                  </Button>
+                ) : (
+                  <>
+                    <Button
+                      onClick={toggleSelectionMode}
+                      variant="secondary"
+                      className="h-10 px-4 text-[#666666] dark:text-muted-foreground"
+                    >
+                      <X className="w-4 h-4" />
+                      Cancel
+                    </Button>
+                    <Button
+                      onClick={handleRemoveSelected}
+                      disabled={selectedTrackIds.size === 0 || isRemoving}
+                      variant="destructive"
+                      className="h-10 px-4"
+                    >
+                      {isRemoving ? (
+                        <LoadingSpinner className="w-4 h-4 text-white" />
+                      ) : (
+                        <Trash2 className="w-4 h-4" />
+                      )}
+                      Remove ({selectedTrackIds.size})
+                    </Button>
+                  </>
+                )}
+              </div>
+            )}
+
+            <div className="bg-white dark:bg-card rounded-2xl p-6 border-2 border-gray-200 dark:border-border">
+              {loadingTracks ? (
+                <div className="space-y-3">
+                  {Array.from({ length: 5 }).map((_, i) => (
+                    <div key={i} className="h-16 bg-gray-100 dark:bg-secondary/50 rounded-lg animate-pulse" />
+                  ))}
+                </div>
+              ) : downloadableTracks.length === 0 ? (
+                <EmptyState
+                  icon={<Download className="w-12 h-12" />}
+                  title="No downloadable tracks found"
+                  description="Try another playlist or source."
+                />
+              ) : (
+                <div className="space-y-2">
+                  {downloadableTracks.map((track, index) => {
+                    const downloadHref = track.download_url
+                      ? `${API_BASE}/api/proxy-download?url=${encodeURIComponent(track.download_url)}`
+                      : track.purchase_url || track.permalink_url;
+
+                    if (selectionMode) {
+                      return (
+                        <TrackRow
+                          key={track.id}
+                          track={{ ...track, subtitle: track.user?.username }}
+                          isSelected={selectedTrackIds.has(track.id)}
+                          onToggle={() => toggleTrackSelection(track.id)}
+                          rightSlot={
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-[#666666] dark:text-muted-foreground">
+                                {formatDuration(track.duration)}
+                              </span>
+                              <a
+                                href={downloadHref}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                                className={`rounded-lg p-2 text-white transition ${
+                                  track.download_url
+                                    ? "bg-green-500 hover:bg-green-600"
+                                    : "bg-[#FF5500] hover:bg-[#E64D00]"
+                                }`}
+                                title={
+                                  track.download_url
+                                    ? "Download directly"
+                                    : track.purchase_url
+                                    ? "Go to download/buy"
+                                    : "Go to track"
+                                }
+                              >
+                                <Download className="h-5 w-5" />
+                              </a>
+                            </div>
+                          }
+                        />
+                      );
+                    }
+
+                    return (
+                      <div
+                        key={track.id}
+                        className="group flex items-center gap-4 rounded-xl bg-gray-50 p-3 transition-colors hover:bg-gray-100 dark:bg-secondary/20 dark:hover:bg-secondary/40"
+                      >
+                        <span className="w-8 text-center text-sm text-[#999999] dark:text-muted-foreground">
+                          {index + 1}
+                        </span>
+                        <img
+                          src={track.artwork_url || "/SC Toolkit Icon.png"}
+                          alt={track.title}
+                          className="h-10 w-10 rounded-lg object-cover"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate font-semibold text-[#333333] dark:text-foreground">
+                            {track.title}
+                          </div>
+                          <div className="truncate text-sm text-[#666666] dark:text-muted-foreground">
+                            {track.user?.username} • {formatDuration(track.duration)}
+                          </div>
+                        </div>
+                        <a
+                          href={downloadHref}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className={`rounded-lg p-2 text-white transition ${
+                            track.download_url
+                              ? "bg-green-500 hover:bg-green-600"
+                              : "bg-[#FF5500] hover:bg-[#E64D00]"
+                          }`}
+                          title={
+                            track.download_url
+                              ? "Download directly"
+                              : track.purchase_url
+                              ? "Go to download/buy"
+                              : "Go to track"
+                          }
+                        >
+                          <Download className="w-5 h-5" />
+                        </a>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <ConfirmDialog
+        open={showRemoveConfirm}
+        title="Remove tracks?"
+        description={`Remove ${selectedTrackIds.size} track${selectedTrackIds.size !== 1 ? "s" : ""} from "${selectedSource?.title}"? This cannot be undone.`}
+        confirmLabel="Remove"
+        variant="destructive"
+        onConfirm={executeRemove}
+        onCancel={() => setShowRemoveConfirm(false)}
+      />
     </div>
   );
 }

@@ -4,15 +4,16 @@ import { useState, useEffect } from "react";
 import { ArrowLeft, Stethoscope, Music, AlertTriangle, CheckCircle, Trash2 } from "lucide-react";
 import {
   Button,
+  BulkReviewDetails,
   ConfirmDialog,
   EmptyState,
   InlineAlert,
   LoadingSpinner,
+  PageContainer,
   PageHeader,
   Skeleton,
 } from "@/components/ui";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "";
+import { apiFetch } from "@/lib/api";
 
 interface Playlist {
   id: number;
@@ -28,6 +29,8 @@ interface Track {
   artwork_url: string;
   duration: number;
   access?: string;
+  streamable?: boolean;
+  blocked_at?: string | null;
 }
 
 type HealthFilter = "all" | "healthy" | "issues";
@@ -49,9 +52,7 @@ export default function PlaylistHealthCheckPage() {
 
   const fetchPlaylists = async () => {
     try {
-      const response = await fetch(`${API_BASE}/api/playlists`, {
-        credentials: "include",
-      });
+      const response = await apiFetch("/api/playlists");
       if (response.ok) {
         const data = await response.json();
         setPlaylists(data.collection || []);
@@ -69,10 +70,7 @@ export default function PlaylistHealthCheckPage() {
   const fetchTracks = async (playlistId: number) => {
     setLoadingTracks(true);
     try {
-      const response = await fetch(
-        `${API_BASE}/api/playlists/${playlistId}`,
-        { credentials: "include" }
-      );
+      const response = await apiFetch(`/api/playlists/${playlistId}`);
       if (response.ok) {
         const data = await response.json();
         setTracks(data.tracks || []);
@@ -103,7 +101,10 @@ export default function PlaylistHealthCheckPage() {
     return { label: "Blocked", color: "text-red-700", bg: "bg-red-100", icon: "bad" };
   };
 
-  const isHealthy = (track: Track) => !track.access || track.access === "playable";
+  const isHealthy = (track: Track) =>
+    (!track.access || track.access === "playable") &&
+    track.streamable !== false &&
+    !track.blocked_at;
   const healthyCount = tracks.filter(isHealthy).length;
   const issueCount = tracks.length - healthyCount;
   const healthPercent = tracks.length > 0 ? Math.round((healthyCount / tracks.length) * 100) : 100;
@@ -129,15 +130,11 @@ export default function PlaylistHealthCheckPage() {
     setSaving(true);
     setNotice(null);
     try {
-      const response = await fetch(
-        `${API_BASE}/api/playlists/${selectedPlaylist.id}`,
-        {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({ tracks: healthyTracks.map((t) => t.id) }),
-        }
-      );
+      const response = await apiFetch(`/api/playlists/${selectedPlaylist.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tracks: healthyTracks.map((t) => t.id) }),
+      });
       if (response.ok) {
         setTracks(healthyTracks);
         setNotice({
@@ -162,8 +159,7 @@ export default function PlaylistHealthCheckPage() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="container mx-auto px-6 py-6 max-w-6xl">
+    <PageContainer maxWidth="wide">
         <PageHeader
           title="Playlist Health Check"
           description="Scan your playlists for blocked, preview-only, or unavailable tracks."
@@ -367,7 +363,6 @@ export default function PlaylistHealthCheckPage() {
             </div>
           </div>
         )}
-      </div>
       <ConfirmDialog
         open={showRemoveConfirm}
         title="Remove unavailable tracks?"
@@ -376,7 +371,20 @@ export default function PlaylistHealthCheckPage() {
         variant="destructive"
         onConfirm={executeRemoveDeadTracks}
         onCancel={() => setShowRemoveConfirm(false)}
-      />
-    </div>
+      >
+        <BulkReviewDetails
+          action="removing unavailable tracks"
+          warning="This updates the playlist on SoundCloud and removes tracks currently marked blocked, preview-only, or not streamable."
+          exportFilename="playlist-health-removals.csv"
+          items={tracks
+            .filter((track) => !isHealthy(track))
+            .map((track) => ({
+              id: track.id,
+              label: track.title,
+              meta: track.user?.username,
+            }))}
+        />
+      </ConfirmDialog>
+    </PageContainer>
   );
 }

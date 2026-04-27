@@ -4,14 +4,15 @@ import { useState, useEffect } from "react";
 import { Users, Search, UserMinus, Loader2, Check, ExternalLink } from "lucide-react";
 import {
   ConfirmDialog,
+  BulkReviewDetails,
   EmptyState,
   InlineAlert,
   LoadingSpinner,
+  PageContainer,
   PageHeader,
   SelectionBanner,
 } from "@/components/ui";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "";
+import { apiFetch } from "@/lib/api";
 
 interface Following {
   id: number;
@@ -46,8 +47,8 @@ export default function FollowingManagerPage() {
   const fetchFollowings = async () => {
     try {
       const [followingsRes, followersRes] = await Promise.all([
-        fetch(`${API_BASE}/api/followings`, { credentials: "include" }),
-        fetch(`${API_BASE}/api/followers`, { credentials: "include" })
+        apiFetch("/api/followings"),
+        apiFetch("/api/followers")
       ]);
 
       if (followingsRes.ok) {
@@ -110,10 +111,9 @@ export default function FollowingManagerPage() {
         const chunk = allUserIds.slice(i, i + CHUNK_SIZE);
         
         try {
-          const response = await fetch(`${API_BASE}/api/followings/bulk-unfollow`, {
+          const response = await apiFetch("/api/followings/bulk-unfollow", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            credentials: "include",
             body: JSON.stringify({ userIds: chunk }),
           });
 
@@ -230,8 +230,7 @@ export default function FollowingManagerPage() {
     });
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className={`container mx-auto px-6 py-6 max-w-6xl ${selected.size > 0 ? "pb-28" : ""}`}>
+    <PageContainer maxWidth="wide" className={selected.size > 0 ? "pb-28" : ""}>
         <PageHeader
           title="Following Manager"
           description="Browse and manage who you follow. Unfollow accounts in bulk."
@@ -375,7 +374,6 @@ export default function FollowingManagerPage() {
             </div>
           </div>
         )}
-      </div>
       <SelectionBanner
         count={selected.size}
         entityName="user"
@@ -393,7 +391,20 @@ export default function FollowingManagerPage() {
         variant="destructive"
         onConfirm={executeBulkUnfollow}
         onCancel={() => setShowUnfollowConfirm(false)}
-      />
-    </div>
+      >
+        <BulkReviewDetails
+          action="unfollowing"
+          warning="This removes accounts from your following list. Export the selection if you need a record."
+          exportFilename="users-to-unfollow.csv"
+          items={followings
+            .filter((following) => selected.has(following.id))
+            .map((following) => ({
+              id: following.id,
+              label: following.username,
+              meta: `${following.followers_count?.toLocaleString?.() || 0} followers`,
+            }))}
+        />
+      </ConfirmDialog>
+    </PageContainer>
   );
 }

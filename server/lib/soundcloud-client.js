@@ -1,8 +1,9 @@
-import fetch from 'node-fetch';
 import dotenv from 'dotenv';
 dotenv.config();
-import { encrypt, decrypt } from './crypto.js';
+import { encrypt } from './crypto.js';
 import logger from './logger.js';
+import prisma from './prisma.js';
+import { getTokenContext } from './token-context.js';
 
 class SoundCloudClient {
   constructor() {
@@ -78,35 +79,64 @@ class SoundCloudClient {
     return response.json();
   }
 
+  async refreshTokensAndPersist(refreshToken) {
+    const newTokens = await this.refreshTokens(refreshToken);
+    const context = getTokenContext();
+
+    if (!context?.userId) {
+      console.warn('Token refresh completed without user context; refreshed tokens were not persisted', {
+        hasAccessToken: Boolean(newTokens.access_token),
+        hasRefreshToken: Boolean(newTokens.refresh_token),
+        expiresIn: newTokens.expires_in,
+      });
+      return newTokens;
+    }
+
+    if (newTokens.access_token && newTokens.refresh_token) {
+      const expiresAt = new Date(Date.now() + ((newTokens.expires_in || 3600) * 1000));
+      await prisma.token.update({
+        where: { userId: context.userId },
+        data: {
+          encrypted: encrypt(newTokens.access_token, this.encryptionKey),
+          refresh: encrypt(newTokens.refresh_token, this.encryptionKey),
+          expiresAt,
+          updatedAt: new Date(),
+        },
+      });
+    }
+
+    return newTokens;
+  }
+
   /**
    * Make authenticated request to SoundCloud API with automatic token refresh
    */
   async scRequest(endpoint, accessToken, refreshToken, options = {}) {
+    const { max429Retries = 3, retryAttempt = 0, ...fetchOptions } = options;
     const url = `${this.baseUrl}${endpoint}`;
     
     const response = await fetch(url, {
-      ...options,
+      ...fetchOptions,
       headers: {
         'Authorization': `OAuth ${accessToken}`,
         'Accept': 'application/json',
-        ...options.headers
+        ...fetchOptions.headers
       }
     });
 
     // Handle 401 - token expired, try to refresh
     if (response.status === 401) {
       try {
-        const newTokens = await this.refreshTokens(refreshToken);
+        const newTokens = await this.refreshTokensAndPersist(refreshToken);
         const newAccessToken = newTokens.access_token;
-        const newRefreshToken = newTokens.refresh_token;
 
         // Retry the request with new token
         const retryResponse = await fetch(url, {
-          ...options,
+          ...fetchOptions,
           headers: {
             'Authorization': `OAuth ${newAccessToken}`,
             'Accept': 'application/json',
-            ...options.headers
+            ...fetchOptions.headers
           }
         });
 
@@ -124,11 +154,18 @@ class SoundCloudClient {
 
     // Handle 429 - rate limit, implement exponential backoff
     if (response.status === 429) {
+      if (retryAttempt >= max429Retries) {
+        throw new Error(`API request failed: 429`);
+      }
       const retryAfter = response.headers.get('Retry-After');
       const delay = retryAfter ? parseInt(retryAfter) * 1000 : 1000;
       
       await new Promise(resolve => setTimeout(resolve, delay));
-      return this.scRequest(endpoint, accessToken, refreshToken, options);
+      return this.scRequest(endpoint, accessToken, refreshToken, {
+        ...fetchOptions,
+        max429Retries,
+        retryAttempt: retryAttempt + 1,
+      });
     }
 
     if (!response.ok) {
@@ -207,8 +244,9 @@ class SoundCloudClient {
 
       if (res.status === 401) {
         // refresh once
-        const refreshed = await this.refreshTokens(refreshToken);
+        const refreshed = await this.refreshTokensAndPersist(refreshToken);
         currentAccessToken = refreshed.access_token;
+        refreshToken = refreshed.refresh_token || refreshToken;
         continue; // retry loop with same nextUrl
       }
 
@@ -318,8 +356,8 @@ class SoundCloudClient {
     try {
       return await doFetch(accessToken);
     } catch (err) {
-      // try refresh once on 401 path via scRequest-style refresh
-      const refreshed = await this.refreshTokens(refreshToken);
+      if (!String(err?.message || '').includes('401')) throw err;
+      const refreshed = await this.refreshTokensAndPersist(refreshToken);
       return doFetch(refreshed.access_token);
     }
   }
@@ -591,15 +629,15 @@ class SoundCloudClient {
    * Get the final download link for a track
    * Handles the redirect manually to ensure we get the final URL
    */
-  async getDownloadLink(accessToken, refreshToken, downloadUrl) {
+  async getDownloadLink(accessToken, refreshToken, downloadUrl, triedRefresh = false) {
     // Only allow SoundCloud API download URLs to prevent SSRF / token leakage
     try {
       const u = new URL(downloadUrl);
       const host = u.hostname.toLowerCase();
-      if (u.protocol !== 'https:' || (host !== 'api.soundcloud.com' && !host.endsWith('.soundcloud.com'))) {
+      if (u.protocol !== 'https:' || host !== 'api.soundcloud.com') {
         throw new Error('Invalid download URL');
       }
-      if (!/^\/tracks\/\d+\/download(\?|$)/.test(u.pathname)) {
+      if (!/^\/tracks\/\d+\/download$/.test(u.pathname)) {
         throw new Error('Invalid download path');
       }
     } catch (e) {
@@ -637,10 +675,10 @@ class SoundCloudClient {
         // Let's assume correct auth gets us a redirect.
     }
 
-    if (res.status === 401) {
+    if (res.status === 401 && !triedRefresh) {
         // Try refreshing
-        const refreshed = await this.refreshTokens(refreshToken);
-        return this.getDownloadLink(refreshed.access_token, refreshToken, downloadUrl);
+        const refreshed = await this.refreshTokensAndPersist(refreshToken);
+        return this.getDownloadLink(refreshed.access_token, refreshed.refresh_token || refreshToken, downloadUrl, true);
     }
     
     throw new Error(`Download request failed: ${res.status}`);

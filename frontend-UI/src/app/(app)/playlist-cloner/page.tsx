@@ -1,11 +1,9 @@
 "use client";
 
-import { useState, FormEvent, useEffect } from "react";
-import { CopyPlus, Check, ArrowRight, Music, Link as LinkIcon, Loader2, Link2 } from "lucide-react";
+import { useState, FormEvent } from "react";
+import { CopyPlus, ArrowRight, Music, Link as LinkIcon, Loader2, Link2 } from "lucide-react";
 import { apiFetch } from "@/lib/api";
-import { Button, Card, CardContent, CardHeader, Input } from "@/components/ui";
-
-const LAST_TOOLS_KEY = "sc-toolkit-last-tools";
+import { Button, Card, CardContent, CardHeader, InlineAlert, Input, PageHeader, ResultPanel } from "@/components/ui";
 
 interface ClonedPlaylist {
   id?: number | string;
@@ -22,15 +20,6 @@ export default function PlaylistClonerPage() {
   // Results
   const [resultPlaylists, setResultPlaylists] = useState<ClonedPlaylist[]>([]);
   const [stats, setStats] = useState<Record<string, unknown> | null>(null);
-
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem(LAST_TOOLS_KEY);
-      let tools = stored ? JSON.parse(stored) : [];
-      tools = ["playlist-cloner", ...tools.filter((t: string) => t !== "playlist-cloner")].slice(0, 10);
-      localStorage.setItem(LAST_TOOLS_KEY, JSON.stringify(tools));
-    } catch {}
-  }, []);
 
   const handleClone = async (e: FormEvent) => {
     e.preventDefault();
@@ -70,16 +59,12 @@ export default function PlaylistClonerPage() {
   };
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-8">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-[#333] dark:text-foreground flex items-center gap-2 mb-2">
-          <CopyPlus className="w-6 h-6 text-[#FF5500]" />
-          Playlist Cloner
-        </h1>
-        <p className="text-[#888] dark:text-muted-foreground">
-          Paste a public playlist link to clone it into your own account.
-        </p>
-      </div>
+    <div className="min-h-screen bg-background">
+      <div className="container mx-auto max-w-4xl px-6 py-6">
+      <PageHeader
+        title="Playlist Cloner"
+        description="Paste a public playlist link to clone it into your own account."
+      />
 
       <Card className="mb-8">
         <CardHeader>
@@ -138,23 +123,20 @@ export default function PlaylistClonerPage() {
         </form>
 
         {error && (
-          <div className="mt-4 flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-600 animate-in fade-in slide-in-from-top-2 dark:border-red-900/50 dark:bg-red-950/20 dark:text-red-400">
-            <span className="w-1.5 h-1.5 rounded-full bg-red-500 shrink-0" />
+          <InlineAlert variant="error" className="mt-4" onDismiss={() => setError(null)}>
             {error}
-          </div>
+          </InlineAlert>
         )}
         </CardContent>
       </Card>
 
       {resultPlaylists.length > 0 && (
-        <Card className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-          <CardHeader>
-            <div className="flex items-center gap-2 text-xl font-bold text-[#333] dark:text-foreground">
-              <Check className="h-5 w-5 text-green-500" />
-              Cloning Complete
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-6">
+        <ResultPanel
+          title="Cloning Complete"
+          tone="success"
+          className="animate-in fade-in slide-in-from-bottom-4 duration-500"
+        >
+          <div className="space-y-6">
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <Card className="flex items-center gap-4 p-4">
                 <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-orange-500/10 text-orange-500">
@@ -205,9 +187,10 @@ export default function PlaylistClonerPage() {
                 </Card>
               ))}
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </ResultPanel>
       )}
+      </div>
     </div>
   );
 }

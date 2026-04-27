@@ -1,9 +1,16 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import Link from "next/link";
-import { ArrowLeft, Heart, Search, Trash2, Loader2 } from "lucide-react";
-import { EmptyState, LoadingSpinner, SelectionBanner, TrackRow } from "@/components/ui";
+import { Heart, Search, Trash2, Loader2 } from "lucide-react";
+import {
+  ConfirmDialog,
+  EmptyState,
+  InlineAlert,
+  LoadingSpinner,
+  PageHeader,
+  SelectionBanner,
+  TrackRow,
+} from "@/components/ui";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "";
 
@@ -31,6 +38,8 @@ export default function LikeManagerPage() {
   const [removing, setRemoving] = useState(false);
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<SortOption>("recent");
+  const [showUnlikeConfirm, setShowUnlikeConfirm] = useState(false);
+  const [notice, setNotice] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   useEffect(() => {
     fetchLikes();
@@ -61,9 +70,12 @@ export default function LikeManagerPage() {
             };
           })
         );
+      } else {
+        setNotice({ type: "error", text: "Couldn’t load your liked tracks. Try refreshing the page." });
       }
     } catch (error) {
       console.error("Failed to fetch likes:", error);
+      setNotice({ type: "error", text: "Couldn’t load your liked tracks. Try refreshing the page." });
     } finally {
       setLoading(false);
     }
@@ -88,9 +100,13 @@ export default function LikeManagerPage() {
 
   const handleBulkUnlike = async () => {
     if (selected.size === 0) return;
-    if (!confirm(`Unlike ${selected.size} track${selected.size > 1 ? "s" : ""}? This cannot be undone.`)) return;
+    setShowUnlikeConfirm(true);
+  };
 
+  const executeBulkUnlike = async () => {
+    setShowUnlikeConfirm(false);
     setRemoving(true);
+    setNotice(null);
     try {
       const trackIds = Array.from(selected);
       const response = await fetch(`${API_BASE}/api/likes/tracks/bulk-unlike`, {
@@ -104,12 +120,20 @@ export default function LikeManagerPage() {
         const removedIds = new Set(data.results.filter((r: { status: string }) => r.status === "ok").map((r: { trackId: number }) => r.trackId));
         setLikes((prev) => prev.filter((l) => !removedIds.has(l.track.id)));
         setSelected(new Set());
+        if (removedIds.size === trackIds.length) {
+          setNotice({ type: "success", text: `Unliked ${removedIds.size} track${removedIds.size === 1 ? "" : "s"}.` });
+        } else {
+          setNotice({
+            type: "error",
+            text: `Unliked ${removedIds.size} of ${trackIds.length} tracks. Some tracks could not be removed.`,
+          });
+        }
       } else {
-        alert("Bulk unlike failed");
+        setNotice({ type: "error", text: "Bulk unlike failed. Please try again." });
       }
     } catch (error) {
       console.error("Bulk unlike error:", error);
-      alert("An error occurred");
+      setNotice({ type: "error", text: "An error occurred while unliking tracks." });
     } finally {
       setRemoving(false);
     }
@@ -143,23 +167,22 @@ export default function LikeManagerPage() {
     });
 
   return (
-    <div className="min-h-screen bg-[#F2F2F2] dark:bg-background">
-      <div className={`container mx-auto max-w-6xl px-6 py-12 ${selected.size > 0 ? "pb-28" : ""}`}>
-        <div className="mb-12">
-          <Link
-            href="/dashboard"
-            className="inline-flex items-center gap-2 text-[#666666] dark:text-muted-foreground hover:text-[#FF5500] transition mb-6"
+    <div className="min-h-screen bg-background">
+      <div className={`container mx-auto max-w-6xl px-6 py-6 ${selected.size > 0 ? "pb-28" : ""}`}>
+        <PageHeader
+          title="Like Manager"
+          description="Browse, search, and manage your liked tracks. Unlike in bulk."
+        />
+
+        {notice && (
+          <InlineAlert
+            variant={notice.type}
+            className="mb-6"
+            onDismiss={() => setNotice(null)}
           >
-            <ArrowLeft className="w-5 h-5" />
-            Back to Dashboard
-          </Link>
-          <h1 className="text-4xl md:text-5xl font-bold mb-4 text-[#333333] dark:text-foreground">
-            Like Manager
-          </h1>
-          <p className="text-lg text-[#666666] dark:text-muted-foreground">
-            Browse, search, and manage your liked tracks. Unlike in bulk.
-          </p>
-        </div>
+            {notice.text}
+          </InlineAlert>
+        )}
 
         {loading ? (
           <div className="bg-white dark:bg-card rounded-2xl p-12 border-2 border-gray-200 dark:border-border flex items-center justify-center">
@@ -232,11 +255,21 @@ export default function LikeManagerPage() {
       </div>
       <SelectionBanner
         count={selected.size}
+        entityName="track"
         actionLabel="Unlike Selected"
         actionVariant="destructive"
         onAction={handleBulkUnlike}
         disabled={removing}
         actionIcon={removing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+      />
+      <ConfirmDialog
+        open={showUnlikeConfirm}
+        title="Unlike selected tracks?"
+        description={`Unlike ${selected.size} track${selected.size === 1 ? "" : "s"}? This cannot be undone.`}
+        confirmLabel="Unlike"
+        variant="destructive"
+        onConfirm={executeBulkUnlike}
+        onCancel={() => setShowUnlikeConfirm(false)}
       />
     </div>
   );

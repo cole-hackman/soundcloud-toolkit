@@ -1,9 +1,8 @@
 "use client";
 
 import { useMemo, useState, type ReactNode } from "react";
-import Link from "next/link";
-import { ArrowLeft, Link2, ExternalLink, Music, Users, ListMusic, Loader2, X, Download, Search, RotateCcw, Copy } from "lucide-react";
-import { EmptyState } from "@/components/ui";
+import { Link2, ExternalLink, Music, Users, ListMusic, Loader2, X, Download, Search, RotateCcw, Copy } from "lucide-react";
+import { Button, EmptyState, InlineAlert, PageHeader, ResultPanel } from "@/components/ui";
 import { formatCompactNumber, formatDuration, useBatchResolver, type BatchResolveRow } from "@/lib/resolver";
 
 export default function BatchLinkResolverPage() {
@@ -114,23 +113,12 @@ export default function BatchLinkResolverPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#F2F2F2] dark:bg-background">
-      <div className="container mx-auto px-6 py-12 max-w-4xl">
-        <div className="mb-12">
-          <Link
-            href="/dashboard"
-            className="inline-flex items-center gap-2 text-[#666666] dark:text-muted-foreground hover:text-[#FF5500] transition mb-6"
-          >
-            <ArrowLeft className="w-5 h-5" />
-            Back to Dashboard
-          </Link>
-          <h1 className="text-4xl md:text-5xl font-bold mb-4 text-[#333333] dark:text-foreground">
-            Batch Link Resolver
-          </h1>
-          <p className="text-lg text-[#666666] dark:text-muted-foreground">
-            Paste up to 50 SoundCloud URLs to resolve them all at once.
-          </p>
-        </div>
+    <div className="min-h-screen bg-background">
+      <div className="container mx-auto px-6 py-6 max-w-4xl">
+        <PageHeader
+          title="Batch Link Resolver"
+          description="Paste up to 50 SoundCloud URLs to resolve them all at once."
+        />
 
         {/* Input area */}
         <div className="bg-white dark:bg-card rounded-2xl p-6 border-2 border-gray-200 dark:border-border mb-6">
@@ -148,10 +136,10 @@ export default function BatchLinkResolverPage() {
             <span className="text-sm text-[#999999] dark:text-muted-foreground">
               {input.split("\n").filter((l) => l.trim()).length} URLs entered
             </span>
-            <button
+            <Button
               onClick={handleResolve}
               disabled={loading || !input.trim()}
-              className="px-6 py-2.5 rounded-lg bg-[#FF5500] text-white font-semibold hover:bg-[#E64D00] transition disabled:opacity-50 flex items-center gap-2"
+              className="h-10 px-4"
             >
               {loading ? (
                 <>
@@ -164,14 +152,18 @@ export default function BatchLinkResolverPage() {
                   Resolve All
                 </>
               )}
-            </button>
+            </Button>
           </div>
-          {error && <p className="mt-4 text-sm text-red-500">{error}</p>}
+          {error && (
+            <InlineAlert variant="error" className="mt-4" onDismiss={() => setError("")}>
+              {error}
+            </InlineAlert>
+          )}
         </div>
 
         {/* Results */}
         {results.length > 0 && (
-          <div className="bg-white dark:bg-card rounded-2xl p-6 border-2 border-gray-200 dark:border-border">
+          <ResultPanel>
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-bold text-[#333333] dark:text-foreground">Results</h2>
               <div className="flex items-center gap-3 text-sm">
@@ -219,7 +211,7 @@ export default function BatchLinkResolverPage() {
                 />
               ))}
             </div>
-          </div>
+          </ResultPanel>
         )}
 
         {results.length === 0 && !loading && (

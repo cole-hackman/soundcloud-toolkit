@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import Link from "next/link";
 import {
   ArrowLeft,
   Shuffle,
@@ -16,7 +15,15 @@ import {
   ArrowRightLeft,
   X,
 } from "lucide-react";
-import { EmptyState, LoadingSpinner, Skeleton } from "@/components/ui";
+import {
+  Button,
+  ConfirmDialog,
+  EmptyState,
+  InlineAlert,
+  LoadingSpinner,
+  PageHeader,
+  Skeleton,
+} from "@/components/ui";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "";
 
@@ -64,6 +71,8 @@ export default function PlaylistModifierPage() {
   const [transferTargetId, setTransferTargetId] = useState<number | "">("");
   const [transferLoading, setTransferLoading] = useState(false);
   const [banner, setBanner] = useState<BannerState>(null);
+  const [trackToRemove, setTrackToRemove] = useState<number | null>(null);
+  const [showSaveConfirm, setShowSaveConfirm] = useState(false);
 
   const filteredTracks = tracks.filter((t) => {
     if (trackFilter === "downloadable") return Boolean(t.downloadable) || t.downloadable === "true";
@@ -157,14 +166,13 @@ export default function PlaylistModifierPage() {
   };
 
   const removeTrack = (trackId: number) => {
-    if (
-      !window.confirm(
-        "Remove this track from the playlist on save? You can still cancel by not saving."
-      )
-    ) {
-      return;
-    }
-    setTracks((prev) => prev.filter((t) => t.id !== trackId));
+    setTrackToRemove(trackId);
+  };
+
+  const executeRemoveTrack = () => {
+    if (trackToRemove === null) return;
+    setTracks((prev) => prev.filter((t) => t.id !== trackToRemove));
+    setTrackToRemove(null);
   };
 
   const moveTrack = (index: number, direction: "up" | "down") => {
@@ -287,13 +295,12 @@ export default function PlaylistModifierPage() {
 
   const savePlaylist = async () => {
     if (!selectedPlaylist) return;
-    if (
-      !window.confirm(
-        "Update this playlist on SoundCloud with the current order and removed tracks?"
-      )
-    ) {
-      return;
-    }
+    setShowSaveConfirm(true);
+  };
+
+  const executeSavePlaylist = async () => {
+    if (!selectedPlaylist) return;
+    setShowSaveConfirm(false);
     setSaving(true);
     try {
       const response = await fetch(
@@ -306,13 +313,13 @@ export default function PlaylistModifierPage() {
         }
       );
       if (response.ok) {
-        alert("Playlist saved successfully!");
+        setBanner({ tone: "success", text: "Playlist saved successfully." });
       } else {
-        alert("Failed to save playlist");
+        setBanner({ tone: "error", text: "Failed to save playlist." });
       }
     } catch (error) {
       console.error("Error saving playlist:", error);
-      alert("An error occurred");
+      setBanner({ tone: "error", text: "An error occurred while saving the playlist." });
     } finally {
       setSaving(false);
     }
@@ -325,46 +332,21 @@ export default function PlaylistModifierPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#F2F2F2] dark:bg-background">
-      <div className="container mx-auto px-6 py-12 max-w-6xl">
-        {/* Header */}
-        <div className="mb-12">
-          <Link
-            href="/dashboard"
-            className="inline-flex items-center gap-2 text-[#666666] dark:text-muted-foreground hover:text-[#FF5500] transition mb-6"
-          >
-            <ArrowLeft className="w-5 h-5" />
-            Back to Dashboard
-          </Link>
-          <h1 className="text-4xl md:text-5xl font-bold mb-4 text-[#333333] dark:text-foreground">
-            Playlist Modifier
-          </h1>
-          <p className="text-lg text-[#666666] dark:text-muted-foreground">
-            Reorder, remove, move, or duplicate tracks between your playlists.
-          </p>
-        </div>
+    <div className="min-h-screen bg-background">
+      <div className="container mx-auto px-6 py-6 max-w-6xl">
+        <PageHeader
+          title="Playlist Modifier"
+          description="Reorder, remove, move, or duplicate tracks between your playlists."
+        />
 
         {banner && (
-          <div
-            role="status"
-            className={`mb-6 rounded-xl border-2 px-4 py-3 flex items-start justify-between gap-3 ${
-              banner.tone === "success"
-                ? "border-green-200 bg-green-50 text-green-900 dark:border-green-900/50 dark:bg-green-950/40 dark:text-green-100"
-                : banner.tone === "warning"
-                  ? "border-amber-200 bg-amber-50 text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-100"
-                  : "border-red-200 bg-red-50 text-red-900 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-100"
-            }`}
+          <InlineAlert
+            variant={banner.tone}
+            className="mb-6"
+            onDismiss={() => setBanner(null)}
           >
-            <span className="text-sm font-medium">{banner.text}</span>
-            <button
-              type="button"
-              onClick={() => setBanner(null)}
-              className="shrink-0 p-1 rounded hover:bg-black/5 dark:hover:bg-white/10"
-              aria-label="Dismiss"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
+            {banner.text}
+          </InlineAlert>
         )}
 
         {!selectedPlaylist ? (
@@ -440,26 +422,26 @@ export default function PlaylistModifierPage() {
                     setSelectedPlaylist(null);
                     setTracks([]);
                   }}
-                  className="text-[#666666] dark:text-muted-foreground hover:text-[#FF5500] transition"
+                  className="inline-flex items-center gap-2 text-muted-foreground transition hover:text-primary"
                 >
-                  ← Back to playlists
+                  <ArrowLeft className="h-4 w-4" />
+                  Back to playlists
                 </button>
                 <h2 className="text-2xl font-bold text-[#333333] dark:text-foreground">
                   {selectedPlaylist.title}
                 </h2>
               </div>
               <div className="flex gap-3">
-                <button
+                <Button
                   onClick={shuffleTracks}
-                  className="px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-border hover:border-[#FF5500] transition flex items-center gap-2 text-[#333333] dark:text-foreground"
+                  variant="outline"
                 >
                   <Shuffle className="w-4 h-4" />
                   Shuffle
-                </button>
-                <button
+                </Button>
+                <Button
                   onClick={savePlaylist}
                   disabled={saving}
-                  className="px-6 py-2 rounded-lg bg-gradient-to-r from-[#FF5500] to-[#E64A00] text-white hover:shadow-lg transition flex items-center gap-2 disabled:opacity-50"
                 >
                   {saving ? (
                     <LoadingSpinner size="sm" className="w-4 h-4 border-white" />
@@ -467,7 +449,7 @@ export default function PlaylistModifierPage() {
                     <Save className="w-4 h-4" />
                   )}
                   Save Changes
-                </button>
+                </Button>
               </div>
             </div>
 
@@ -734,6 +716,23 @@ export default function PlaylistModifierPage() {
           </div>
         </div>
       )}
+      <ConfirmDialog
+        open={trackToRemove !== null}
+        title="Remove track?"
+        description="Remove this track from the playlist on save? You can still cancel by not saving changes."
+        confirmLabel="Remove"
+        variant="destructive"
+        onConfirm={executeRemoveTrack}
+        onCancel={() => setTrackToRemove(null)}
+      />
+      <ConfirmDialog
+        open={showSaveConfirm}
+        title="Save playlist changes?"
+        description="Update this playlist on SoundCloud with the current order and removed tracks."
+        confirmLabel="Save Changes"
+        onConfirm={executeSavePlaylist}
+        onCancel={() => setShowSaveConfirm(false)}
+      />
     </div>
   );
 }

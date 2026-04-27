@@ -216,7 +216,7 @@ export default function Home() {
               <div className="flex items-center">
                 <Link
                   href="/login"
-                  className="inline-flex items-center justify-center rounded-full bg-primary px-4 py-1.5 text-xs font-semibold text-primary-foreground shadow-elevation-1 transition-all hover:shadow-glow-sm hover:-translate-y-0.5 sm:px-6 sm:py-2 sm:text-sm"
+                  className="inline-flex items-center justify-center rounded-lg bg-primary px-4 py-1.5 text-xs font-semibold text-primary-foreground shadow-elevation-1 transition-all hover:shadow-glow-sm hover:-translate-y-0.5 sm:px-6 sm:py-2 sm:text-sm"
                 >
                   Login
                 </Link>
@@ -235,7 +235,7 @@ export default function Home() {
               SoundCloud playlist power tools — free forever
             </div>
 
-            <h1 className="mt-6 animate-fade-in-up text-balance text-4xl font-semibold tracking-tight text-foreground sm:text-5xl md:text-6xl lg:text-7xl [animation-delay:80ms]">
+            <h1 className="mt-6 animate-fade-in-up text-balance font-display text-4xl font-semibold tracking-tight text-foreground sm:text-5xl md:text-6xl lg:text-7xl [animation-delay:80ms]">
               The Ultimate SoundCloud{" "}
               <span className="text-gradient font-semibold">Toolkit</span>
             </h1>
@@ -257,7 +257,7 @@ export default function Home() {
                 type="button"
                 variant="secondary"
                 onClick={scrollToFeatures}
-                className="rounded-full px-6 py-2"
+                className="rounded-lg px-6 py-2"
               >
                 See what it does
               </Button>
@@ -306,7 +306,7 @@ export default function Home() {
         >
           <div className="mx-auto max-w-6xl">
             <div className="mx-auto mb-14 max-w-3xl text-center">
-              <h2 className="text-3xl font-semibold tracking-tight sm:text-4xl md:text-5xl">
+              <h2 className="font-display text-3xl font-semibold tracking-tight sm:text-4xl md:text-5xl">
                 A console of tools for{" "}
                 <span className="text-gradient">total control</span>.
               </h2>
@@ -354,7 +354,7 @@ export default function Home() {
           className="border-y border-border/60 bg-surface px-4 py-20 sm:px-6 sm:py-24"
         >
           <div className="mx-auto max-w-6xl">
-            <h2 className="text-center text-3xl font-semibold tracking-tight sm:text-4xl md:text-5xl">
+            <h2 className="text-center font-display text-3xl font-semibold tracking-tight sm:text-4xl md:text-5xl">
               Built for the{" "}
               <span className="text-gradient">obsessed listeners</span>.
             </h2>
@@ -388,7 +388,7 @@ export default function Home() {
           className="bg-background/80 px-4 py-20 sm:px-6 sm:py-24"
         >
           <div className="mx-auto max-w-5xl">
-            <h2 className="text-center text-3xl font-semibold tracking-tight sm:text-4xl md:text-5xl">
+            <h2 className="text-center font-display text-3xl font-semibold tracking-tight sm:text-4xl md:text-5xl">
               How it works
             </h2>
 
@@ -422,7 +422,7 @@ export default function Home() {
         {/* CTA section */}
         <section className="border-y border-border/60 bg-surface px-4 py-20 sm:px-6 sm:py-24">
           <div className="mx-auto max-w-3xl text-center">
-            <h2 className="text-3xl font-semibold tracking-tight sm:text-4xl md:text-5xl">
+            <h2 className="font-display text-3xl font-semibold tracking-tight sm:text-4xl md:text-5xl">
               Ready to organize your SoundCloud like a studio session?
             </h2>
             <p className="mt-4 text-base text-muted-foreground sm:text-lg">
@@ -446,7 +446,7 @@ export default function Home() {
           className="bg-background px-4 py-20 sm:px-6 sm:py-24"
         >
           <div className="mx-auto max-w-4xl">
-            <h2 className="text-center text-3xl font-semibold tracking-tight sm:text-4xl">
+            <h2 className="text-center font-display text-3xl font-semibold tracking-tight sm:text-4xl">
               Frequently asked
             </h2>
             <div className="mt-10 space-y-4">

@@ -29,6 +29,10 @@ import {
   validateBulkUnfollow,
   validateBulkUnrepost,
   validateClonePlaylist,
+  validateCloneFollowedPlaylists,
+  validateCreateFromFollowedLikes,
+  validateFollowedUserLibraryPagination,
+  validateFollowingUserId,
   validateTrackSearch,
   validateDeletePlaylist,
 } from '../middleware/validation.js';
@@ -193,6 +197,67 @@ function normalizeResourceV2(resource) {
     playlist_count: resource.playlist_count ?? null,
     likes_count: resource.likes_count ?? resource.public_favorites_count ?? null
   };
+}
+
+function normalizeTrackForLibraryBrowser(track) {
+  const id = extractNumericId(track?.id || track?.urn);
+  if (!id) return null;
+  return {
+    id,
+    title: track.title || 'Untitled track',
+    user: {
+      id: extractNumericId(track.user?.id || track.user?.urn),
+      username: track.user?.username || 'Unknown',
+    },
+    artwork_url: track.artwork_url || track.user?.avatar_url || null,
+    duration: track.duration ?? null,
+    permalink_url: track.permalink_url || null,
+    streamable: track.streamable,
+    access: track.access || null,
+  };
+}
+
+function normalizePlaylistForLibraryBrowser(playlist) {
+  const id = extractNumericId(playlist?.id || playlist?.urn);
+  if (!id) return null;
+  const tracks = Array.isArray(playlist.tracks) ? playlist.tracks : [];
+  const firstTrackArtwork = tracks.find((track) => track?.artwork_url)?.artwork_url;
+  return {
+    id,
+    title: playlist.title || 'Untitled playlist',
+    user: {
+      id: extractNumericId(playlist.user?.id || playlist.user?.urn),
+      username: playlist.user?.username || 'Unknown',
+    },
+    artwork_url: playlist.artwork_url || firstTrackArtwork || playlist.user?.avatar_url || null,
+    permalink_url: playlist.permalink_url || null,
+    track_count: playlist.track_count ?? tracks.length,
+    likes_count: playlist.likes_count ?? playlist.favoritings_count ?? null,
+    reposts_count: playlist.reposts_count ?? null,
+  };
+}
+
+function getPlayableTrackIds(tracks = []) {
+  const seen = new Set();
+  const ids = [];
+  for (const track of tracks) {
+    const id = extractNumericId(track?.id || track?.urn);
+    if (!id || track?.blocked_at || track?.streamable === false || seen.has(id)) continue;
+    seen.add(id);
+    ids.push(id);
+  }
+  return ids;
+}
+
+async function assertFollowedUser(req, targetUserId) {
+  const followings = await soundcloudClient.getFollowings(req.accessToken, req.refreshToken);
+  const followed = followings.find((user) => Number(user?.id) === Number(targetUserId));
+  if (!followed) {
+    const error = new Error('Followed user not found');
+    error.status = 403;
+    throw error;
+  }
+  return followed;
 }
 
 
@@ -1143,6 +1208,378 @@ async function createPlaylistFromTrackIds(accessToken, refreshToken, trackIds, t
 
   return newPlaylist;
 }
+
+function uniquePositiveIds(ids = []) {
+  const seen = new Set();
+  const unique = [];
+  for (const id of ids) {
+    const numericId = Number(id);
+    if (!Number.isInteger(numericId) || numericId < 1 || seen.has(numericId)) continue;
+    seen.add(numericId);
+    unique.push(numericId);
+  }
+  return unique;
+}
+
+async function createOrAppendTrackIds({ accessToken, refreshToken, trackIds, title, targetPlaylistId, description }) {
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const uniqueTrackIds = uniquePositiveIds(trackIds);
+
+  if (targetPlaylistId) {
+    const targetPlaylist = await soundcloudClient.getPlaylistWithTracks(accessToken, refreshToken, targetPlaylistId);
+    const existingIds = (Array.isArray(targetPlaylist.tracks) ? targetPlaylist.tracks : [])
+      .filter((track) => track && track.id != null)
+      .map((track) => track.id);
+    const { mergedIds, addedCount } = mergeIntoExisting(existingIds, uniqueTrackIds);
+    const chunks = splitIntoChunks(mergedIds, MAX_TRACKS_PER_PLAYLIST);
+    const targetChunk = chunks[0] || [];
+    const overflowChunks = chunks.slice(1);
+
+    let index = BATCH_SIZE_PLAYLIST_TRACKS;
+    while (index < targetChunk.length) {
+      await sleep(300);
+      await soundcloudClient.addTracksToPlaylist(accessToken, refreshToken, targetPlaylistId, targetChunk.slice(0, index));
+      index += BATCH_SIZE_PLAYLIST_TRACKS;
+    }
+
+    await sleep(300);
+    await soundcloudClient.addTracksToPlaylist(accessToken, refreshToken, targetPlaylistId, targetChunk);
+
+    const overflowPlaylists = [];
+    const baseTitle = targetPlaylist.title || title || 'Playlist';
+    for (let i = 0; i < overflowChunks.length; i++) {
+      await sleep(500);
+      const overflowTitle = `${baseTitle} (overflow ${i + 1})`;
+      const overflowPlaylist = await createPlaylistFromTrackIds(
+        accessToken,
+        refreshToken,
+        overflowChunks[i],
+        overflowTitle,
+        `Overflow from adding tracks to "${baseTitle}"\n\nCreated using SC Toolkit. soundcloudtoolkit.com`
+      );
+      overflowPlaylists.push({
+        id: overflowPlaylist.id,
+        title: overflowTitle,
+        permalink_url: overflowPlaylist.permalink_url,
+        trackCount: overflowChunks[i].length,
+      });
+    }
+
+    return {
+      playlist: { id: targetPlaylistId, title: targetPlaylist.title },
+      overflowPlaylists: overflowPlaylists.length > 0 ? overflowPlaylists : undefined,
+      totalTracks: mergedIds.length,
+      addedCount,
+      existingTrackCount: existingIds.length,
+    };
+  }
+
+  if (uniqueTrackIds.length <= MAX_TRACKS_PER_PLAYLIST) {
+    const newPlaylist = await createPlaylistFromTrackIds(accessToken, refreshToken, uniqueTrackIds, title, description);
+    return {
+      playlistId: newPlaylist.id,
+      permalink_url: newPlaylist.permalink_url,
+      playlist: { id: newPlaylist.id, title, permalink_url: newPlaylist.permalink_url },
+      totalTracks: uniqueTrackIds.length,
+    };
+  }
+
+  const chunks = splitIntoChunks(uniqueTrackIds, MAX_TRACKS_PER_PLAYLIST);
+  const playlists = [];
+  for (let i = 0; i < chunks.length; i++) {
+    const playlistTitle = `${title} (${i + 1}/${chunks.length})`;
+    const newPlaylist = await createPlaylistFromTrackIds(
+      accessToken,
+      refreshToken,
+      chunks[i],
+      playlistTitle,
+      `${description}${chunks.length > 1 ? ` - Part ${i + 1} of ${chunks.length}` : ''}`
+    );
+    playlists.push({
+      id: newPlaylist.id,
+      title: playlistTitle,
+      permalink_url: newPlaylist.permalink_url,
+      trackCount: chunks[i].length,
+    });
+    if (i < chunks.length - 1) await sleep(500);
+  }
+
+  return {
+    playlists,
+    totalTracks: uniqueTrackIds.length,
+    numPlaylistsCreated: playlists.length,
+  };
+}
+
+router.get(
+  '/followings/:userId/likes/paged',
+  authenticateUser,
+  validateFollowingUserId,
+  validateFollowedUserLibraryPagination,
+  async (req, res) => {
+    try {
+      const targetUser = await assertFollowedUser(req, req.params.userId);
+      const page = await soundcloudClient.getUserLikedTracksPage(req.accessToken, req.refreshToken, req.params.userId, {
+        limit: req.query.limit || 50,
+        next: req.query.next,
+      });
+      const collection = (Array.isArray(page.collection) ? page.collection : [])
+        .map(normalizeTrackForLibraryBrowser)
+        .filter(Boolean);
+      res.json({
+        user: {
+          id: targetUser.id,
+          username: targetUser.username,
+          avatar_url: targetUser.avatar_url,
+          permalink_url: targetUser.permalink_url,
+        },
+        collection,
+        next_href: page.next_href || null,
+        total: page.total_results || undefined,
+      });
+    } catch (error) {
+      logger.error('Get followed user liked tracks error:', safeError(error));
+      const status = error?.status || 500;
+      res.status(status === 403 ? 403 : 500).json({
+        error: status === 403 ? 'Choose a user you follow to browse their public likes.' : 'Failed to get followed user likes',
+      });
+    }
+  }
+);
+
+router.get(
+  '/followings/:userId/playlists/paged',
+  authenticateUser,
+  validateFollowingUserId,
+  validateFollowedUserLibraryPagination,
+  async (req, res) => {
+    try {
+      const targetUser = await assertFollowedUser(req, req.params.userId);
+      const page = await soundcloudClient.getUserPlaylistsPage(req.accessToken, req.refreshToken, req.params.userId, {
+        limit: req.query.limit || 50,
+        next: req.query.next,
+      });
+      const collection = (Array.isArray(page.collection) ? page.collection : [])
+        .map(normalizePlaylistForLibraryBrowser)
+        .filter(Boolean);
+      res.json({
+        user: {
+          id: targetUser.id,
+          username: targetUser.username,
+          avatar_url: targetUser.avatar_url,
+          permalink_url: targetUser.permalink_url,
+        },
+        collection,
+        next_href: page.next_href || null,
+        total: page.total_results || undefined,
+      });
+    } catch (error) {
+      logger.error('Get followed user playlists error:', safeError(error));
+      const status = error?.status || 500;
+      res.status(status === 403 ? 403 : 500).json({
+        error: status === 403 ? 'Choose a user you follow to browse their public playlists.' : 'Failed to get followed user playlists',
+      });
+    }
+  }
+);
+
+router.get(
+  '/followings/:userId/liked-playlists/paged',
+  authenticateUser,
+  validateFollowingUserId,
+  validateFollowedUserLibraryPagination,
+  async (req, res) => {
+    try {
+      const targetUser = await assertFollowedUser(req, req.params.userId);
+      const page = await soundcloudClient.getUserLikedPlaylistsPage(req.accessToken, req.refreshToken, req.params.userId, {
+        limit: req.query.limit || 50,
+        next: req.query.next,
+      });
+      const collection = (Array.isArray(page.collection) ? page.collection : [])
+        .map(normalizePlaylistForLibraryBrowser)
+        .filter(Boolean);
+      res.json({
+        user: {
+          id: targetUser.id,
+          username: targetUser.username,
+          avatar_url: targetUser.avatar_url,
+          permalink_url: targetUser.permalink_url,
+        },
+        collection,
+        next_href: page.next_href || null,
+        total: page.total_results || undefined,
+      });
+    } catch (error) {
+      logger.error('Get followed user liked playlists error:', safeError(error));
+      const status = error?.status || 500;
+      res.status(status === 403 ? 403 : 500).json({
+        error: status === 403 ? 'Choose a user you follow to browse their public liked playlists.' : 'Failed to get followed user liked playlists',
+      });
+    }
+  }
+);
+
+router.post(
+  '/followings/:userId/likes/playlist',
+  authenticateUser,
+  heavyOperationRateLimiter,
+  validateFollowingUserId,
+  validateCreateFromFollowedLikes,
+  async (req, res) => {
+    try {
+      const targetUser = await assertFollowedUser(req, req.params.userId);
+      const { mode, targetPlaylistId } = req.body;
+      const baseTitle = req.body.title?.trim() || `${targetUser.username || 'Followed user'} Likes`;
+      let fetchedTotal;
+      let acceptedTotal;
+      let trackIds;
+
+      if (mode === 'all') {
+        const tracks = await soundcloudClient.getUserLikedTracks(req.accessToken, req.refreshToken, req.params.userId, 200);
+        fetchedTotal = tracks.length;
+        trackIds = getPlayableTrackIds(tracks);
+        acceptedTotal = trackIds.length;
+      } else {
+        trackIds = uniquePositiveIds(req.body.trackIds);
+        fetchedTotal = trackIds.length;
+        acceptedTotal = trackIds.length;
+      }
+
+      if (trackIds.length === 0) {
+        return res.status(400).json({ error: 'No public streamable tracks were available to add.' });
+      }
+
+      const result = await createOrAppendTrackIds({
+        accessToken: req.accessToken,
+        refreshToken: req.refreshToken,
+        trackIds,
+        title: baseTitle,
+        targetPlaylistId,
+        description: `Playlist created from ${targetUser.username || 'a followed user'}'s public liked tracks\n\nCreated using SC Toolkit. Try it for free soundcloudtoolkit.com`,
+      });
+
+      logOperation({
+        userId: req.user.id,
+        action: 'followed-likes-to-playlist',
+        trackCount: trackIds.length,
+        status: result.numPlaylistsCreated && result.numPlaylistsCreated > 1 ? 'split' : 'success',
+      });
+
+      res.json({
+        ...result,
+        stats: {
+          sourceUserId: Number(req.params.userId),
+          sourceUsername: targetUser.username,
+          fetchedTotal,
+          acceptedTotal,
+          mode,
+        },
+      });
+    } catch (error) {
+      logger.error('Create playlist from followed likes error:', safeError(error));
+      const status = error?.status || 500;
+      res.status(status === 403 ? 403 : 500).json({
+        error: status === 403 ? 'Choose a user you follow to create from their public likes.' : 'Failed to create playlist from followed user likes',
+      });
+    }
+  }
+);
+
+router.post(
+  '/followings/:userId/playlists/clone',
+  authenticateUser,
+  heavyOperationRateLimiter,
+  validateFollowingUserId,
+  validateCloneFollowedPlaylists,
+  async (req, res) => {
+    try {
+      const targetUser = await assertFollowedUser(req, req.params.userId);
+      const playlistIds = uniquePositiveIds(req.body.playlistIds);
+      const titlePrefix = req.body.titlePrefix?.trim();
+      const playlists = [];
+      const errors = [];
+      const perPlaylistCounts = [];
+      let fetchedTotal = 0;
+      let acceptedTotal = 0;
+
+      for (const playlistId of playlistIds) {
+        try {
+          const playlist = await soundcloudClient.getPlaylistWithTracks(req.accessToken, req.refreshToken, playlistId);
+          const allTracks = Array.isArray(playlist.tracks) ? playlist.tracks : [];
+          const trackIds = getPlayableTrackIds(allTracks);
+          fetchedTotal += allTracks.length;
+          acceptedTotal += trackIds.length;
+          perPlaylistCounts.push({ id: playlistId, fetched: allTracks.length, accepted: trackIds.length });
+
+          if (trackIds.length === 0) {
+            errors.push({ id: playlistId, error: 'Playlist has no public streamable tracks to clone.' });
+            continue;
+          }
+
+          const sourceTitle = playlist.title || `Playlist ${playlistId}`;
+          const baseTitle = titlePrefix ? `${titlePrefix} - ${sourceTitle}` : `Clone of ${sourceTitle}`;
+          const chunks = splitIntoChunks(trackIds, MAX_TRACKS_PER_PLAYLIST);
+
+          for (let i = 0; i < chunks.length; i++) {
+            const playlistTitle = chunks.length > 1 ? `${baseTitle} (${i + 1}/${chunks.length})` : baseTitle;
+            const created = await createPlaylistFromTrackIds(
+              req.accessToken,
+              req.refreshToken,
+              chunks[i],
+              playlistTitle,
+              `Cloned from ${playlist.permalink_url || `${targetUser.username || 'followed user'} playlist ${playlistId}`}\n\nCreated using SC Toolkit. Try it for free soundcloudtoolkit.com`
+            );
+            playlists.push({
+              id: created.id,
+              title: playlistTitle,
+              permalink_url: created.permalink_url,
+              trackCount: chunks[i].length,
+              sourcePlaylistId: playlistId,
+            });
+          }
+        } catch (error) {
+          logger.warn('Followed playlist clone item failed:', { playlistId, error: safeError(error) });
+          errors.push({ id: playlistId, error: 'Playlist could not be cloned. It may be private or unavailable.' });
+        }
+      }
+
+      if (playlists.length === 0) {
+        return res.status(400).json({
+          error: 'No selected playlists had public streamable tracks to clone.',
+          errors,
+        });
+      }
+
+      logOperation({
+        userId: req.user.id,
+        action: 'followed-playlist-clone',
+        itemCount: playlistIds.length,
+        trackCount: acceptedTotal,
+        status: errors.length > 0 ? 'partial' : 'success',
+      });
+
+      res.status(errors.length > 0 ? 207 : 200).json({
+        playlists,
+        errors: errors.length > 0 ? errors : undefined,
+        stats: {
+          sourceUserId: Number(req.params.userId),
+          sourceUsername: targetUser.username,
+          sourcePlaylists: playlistIds.length,
+          fetchedTotal,
+          acceptedTotal,
+          numPlaylistsCreated: playlists.length,
+          perPlaylistCounts,
+        },
+      });
+    } catch (error) {
+      logger.error('Clone followed playlists error:', safeError(error));
+      const status = error?.status || 500;
+      res.status(status === 403 ? 403 : 500).json({
+        error: status === 403 ? 'Choose a user you follow to clone their public playlists.' : 'Failed to clone followed user playlists',
+      });
+    }
+  }
+);
 
 /**
  * POST /api/playlists/from-likes

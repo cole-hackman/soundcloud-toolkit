@@ -389,6 +389,57 @@ class SoundCloudClient {
     return res.json();
   }
 
+  buildPagedEndpoint(endpoint, { limit = 50, next, extraParams = {} } = {}) {
+    if (next) {
+      const nextUrl = new URL(String(next));
+      return `${nextUrl.pathname}${nextUrl.search}`;
+    }
+
+    const params = new URLSearchParams({
+      limit: String(limit),
+      linked_partitioning: '1',
+      ...extraParams,
+    });
+    return `${endpoint}?${params.toString()}`;
+  }
+
+  /**
+   * Get a page of another user's public liked tracks.
+   */
+  async getUserLikedTracksPage(accessToken, refreshToken, userId, options = {}) {
+    const endpoint = this.buildPagedEndpoint(`/users/${userId}/likes/tracks`, options);
+    return this.scRequest(endpoint, accessToken, refreshToken);
+  }
+
+  /**
+   * Get all public liked tracks visible for another user.
+   */
+  async getUserLikedTracks(accessToken, refreshToken, userId, limit = 200) {
+    return this.paginate(`/users/${userId}/likes/tracks`, accessToken, refreshToken, limit);
+  }
+
+  /**
+   * Get a page of another user's public playlists without embedded tracks.
+   */
+  async getUserPlaylistsPage(accessToken, refreshToken, userId, options = {}) {
+    const endpoint = this.buildPagedEndpoint(`/users/${userId}/playlists`, {
+      ...options,
+      extraParams: { show_tracks: 'false', ...(options.extraParams || {}) },
+    });
+    return this.scRequest(endpoint, accessToken, refreshToken);
+  }
+
+  /**
+   * Get a page of playlists liked by another user when visible via the API.
+   */
+  async getUserLikedPlaylistsPage(accessToken, refreshToken, userId, options = {}) {
+    const endpoint = this.buildPagedEndpoint(`/users/${userId}/likes/playlists`, {
+      ...options,
+      extraParams: { show_tracks: 'false', ...(options.extraParams || {}) },
+    });
+    return this.scRequest(endpoint, accessToken, refreshToken);
+  }
+
   /**
    * Get the user's activity/stream feed
    */

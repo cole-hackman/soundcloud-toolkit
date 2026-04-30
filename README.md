@@ -1,6 +1,6 @@
 # SoundCloud Toolkit _(soundcloud-toolkit)_
 
-A web toolkit for SoundCloud power users — organize playlists, manage followers, bulk-unlike, download tracks, and clean up your library with secure OAuth, a fast React UI, and privacy-first sessions.
+A web toolkit for SoundCloud power users — organize playlists, browse public libraries from people you follow, manage followers, bulk-unlike, download tracks, and clean up your library with secure OAuth, a fast React UI, and privacy-first sessions.
 
 [![Standard Readme compliant](https://img.shields.io/badge/readme-standard-brightgreen.svg)](https://github.com/RichardLitt/standard-readme)
 [![License](https://img.shields.io/badge/license-UNLICENSED-lightgrey.svg)](#license)
@@ -10,7 +10,7 @@ A web toolkit for SoundCloud power users — organize playlists, manage follower
 
 ## 1. What Is the Project?
 
-**SoundCloud Toolkit** is a web application designed for SoundCloud power users. It provides advanced tools to organize playlists, manage followers, bulk-unlike tracks, proxy downloads, and clean up your library using secure OAuth and a fast modern UI.
+**SoundCloud Toolkit** is a web application designed for SoundCloud power users. It provides advanced tools to organize playlists, browse public likes and playlists from followed users, manage followers, bulk-unlike tracks, proxy downloads, and clean up your library using secure OAuth and a fast modern UI.
 
 ## 2. Why Was This Project Built?
 
@@ -32,9 +32,11 @@ Another challenge was handling API rate limits during bulk operations like unlik
 
 ## 5. What Did You Implement?
 
-- **Playlist Management**: Combine multiple playlists, auto-split large playlists, remove duplicates, health-check playlists for dead tracks, clone any public playlist, and securely transfer/copy/duplicate tracks across your playlists.
-- **Likes & Activity**: Convert liked tracks to playlists, batch unlike tracks, and capture recent activity feeds into playlists.
+- **Playlist Management**: Combine multiple playlists, auto-split large playlists, remove duplicates, compare playlists for overlap, health-check playlists for dead tracks, clone any public playlist, and securely transfer/copy/duplicate tracks across your playlists.
+- **Likes, Activity & Discovery**: Convert liked tracks to playlists, batch unlike tracks, capture recent activity feeds into playlists, and search playable tracks by genre/tag filters.
+- **Following Library**: Pick someone you follow, browse their public/API-visible liked tracks and playlists, create playlists from their public likes, or clone selected public playlists into your own library.
 - **Social & Profile Management**: Identify non-followers, bulk unfollow accounts to clean up your social graph, and batch unrepost content from your profile.
+- **Library Audit & Downloads**: Scan playlists for duplicates, unavailable tracks, near-cap playlists, and download/purchase links; proxy allowed SoundCloud downloads through the backend.
 - **Link & Metadata Tools**: Resolve any SoundCloud URL (track, playlist, or user) to normalized metadata instantly, with batching and in-memory caching.
 - **Secure Authentication**: End-to-end OAuth flow with AES-256-GCM token encryption and CSRF-protected HttpOnly cookies.
 
@@ -104,6 +106,7 @@ npm run server
 
 - Playlist updates capped at **500 tracks** (SoundCloud limit); auto-splits into numbered parts for larger merges.
 - Likes pagination uses cursor/linked partitioning for reliable paging of large libraries.
+- Following Library can only copy public/API-visible resources from users you already follow; private, hidden, blocked, or non-streamable content is skipped or reported as unavailable.
 - Basic backoff for **429** rate limits.
 - **401** auto-retry path will refresh access tokens where applicable.
 - Cross-site cookies require **HTTPS** + `SameSite=None` and strict **CORS** allowlist.
@@ -130,15 +133,23 @@ npm run server
 | `/api/playlists/:id`            | PUT      | Overwrite playlist order/title by sending full `tracks` list            |
 | `/api/playlists/merge`          | POST     | Merge multiple playlists into a new one (dedupe, auto-split >500)       |
 | `/api/playlists/clone`          | POST     | Clones an external public playlist to the user's account                |
+| `/api/playlists/compare`        | POST     | Compare two playlists for overlap and missing tracks                    |
 | `/api/playlists/transfer-track` | POST     | Move or duplicate a single track across the user's playlists            |
 | `/api/playlists/from-likes`     | POST     | Create playlist from selected like IDs (batched PUTs)                   |
+| `/api/library/audit`            | GET      | Audit playlists for duplicates, unavailable tracks, and download links  |
 | `/api/likes`                    | GET      | All user likes                                                          |
 | `/api/likes/paged`              | GET      | Cursor-based likes pagination                                           |
 | `/api/likes/tracks/bulk-unlike` | POST     | Bulk unlike tracks by ID list                                           |
+| `/api/followings/:userId/likes/paged` | GET | Browse public liked tracks for a followed user                          |
+| `/api/followings/:userId/playlists/paged` | GET | Browse public playlists for a followed user                             |
+| `/api/followings/:userId/liked-playlists/paged` | GET | Browse public liked playlists for a followed user                       |
+| `/api/followings/:userId/likes/playlist` | POST | Create or append playlists from a followed user's public liked tracks   |
+| `/api/followings/:userId/playlists/clone` | POST | Clone selected public playlists from a followed user                    |
 | `/api/resolve`                  | GET/POST | Resolve any SoundCloud URL to normalized entity (track/playlist/user)   |
 | `/api/resolve/batch`            | POST     | Batch resolve multiple SoundCloud URLs with caching                     |
 | `/api/proxy-download`           | GET      | Proxy track download through the backend                                |
 | `/api/activities`               | GET      | User activity feed (recent tracks from followed artists)                |
+| `/api/tracks/search`            | GET      | Search playable tracks by genre, tags, text, BPM, and duration filters |
 | `/api/followers`                | GET      | User's followers list                                                   |
 | `/api/followings`               | GET      | User's followings list                                                  |
 | `/api/followings/bulk-unfollow` | POST     | Bulk unfollow users by ID list                                          |

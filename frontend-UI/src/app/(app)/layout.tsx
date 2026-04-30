@@ -15,6 +15,7 @@ const TOOL_SLUGS: Record<string, string> = {
   "/activity-to-playlist": "activity",
   "/like-manager": "like-manager",
   "/following-manager": "following-manager",
+  "/following-library": "following-library",
   "/playlist-health-check": "health-check",
   "/batch-link-resolver": "batch-resolver",
   "/playlist-cloner": "playlist-cloner",

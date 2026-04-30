@@ -273,6 +273,94 @@ export const validateLikesPagination = [
 ];
 
 /**
+ * Validation rules for followed-user library routes.
+ */
+export const validateFollowingUserId = [
+  param('userId')
+    .isInt({ min: 1 })
+    .withMessage('User ID must be a positive integer')
+    .toInt(),
+  handleValidationErrors
+];
+
+export const validateFollowedUserLibraryPagination = [
+  query('limit')
+    .optional()
+    .isInt({ min: 1, max: 200 })
+    .withMessage('Limit must be between 1 and 200')
+    .toInt(),
+  query('next')
+    .optional()
+    .trim()
+    .isLength({ min: 1, max: 2048 })
+    .withMessage('Next cursor must be a valid URL')
+    .custom((value) => {
+      if (!value) return true;
+      try {
+        new URL(value);
+        return true;
+      } catch {
+        throw new Error('Next cursor must be a valid URL');
+      }
+    }),
+  handleValidationErrors
+];
+
+export const validateCreateFromFollowedLikes = [
+  body('mode')
+    .isIn(['selected', 'all'])
+    .withMessage('mode must be selected or all'),
+  body('trackIds')
+    .optional()
+    .isArray({ min: 1, max: 5000 })
+    .withMessage('trackIds must be an array with 1-5000 items'),
+  body('trackIds.*')
+    .optional()
+    .isInt({ min: 1 })
+    .withMessage('Each trackId must be a positive integer'),
+  body('targetPlaylistId')
+    .optional()
+    .isInt({ min: 1 })
+    .withMessage('targetPlaylistId must be a positive integer')
+    .toInt(),
+  body('title')
+    .optional()
+    .trim()
+    .isLength({ min: 1, max: 200 })
+    .withMessage('Title must be between 1 and 200 characters')
+    .escape(),
+  body('trackIds').custom((value, { req }) => {
+    if (req.body.mode === 'selected' && (!Array.isArray(value) || value.length === 0)) {
+      throw new Error('trackIds is required when mode is selected');
+    }
+    return true;
+  }),
+  body('title').custom((value, { req }) => {
+    if (!req.body.targetPlaylistId && !value) {
+      throw new Error('title is required when targetPlaylistId is not provided');
+    }
+    return true;
+  }),
+  handleValidationErrors
+];
+
+export const validateCloneFollowedPlaylists = [
+  body('playlistIds')
+    .isArray({ min: 1, max: 20 })
+    .withMessage('playlistIds must be an array with 1-20 items'),
+  body('playlistIds.*')
+    .isInt({ min: 1 })
+    .withMessage('Each playlistId must be a positive integer'),
+  body('titlePrefix')
+    .optional()
+    .trim()
+    .isLength({ min: 1, max: 200 })
+    .withMessage('Title prefix must be between 1 and 200 characters')
+    .escape(),
+  handleValidationErrors
+];
+
+/**
  * Validate batch resolve request
  */
 export const validateBatchResolve = [

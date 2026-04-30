@@ -30,6 +30,7 @@ import {
   Repeat,
   Activity,
   Music,
+  ListMusic,
   ArrowRightLeft,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
@@ -75,6 +76,7 @@ const NAV: NavEntry[] = [
       { href: "/likes-to-playlist", label: "Likes → Playlist", icon: Heart },
       { href: "/like-manager", label: "Like Manager", icon: ThumbsUp },
       { href: "/following-manager", label: "Following Manager", icon: Users },
+      { href: "/following-library", label: "Following Library", icon: ListMusic },
       { href: "/repost-manager", label: "Repost Manager", icon: Repeat },
       { href: "/activity-to-playlist", label: "Activity → Playlist", icon: Activity },
     ],

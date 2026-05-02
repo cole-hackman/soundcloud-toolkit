@@ -5,6 +5,7 @@ import "./globals.css";
 import { GoogleAnalytics } from "@/components/Analytics";
 import { Providers } from "@/components/Providers";
 import { Analytics } from "@vercel/analytics/react";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 
 const display = Space_Grotesk({
   subsets: ["latin"],
@@ -119,6 +120,7 @@ export default function RootLayout({
         />
         <GoogleAnalytics />
         <Analytics />
+        <SpeedInsights />
       </body>
     </html>
   );

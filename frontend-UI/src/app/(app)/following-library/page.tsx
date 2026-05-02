@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Check,
   Copy,
+  Heart,
   Loader2,
   ListMusic,
   Music,
@@ -17,6 +18,7 @@ import {
   Button,
   Card,
   CardContent,
+  CardFooter,
   CardHeader,
   EmptyState,
   InlineAlert,
@@ -28,6 +30,7 @@ import {
   Skeleton,
   TrackRow,
 } from "@/components/ui";
+import { cn } from "@/lib/utils";
 
 interface Following {
   id: number;
@@ -333,7 +336,7 @@ export default function FollowingLibraryPage() {
     <PageContainer maxWidth="wide">
       <PageHeader
         title="Following Library"
-        description="Browse public likes and playlists from people you follow, then save selected tracks or playlists to your own library."
+        description="Copy public tracks and playlists from people you follow into your library."
       />
 
       {notice && (
@@ -402,10 +405,10 @@ export default function FollowingLibraryPage() {
           </CardContent>
         </Card>
 
-        <div className="space-y-5">
+        <div className="min-w-0">
           {!selectedUser ? (
             <Card>
-              <CardContent>
+              <CardContent className="py-10">
                 <EmptyState
                   icon={<Users className="h-8 w-8" />}
                   title="Select a followed user"
@@ -414,18 +417,18 @@ export default function FollowingLibraryPage() {
               </CardContent>
             </Card>
           ) : (
-            <>
-              <Card>
-                <CardContent className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                  <div className="flex items-center gap-3">
+            <Card className="overflow-hidden shadow-elevation-1">
+              <CardHeader className="space-y-5 border-b border-border/60 bg-muted/15 pb-5 pt-5">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex min-w-0 items-center gap-3">
                     <img
                       src={selectedUser.avatar_url || "/SC Toolkit Icon.png"}
                       alt={selectedUser.username}
-                      className="h-12 w-12 rounded-full object-cover"
+                      className="h-12 w-12 shrink-0 rounded-full object-cover ring-2 ring-border/60"
                     />
-                    <div>
-                      <h2 className="text-lg font-semibold text-[#333] dark:text-foreground">{selectedUser.username}</h2>
-                      <p className="text-sm text-muted-foreground">Only public, API-visible tracks and playlists can be copied.</p>
+                    <div className="min-w-0">
+                      <h2 className="truncate text-lg font-semibold text-[#333] dark:text-foreground">{selectedUser.username}</h2>
+                      <p className="text-sm text-muted-foreground">Public content only — private items won&apos;t appear.</p>
                     </div>
                   </div>
                   {selectedUser.permalink_url && (
@@ -433,46 +436,57 @@ export default function FollowingLibraryPage() {
                       href={selectedUser.permalink_url}
                       target="_blank"
                       rel="noreferrer"
-                      className="inline-flex h-10 items-center justify-center rounded-lg border border-border px-4 text-sm font-semibold hover:bg-surface-hover"
+                      className="inline-flex h-10 shrink-0 items-center justify-center rounded-lg border border-border px-4 text-sm font-semibold hover:bg-surface-hover"
                     >
                       Open on SoundCloud
                     </a>
                   )}
-                </CardContent>
-              </Card>
+                </div>
 
-              <div className="flex flex-wrap gap-2">
-                {(Object.keys(TAB_LABELS) as LibraryTab[]).map((tab) => (
-                  <button
-                    key={tab}
-                    type="button"
-                    onClick={() => setActiveTab(tab)}
-                    className={`rounded-lg border px-3 py-2 text-sm font-semibold transition ${
-                      activeTab === tab
-                        ? "border-[#FF5500]/50 bg-orange-50 text-[#FF5500] dark:bg-orange-950/20"
-                        : "border-border bg-surface hover:bg-surface-hover"
-                    }`}
-                  >
-                    {TAB_LABELS[tab]}
-                  </button>
-                ))}
-              </div>
+                <div
+                  className="grid grid-cols-1 gap-1 rounded-xl border border-border/80 bg-background/80 p-1 sm:grid-cols-3"
+                  role="tablist"
+                  aria-label="Library section"
+                >
+                  {(Object.keys(TAB_LABELS) as LibraryTab[]).map((tab) => (
+                    <button
+                      key={tab}
+                      type="button"
+                      role="tab"
+                      aria-selected={activeTab === tab}
+                      onClick={() => setActiveTab(tab)}
+                      className={cn(
+                        "flex min-h-[44px] items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-sm font-semibold transition",
+                        activeTab === tab
+                          ? "bg-surface text-[#FF5500] shadow-sm ring-1 ring-[#FF5500]/25 dark:bg-secondary/40"
+                          : "text-muted-foreground hover:bg-surface/80 hover:text-foreground",
+                      )}
+                    >
+                      {tab === "likes" && <Music className="h-4 w-4 shrink-0 opacity-80" />}
+                      {tab === "playlists" && <ListMusic className="h-4 w-4 shrink-0 opacity-80" />}
+                      {tab === "liked-playlists" && <Heart className="h-4 w-4 shrink-0 opacity-80" />}
+                      <span className="truncate">{TAB_LABELS[tab]}</span>
+                    </button>
+                  ))}
+                </div>
+              </CardHeader>
 
-              {activeTab === "likes" ? (
-                <Card>
-                  <CardHeader className="gap-3 md:flex-row md:items-center md:justify-between">
-                    <div>
-                      <div className="flex items-center gap-2 text-base font-semibold text-[#333] dark:text-foreground">
-                        <Music className="h-4 w-4 text-[#FF5500]" />
-                        Public liked tracks
+              <CardContent className="space-y-4 pt-6">
+                {activeTab === "likes" ? (
+                  <>
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <div className="flex items-center gap-2 text-base font-semibold text-[#333] dark:text-foreground">
+                          <Music className="h-4 w-4 text-[#FF5500]" />
+                          Liked tracks
+                        </div>
+                        <p className="text-sm text-muted-foreground">Tap tracks to select; use the bottom bar for bulk actions.</p>
                       </div>
-                      <p className="text-sm text-muted-foreground">Select loaded tracks or create from all visible likes.</p>
+                      <Button variant="secondary" className="shrink-0" onClick={selectLoadedTracks} disabled={tracks.length === 0}>
+                        {selectedTracks.size === tracks.length && tracks.length > 0 ? "Clear loaded" : "Select loaded"}
+                      </Button>
                     </div>
-                    <Button variant="secondary" onClick={selectLoadedTracks} disabled={tracks.length === 0}>
-                      {selectedTracks.size === tracks.length && tracks.length > 0 ? "Clear Loaded" : "Select Loaded"}
-                    </Button>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
+
                     <CreatePanel
                       addMode={addMode}
                       setAddMode={setAddMode}
@@ -482,9 +496,7 @@ export default function FollowingLibraryPage() {
                       setShowPlaylistPicker={setShowPlaylistPicker}
                       canCreate={Boolean(canCreateFromTracks)}
                       working={working}
-                      onCreateSelected={() => createFromLikes("selected")}
                       onCreateAll={() => createFromLikes("all")}
-                      selectedCount={selectedTracks.size}
                     />
 
                     {showPlaylistPicker && (
@@ -528,36 +540,29 @@ export default function FollowingLibraryPage() {
                         ))}
                       </div>
                     </ContentListState>
-                  </CardContent>
-                </Card>
-              ) : (
-                <Card>
-                  <CardHeader className="gap-3 md:flex-row md:items-center md:justify-between">
-                    <div>
-                      <div className="flex items-center gap-2 text-base font-semibold text-[#333] dark:text-foreground">
-                        <ListMusic className="h-4 w-4 text-[#FF5500]" />
-                        {TAB_LABELS[activeTab]}
-                      </div>
-                      <p className="text-sm text-muted-foreground">Select playlists to clone them into your own account.</p>
-                    </div>
-                    <Button variant="secondary" onClick={selectLoadedPlaylists} disabled={playlists.length === 0}>
-                      {selectedPlaylists.size === playlists.length && playlists.length > 0 ? "Clear Loaded" : "Select Loaded"}
-                    </Button>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-end">
+                  </>
+                ) : (
+                  <>
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <div>
-                        <label className="mb-1.5 block text-sm font-semibold">Title Prefix</label>
-                        <Input
-                          value={titlePrefix}
-                          onChange={(event) => setTitlePrefix(event.target.value)}
-                          placeholder="Optional prefix for cloned playlists"
-                        />
+                        <div className="flex items-center gap-2 text-base font-semibold text-[#333] dark:text-foreground">
+                          <ListMusic className="h-4 w-4 text-[#FF5500]" />
+                          {TAB_LABELS[activeTab]}
+                        </div>
+                        <p className="text-sm text-muted-foreground">Select playlists, add an optional name prefix, then clone from the bar below.</p>
                       </div>
-                      <Button onClick={cloneSelectedPlaylists} disabled={working || selectedPlaylists.size === 0}>
-                        {working ? <Loader2 className="h-4 w-4 animate-spin" /> : <Copy className="h-4 w-4" />}
-                        Clone Selected
+                      <Button variant="secondary" className="shrink-0" onClick={selectLoadedPlaylists} disabled={playlists.length === 0}>
+                        {selectedPlaylists.size === playlists.length && playlists.length > 0 ? "Clear loaded" : "Select loaded"}
                       </Button>
+                    </div>
+
+                    <div className="max-w-xl">
+                      <label className="mb-1.5 block text-sm font-semibold">Title prefix</label>
+                      <Input
+                        value={titlePrefix}
+                        onChange={(event) => setTitlePrefix(event.target.value)}
+                        placeholder="Optional prefix for cloned playlists"
+                      />
                     </div>
 
                     <ContentListState
@@ -582,7 +587,7 @@ export default function FollowingLibraryPage() {
                             >
                               <div
                                 className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border ${
-                                  isSelected ? "border-[#FF5500] bg-[#FF5500] text-white" : "border-gray-300 text-transparent"
+                                  isSelected ? "border-[#FF5500] bg-[#FF5500] text-white" : "border-gray-300 text-transparent dark:border-muted-foreground/40"
                                 }`}
                               >
                                 <Check className="h-3.5 w-3.5" />
@@ -603,21 +608,25 @@ export default function FollowingLibraryPage() {
                         })}
                       </div>
                     </ContentListState>
-                  </CardContent>
-                </Card>
-              )}
+                  </>
+                )}
+              </CardContent>
 
               {nextHref && (
-                <div className="flex justify-center">
+                <CardFooter className="flex justify-center border-t border-border/60 bg-muted/10 py-4">
                   <Button variant="secondary" onClick={() => fetchLibraryPage(activeTab, false)} disabled={loadingMore}>
                     {loadingMore && <Loader2 className="h-4 w-4 animate-spin" />}
-                    Load More
+                    Load more
                   </Button>
-                </div>
+                </CardFooter>
               )}
 
-              {result && <ResultSummary result={result} />}
-            </>
+              {result && (
+                <div className="border-t border-border/60 px-5 pb-5 pt-4">
+                  <ResultSummary result={result} />
+                </div>
+              )}
+            </Card>
           )}
         </div>
       </div>
@@ -643,9 +652,7 @@ function CreatePanel({
   setShowPlaylistPicker,
   canCreate,
   working,
-  onCreateSelected,
   onCreateAll,
-  selectedCount,
 }: {
   addMode: AddMode;
   setAddMode: (mode: AddMode) => void;
@@ -655,56 +662,70 @@ function CreatePanel({
   setShowPlaylistPicker: (show: boolean) => void;
   canCreate: boolean;
   working: boolean;
-  onCreateSelected: () => void;
   onCreateAll: () => void;
-  selectedCount: number;
 }) {
   return (
-    <div className="rounded-xl border border-border bg-background/60 p-4">
-      <div className="mb-4 flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={() => setAddMode("new")}
-          className={`rounded-lg border px-3 py-2 text-sm font-semibold ${
-            addMode === "new" ? "border-[#FF5500]/50 bg-orange-50 text-[#FF5500] dark:bg-orange-950/20" : "border-border"
-          }`}
-        >
-          New playlist
-        </button>
-        <button
-          type="button"
-          onClick={() => setAddMode("existing")}
-          className={`rounded-lg border px-3 py-2 text-sm font-semibold ${
-            addMode === "existing" ? "border-[#FF5500]/50 bg-orange-50 text-[#FF5500] dark:bg-orange-950/20" : "border-border"
-          }`}
-        >
-          Add to existing
-        </button>
-      </div>
-
-      {addMode === "new" ? (
-        <div>
-          <label className="mb-1.5 block text-sm font-semibold">Playlist Name</label>
-          <Input value={playlistName} onChange={(event) => setPlaylistName(event.target.value)} placeholder="Playlist name" />
+    <div className="rounded-xl border border-border/80 bg-muted/25 p-4 dark:bg-muted/15">
+      <p className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">Save to your library</p>
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:gap-4">
+        <div className="flex shrink-0 flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => setAddMode("new")}
+            className={cn(
+              "rounded-lg border px-3 py-2 text-sm font-semibold transition",
+              addMode === "new"
+                ? "border-[#FF5500]/50 bg-orange-50 text-[#FF5500] dark:bg-orange-950/20"
+                : "border-border bg-background/60 hover:bg-surface-hover",
+            )}
+          >
+            New playlist
+          </button>
+          <button
+            type="button"
+            onClick={() => setAddMode("existing")}
+            className={cn(
+              "rounded-lg border px-3 py-2 text-sm font-semibold transition",
+              addMode === "existing"
+                ? "border-[#FF5500]/50 bg-orange-50 text-[#FF5500] dark:bg-orange-950/20"
+                : "border-border bg-background/60 hover:bg-surface-hover",
+            )}
+          >
+            Add to existing
+          </button>
         </div>
-      ) : (
-        <div>
-          <label className="mb-1.5 block text-sm font-semibold">Target Playlist</label>
-          <Button variant="secondary" onClick={() => setShowPlaylistPicker(true)}>
-            {targetPlaylist ? targetPlaylist.title : "Choose playlist"}
-          </Button>
-        </div>
-      )}
 
-      <div className="mt-4 flex flex-wrap gap-2">
-        <Button onClick={onCreateSelected} disabled={working || !canCreate || selectedCount === 0}>
+        <div className="min-w-0 flex-1">
+          {addMode === "new" ? (
+            <>
+              <label className="mb-1.5 block text-sm font-semibold">Playlist name</label>
+              <Input value={playlistName} onChange={(event) => setPlaylistName(event.target.value)} placeholder="Name for new playlist(s)" />
+            </>
+          ) : (
+            <>
+              <label className="mb-1.5 block text-sm font-semibold">Target playlist</label>
+              <Button variant="secondary" className="w-full justify-start sm:w-auto" onClick={() => setShowPlaylistPicker(true)}>
+                {targetPlaylist ? targetPlaylist.title : "Choose playlist…"}
+              </Button>
+            </>
+          )}
+        </div>
+
+        <Button
+          variant="secondary"
+          className="shrink-0 lg:self-end"
+          onClick={onCreateAll}
+          disabled={working || !canCreate}
+          title="Fetches up to 200 of this user’s public likes from SoundCloud (not limited to the list on this page)."
+        >
           {working ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-          Create from Selected
-        </Button>
-        <Button variant="secondary" onClick={onCreateAll} disabled={working || !canCreate}>
-          Create from All Public Likes
+          <span className="hidden sm:inline">All public likes</span>
+          <span className="sm:hidden">All likes</span>
         </Button>
       </div>
+      <p className="mt-3 text-xs text-muted-foreground">
+        Selected tracks use the action bar at the bottom of the screen.
+      </p>
     </div>
   );
 }

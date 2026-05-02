@@ -39,6 +39,15 @@ import {
 
 const router = express.Router();
 
+const SC_TOOLKIT_PLAYLIST_SITE = 'www.soundcloudtoolkit.com';
+const SC_TOOLKIT_PLAYLIST_FOOTER = `Created using SC Toolkit. Try it for free ${SC_TOOLKIT_PLAYLIST_SITE}`;
+
+/** Operation summary only; standard toolkit footer is appended for SoundCloud playlist descriptions. */
+function playlistDescriptionWithToolkit(operationDescription) {
+  const body = String(operationDescription ?? '').trim();
+  return `${body}\n\n${SC_TOOLKIT_PLAYLIST_FOOTER}`;
+}
+
 // Simple in-memory cache for resolve results (5 minutes TTL)
 const RESOLVE_CACHE_TTL_MS = 5 * 60 * 1000;
 const RESOLVE_CACHE_MAX_ENTRIES = 1000;
@@ -451,7 +460,7 @@ router.post('/playlists/clone', authenticateUser, heavyOperationRateLimiter, val
           req.accessToken,
           req.refreshToken,
           playlistTitle,
-          `Cloned from ${cleaned}\n\nCreated using SC Toolkit. Try it for free soundcloudtoolkit.com`,
+          playlistDescriptionWithToolkit(`Cloned from ${cleaned}`),
           initialBatch
         );
 
@@ -495,7 +504,7 @@ router.post('/playlists/clone', authenticateUser, heavyOperationRateLimiter, val
         req.accessToken,
         req.refreshToken,
         baseTitle,
-        `Cloned from ${cleaned}\n\nCreated using SC Toolkit. Try it for free soundcloudtoolkit.com`,
+        playlistDescriptionWithToolkit(`Cloned from ${cleaned}`),
         initialBatch
       );
 
@@ -952,7 +961,7 @@ router.post('/playlists/merge', authenticateUser, heavyOperationRateLimiter, val
           req.refreshToken,
           overflowChunks[i],
           overflowTitle,
-          `Overflow from merge into "${baseTitle}"\n\nCreated using SC Toolkit. soundcloudtoolkit.com`
+          `Overflow from merge into "${baseTitle}"`
         );
         overflowPlaylists.push(overflowPlaylist);
       }
@@ -1030,7 +1039,9 @@ router.post('/playlists/merge', authenticateUser, heavyOperationRateLimiter, val
           req.accessToken,
           req.refreshToken,
           playlistTitle,
-          `Merged from ${sourcePlaylistIds.length} playlists${numPlaylists > 1 ? ` - Part ${i + 1} of ${numPlaylists}` : ''}\n\nCreated using SC Toolkit. Try it for free soundcloudtoolkit.com`,
+          playlistDescriptionWithToolkit(
+            `Merged from ${sourcePlaylistIds.length} playlists${numPlaylists > 1 ? ` - Part ${i + 1} of ${numPlaylists}` : ''}`
+          ),
           initialBatch
         );
 
@@ -1113,7 +1124,7 @@ router.post('/playlists/merge', authenticateUser, heavyOperationRateLimiter, val
         req.accessToken,
         req.refreshToken,
         playlistTitle,
-        `Merged from ${sourcePlaylistIds.length} playlists\n\nCreated using SC Toolkit. Try it for free soundcloudtoolkit.com`,
+        playlistDescriptionWithToolkit(`Merged from ${sourcePlaylistIds.length} playlists`),
         initialBatch
       );
 
@@ -1181,15 +1192,16 @@ const MAX_TRACKS_PER_PLAYLIST = 500;
 
 /**
  * Create a single playlist from track IDs using 100-track batches (SoundCloud API limit).
+ * @param {string} operationDescription - Summary only; SC Toolkit footer is appended automatically.
  */
-async function createPlaylistFromTrackIds(accessToken, refreshToken, trackIds, title, description) {
+async function createPlaylistFromTrackIds(accessToken, refreshToken, trackIds, title, operationDescription) {
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const initialBatch = trackIds.slice(0, BATCH_SIZE_PLAYLIST_TRACKS);
   const newPlaylist = await soundcloudClient.createPlaylist(
     accessToken,
     refreshToken,
     title,
-    description,
+    playlistDescriptionWithToolkit(operationDescription),
     initialBatch
   );
 
@@ -1221,6 +1233,7 @@ function uniquePositiveIds(ids = []) {
   return unique;
 }
 
+/** @param {string} [description] - Operation summary only (no footer); required when creating new playlist(s). */
 async function createOrAppendTrackIds({ accessToken, refreshToken, trackIds, title, targetPlaylistId, description }) {
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const uniqueTrackIds = uniquePositiveIds(trackIds);
@@ -1255,7 +1268,7 @@ async function createOrAppendTrackIds({ accessToken, refreshToken, trackIds, tit
         refreshToken,
         overflowChunks[i],
         overflowTitle,
-        `Overflow from adding tracks to "${baseTitle}"\n\nCreated using SC Toolkit. soundcloudtoolkit.com`
+        `Overflow from adding tracks to "${baseTitle}"`
       );
       overflowPlaylists.push({
         id: overflowPlaylist.id,
@@ -1288,12 +1301,13 @@ async function createOrAppendTrackIds({ accessToken, refreshToken, trackIds, tit
   const playlists = [];
   for (let i = 0; i < chunks.length; i++) {
     const playlistTitle = `${title} (${i + 1}/${chunks.length})`;
+    const partSuffix = chunks.length > 1 ? ` - Part ${i + 1} of ${chunks.length}` : '';
     const newPlaylist = await createPlaylistFromTrackIds(
       accessToken,
       refreshToken,
       chunks[i],
       playlistTitle,
-      `${description}${chunks.length > 1 ? ` - Part ${i + 1} of ${chunks.length}` : ''}`
+      `${description}${partSuffix}`
     );
     playlists.push({
       id: newPlaylist.id,
@@ -1455,7 +1469,7 @@ router.post(
         trackIds,
         title: baseTitle,
         targetPlaylistId,
-        description: `Playlist created from ${targetUser.username || 'a followed user'}'s public liked tracks\n\nCreated using SC Toolkit. Try it for free soundcloudtoolkit.com`,
+        description: `Playlist created from ${targetUser.username || 'a followed user'}'s public liked tracks`,
       });
 
       logOperation({
@@ -1527,7 +1541,7 @@ router.post(
               req.refreshToken,
               chunks[i],
               playlistTitle,
-              `Cloned from ${playlist.permalink_url || `${targetUser.username || 'followed user'} playlist ${playlistId}`}\n\nCreated using SC Toolkit. Try it for free soundcloudtoolkit.com`
+              `Cloned from ${playlist.permalink_url || `${targetUser.username || 'followed user'} playlist ${playlistId}`}`
             );
             playlists.push({
               id: created.id,
@@ -1645,7 +1659,7 @@ router.post('/playlists/from-likes', authenticateUser, heavyOperationRateLimiter
           req.refreshToken,
           overflowChunks[j],
           overflowTitle,
-          `Overflow from adding likes to "${baseTitle}"\n\nCreated using SC Toolkit. soundcloudtoolkit.com`
+          `Overflow from adding likes to "${baseTitle}"`
         );
         overflowPlaylists.push({ id: overflowPlaylist.id, title: overflowTitle, permalink_url: overflowPlaylist.permalink_url, trackCount: overflowChunks[j].length });
       }
@@ -1670,7 +1684,7 @@ router.post('/playlists/from-likes', authenticateUser, heavyOperationRateLimiter
         req.refreshToken,
         trackIds,
         baseTitle,
-        `Playlist created from ${trackIds.length} liked tracks\n\nCreated using SC Toolkit. Try it for free soundcloudtoolkit.com`
+        `Playlist created from ${trackIds.length} liked tracks`
       );
       res.json({
         playlistId: newPlaylist.id,
@@ -1692,7 +1706,7 @@ router.post('/playlists/from-likes', authenticateUser, heavyOperationRateLimiter
       const playlistTitle = numPlaylists > 1
         ? `${baseTitle} (${i + 1}/${numPlaylists})`
         : baseTitle;
-      const description = `Playlist created from liked tracks${numPlaylists > 1 ? ` - Part ${i + 1} of ${numPlaylists}` : ''}\n\nCreated using SC Toolkit. Try it for free soundcloudtoolkit.com`;
+      const description = `Playlist created from liked tracks${numPlaylists > 1 ? ` - Part ${i + 1} of ${numPlaylists}` : ''}`;
 
       const newPlaylist = await createPlaylistFromTrackIds(
         req.accessToken,

@@ -5,15 +5,33 @@ import { useRouter } from "next/navigation";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "";
 const REFRESH_MS = 30_000;
+const ADMIN_THEME_KEY = "sc-admin-theme";
+
+/** Default palette for chart helpers when `palette` is omitted (dark). */
+const PALETTES = {
+  dark: {
+    bg: "#0D0D0F",
+    card: "#141417",
+    cardBorder: "#1E1E23",
+    text: "#E8E6E1",
+    textDim: "#6B6A67",
+    textMid: "#9A9893",
+    orangeDim: "rgba(255,85,0,0.15)",
+    segmentBg: "#1E1E23",
+  },
+  light: {
+    bg: "#EEEEF2",
+    card: "#FFFFFF",
+    cardBorder: "#DCDCE2",
+    text: "#111827",
+    textDim: "#6B7280",
+    textMid: "#4B5563",
+    orangeDim: "rgba(255,85,0,0.12)",
+    segmentBg: "#E4E4EA",
+  },
+};
 
 const ORANGE = "#FF5500";
-const ORANGE_DIM = "rgba(255,85,0,0.15)";
-const BG = "#0D0D0F";
-const CARD = "#141417";
-const CARD_BORDER = "#1E1E23";
-const TEXT = "#E8E6E1";
-const TEXT_DIM = "#6B6A67";
-const TEXT_MID = "#9A9893";
 const GREEN = "#2ECC71";
 const RED = "#E74C3C";
 const YELLOW = "#F1C40F";
@@ -50,9 +68,10 @@ function SparklineChart({ data, color = ORANGE, width = 200, height = 48, filled
   );
 }
 
-function AreaChart({ data, dataKey, color = ORANGE, width = 600, height = 180 }) {
+function AreaChart({ data, dataKey, color = ORANGE, width = 600, height = 180, palette }) {
+  const P = palette ?? PALETTES.dark;
   if (!data || data.length === 0) {
-    return <div style={{ height, background: CARD_BORDER, borderRadius: 6, opacity: 0.3 }} />;
+    return <div style={{ height, background: P.cardBorder, borderRadius: 6, opacity: 0.35 }} />;
   }
   const values = data.map((d) => d[dataKey] || 0);
   const max = Math.max(...values, 1) * 1.1;
@@ -82,8 +101,8 @@ function AreaChart({ data, dataKey, color = ORANGE, width = 600, height = 180 })
         const y = padT + ch - (gv / max) * ch;
         return (
           <g key={i}>
-            <line x1={padL} y1={y} x2={width - padR} y2={y} stroke={CARD_BORDER} strokeWidth="1" />
-            <text x={padL - 8} y={y + 4} textAnchor="end" fill={TEXT_DIM} fontSize="10" fontFamily="'JetBrains Mono', monospace">
+            <line x1={padL} y1={y} x2={width - padR} y2={y} stroke={P.cardBorder} strokeWidth="1" />
+            <text x={padL - 8} y={y + 4} textAnchor="end" fill={P.textDim} fontSize="10" fontFamily="'JetBrains Mono', monospace">
               {gv >= 1000 ? `${(gv / 1000).toFixed(1)}k` : gv}
             </text>
           </g>
@@ -93,7 +112,7 @@ function AreaChart({ data, dataKey, color = ORANGE, width = 600, height = 180 })
         if (i % Math.max(Math.floor(data.length / 7), 1) !== 0 && i !== data.length - 1) return null;
         const x = padL + (i / Math.max(data.length - 1, 1)) * cw;
         return (
-          <text key={i} x={x} y={height - 4} textAnchor="middle" fill={TEXT_DIM} fontSize="9" fontFamily="'JetBrains Mono', monospace">
+          <text key={i} x={x} y={height - 4} textAnchor="middle" fill={P.textDim} fontSize="9" fontFamily="'JetBrains Mono', monospace">
             {d.date}
           </text>
         );
@@ -101,22 +120,23 @@ function AreaChart({ data, dataKey, color = ORANGE, width = 600, height = 180 })
       <path d={areaD} fill={`url(#area-${dataKey})`} />
       <path d={lineD} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
       {pts.slice(-1).map((p, i) => (
-        <circle key={i} cx={p.x} cy={p.y} r="3.5" fill={BG} stroke={color} strokeWidth="2" />
+        <circle key={i} cx={p.x} cy={p.y} r="3.5" fill={P.bg} stroke={color} strokeWidth="2" />
       ))}
     </svg>
   );
 }
 
-function HBar({ items }) {
+function HBar({ items, palette }) {
+  const P = palette ?? PALETTES.dark;
   if (!items || items.length === 0) {
-    return <div style={{ height: 120, background: CARD_BORDER, borderRadius: 6, opacity: 0.3 }} />;
+    return <div style={{ height: 120, background: P.cardBorder, borderRadius: 6, opacity: 0.35 }} />;
   }
   const m = Math.max(...items.map((i) => i.count), 1);
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
       {items.map((item) => (
         <div key={item.key} style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <span style={{ width: 110, fontSize: 12, color: TEXT_MID, fontFamily: "'JetBrains Mono', monospace", textAlign: "right", flexShrink: 0 }}>
+          <span style={{ width: 110, fontSize: 12, color: P.textMid, fontFamily: "'JetBrains Mono', monospace", textAlign: "right", flexShrink: 0 }}>
             {item.name}
           </span>
           <div style={{ flex: 1, height: 22, background: `${item.color}10`, borderRadius: 4, overflow: "hidden", position: "relative" }}>
@@ -130,7 +150,7 @@ function HBar({ items }) {
               }}
             />
           </div>
-          <span style={{ width: 52, fontSize: 13, color: TEXT, fontFamily: "'JetBrains Mono', monospace", fontWeight: 600, textAlign: "right", flexShrink: 0 }}>
+          <span style={{ width: 52, fontSize: 13, color: P.text, fontFamily: "'JetBrains Mono', monospace", fontWeight: 600, textAlign: "right", flexShrink: 0 }}>
             {item.count.toLocaleString()}
           </span>
         </div>
@@ -139,12 +159,13 @@ function HBar({ items }) {
   );
 }
 
-function StatCard({ label, value, sub, trend, trendDir, spark, sparkColor, delay = 0 }) {
+function StatCard({ label, value, sub, trend, trendDir, spark, sparkColor, delay = 0, palette }) {
+  const P = palette ?? PALETTES.dark;
   return (
     <div
       style={{
-        background: CARD,
-        border: `1px solid ${CARD_BORDER}`,
+        background: P.card,
+        border: `1px solid ${P.cardBorder}`,
         borderRadius: 10,
         padding: "20px 22px",
         display: "flex",
@@ -157,8 +178,8 @@ function StatCard({ label, value, sub, trend, trendDir, spark, sparkColor, delay
     >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
         <div>
-          <div style={{ fontSize: 11, color: TEXT_DIM, fontFamily: "'JetBrains Mono', monospace", textTransform: "uppercase", letterSpacing: 1.2 }}>{label}</div>
-          <div style={{ fontSize: 32, fontWeight: 700, color: TEXT, fontFamily: "'Outfit', sans-serif", marginTop: 4, lineHeight: 1 }}>{value}</div>
+          <div style={{ fontSize: 11, color: P.textDim, fontFamily: "'JetBrains Mono', monospace", textTransform: "uppercase", letterSpacing: 1.2 }}>{label}</div>
+          <div style={{ fontSize: 32, fontWeight: 700, color: P.text, fontFamily: "'Outfit', sans-serif", marginTop: 4, lineHeight: 1 }}>{value}</div>
         </div>
         {spark && spark.length >= 2 && (
           <div style={{ marginTop: 8 }}>
@@ -173,7 +194,7 @@ function StatCard({ label, value, sub, trend, trendDir, spark, sparkColor, delay
               fontSize: 11,
               fontFamily: "'JetBrains Mono', monospace",
               fontWeight: 600,
-              color: trendDir === "up" ? GREEN : trendDir === "down" ? RED : TEXT_DIM,
+              color: trendDir === "up" ? GREEN : trendDir === "down" ? RED : P.textDim,
               display: "flex",
               alignItems: "center",
               gap: 2,
@@ -182,18 +203,19 @@ function StatCard({ label, value, sub, trend, trendDir, spark, sparkColor, delay
             {trendDir === "up" ? "▲" : trendDir === "down" ? "▼" : "—"} {trend}
           </span>
         )}
-        {sub && <span style={{ fontSize: 11, color: TEXT_DIM, fontFamily: "'JetBrains Mono', monospace" }}>{sub}</span>}
+        {sub && <span style={{ fontSize: 11, color: P.textDim, fontFamily: "'JetBrains Mono', monospace" }}>{sub}</span>}
       </div>
     </div>
   );
 }
 
-function SectionCard({ title, children, span = 1, delay = 0, style: s }) {
+function SectionCard({ title, children, span = 1, delay = 0, style: s, palette }) {
+  const P = palette ?? PALETTES.dark;
   return (
     <div
       style={{
-        background: CARD,
-        border: `1px solid ${CARD_BORDER}`,
+        background: P.card,
+        border: `1px solid ${P.cardBorder}`,
         borderRadius: 10,
         padding: "20px 22px",
         gridColumn: `span ${span}`,
@@ -206,7 +228,7 @@ function SectionCard({ title, children, span = 1, delay = 0, style: s }) {
       <div
         style={{
           fontSize: 11,
-          color: TEXT_DIM,
+          color: P.textDim,
           fontFamily: "'JetBrains Mono', monospace",
           textTransform: "uppercase",
           letterSpacing: 1.2,
@@ -249,14 +271,15 @@ function StatusPill({ status }) {
   );
 }
 
-function Donut({ value, max, color = ORANGE, label, size = 96 }) {
+function Donut({ value, max, color = ORANGE, label, size = 96, palette }) {
+  const P = palette ?? PALETTES.dark;
   const r = (size - 12) / 2;
   const circ = 2 * Math.PI * r;
   const pct = Math.min(value / max, 1);
   return (
     <div style={{ textAlign: "center" }}>
       <svg width={size} height={size} style={{ display: "block", margin: "0 auto" }}>
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={CARD_BORDER} strokeWidth="6" />
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={P.cardBorder} strokeWidth="6" />
         <circle
           cx={size / 2}
           cy={size / 2}
@@ -270,21 +293,22 @@ function Donut({ value, max, color = ORANGE, label, size = 96 }) {
           transform={`rotate(-90 ${size / 2} ${size / 2})`}
           style={{ transition: "stroke-dashoffset 1.5s cubic-bezier(0.22,1,0.36,1)" }}
         />
-        <text x={size / 2} y={size / 2 + 1} textAnchor="middle" dominantBaseline="central" fill={TEXT} fontSize="18" fontWeight="700" fontFamily="'Outfit', sans-serif">
+        <text x={size / 2} y={size / 2 + 1} textAnchor="middle" dominantBaseline="central" fill={P.text} fontSize="18" fontWeight="700" fontFamily="'Outfit', sans-serif">
           {Math.round(pct * 100)}%
         </text>
       </svg>
-      <div style={{ fontSize: 10, color: TEXT_DIM, fontFamily: "'JetBrains Mono', monospace", marginTop: 6 }}>{label}</div>
+      <div style={{ fontSize: 10, color: P.textDim, fontFamily: "'JetBrains Mono', monospace", marginTop: 6 }}>{label}</div>
     </div>
   );
 }
 
-function SkeletonBlock({ height = 60 }) {
+function SkeletonBlock({ height = 60, palette }) {
+  const P = palette ?? PALETTES.dark;
   return (
     <div
       style={{
         height,
-        background: CARD_BORDER,
+        background: P.cardBorder,
         borderRadius: 6,
         opacity: 0.5,
         animation: "skeleton-pulse 1.5s ease-in-out infinite",
@@ -307,6 +331,7 @@ function timeAgo(iso) {
 export default function AdminDashboard() {
   const router = useRouter();
   const [period, setPeriod] = useState("28d");
+  const [theme, setTheme] = useState("dark");
   const [time, setTime] = useState(new Date());
 
   const [stats, setStats] = useState(null);
@@ -315,6 +340,23 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [lastRefresh, setLastRefresh] = useState(new Date());
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(ADMIN_THEME_KEY);
+      if (stored === "light" || stored === "dark") setTheme(stored);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(ADMIN_THEME_KEY, theme);
+    } catch {
+      /* ignore */
+    }
+  }, [theme]);
 
   // Clock
   useEffect(() => {
@@ -372,8 +414,10 @@ export default function AdminDashboard() {
   const trackSparkline = daily.map(d => d.tracks);
   const opsSparkline = daily.map(d => d.operations);
 
+  const P = PALETTES[theme];
+
   return (
-    <div style={{ minHeight: "100vh", background: BG, color: TEXT, fontFamily: "'Outfit', sans-serif", padding: 0, margin: 0 }}>
+    <div style={{ minHeight: "100vh", background: P.bg, color: P.text, fontFamily: "'Outfit', sans-serif", padding: 0, margin: 0 }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
         @keyframes fadeSlideUp {
@@ -390,8 +434,8 @@ export default function AdminDashboard() {
         }
         * { box-sizing: border-box; margin: 0; padding: 0; }
         ::-webkit-scrollbar { width: 6px; }
-        ::-webkit-scrollbar-track { background: ${BG}; }
-        ::-webkit-scrollbar-thumb { background: ${CARD_BORDER}; border-radius: 3px; }
+        ::-webkit-scrollbar-track { background: ${P.bg}; }
+        ::-webkit-scrollbar-thumb { background: ${P.cardBorder}; border-radius: 3px; }
       `}</style>
 
       {/* Header */}
@@ -401,7 +445,7 @@ export default function AdminDashboard() {
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          borderBottom: `1px solid ${CARD_BORDER}`,
+          borderBottom: `1px solid ${P.cardBorder}`,
           animation: "fadeSlideUp 0.4s 0s both cubic-bezier(0.22,1,0.36,1)",
         }}
       >
@@ -418,7 +462,7 @@ export default function AdminDashboard() {
                 fontSize: 10,
                 fontFamily: "'JetBrains Mono', monospace",
                 color: ORANGE,
-                background: ORANGE_DIM,
+                background: P.orangeDim,
                 padding: "2px 8px",
                 borderRadius: 4,
                 marginLeft: 10,
@@ -432,8 +476,27 @@ export default function AdminDashboard() {
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
+          <button
+            type="button"
+            onClick={() => setTheme(prev => (prev === "dark" ? "light" : "dark"))}
+            aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+            title={theme === "dark" ? "Light mode" : "Dark mode"}
+            style={{
+              fontSize: 11,
+              fontFamily: "'JetBrains Mono', monospace",
+              color: P.textDim,
+              background: P.segmentBg,
+              border: `1px solid ${P.cardBorder}`,
+              padding: "6px 12px",
+              borderRadius: 6,
+              cursor: "pointer",
+              fontWeight: 500,
+            }}
+          >
+            {theme === "dark" ? "Light" : "Dark"}
+          </button>
           {/* Period selector */}
-          <div style={{ display: "flex", gap: 2, background: CARD_BORDER, borderRadius: 6, padding: 2 }}>
+          <div style={{ display: "flex", gap: 2, background: P.segmentBg, borderRadius: 6, padding: 2 }}>
             {["7d", "28d", "90d"].map((p) => (
               <button
                 key={p}
@@ -441,8 +504,8 @@ export default function AdminDashboard() {
                 style={{
                   fontSize: 11,
                   fontFamily: "'JetBrains Mono', monospace",
-                  color: period === p ? TEXT : TEXT_DIM,
-                  background: period === p ? CARD : "transparent",
+                  color: period === p ? P.text : P.textDim,
+                  background: period === p ? P.card : "transparent",
                   border: "none",
                   padding: "5px 12px",
                   borderRadius: 4,
@@ -458,7 +521,7 @@ export default function AdminDashboard() {
           {/* Live indicator */}
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <div style={{ width: 6, height: 6, borderRadius: "50%", background: loading ? YELLOW : GREEN, animation: "pulse-dot 2s ease infinite" }} />
-            <span style={{ fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: TEXT_DIM }}>
+            <span style={{ fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: P.textDim }}>
               {time.toLocaleTimeString("en-US", { hour12: false })}
             </span>
           </div>
@@ -502,12 +565,11 @@ export default function AdminDashboard() {
         {/* Top Stats Row */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 20 }}>
           <StatCard
-            label="Total Users"
+            label="Registered Users"
             value={loading ? "—" : (stats?.totalUsers ?? 0).toLocaleString()}
-            sub={`${period} period`}
-            spark={opsSparkline}
-            sparkColor={CYAN}
+            sub="All time"
             delay={0.05}
+            palette={P}
           />
           <StatCard
             label="Tracks Processed"
@@ -516,6 +578,7 @@ export default function AdminDashboard() {
             spark={trackSparkline}
             sparkColor={ORANGE}
             delay={0.1}
+            palette={P}
           />
           <StatCard
             label="New Users"
@@ -524,6 +587,7 @@ export default function AdminDashboard() {
             spark={daily.map(d => d.newUsers)}
             sparkColor={GREEN}
             delay={0.15}
+            palette={P}
           />
           <StatCard
             label="Total Operations"
@@ -532,24 +596,25 @@ export default function AdminDashboard() {
             spark={opsSparkline}
             sparkColor={YELLOW}
             delay={0.2}
+            palette={P}
           />
         </div>
 
         {/* Main Grid */}
         <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 16, marginBottom: 20 }}>
-          <SectionCard title={`Tracks Processed — ${period} Trend`} delay={0.25}>
-            {loading ? <SkeletonBlock height={200} /> : <AreaChart data={daily} dataKey="tracks" color={ORANGE} width={700} height={200} />}
+          <SectionCard title={`Tracks Processed — ${period} Trend`} delay={0.25} palette={P}>
+            {loading ? <SkeletonBlock height={200} palette={P} /> : <AreaChart data={daily} dataKey="tracks" color={ORANGE} width={700} height={200} palette={P} />}
           </SectionCard>
 
-          <SectionCard title="Operation Health" delay={0.3}>
+          <SectionCard title="Operation Health" delay={0.3} palette={P}>
             {loading ? (
-              <SkeletonBlock height={200} />
+              <SkeletonBlock height={200} palette={P} />
             ) : (
               <>
                 <div style={{ display: "flex", justifyContent: "space-around", alignItems: "center", flex: 1, paddingTop: 8 }}>
-                  <Donut value={stats?.successRate ?? 0} max={100} color={GREEN} label="Success Rate" size={100} />
-                  <Donut value={stats?.splitRate ?? 0} max={100} color={YELLOW} label="Split Rate" size={100} />
-                  <Donut value={stats?.errorRate ?? 0} max={100} color={RED} label="Error Rate" size={100} />
+                  <Donut value={stats?.successRate ?? 0} max={100} color={GREEN} label="Success Rate" size={100} palette={P} />
+                  <Donut value={stats?.splitRate ?? 0} max={100} color={YELLOW} label="Split Rate" size={100} palette={P} />
+                  <Donut value={stats?.errorRate ?? 0} max={100} color={RED} label="Error Rate" size={100} palette={P} />
                 </div>
                 <div
                   style={{
@@ -557,17 +622,17 @@ export default function AdminDashboard() {
                     justifyContent: "space-around",
                     marginTop: 18,
                     padding: "12px 0 0",
-                    borderTop: `1px solid ${CARD_BORDER}`,
+                    borderTop: `1px solid ${P.cardBorder}`,
                   }}
                 >
                   {[
-                    { label: "Operations", value: (stats?.operationsCount ?? 0).toLocaleString(), color: TEXT },
+                    { label: "Operations", value: (stats?.operationsCount ?? 0).toLocaleString(), color: P.text },
                     { label: "Tracks/Op Avg", value: (stats?.avgTracksPerOp ?? 0).toLocaleString(), color: CYAN },
                     { label: "Auto-Splits", value: (stats?.splitsCount ?? 0).toLocaleString(), color: YELLOW },
                   ].map((m) => (
                     <div key={m.label} style={{ textAlign: "center" }}>
                       <div style={{ fontSize: 18, fontWeight: 700, color: m.color, fontFamily: "'Outfit', sans-serif" }}>{m.value}</div>
-                      <div style={{ fontSize: 9, color: TEXT_DIM, fontFamily: "'JetBrains Mono', monospace", marginTop: 2, textTransform: "uppercase", letterSpacing: 0.6 }}>
+                      <div style={{ fontSize: 9, color: P.textDim, fontFamily: "'JetBrains Mono', monospace", marginTop: 2, textTransform: "uppercase", letterSpacing: 0.6 }}>
                         {m.label}
                       </div>
                     </div>
@@ -580,24 +645,24 @@ export default function AdminDashboard() {
 
         {/* Feature Usage + Operations chart */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20 }}>
-          <SectionCard title={`Feature Usage — ${period} Period`} delay={0.35}>
-            {loading ? <SkeletonBlock height={160} /> : <HBar items={stats?.featureUsage ?? []} />}
+          <SectionCard title={`Feature Usage — ${period} Period`} delay={0.35} palette={P}>
+            {loading ? <SkeletonBlock height={160} palette={P} /> : <HBar items={stats?.featureUsage ?? []} palette={P} />}
           </SectionCard>
 
-          <SectionCard title={`Operations — ${period} Trend`} delay={0.4}>
-            {loading ? <SkeletonBlock height={200} /> : <AreaChart data={daily} dataKey="operations" color={CYAN} width={500} height={200} />}
+          <SectionCard title={`Operations — ${period} Trend`} delay={0.4} palette={P}>
+            {loading ? <SkeletonBlock height={200} palette={P} /> : <AreaChart data={daily} dataKey="operations" color={CYAN} width={500} height={200} palette={P} />}
           </SectionCard>
         </div>
 
         {/* Bottom Row: Recent Ops + Quick Stats */}
         <div style={{ display: "grid", gridTemplateColumns: "3fr 1fr", gap: 16 }}>
-          <SectionCard title="Recent Operations" delay={0.45}>
+          <SectionCard title="Recent Operations" delay={0.45} palette={P}>
             {loading ? (
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {Array.from({ length: 6 }).map((_, i) => <SkeletonBlock key={i} height={36} />)}
+                {Array.from({ length: 6 }).map((_, i) => <SkeletonBlock key={i} height={36} palette={P} />)}
               </div>
             ) : operations.length === 0 ? (
-              <div style={{ textAlign: "center", padding: "32px 0", color: TEXT_DIM, fontFamily: "'JetBrains Mono', monospace", fontSize: 12 }}>
+              <div style={{ textAlign: "center", padding: "32px 0", color: P.textDim, fontFamily: "'JetBrains Mono', monospace", fontSize: 12 }}>
                 No operations logged yet in this period.
                 <br />
                 <span style={{ fontSize: 10, marginTop: 4, display: "block" }}>Operations will appear here after users perform actions.</span>
@@ -610,12 +675,12 @@ export default function AdminDashboard() {
                     gridTemplateColumns: "1fr 1.5fr 0.7fr 0.7fr 0.5fr",
                     gap: 8,
                     padding: "0 0 8px",
-                    borderBottom: `1px solid ${CARD_BORDER}`,
+                    borderBottom: `1px solid ${P.cardBorder}`,
                     marginBottom: 4,
                   }}
                 >
                   {["User", "Action", "Count", "Time", "Status"].map((h) => (
-                    <span key={h} style={{ fontSize: 9, color: TEXT_DIM, fontFamily: "'JetBrains Mono', monospace", textTransform: "uppercase", letterSpacing: 0.8 }}>
+                    <span key={h} style={{ fontSize: 9, color: P.textDim, fontFamily: "'JetBrains Mono', monospace", textTransform: "uppercase", letterSpacing: 0.8 }}>
                       {h}
                     </span>
                   ))}
@@ -628,7 +693,7 @@ export default function AdminDashboard() {
                       gridTemplateColumns: "1fr 1.5fr 0.7fr 0.7fr 0.5fr",
                       gap: 8,
                       padding: "9px 0",
-                      borderBottom: i < operations.length - 1 ? `1px solid ${CARD_BORDER}22` : "none",
+                      borderBottom: i < operations.length - 1 ? `1px solid ${P.cardBorder}33` : "none",
                       alignItems: "center",
                       animation: `fadeSlideUp 0.4s ${0.5 + i * 0.03}s both cubic-bezier(0.22,1,0.36,1)`,
                     }}
@@ -636,11 +701,11 @@ export default function AdminDashboard() {
                     <span style={{ fontSize: 12, color: ORANGE, fontFamily: "'JetBrains Mono', monospace", fontWeight: 500 }}>
                       @{op.user.username}
                     </span>
-                    <span style={{ fontSize: 12, color: TEXT_MID, fontFamily: "'JetBrains Mono', monospace" }}>{op.actionName}</span>
-                    <span style={{ fontSize: 12, color: TEXT, fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }}>
+                    <span style={{ fontSize: 12, color: P.textMid, fontFamily: "'JetBrains Mono', monospace" }}>{op.actionName}</span>
+                    <span style={{ fontSize: 12, color: P.text, fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }}>
                       {(op.trackCount || op.itemCount || 0).toLocaleString()}
                     </span>
-                    <span style={{ fontSize: 11, color: TEXT_DIM, fontFamily: "'JetBrains Mono', monospace" }}>{timeAgo(op.createdAt)}</span>
+                    <span style={{ fontSize: 11, color: P.textDim, fontFamily: "'JetBrains Mono', monospace" }}>{timeAgo(op.createdAt)}</span>
                     <StatusPill status={op.status} />
                   </div>
                 ))}
@@ -650,18 +715,18 @@ export default function AdminDashboard() {
 
           {/* Sidebar Quick Stats */}
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            <SectionCard title="Top Feature" delay={0.5}>
+            <SectionCard title="Top Feature" delay={0.5} palette={P}>
               {loading ? (
-                <SkeletonBlock height={60} />
+                <SkeletonBlock height={60} palette={P} />
               ) : stats?.topFeature ? (
                 <>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: TEXT, fontFamily: "'JetBrains Mono', monospace" }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: P.text, fontFamily: "'JetBrains Mono', monospace" }}>
                     {stats.topFeature.name}
                   </div>
-                  <div style={{ fontSize: 11, color: TEXT_DIM, fontFamily: "'JetBrains Mono', monospace", marginTop: 4 }}>
+                  <div style={{ fontSize: 11, color: P.textDim, fontFamily: "'JetBrains Mono', monospace", marginTop: 4 }}>
                     {stats.topFeature.count.toLocaleString()} operations
                   </div>
-                  <div style={{ marginTop: 10, height: 4, background: CARD_BORDER, borderRadius: 2, overflow: "hidden" }}>
+                  <div style={{ marginTop: 10, height: 4, background: P.cardBorder, borderRadius: 2, overflow: "hidden" }}>
                     <div
                       style={{
                         height: "100%",
@@ -673,28 +738,28 @@ export default function AdminDashboard() {
                   </div>
                 </>
               ) : (
-                <div style={{ fontSize: 12, color: TEXT_DIM, fontFamily: "'JetBrains Mono', monospace" }}>No data yet</div>
+                <div style={{ fontSize: 12, color: P.textDim, fontFamily: "'JetBrains Mono', monospace" }}>No data yet</div>
               )}
             </SectionCard>
 
-            <SectionCard title="Playlist Splits" delay={0.55}>
+            <SectionCard title="Playlist Splits" delay={0.55} palette={P}>
               <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
                 <span style={{ fontSize: 28, fontWeight: 700, color: YELLOW }}>
                   {loading ? "—" : (stats?.splitsCount ?? 0).toLocaleString()}
                 </span>
-                <span style={{ fontSize: 11, color: TEXT_DIM, fontFamily: "'JetBrains Mono', monospace" }}>auto-splits</span>
+                <span style={{ fontSize: 11, color: P.textDim, fontFamily: "'JetBrains Mono', monospace" }}>auto-splits</span>
               </div>
-              <div style={{ fontSize: 11, color: TEXT_DIM, fontFamily: "'JetBrains Mono', monospace", marginTop: 6 }}>
+              <div style={{ fontSize: 11, color: P.textDim, fontFamily: "'JetBrains Mono', monospace", marginTop: 6 }}>
                 Triggered when merges exceed 500 tracks
               </div>
             </SectionCard>
 
-            <SectionCard title="Avg Tracks / Operation" delay={0.6}>
+            <SectionCard title="Avg Tracks / Operation" delay={0.6} palette={P}>
               <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
                 <span style={{ fontSize: 28, fontWeight: 700, color: CYAN }}>
                   {loading ? "—" : (stats?.avgTracksPerOp ?? 0).toLocaleString()}
                 </span>
-                <span style={{ fontSize: 11, color: TEXT_DIM, fontFamily: "'JetBrains Mono', monospace" }}>tracks</span>
+                <span style={{ fontSize: 11, color: P.textDim, fontFamily: "'JetBrains Mono', monospace" }}>tracks</span>
               </div>
               {trackSparkline.length >= 2 && (
                 <SparklineChart data={trackSparkline} color={CYAN} width={180} height={32} filled />
@@ -708,7 +773,7 @@ export default function AdminDashboard() {
           style={{
             marginTop: 28,
             padding: "16px 0",
-            borderTop: `1px solid ${CARD_BORDER}`,
+            borderTop: `1px solid ${P.cardBorder}`,
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
@@ -721,9 +786,9 @@ export default function AdminDashboard() {
                 <div key={i} style={{ width: 2, height: h, background: ORANGE, borderRadius: 1, opacity: 0.5 }} />
               ))}
             </div>
-            <span style={{ fontSize: 11, color: TEXT_DIM, fontFamily: "'JetBrains Mono', monospace" }}>SoundCloud Toolkit Admin</span>
+            <span style={{ fontSize: 11, color: P.textDim, fontFamily: "'JetBrains Mono', monospace" }}>SoundCloud Toolkit Admin</span>
           </div>
-          <span style={{ fontSize: 10, color: TEXT_DIM, fontFamily: "'JetBrains Mono', monospace" }}>
+          <span style={{ fontSize: 10, color: P.textDim, fontFamily: "'JetBrains Mono', monospace" }}>
             Last refreshed: {lastRefresh.toLocaleTimeString("en-US", { hour12: true })} · Auto-refreshes every 30s
           </span>
         </div>

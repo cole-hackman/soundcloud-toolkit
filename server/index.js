@@ -56,6 +56,13 @@ const allowedHostnames = allowedOrigins
   })
   .filter(Boolean);
 
+// Chrome extension credentialed fetches send Origin: chrome-extension://<id>
+const chromeExtensionOrigins = (process.env.CHROME_EXTENSION_IDS || '')
+  .split(',')
+  .map((id) => id.trim())
+  .filter(Boolean)
+  .map((id) => `chrome-extension://${id}`);
+
 app.use(cors({
   origin: (origin, callback) => {
     if (!origin) return callback(null, true);
@@ -63,6 +70,7 @@ app.use(cors({
       const u = new URL(origin);
       const host = u.hostname;
       if (host === 'localhost') return callback(null, true);
+      if (chromeExtensionOrigins.includes(origin)) return callback(null, origin);
       if (allowedOrigins.includes(origin)) return callback(null, true);
       if (allowedHostnames.includes(host)) return callback(null, true);
     } catch {}

@@ -1,0 +1,33 @@
+{
+  "manifest_version": 3,
+  "name": "SoundCloud Toolkit",
+  "version": "1.0.0",
+  "description": "Side panel tools for SoundCloud Toolkit — select likes on soundcloud.com and create playlists via your Toolkit account.",
+  "permissions": ["sidePanel", "tabs", "storage"],
+  "host_permissions": [
+    "https://api.soundcloudtoolkit.com/*",
+    "http://localhost:3001/*",
+    "http://127.0.0.1:3001/*"
+  ],
+  "background": {
+    "service_worker": "src/service-worker.js"
+  },
+  "side_panel": {
+    "default_path": "src/panel.html"
+  },
+  "action": {
+    "default_title": "SoundCloud Toolkit"
+  },
+  "options_ui": {
+    "page": "src/options.html",
+    "open_in_tab": true
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://soundcloud.com/*"],
+      "js": ["src/content/likes.js"],
+      "css": ["src/content/likes.css"],
+      "run_at": "document_idle"
+    }
+  ]
+}

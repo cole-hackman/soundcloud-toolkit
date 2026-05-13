@@ -4,6 +4,16 @@ import Image from "next/image";
 import Link from "next/link";
 import { StructuredData } from "@/components/StructuredData";
 import { Button, Card } from "@/components/ui";
+import { FlickeringGrid } from "@/components/ui/FlickeringGrid";
+import { Meteors } from "@/components/ui/Meteors";
+import { ShimmerButton } from "@/components/ui/ShimmerButton";
+import { TypingAnimation } from "@/components/ui/TypingAnimation";
+import { WordRotate } from "@/components/ui/WordRotate";
+import { AnimatedShinyText } from "@/components/ui/AnimatedShinyText";
+import { AnimatedGradientText } from "@/components/ui/AnimatedGradientText";
+import { ShineBorder } from "@/components/ui/ShineBorder";
+import { GlareHover } from "@/components/ui/GlareHover";
+import { TextAnimate } from "@/components/ui/TextAnimate";
 import {
   Layers,
   Heart,
@@ -20,6 +30,7 @@ import {
   Music,
   Settings,
   LogIn,
+  ArrowRight,
 } from "lucide-react";
 
 // FAQ data - used for both display and structured data
@@ -227,6 +238,18 @@ export default function Home() {
 
         {/* Hero Section */}
         <section className="relative overflow-hidden px-4 pb-20 pt-28 sm:px-6 sm:pt-32 md:pb-28 md:pt-40">
+          {/* Flickering grid background */}
+          <div className="pointer-events-none absolute inset-0 -z-20 opacity-60">
+            <FlickeringGrid
+              squareSize={4}
+              gridGap={6}
+              flickerChance={0.15}
+              color="rgb(255, 85, 0)"
+              maxOpacity={0.12}
+              className="h-full w-full"
+            />
+          </div>
+          {/* Existing radial gradient overlay on top */}
           <div className="pointer-events-none absolute inset-x-0 -top-40 -z-10 h-[480px] bg-[radial-gradient(circle_at_top,_rgba(255,85,0,0.18),transparent_55%),radial-gradient(circle_at_bottom,_rgba(37,99,235,0.18),transparent_55%)]" />
 
           <div className="relative z-10 mx-auto flex max-w-4xl flex-col items-center text-center">
@@ -237,21 +260,36 @@ export default function Home() {
 
             <h1 className="mt-6 animate-fade-in-up text-balance font-display text-4xl font-semibold tracking-tight text-foreground sm:text-5xl md:text-6xl lg:text-7xl [animation-delay:80ms]">
               The Ultimate SoundCloud{" "}
-              <span className="text-gradient font-semibold">Toolkit</span>
+              <AnimatedGradientText
+                className="inline-flex font-semibold"
+                colorFrom="#ff5500"
+                colorTo="#ffc14a"
+              >
+                Toolkit
+              </AnimatedGradientText>
             </h1>
 
-            <p className="mt-5 max-w-2xl animate-fade-in-up text-balance text-base text-muted-foreground sm:text-lg md:text-xl [animation-delay:160ms]">
-              Organize playlists, clean your library, and tame your SoundCloud
-              chaos with a focused console of tools — built for curators,
-              DJs, and power listeners.
-            </p>
+            {/* Word rotate — action verbs */}
+            <div className="mt-4 flex animate-fade-in-up items-center justify-center gap-2 text-base font-semibold text-muted-foreground sm:text-lg md:text-xl [animation-delay:120ms]">
+              <WordRotate
+                words={["Merge.", "Split.", "Clean.", "Organize."]}
+                className="text-primary"
+                duration={2200}
+              />
+              <span className="text-muted-foreground/60">your music library.</span>
+            </div>
 
             <div className="mt-8 flex flex-wrap items-center justify-center gap-4 [animation-delay:220ms]">
-              <Link
-                href="/login"
-                className="inline-flex items-center justify-center gap-2 rounded-lg px-8 py-3 text-sm font-semibold shadow-elevation-2 transition-all duration-150 hover:shadow-glow-sm hover:-translate-y-0.5 bg-primary text-primary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/80 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-              >
-                Connect with SoundCloud
+              <Link href="/login">
+                <ShimmerButton
+                  shimmerColor="#ffb347"
+                  background="rgba(255, 85, 0, 1)"
+                  borderRadius="8px"
+                  shimmerDuration="2.5s"
+                  className="shadow-elevation-2 hover:shadow-glow-sm hover:-translate-y-0.5 transition-transform"
+                >
+                  Connect with SoundCloud
+                </ShimmerButton>
               </Link>
               <Button
                 type="button"
@@ -307,42 +345,63 @@ export default function Home() {
           <div className="mx-auto max-w-6xl">
             <div className="mx-auto mb-14 max-w-3xl text-center">
               <h2 className="font-display text-3xl font-semibold tracking-tight sm:text-4xl md:text-5xl">
-                A console of tools for{" "}
-                <span className="text-gradient">total control</span>.
+                <span className="block">A console of tools for</span>
+                <span className="block text-gradient mt-2">total control</span>
               </h2>
-              <p className="mt-4 text-base text-muted-foreground sm:text-lg">
-                Merge, clean, and re-shape your SoundCloud world without
-                wrestling the UI. Every tool is tuned for large libraries and
-                obsessive curators.
-              </p>
+              <div className="mt-4 flex items-center justify-center text-base text-muted-foreground sm:text-lg">
+                Built for{" "}
+                <TypingAnimation
+                  words={["DJs & producers.", "music curators.", "power listeners.", "collectors."]}
+                  className="ml-1 font-semibold text-foreground"
+                  typeSpeed={70}
+                  deleteSpeed={35}
+                  pauseDelay={1800}
+                  loop
+                  showCursor
+                  blinkCursor
+                />
+              </div>
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
               {[
-                { name: "Playlists, without the mess", description: "Combine playlists, remove duplicates, and keep everything in sync.", href: "/combine", Icon: Layers },
-                { name: "Likes → playlists, automatically", description: "Turn years of likes into themed, export-ready playlists.", href: "/likes-to-playlist", Icon: Heart },
-                { name: "Health checks for every set", description: "Find blocked, deleted, and unstreamable tracks before a show.", href: "/playlist-health-check", Icon: HeartPulse },
-                { name: "Social graph control", description: "See who doesn’t follow back, batch unfollow, and clean your feed.", href: "/following-manager", Icon: UserMinus },
+                { name: "Playlists, without the mess", description: "Combine playlists, remove duplicates, and keep everything in sync.", href: "/combine", Icon: Layers, badge: "Most Popular" },
+                { name: "Likes → playlists, automatically", description: "Turn years of likes into themed, export-ready playlists.", href: "/likes-to-playlist", Icon: Heart, badge: "New" },
+                { name: "Health checks for every set", description: "Find blocked, deleted, and unstreamable tracks before a show.", href: "/playlist-health-check", Icon: HeartPulse, badge: undefined },
+                { name: "Social graph control", description: "See who doesn't follow back, batch unfollow, and clean your feed.", href: "/following-manager", Icon: UserMinus, badge: undefined },
               ].map((item) => (
-                <Link key={item.href} href={item.href}>
-                  <Card
-                    interactive
-                    className="h-full p-5 transition-all hover:border-primary/60"
-                  >
-                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                      <item.Icon className="h-5 w-5" />
-                    </div>
-                    <h3 className="mt-3 text-sm font-semibold text-foreground">
-                      {item.name}
-                    </h3>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {item.description}
-                    </p>
-                    <span className="mt-3 inline-block text-[11px] font-medium text-primary">
-                      Open →
-                    </span>
-                  </Card>
-                </Link>
+                <ShineBorder key={item.href} color="#FF5500" borderRadius={12}>
+                  <Link href={item.href} className="block h-full">
+                    <GlareHover className="rounded-xl h-full">
+                      <Card
+                        interactive
+                        className="h-full p-5 transition-all hover:border-primary/60"
+                      >
+                        <div className="flex items-start justify-between">
+                          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                            <item.Icon className="h-5 w-5" />
+                          </div>
+                          {item.badge && (
+                            <span className="inline-flex items-center rounded-full border border-primary/20 bg-primary/8 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider">
+                              <AnimatedShinyText className="text-primary">
+                                {item.badge}
+                              </AnimatedShinyText>
+                            </span>
+                          )}
+                        </div>
+                        <h3 className="mt-3 text-sm font-semibold text-foreground">
+                          {item.name}
+                        </h3>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {item.description}
+                        </p>
+                        <span className="mt-3 inline-block text-[11px] font-medium text-primary">
+                          Open →
+                        </span>
+                      </Card>
+                    </GlareHover>
+                  </Link>
+                </ShineBorder>
               ))}
             </div>
           </div>
@@ -355,8 +414,9 @@ export default function Home() {
         >
           <div className="mx-auto max-w-6xl">
             <h2 className="text-center font-display text-3xl font-semibold tracking-tight sm:text-4xl md:text-5xl">
-              Built for the{" "}
-              <span className="text-gradient">obsessed listeners</span>.
+              <TextAnimate animation="slideLeft" by="character">
+                Built for the obsessed listeners.
+              </TextAnimate>
             </h2>
             <p className="mx-auto mt-4 max-w-3xl text-center text-base text-muted-foreground sm:text-lg">
               Whether you&apos;re a DJ, curator, or collector, SC Toolkit
@@ -364,19 +424,23 @@ export default function Home() {
               show-ready.
             </p>
 
-            <div className="mt-12 grid gap-6 md:grid-cols-2">
+            <div className="mt-12 grid gap-4 sm:grid-cols-2">
               {benefits.map((benefit) => (
-                <div
-                  key={benefit}
-                  className="glass-card flex items-start gap-4 rounded-xl border bg-surface/80 p-6"
-                >
-                  <div className="mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
-                    <Check className="h-4 w-4" />
-                  </div>
-                  <p className="text-sm leading-relaxed text-foreground sm:text-base">
-                    {benefit}
-                  </p>
-                </div>
+                <ShineBorder key={benefit} color="#FF5500" borderRadius={12}>
+                  <GlareHover className="rounded-xl h-full">
+                    <Card
+                      interactive
+                      className="flex h-full items-start gap-4 p-5 transition-all hover:border-primary/60"
+                    >
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                        <Check className="h-5 w-5" />
+                      </div>
+                      <p className="min-w-0 text-sm leading-relaxed text-foreground">
+                        {benefit}
+                      </p>
+                    </Card>
+                  </GlareHover>
+                </ShineBorder>
               ))}
             </div>
           </div>
@@ -400,12 +464,14 @@ export default function Home() {
                     key={item.title}
                     className="relative flex flex-col items-center text-center"
                   >
-                    <div className="flex h-12 w-12 items-center justify-center rounded-full border border-border/70 bg-surface text-sm font-semibold text-muted-foreground">
-                      {item.step}
-                    </div>
-                    <div className="mt-4 flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 text-primary">
+                    <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 text-primary">
                       <IconComponent className="h-7 w-7" />
                     </div>
+                    {i < steps.length - 1 && (
+                      <div className="hidden sm:block absolute top-4 -right-[2.5rem] text-muted-foreground/30">
+                        <ArrowRight className="h-6 w-6" />
+                      </div>
+                    )}
                     <h3 className="mt-4 text-lg font-semibold text-foreground">
                       {item.title}
                     </h3>
@@ -420,8 +486,10 @@ export default function Home() {
         </section>
 
         {/* CTA section */}
-        <section className="border-y border-border/60 bg-surface px-4 py-20 sm:px-6 sm:py-24">
-          <div className="mx-auto max-w-3xl text-center">
+        <section className="relative border-y border-border/60 bg-surface px-4 py-20 sm:px-6 sm:py-24 overflow-hidden">
+          {/* Meteors background effect */}
+          <Meteors number={18} minDuration={4} maxDuration={12} angle={215} className="opacity-30" />
+          <div className="relative z-10 mx-auto max-w-3xl text-center">
             <h2 className="font-display text-3xl font-semibold tracking-tight sm:text-4xl md:text-5xl">
               Ready to organize your SoundCloud like a studio session?
             </h2>
@@ -430,11 +498,16 @@ export default function Home() {
               tedious parts — so you can listen, sort, and play.
             </p>
             <div className="mt-8 flex flex-wrap items-center justify-center gap-4">
-              <Link
-                href="/login"
-                className="inline-flex items-center justify-center gap-2 rounded-lg px-10 py-3 text-base font-semibold shadow-elevation-2 transition-all duration-150 hover:shadow-glow-sm hover:-translate-y-0.5 bg-primary text-primary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/80 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-              >
-                Connect with SoundCloud
+              <Link href="/login">
+                <ShimmerButton
+                  shimmerColor="#ffb347"
+                  background="rgba(255, 85, 0, 1)"
+                  borderRadius="8px"
+                  shimmerDuration="2.5s"
+                  className="shadow-elevation-2 hover:shadow-glow-sm hover:-translate-y-0.5 transition-transform px-10 py-3 text-base"
+                >
+                  Connect with SoundCloud
+                </ShimmerButton>
               </Link>
             </div>
           </div>

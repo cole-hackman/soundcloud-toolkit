@@ -12,6 +12,7 @@ import {
   PageHeader,
   SelectionBanner,
 } from "@/components/ui";
+import { ProgressiveBlur } from "@/components/ui/ProgressiveBlur";
 import { apiFetch } from "@/lib/api";
 
 interface Following {
@@ -315,7 +316,11 @@ export default function FollowingManagerPage() {
               {filteredFollowings.length} of {followings.length} followings
             </div>
 
-            <div className="grid md:grid-cols-2 gap-3 max-h-[600px] overflow-y-auto">
+            <ProgressiveBlur
+              className="grid md:grid-cols-2 gap-3 max-h-[600px] overflow-y-auto"
+              active={filteredFollowings.length > 8}
+              fadeHeight={72}
+            >
               {filteredFollowings.map((user) => {
                 const isSelected = selected.has(user.id);
                 return (
@@ -371,7 +376,7 @@ export default function FollowingManagerPage() {
                   </div>
                 );
               })}
-            </div>
+            </ProgressiveBlur>
           </div>
         )}
       <SelectionBanner

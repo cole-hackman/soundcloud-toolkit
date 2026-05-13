@@ -9,6 +9,15 @@ import { safeError } from '../lib/safe-error.js';
 
 const router = express.Router();
 
+/** Safe path for post-OAuth redirect (same-site frontend only). */
+function safePostLoginPath(raw) {
+  if (typeof raw !== 'string') return '';
+  const p = raw.trim();
+  if (!p.startsWith('/') || p.startsWith('//') || p.includes('..')) return '';
+  if (p.length > 200) return '';
+  return p;
+}
+
 /**
  * GET /api/auth/login
  * Generate PKCE pair and redirect to SoundCloud OAuth
@@ -44,6 +53,17 @@ router.get('/login', async (req, res) => {
       path: '/'
     });
 
+    const redirectPath = safePostLoginPath(req.query.redirect_path);
+    if (redirectPath) {
+      res.cookie('post_login_path', redirectPath, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: 10 * 60 * 1000,
+        path: '/'
+      });
+    }
+
     // Build SoundCloud OAuth URL (modern authorize endpoint)
     const authUrl = new URL('https://secure.soundcloud.com/authorize');
     authUrl.searchParams.set('client_id', process.env.SOUNDCLOUD_CLIENT_ID);
@@ -70,17 +90,20 @@ router.get('/callback', async (req, res) => {
     const codeVerifier = req.cookies.pkce_verifier;
     const appUrlCookie = req.cookies.app_url;
     const appUrl = appUrlCookie || process.env.APP_URL;
+    const postLoginPath = req.cookies.post_login_path;
 
     if (error) {
       logger.error('OAuth error:', safeError(error));
       res.clearCookie('pkce_verifier');
       res.clearCookie('app_url');
+      res.clearCookie('post_login_path');
       return res.redirect(`${appUrl}/login?error=${encodeURIComponent(error)}`);
     }
 
     if (!code || !codeVerifier) {
       res.clearCookie('pkce_verifier');
       res.clearCookie('app_url');
+      res.clearCookie('post_login_path');
       return res.redirect(`${appUrl}/login?error=missing_code_or_verifier`);
     }
 
@@ -148,14 +171,20 @@ router.get('/callback', async (req, res) => {
     // Clear PKCE verifier and app origin cookies
     res.clearCookie('pkce_verifier');
     res.clearCookie('app_url');
+    res.clearCookie('post_login_path');
 
-    // Redirect to dashboard
-    res.redirect(`${appUrl}/dashboard`);
+    const pathAfterLogin =
+      (typeof postLoginPath === 'string' && postLoginPath.startsWith('/') && !postLoginPath.startsWith('//')
+        ? postLoginPath
+        : '/dashboard');
+
+    res.redirect(`${appUrl}${pathAfterLogin}`);
   } catch (error) {
     logger.error('Callback error:', safeError(error));
     const appUrl = req.cookies.app_url || process.env.APP_URL;
     res.clearCookie('pkce_verifier');
     res.clearCookie('app_url');
+    res.clearCookie('post_login_path');
     res.redirect(`${appUrl}/login?error=callback_failed`);
   }
 });

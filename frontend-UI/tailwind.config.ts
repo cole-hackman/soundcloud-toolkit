@@ -62,13 +62,16 @@ export default {
         'glow-sm':
           '0 0 0 1px rgba(255, 85, 0, 0.45), 0 10px 25px rgba(255, 85, 0, 0.35)',
         'elevation-1':
-          '0 14px 30px rgba(15, 23, 42, 0.45), 0 4px 10px rgba(15, 23, 42, 0.35)',
+          '0 14px 30px rgba(15, 23, 42, 0.20), 0 4px 10px rgba(15, 23, 42, 0.10)',
         'elevation-2':
-          '0 18px 45px rgba(15, 23, 42, 0.65), 0 8px 18px rgba(15, 23, 42, 0.45)',
+          '0 18px 45px rgba(15, 23, 42, 0.35), 0 8px 18px rgba(15, 23, 42, 0.20)',
         'elevation-3':
-          '0 28px 80px rgba(15, 23, 42, 0.80), 0 12px 30px rgba(15, 23, 42, 0.55)',
+          '0 28px 80px rgba(15, 23, 42, 0.50), 0 12px 30px rgba(15, 23, 42, 0.35)',
       },
       keyframes: {
+        'gradient': {
+          to: { 'background-position': 'var(--bg-size, 300%) 0' },
+        },
         'fade-in-up': {
           '0%': { opacity: '0', transform: 'translateY(12px)' },
           '100%': { opacity: '1', transform: 'translateY(0)' },
@@ -81,11 +84,41 @@ export default {
           '0%': { opacity: '0', transform: 'scale(0.96)' },
           '100%': { opacity: '1', transform: 'scale(1)' },
         },
+        'meteor': {
+          '0%': { transform: 'rotate(var(--meteor-angle, 215deg)) translateX(0)', opacity: '1' },
+          '70%': { opacity: '1' },
+          '100%': {
+            transform: 'rotate(var(--meteor-angle, 215deg)) translateX(-800px)',
+            opacity: '0',
+          },
+        },
+        'blink-cursor': {
+          '0%, 100%': { opacity: '1' },
+          '50%': { opacity: '0' },
+        },
+        'shine-spin': {
+          '0%': { '--shine-angle': '0deg' },
+          '100%': { '--shine-angle': '360deg' },
+        },
+        'shiny-text': {
+          '0%, 90%, 100%': { 'background-position': 'calc(-100% - var(--shimmer-width)) 0' },
+          '30%, 60%': { 'background-position': 'calc(100% + var(--shimmer-width)) 0' },
+        },
+        'pulse-ring': {
+          '0%': { transform: 'scale(1)', opacity: '0.6' },
+          '100%': { transform: 'scale(1.5)', opacity: '0' },
+        },
       },
       animation: {
+        'gradient': 'gradient 8s linear infinite',
         'fade-in-up': 'fade-in-up 300ms ease-out both',
         'fade-in': 'fade-in 200ms ease-out both',
         'scale-in': 'scale-in 220ms ease-out both',
+        'meteor': 'meteor var(--meteor-duration, 5s) linear infinite',
+        'blink-cursor': 'blink-cursor 1s step-end infinite',
+        'shine-spin': 'shine-spin var(--duration, 14s) linear infinite',
+        'shiny-text': 'shiny-text 8s ease-in-out infinite',
+        'pulse-ring': 'pulse-ring var(--duration, 1.5s) ease-out infinite',
       },
       borderRadius: {
         lg: 'var(--radius)',

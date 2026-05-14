@@ -10,11 +10,11 @@ export const securityHeaders = helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      styleSrc: ["'self'", "'unsafe-inline'"], // Allow inline styles for Next.js
-      scriptSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "https://cdnjs.buymeacoffee.com"], // unsafe-inline required for Next.js static export bootstrap scripts
       imgSrc: ["'self'", "https:", "data:"], // Allow images from any HTTPS source
-      connectSrc: ["'self'", "https://api.soundcloud.com", "https://secure.soundcloud.com"],
-      fontSrc: ["'self'", "data:"],
+      connectSrc: ["'self'", "https://api.soundcloud.com", "https://secure.soundcloud.com", "https://api-v2.soundcloud.com", "ws://localhost:*", "wss:"],
+      fontSrc: ["'self'", "data:", "https://fonts.gstatic.com"],
       objectSrc: ["'none'"],
       mediaSrc: ["'self'"],
       frameSrc: ["'none'"],
@@ -23,6 +23,7 @@ export const securityHeaders = helmet({
   crossOriginEmbedderPolicy: false, // Disable for SoundCloud embeds if needed
   crossOriginResourcePolicy: { policy: "cross-origin" }, // Allow SoundCloud resources
 });
+
 
 /**
  * Middleware to prevent API key leakage in error responses

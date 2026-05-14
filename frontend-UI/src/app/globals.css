@@ -167,3 +167,42 @@ body::before {
 .animate-fadeIn {
   animation: fadeIn 0.25s ease-out both;
 }
+
+/* ─── Shimmer Button ─────────────────────────────────────── */
+.shimmer-button {
+  border-radius: var(--border-radius);
+  background: var(--background);
+  position: relative;
+  isolation: isolate;
+}
+
+.shimmer-button::before,
+.shimmer-button::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: var(--border-radius);
+}
+
+/* Shimmer travelling light */
+.shimmer-button::before {
+  background: conic-gradient(
+    from calc(270deg - (var(--spread) / 2)),
+    transparent 0,
+    var(--shimmer-color) var(--spread),
+    transparent var(--spread)
+  );
+  animation: shimmer-spin var(--shimmer-duration) linear infinite;
+  transform-origin: center;
+}
+
+/* Inner background cutout */
+.shimmer-button::after {
+  background: var(--background);
+  inset: 1px;
+}
+
+@keyframes shimmer-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}

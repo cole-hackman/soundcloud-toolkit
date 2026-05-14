@@ -142,16 +142,20 @@ function SidebarGroup({
               onClick={onNavigate}
               title={item.label}
               className={cn(
-                "flex items-center justify-center px-3 py-2 rounded-lg transition-all duration-150 relative",
+                "group relative flex items-center justify-center overflow-hidden px-3 py-2 rounded-lg transition-colors duration-150",
                 isActive
                   ? "bg-[#FF5500]/8 text-[#FF5500]"
-                  : "text-[#555555] hover:bg-black/[0.04] hover:text-[#333333]"
+                  : "text-[#555555]"
               )}
             >
+              {/* Slide-in hover bg */}
+              {!isActive && (
+                <span className="absolute inset-0 translate-x-[-100%] group-hover:translate-x-0 rounded-lg bg-black/[0.04] transition-transform duration-200" />
+              )}
               {isActive && (
                 <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-[#FF5500] rounded-r-full" />
               )}
-              <Icon className={cn("w-[18px] h-[18px] shrink-0", isActive ? "text-[#FF5500]" : "")} />
+              <Icon className={cn("relative z-10 w-[18px] h-[18px] shrink-0", isActive ? "text-[#FF5500]" : "group-hover:text-[#333333] transition-colors")} />
             </Link>
           );
         })}
@@ -186,22 +190,26 @@ function SidebarGroup({
                 href={item.href}
                 onClick={onNavigate}
                 className={cn(
-                  "flex items-center gap-3 pl-5 pr-3 py-2 rounded-lg transition-all duration-150 text-[13px] font-medium relative",
+                  "group relative flex items-center gap-3 overflow-hidden pl-5 pr-3 py-2 rounded-lg transition-colors duration-150 text-[13px] font-medium",
                   isActive
                     ? "bg-[#FF5500]/8 text-[#FF5500]"
-                    : "text-[#555555] hover:bg-black/[0.04] hover:text-[#333333]"
+                    : "text-[#555555]"
                 )}
               >
+                {/* Slide-in hover bg */}
+                {!isActive && (
+                  <span className="absolute inset-0 translate-x-[-100%] group-hover:translate-x-0 rounded-lg bg-black/[0.04] transition-transform duration-200" />
+                )}
                 {isActive && (
                   <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-[#FF5500] rounded-r-full" />
                 )}
                 <Icon
                   className={cn(
-                    "w-[16px] h-[16px] shrink-0",
-                    isActive ? "text-[#FF5500]" : ""
+                    "relative z-10 w-[16px] h-[16px] shrink-0",
+                    isActive ? "text-[#FF5500]" : "group-hover:text-[#333333] transition-colors"
                   )}
                 />
-                <span className="truncate">{item.label}</span>
+                <span className="relative z-10 truncate">{item.label}</span>
               </Link>
             );
           })}
@@ -273,12 +281,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               href={entry.href}
               onClick={onNavigate}
               className={cn(
-                "flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-150 text-[13px] font-medium relative",
+                "group relative flex items-center gap-3 overflow-hidden px-3 py-2 rounded-lg transition-colors duration-150 text-[13px] font-medium",
                   isActive
                   ? "bg-[#FF5500]/8 text-[#FF5500]"
-                  : "text-[#555555] dark:text-[#a1a1aa] hover:bg-black/[0.04] dark:hover:bg-white/[0.04] hover:text-[#333333] dark:hover:text-white"
+                  : "text-[#555555] dark:text-[#a1a1aa]"
               )}
             >
+              {/* Slide-in hover bg */}
+              {!isActive && (
+                <span className="absolute inset-0 translate-x-[-100%] group-hover:translate-x-0 rounded-lg bg-black/[0.04] dark:bg-white/[0.04] transition-transform duration-200" />
+              )}
               {isActive && !effectiveCollapsed && !isMobile && (
                 <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-[#FF5500] rounded-r-full" />
               )}
@@ -287,12 +299,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               )}
               <Icon
                 className={cn(
-                  "w-[18px] h-[18px] shrink-0",
-                  isActive ? "text-[#FF5500]" : ""
+                  "relative z-10 w-[18px] h-[18px] shrink-0",
+                  isActive ? "text-[#FF5500]" : "group-hover:text-[#333333] dark:group-hover:text-white transition-colors"
                 )}
               />
               {(isMobile || !effectiveCollapsed) && (
-                <span className="truncate">{entry.label}</span>
+                <span className="relative z-10 truncate">{entry.label}</span>
               )}
             </Link>
           );

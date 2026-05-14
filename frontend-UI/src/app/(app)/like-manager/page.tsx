@@ -13,6 +13,7 @@ import {
   SelectionBanner,
   TrackRow,
 } from "@/components/ui";
+import { ProgressiveBlur } from "@/components/ui/ProgressiveBlur";
 import { apiFetch } from "@/lib/api";
 
 interface Track {
@@ -228,25 +229,31 @@ export default function LikeManagerPage() {
               {filteredLikes.length} of {likes.length} tracks
             </div>
 
-            <div className="space-y-2 max-h-[600px] overflow-y-auto">
-              {filteredLikes.map((like) => {
-                const track = like.track;
-                const isSelected = selected.has(track.id);
-                return (
-                  <TrackRow
-                    key={track.id}
-                    track={{ ...track, subtitle: track.user?.username }}
-                    isSelected={isSelected}
-                    onToggle={() => toggleTrack(track.id)}
-                    rightSlot={
-                      <span className="text-xs text-[#666666] dark:text-muted-foreground">
-                        {formatDuration(track.duration)}
-                      </span>
-                    }
-                  />
-                );
-              })}
-            </div>
+            <ProgressiveBlur
+              className="max-h-[600px] overflow-y-auto"
+              active={filteredLikes.length > 8}
+              fadeHeight={72}
+            >
+              <div className="space-y-2">
+                {filteredLikes.map((like) => {
+                  const track = like.track;
+                  const isSelected = selected.has(track.id);
+                  return (
+                    <TrackRow
+                      key={track.id}
+                      track={{ ...track, subtitle: track.user?.username }}
+                      isSelected={isSelected}
+                      onToggle={() => toggleTrack(track.id)}
+                      rightSlot={
+                        <span className="text-xs text-[#666666] dark:text-muted-foreground">
+                          {formatDuration(track.duration)}
+                        </span>
+                      }
+                    />
+                  );
+                })}
+              </div>
+            </ProgressiveBlur>
           </div>
         )}
       <SelectionBanner

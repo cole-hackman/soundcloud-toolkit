@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "./Button";
+import { PulsatingButton } from "./PulsatingButton";
 
 interface SelectionBannerProps {
   count: number;
@@ -34,15 +35,27 @@ export function SelectionBanner({
         <span className="text-sm font-semibold text-primary">
           {selectedLabel}
         </span>
-        <Button
-          variant={actionVariant}
-          className="h-10 px-4"
-          onClick={onAction}
-          disabled={disabled}
-        >
-          {actionIcon}
-          {actionLabel}
-        </Button>
+        {actionVariant === "destructive" ? (
+          <PulsatingButton
+            onClick={onAction}
+            disabled={disabled}
+            pulseColor="#FF5500"
+            className="h-10 gap-2"
+          >
+            {actionIcon}
+            {actionLabel}
+          </PulsatingButton>
+        ) : (
+          <Button
+            variant={actionVariant}
+            className="h-10 px-4"
+            onClick={onAction}
+            disabled={disabled}
+          >
+            {actionIcon}
+            {actionLabel}
+          </Button>
+        )}
       </div>
     </div>
   );

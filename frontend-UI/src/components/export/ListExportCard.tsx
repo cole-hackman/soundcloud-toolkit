@@ -32,6 +32,7 @@ interface ListExportCardProps {
   emptyLinkHref?: string;
   emptyLinkLabel?: string;
   loadItems: () => Promise<unknown[]>;
+  embedded?: boolean;
 }
 
 export function ListExportCard({
@@ -47,6 +48,7 @@ export function ListExportCard({
   emptyLinkHref,
   emptyLinkLabel,
   loadItems,
+  embedded = false,
 }: ListExportCardProps) {
   const [phase, setPhase] = useState<Phase>("idle");
   const [items, setItems] = useState<unknown[]>([]);
@@ -90,8 +92,8 @@ export function ListExportCard({
   const previewLines = previewContent.split("\n").filter((l) => l.length > 0).slice(0, PREVIEW_LINE_COUNT);
   const isLoading = phase === "loading";
 
-  return (
-    <ExportSection icon={icon} title={title} subtitle={subtitle} description={description}>
+  const body = (
+    <>
       {formats.length > 1 && (
         <div className="mt-4">
           <label htmlFor={`${filenamePrefix}-format`} className="text-xs font-medium text-muted-foreground">
@@ -193,6 +195,20 @@ export function ListExportCard({
           </Button>
         )}
       </div>
+    </>
+  );
+
+  if (embedded) {
+    return (
+      <div className="rounded-2xl border-2 border-gray-200 bg-white p-6 dark:border-border dark:bg-card">
+        {body}
+      </div>
+    );
+  }
+
+  return (
+    <ExportSection icon={icon} title={title} subtitle={subtitle} description={description}>
+      {body}
     </ExportSection>
   );
 }

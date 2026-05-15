@@ -32,6 +32,8 @@ interface TrackExportCardProps {
   loadTracks: () => Promise<ExportTrack[]>;
   extraControls?: React.ReactNode;
   fetchDisabled?: boolean;
+  /** When true, omit section header (use with PageHeader on parent page). */
+  embedded?: boolean;
 }
 
 export function TrackExportCard({
@@ -48,6 +50,7 @@ export function TrackExportCard({
   loadTracks,
   extraControls,
   fetchDisabled = false,
+  embedded = false,
 }: TrackExportCardProps) {
   const [phase, setPhase] = useState<Phase>("idle");
   const [tracks, setTracks] = useState<ExportTrack[]>([]);
@@ -84,8 +87,8 @@ export function TrackExportCard({
   const previewLines = previewContent.split("\n").filter((l) => l.length > 0).slice(0, PREVIEW_LINE_COUNT);
   const isLoading = phase === "loading";
 
-  return (
-    <ExportSection icon={icon} title={title} subtitle={subtitle} description={description}>
+  const body = (
+    <>
       {extraControls}
 
       <div className="mt-4">
@@ -192,6 +195,26 @@ export function TrackExportCard({
           </Button>
         )}
       </div>
+    </>
+  );
+
+  if (embedded) {
+    return (
+      <EmbeddedPanel>{body}</EmbeddedPanel>
+    );
+  }
+
+  return (
+    <ExportSection icon={icon} title={title} subtitle={subtitle} description={description}>
+      {body}
     </ExportSection>
+  );
+}
+
+function EmbeddedPanel({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="rounded-2xl border-2 border-gray-200 bg-white p-6 dark:border-border dark:bg-card">
+      {children}
+    </div>
   );
 }

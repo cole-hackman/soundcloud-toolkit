@@ -101,9 +101,14 @@ import authRoutes from './routes/auth.js';
 import apiRoutes from './routes/api.js';
 import adminRoutes from './routes/admin.js';
 
-// Apply rate limiting to API routes
-// Auth routes get stricter rate limiting
-app.use('/api/auth', authRateLimiter);
+// Stricter OAuth rate limiting only where brute-force matters (/login + /callback).
+// /auth/me runs on every app load; coupling it to the OAuth limit broke sessions for heavy users.
+app.use('/api/auth', (req, res, next) => {
+  if (req.path === '/login' || req.path === '/callback') {
+    return authRateLimiter(req, res, next);
+  }
+  next();
+});
 // Heavy operations get their own rate limiter (applied in route handlers)
 // General API routes get standard rate limiting
 app.use('/api', apiRateLimiter);

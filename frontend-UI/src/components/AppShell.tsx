@@ -32,6 +32,7 @@ import {
   Music,
   ListMusic,
   ArrowRightLeft,
+  FileUp,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/contexts/ThemeContext";
@@ -59,6 +60,7 @@ function isGroup(entry: NavEntry): entry is NavGroup {
 const NAV: NavEntry[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/downloads", label: "Downloads", icon: Download },
+  { href: "/export", label: "Export", icon: FileUp },
   { href: "/library-audit", label: "Library Audit", icon: ClipboardCheck },
   {
     label: "Playlists",

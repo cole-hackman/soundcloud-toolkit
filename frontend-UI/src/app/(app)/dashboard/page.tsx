@@ -24,6 +24,7 @@ import {
   ListMusic,
   Star,
   ArrowRightLeft,
+  FileUp,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Card, EmptyState, Input, PageContainer, Skeleton } from "@/components/ui";
@@ -61,6 +62,13 @@ const FEATURES: FeatureCard[] = [
     description: "Find downloadable tracks in your library",
     icon: Download,
     path: "/downloads",
+  },
+  {
+    id: "export",
+    title: "Export",
+    description: "Export likes, playlists, followings, and reposts as TXT or CSV",
+    icon: FileUp,
+    path: "/export",
   },
   {
     id: "library-audit",
@@ -165,6 +173,7 @@ const FEATURES: FeatureCard[] = [
 const RECENT_LABELS: Record<string, string> = {
   combine: "Combine Playlists",
   downloads: "Downloads",
+  export: "Export",
   "library-audit": "Library Audit",
   likes: "Likes → Playlist",
   modifier: "Playlist Modifier",
@@ -184,6 +193,7 @@ const RECENT_LABELS: Record<string, string> = {
 const RECENT_PATHS: Record<string, string> = {
   combine: "/combine",
   downloads: "/downloads",
+  export: "/export",
   "library-audit": "/library-audit",
   likes: "/likes-to-playlist",
   modifier: "/playlist-modifier",

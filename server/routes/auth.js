@@ -113,8 +113,10 @@ router.get('/callback', async (req, res) => {
     // Get user information
     const userInfo = await soundcloudClient.getMe(tokens.access_token, tokens.refresh_token);
 
-    // Calculate token expiration
-    const expiresAt = new Date(Date.now() + (tokens.expires_in * 1000));
+    // Calculate token expiration (SoundCloud may omit expires_in in edge cases)
+    const expiresMs = Number(tokens.expires_in);
+    const expiresSeconds = Number.isFinite(expiresMs) && expiresMs > 0 ? expiresMs : 3600;
+    const expiresAt = new Date(Date.now() + expiresSeconds * 1000);
 
     // Encrypt tokens
     const encryptionKey = process.env.ENCRYPTION_KEY;
@@ -236,12 +238,6 @@ router.get('/me', async (req, res) => {
     });
 
     if (!user || !user.tokens.length) {
-      res.clearCookie('session');
-      return res.status(401).json({ error: 'Session expired' });
-    }
-
-    const token = user.tokens[0];
-    if (token.expiresAt && new Date(token.expiresAt) <= new Date()) {
       res.clearCookie('session');
       return res.status(401).json({ error: 'Session expired' });
     }

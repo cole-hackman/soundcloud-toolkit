@@ -9,6 +9,7 @@ const TOOL_SLUGS: Record<string, string> = {
   "/combine": "combine",
   "/library-audit": "library-audit",
   "/downloads": "downloads",
+  "/export": "export",
   "/likes-to-playlist": "likes",
   "/playlist-modifier": "modifier",
   "/link-resolver": "resolver",

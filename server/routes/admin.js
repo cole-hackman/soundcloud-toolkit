@@ -36,7 +36,14 @@ const ACTION_COLORS = {
 };
 
 function periodToCutoff(period) {
-  const days = period === '7d' ? 7 : period === '90d' ? 90 : 28;
+  if (period === 'month') {
+    const start = new Date();
+    start.setDate(1);
+    start.setHours(0, 0, 0, 0);
+    return start;
+  }
+
+  const days = period === '1d' ? 1 : period === '7d' ? 7 : period === '90d' ? 90 : 30;
   const d = new Date();
   d.setDate(d.getDate() - days);
   d.setHours(0, 0, 0, 0);
@@ -44,11 +51,11 @@ function periodToCutoff(period) {
 }
 
 function validPeriod(p) {
-  return ['7d', '28d', '90d'].includes(p) ? p : '28d';
+  return ['1d', '7d', '30d', '90d', 'month'].includes(p) ? p : '30d';
 }
 
 /**
- * GET /api/admin/stats?period=7d|28d|90d
+ * GET /api/admin/stats?period=1d|7d|30d|90d|month
  *
  * Returns aggregated stats for the dashboard top cards, feature usage,
  * sidebar quick stats, and health/rate metrics.
@@ -58,7 +65,10 @@ router.get('/stats', authenticateUser, adminAuth, async (req, res) => {
     const period = validPeriod(req.query.period);
     const cutoff = periodToCutoff(period);
 
-    const [totalUsers, newUsers, agg, byAction, byStatus, splitsCount] = await Promise.all([
+    const monthCutoff = periodToCutoff('month');
+    const rollingThirtyCutoff = periodToCutoff('30d');
+
+    const [totalUsers, newUsers, agg, byAction, byStatus, splitsCount, activeUsersPeriodRows, activeUsersMonthRows, activeUsers30dRows] = await Promise.all([
       prisma.user.count(),
       prisma.user.count({ where: { createdAt: { gte: cutoff } } }),
       prisma.operationLog.aggregate({
@@ -81,11 +91,29 @@ router.get('/stats', authenticateUser, adminAuth, async (req, res) => {
       prisma.operationLog.count({
         where: { createdAt: { gte: cutoff }, status: 'split' },
       }),
+      prisma.$queryRaw`
+        SELECT COUNT(DISTINCT "userId")::int AS count
+        FROM operation_logs
+        WHERE "createdAt" >= ${cutoff}
+      `,
+      prisma.$queryRaw`
+        SELECT COUNT(DISTINCT "userId")::int AS count
+        FROM operation_logs
+        WHERE "createdAt" >= ${monthCutoff}
+      `,
+      prisma.$queryRaw`
+        SELECT COUNT(DISTINCT "userId")::int AS count
+        FROM operation_logs
+        WHERE "createdAt" >= ${rollingThirtyCutoff}
+      `,
     ]);
 
     const operationsCount = agg._count.id ?? 0;
     const tracksProcessed = agg._sum.trackCount ?? 0;
     const avgTracksPerOp = agg._avg.trackCount ? Math.round(agg._avg.trackCount) : 0;
+    const activeUsersPeriod = Number(activeUsersPeriodRows?.[0]?.count ?? 0);
+    const activeUsersMonth = Number(activeUsersMonthRows?.[0]?.count ?? 0);
+    const activeUsers30d = Number(activeUsers30dRows?.[0]?.count ?? 0);
 
     const featureUsage = byAction.map(row => ({
       key: row.action,
@@ -115,6 +143,9 @@ router.get('/stats', authenticateUser, adminAuth, async (req, res) => {
       splitRate,
       errorRate,
       topFeature,
+      activeUsersPeriod,
+      activeUsersMonth,
+      activeUsers30d,
     });
   } catch (err) {
     logger.error('[admin/stats] Error:', safeError(err));
@@ -123,7 +154,7 @@ router.get('/stats', authenticateUser, adminAuth, async (req, res) => {
 });
 
 /**
- * GET /api/admin/daily?period=7d|28d|90d
+ * GET /api/admin/daily?period=1d|7d|30d|90d|month
  *
  * Returns daily time-series data for chart rendering.
  * Uses raw SQL DATE_TRUNC since Prisma groupBy doesn't support it.
@@ -156,7 +187,9 @@ router.get('/daily', authenticateUser, adminAuth, async (req, res) => {
       `,
     ]);
 
-    const days = period === '7d' ? 7 : period === '90d' ? 90 : 28;
+    const days = period === '1d' ? 1 : period === '7d' ? 7 : period === '90d' ? 90 : period === 'month'
+      ? Math.max(Math.ceil((Date.now() - cutoff.getTime()) / 86_400_000), 1)
+      : 30;
     const result = [];
 
     for (let i = 0; i < days; i++) {
@@ -185,7 +218,7 @@ router.get('/daily', authenticateUser, adminAuth, async (req, res) => {
 });
 
 /**
- * GET /api/admin/operations?period=7d|28d|90d&limit=20
+ * GET /api/admin/operations?period=1d|7d|30d|90d|month&limit=20
  *
  * Returns recent operation logs with user info for the recent operations table.
  */

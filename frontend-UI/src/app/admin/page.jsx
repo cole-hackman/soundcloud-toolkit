@@ -330,7 +330,7 @@ function timeAgo(iso) {
 // --- Main Dashboard ---
 export default function AdminDashboard() {
   const router = useRouter();
-  const [period, setPeriod] = useState("28d");
+  const [period, setPeriod] = useState("30d");
   const [theme, setTheme] = useState("dark");
   const [time, setTime] = useState(new Date());
 
@@ -497,7 +497,7 @@ export default function AdminDashboard() {
           </button>
           {/* Period selector */}
           <div style={{ display: "flex", gap: 2, background: P.segmentBg, borderRadius: 6, padding: 2 }}>
-            {["7d", "28d", "90d"].map((p) => (
+            {["1d", "7d", "30d", "90d", "month"].map((p) => (
               <button
                 key={p}
                 onClick={() => setPeriod(p)}
@@ -563,7 +563,7 @@ export default function AdminDashboard() {
       <div style={{ padding: "24px 32px", maxWidth: 1320, margin: "0 auto" }}>
 
         {/* Top Stats Row */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 20 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16, marginBottom: 20 }}>
           <StatCard
             label="Registered Users"
             value={loading ? "—" : (stats?.totalUsers ?? 0).toLocaleString()}
@@ -590,12 +590,30 @@ export default function AdminDashboard() {
             palette={P}
           />
           <StatCard
+            label="Active Users"
+            value={loading ? "—" : (stats?.activeUsersPeriod ?? 0).toLocaleString()}
+            sub={`${period} active`}
+            trend="By operation logs"
+            trendDir="flat"
+            delay={0.175}
+            palette={P}
+          />
+          <StatCard
             label="Total Operations"
             value={loading ? "—" : (stats?.operationsCount ?? 0).toLocaleString()}
             sub={`${period} period`}
             spark={opsSparkline}
             sparkColor={YELLOW}
             delay={0.2}
+            palette={P}
+          />
+          <StatCard
+            label="Active Users (Month)"
+            value={loading ? "—" : (stats?.activeUsersMonth ?? 0).toLocaleString()}
+            sub={`Rolling 30d: ${(stats?.activeUsers30d ?? 0).toLocaleString()}`}
+            trend="Month-to-date"
+            trendDir="flat"
+            delay={0.225}
             palette={P}
           />
         </div>

@@ -1,6 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "";
 
 type TrackDisplay = { id: number; title?: string; artist?: string; genre?: string };
 type PlaylistDisplay = { id: number; title?: string; trackCount?: number };
@@ -11,12 +14,21 @@ type PairDisplay = {
   overlapPercent: number;
   deepLink?: string;
 };
+type Proposal = {
+  kind: "proposal";
+  action: "create_playlist" | "bulk_unlike" | string;
+  endpoint: string;
+  method: "POST" | "PUT" | "DELETE";
+  payload: Record<string, unknown>;
+  summary: string;
+};
 
 export type ToolDisplay =
   | { kind: "tracks"; tracks: TrackDisplay[]; deepLink?: string | null }
   | { kind: "playlist_pair"; summary: { playlistA: { title?: string }; playlistB: { title?: string }; overlapCount: number; overlapPercent: number }; deepLink?: string | null }
   | { kind: "playlist_pairs"; pairs: PairDisplay[] }
-  | { kind: "playlists"; items: PlaylistDisplay[] };
+  | { kind: "playlists"; items: PlaylistDisplay[] }
+  | Proposal;
 
 const Btn = ({ href, label }: { href: string; label: string }) => (
   <Link
@@ -27,7 +39,74 @@ const Btn = ({ href, label }: { href: string; label: string }) => (
   </Link>
 );
 
+function ProposalCard({ proposal }: { proposal: Proposal }) {
+  const [status, setStatus] = useState<"idle" | "confirming" | "done" | "error">("idle");
+  const [resultText, setResultText] = useState<string>("");
+
+  const confirm = async () => {
+    setStatus("confirming");
+    setResultText("");
+    try {
+      const res = await fetch(`${API_BASE}${proposal.endpoint}`, {
+        method: proposal.method,
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(proposal.payload),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setStatus("error");
+        setResultText(data.error || "Action failed.");
+        return;
+      }
+      // After a mutation, trigger a library re-sync so subsequent questions see fresh data.
+      fetch(`${API_BASE}/api/library/sync`, { method: "POST", credentials: "include" }).catch(() => {});
+      setStatus("done");
+      if (proposal.action === "create_playlist") {
+        const id = data.playlists?.[0]?.id || data.playlist?.id;
+        setResultText(id ? `Created playlist (id ${id}).` : "Playlist created.");
+      } else if (proposal.action === "bulk_unlike") {
+        const ok = Array.isArray(data.results) ? data.results.filter((r: { status: string }) => r.status === "ok").length : 0;
+        setResultText(`Unliked ${ok} track${ok === 1 ? "" : "s"}.`);
+      } else {
+        setResultText("Done.");
+      }
+    } catch (e) {
+      setStatus("error");
+      setResultText(e instanceof Error ? e.message : "Action failed.");
+    }
+  };
+
+  return (
+    <div className="my-2 space-y-2 rounded-md border border-amber-500/40 bg-amber-500/5 p-3 text-sm">
+      <div className="font-medium">{proposal.summary}</div>
+      {status === "idle" && (
+        <div className="flex gap-2">
+          <button
+            onClick={confirm}
+            className="rounded-md bg-primary px-3 py-1 text-xs text-primary-foreground hover:opacity-90"
+          >
+            Confirm
+          </button>
+          <button
+            onClick={() => setStatus("done")}
+            className="rounded-md border px-3 py-1 text-xs hover:bg-accent"
+          >
+            Cancel
+          </button>
+        </div>
+      )}
+      {status === "confirming" && <div className="text-xs text-muted-foreground">Working…</div>}
+      {status === "done" && resultText && <div className="text-xs">{resultText}</div>}
+      {status === "error" && <div className="text-xs text-destructive">{resultText}</div>}
+    </div>
+  );
+}
+
 export function ToolResultCard({ display }: { display: ToolDisplay }) {
+  if (display.kind === "proposal") {
+    return <ProposalCard proposal={display} />;
+  }
   if (display.kind === "tracks") {
     if (!display.tracks.length) return null;
     return (

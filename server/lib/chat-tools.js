@@ -99,6 +99,37 @@ export const CHAT_TOOL_DEFINITIONS = [
   {
     type: 'function',
     function: {
+      name: 'propose_create_playlist_from_tracks',
+      description:
+        'Propose creating a new playlist from a list of track ids. Returns a confirmation card; the user must explicitly confirm before anything happens. Use this whenever the user asks to make/create/save a playlist.',
+      parameters: {
+        type: 'object',
+        required: ['trackIds', 'title'],
+        properties: {
+          trackIds: { type: 'array', items: { type: 'integer' }, minItems: 1 },
+          title: { type: 'string' },
+        },
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'propose_bulk_unlike',
+      description:
+        'Propose unliking a batch of tracks (max 100). Returns a confirmation card; the user must explicitly confirm before anything happens.',
+      parameters: {
+        type: 'object',
+        required: ['trackIds'],
+        properties: {
+          trackIds: { type: 'array', items: { type: 'integer' }, minItems: 1, maxItems: 100 },
+        },
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'list_playlists',
       description: "List the user's playlists with id, title, and track count. Reads from the library index when available.",
       parameters: {
@@ -227,6 +258,36 @@ export async function dispatchTool(name, args = {}, ctx = {}) {
       }
       case 'list_playlists': {
         return await listUserPlaylists(userId, { limit: args.limit ?? 50 }, { index, sc, accessToken, refreshToken });
+      }
+      case 'propose_create_playlist_from_tracks': {
+        const trackIds = Array.isArray(args.trackIds) ? args.trackIds.filter(Number.isInteger) : [];
+        const title = (typeof args.title === 'string' ? args.title.trim() : '') || `Library Chat ${new Date().toISOString().slice(0, 10)}`;
+        if (!trackIds.length) return { error: 'trackIds must contain at least one integer' };
+        return {
+          display: {
+            kind: 'proposal',
+            action: 'create_playlist',
+            endpoint: '/api/playlists/from-likes',
+            method: 'POST',
+            payload: { trackIds, title },
+            summary: `Create playlist "${title}" with ${trackIds.length} track${trackIds.length === 1 ? '' : 's'}?`,
+          },
+        };
+      }
+      case 'propose_bulk_unlike': {
+        const trackIds = Array.isArray(args.trackIds) ? args.trackIds.filter(Number.isInteger) : [];
+        if (!trackIds.length) return { error: 'trackIds must contain at least one integer' };
+        if (trackIds.length > 100) return { error: 'bulk_unlike accepts at most 100 tracks per call' };
+        return {
+          display: {
+            kind: 'proposal',
+            action: 'bulk_unlike',
+            endpoint: '/api/likes/tracks/bulk-unlike',
+            method: 'POST',
+            payload: { trackIds },
+            summary: `Unlike ${trackIds.length} track${trackIds.length === 1 ? '' : 's'}?`,
+          },
+        };
       }
       default:
         return { error: `Unknown tool: ${name}` };

@@ -10,4 +10,9 @@ describe('buildSystemPrompt', () => {
     const prompt = buildSystemPrompt({ status: 'syncing', likeCount: 100, likesSyncedAt: null });
     expect(prompt).toMatch(/partial|syncing/i);
   });
+  test('tells the model to use propose_* tools for mutations', () => {
+    const prompt = buildSystemPrompt({ status: 'fresh', likeCount: 0, likesSyncedAt: null });
+    expect(prompt).toMatch(/propose_/);
+    expect(prompt).toMatch(/never claim/i);
+  });
 });

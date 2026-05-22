@@ -17,6 +17,8 @@ describe('CHAT_TOOL_DEFINITIONS', () => {
       'get_me_stats',
       'library_audit_summary',
       'list_playlists',
+      'propose_bulk_unlike',
+      'propose_create_playlist_from_tracks',
       'resolve_url',
       'search_likes',
     ]);
@@ -112,5 +114,41 @@ describe('dispatchTool', () => {
     const out = await dispatchTool('list_playlists', {}, ctx);
     expect(out.source).toBe('live');
     expect(out.playlists[0]).toMatchObject({ id: 11, title: 'P', trackCount: 3 });
+  });
+
+  test('propose_create_playlist_from_tracks returns a proposal envelope and does NOT call SC', async () => {
+    const scSpy = { ...fakeSc, getPlaylists: () => { throw new Error('should not be called'); } };
+    const out = await dispatchTool(
+      'propose_create_playlist_from_tracks',
+      { trackIds: [1, 2, 3], title: 'My Mix' },
+      { ...baseCtx, sc: scSpy },
+    );
+    expect(out.display.kind).toBe('proposal');
+    expect(out.display.action).toBe('create_playlist');
+    expect(out.display.endpoint).toBe('/api/playlists/from-likes');
+    expect(out.display.payload).toEqual({ trackIds: [1, 2, 3], title: 'My Mix' });
+    expect(out.display.summary).toMatch(/My Mix/);
+  });
+
+  test('propose_create_playlist_from_tracks rejects empty track lists', async () => {
+    const out = await dispatchTool(
+      'propose_create_playlist_from_tracks',
+      { trackIds: [], title: 'X' },
+      baseCtx,
+    );
+    expect(out.error).toMatch(/at least one/);
+  });
+
+  test('propose_bulk_unlike rejects more than 100 tracks', async () => {
+    const ids = Array.from({ length: 101 }, (_, i) => i + 1);
+    const out = await dispatchTool('propose_bulk_unlike', { trackIds: ids }, baseCtx);
+    expect(out.error).toMatch(/at most 100/);
+  });
+
+  test('propose_bulk_unlike returns a proposal envelope', async () => {
+    const out = await dispatchTool('propose_bulk_unlike', { trackIds: [10, 20] }, baseCtx);
+    expect(out.display.kind).toBe('proposal');
+    expect(out.display.action).toBe('bulk_unlike');
+    expect(out.display.payload).toEqual({ trackIds: [10, 20] });
   });
 });

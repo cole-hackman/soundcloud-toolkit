@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import { Heart, Search, Trash2, Loader2 } from "lucide-react";
 import {
   ConfirmDialog,
@@ -42,6 +43,17 @@ export default function LikeManagerPage() {
   const [sort, setSort] = useState<SortOption>("recent");
   const [showUnlikeConfirm, setShowUnlikeConfirm] = useState(false);
   const [notice, setNotice] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
+  const searchParams = useSearchParams();
+  useEffect(() => {
+    // Deep-link filter from Library Chat: prefill the search box with the
+    // most discriminating value passed in (artist > q > genre).
+    const artist = searchParams?.get("artist");
+    const q = searchParams?.get("q");
+    const genre = searchParams?.get("genre");
+    const initial = artist || q || genre;
+    if (initial) setSearch(initial);
+  }, [searchParams]);
 
   useEffect(() => {
     fetchLikes();

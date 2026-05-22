@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useLibraryChat } from "@/lib/useLibraryChat";
+import { ToolResultCard } from "@/components/chat/ToolResultCard";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "";
 
@@ -84,6 +85,9 @@ export default function LibraryChatPage() {
             >
               {m.content || (streaming && i === messages.length - 1 ? "…" : "")}
             </span>
+            {m.role === "assistant" && m.toolResults?.map((display, j) => (
+              <ToolResultCard key={j} display={display} />
+            ))}
           </div>
         ))}
         {toolStatus && (

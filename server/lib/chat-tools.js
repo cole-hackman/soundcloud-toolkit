@@ -3,6 +3,7 @@ import { soundcloudClient as defaultSc } from './soundcloud-client.js';
 import { comparePlaylists } from './playlist-compare.js';
 import { summarizeLibraryAudit } from './library-audit.js';
 import { resolveSoundcloudUrl } from './resolve-soundcloud-url.js';
+import { buildDeepLink } from './chat-deep-links.js';
 
 const LIBRARY_AUDIT_PLAYLIST_CAP = 20;
 
@@ -131,11 +132,38 @@ export async function dispatchTool(name, args = {}, ctx = {}) {
           q: args.q,
           limit: args.limit ?? 20,
         });
-        return { count: rows.length, tracks: rows.slice(0, args.limit ?? 20) };
+        const tracks = rows.slice(0, args.limit ?? 20);
+        return {
+          count: rows.length,
+          tracks,
+          display: {
+            kind: 'tracks',
+            tracks: tracks.map((t) => ({
+              id: t.trackId,
+              title: t.title,
+              artist: t.artistName,
+              genre: t.genre,
+            })),
+            deepLink: buildDeepLink('like-manager-filter', {
+              artist: args.artist,
+              genre: args.genre,
+              q: args.q,
+            }),
+          },
+        };
       }
       case 'find_top_overlapping_playlists': {
         const pairs = await index.findTopOverlappingPlaylists(userId, { limit: args.limit ?? 5 });
-        return { pairs };
+        return {
+          pairs,
+          display: {
+            kind: 'playlist_pairs',
+            pairs: pairs.map((p) => ({
+              ...p,
+              deepLink: buildDeepLink('playlist-compare', { a: p.playlistA.id, b: p.playlistB.id }),
+            })),
+          },
+        };
       }
       case 'get_me_stats': {
         const me = await sc.getMe(accessToken, refreshToken);
@@ -160,7 +188,14 @@ export async function dispatchTool(name, args = {}, ctx = {}) {
           sc.getPlaylistWithTracks(accessToken, refreshToken, b),
         ]);
         const result = comparePlaylists(playlistA, playlistB);
-        return { summary: result.summary };
+        return {
+          summary: result.summary,
+          display: {
+            kind: 'playlist_pair',
+            summary: result.summary,
+            deepLink: buildDeepLink('playlist-compare', { a, b }),
+          },
+        };
       }
       case 'library_audit_summary': {
         const cap = Math.min(Math.max(args.playlistLimit || 20, 1), LIBRARY_AUDIT_PLAYLIST_CAP);
@@ -207,7 +242,13 @@ export async function dispatchTool(name, args = {}, ctx = {}) {
  */
 export async function listUserPlaylists(userId, { limit = 50 } = {}, { index = defaultIndex, sc = defaultSc, accessToken, refreshToken } = {}) {
   const fromIndex = await index.listPlaylistsFromIndex(userId, { limit });
-  if (fromIndex && fromIndex.length) return { source: 'index', playlists: fromIndex };
+  if (fromIndex && fromIndex.length) {
+    return {
+      source: 'index',
+      playlists: fromIndex,
+      display: { kind: 'playlists', items: fromIndex },
+    };
+  }
 
   const page = await sc.getPlaylists(accessToken, refreshToken, limit, 0);
   const list = Array.isArray(page?.collection)
@@ -215,12 +256,10 @@ export async function listUserPlaylists(userId, { limit = 50 } = {}, { index = d
     : Array.isArray(page)
       ? page
       : [];
-  return {
-    source: 'live',
-    playlists: list.slice(0, limit).map((p) => ({
-      id: p.id,
-      title: p.title,
-      trackCount: p.track_count ?? (Array.isArray(p.tracks) ? p.tracks.length : null),
-    })),
-  };
+  const playlists = list.slice(0, limit).map((p) => ({
+    id: p.id,
+    title: p.title,
+    trackCount: p.track_count ?? (Array.isArray(p.tracks) ? p.tracks.length : null),
+  }));
+  return { source: 'live', playlists, display: { kind: 'playlists', items: playlists } };
 }

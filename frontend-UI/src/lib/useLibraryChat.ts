@@ -1,8 +1,13 @@
 import { useCallback, useRef, useState } from 'react';
+import type { ToolDisplay } from '@/components/chat/ToolResultCard';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || '';
 
-export type ChatMessage = { role: 'user' | 'assistant'; content: string };
+export type ChatMessage = {
+  role: 'user' | 'assistant';
+  content: string;
+  toolResults?: ToolDisplay[];
+};
 export type ToolStatus = { name: string; args: Record<string, unknown> } | null;
 
 /** Streams a chat turn from POST /api/chat and parses the SSE frames. */
@@ -15,7 +20,7 @@ export function useLibraryChat() {
   const send = useCallback(
     async (text: string) => {
       const history: ChatMessage[] = [...messages, { role: 'user', content: text }];
-      setMessages([...history, { role: 'assistant', content: '' }]);
+      setMessages([...history, { role: 'assistant', content: '', toolResults: [] }]);
       setStreaming(true);
       setToolStatus(null);
 
@@ -34,27 +39,30 @@ export function useLibraryChat() {
       const decoder = new TextDecoder();
       bufferRef.current = '';
 
+      const updateLast = (mutate: (m: ChatMessage) => ChatMessage) => {
+        setMessages((prev) => {
+          const next = [...prev];
+          next[next.length - 1] = mutate(next[next.length - 1]);
+          return next;
+        });
+      };
+
       const applyEvent = (event: string, data: string) => {
         const payload = JSON.parse(data);
         if (event === 'token') {
-          setMessages((prev) => {
-            const next = [...prev];
-            next[next.length - 1] = {
-              role: 'assistant',
-              content: next[next.length - 1].content + payload.text,
-            };
-            return next;
-          });
+          updateLast((m) => ({ ...m, content: m.content + payload.text }));
         } else if (event === 'tool_status') {
           setToolStatus({ name: payload.name, args: payload.args });
-        } else if (event === 'tool_result' || event === 'done') {
+        } else if (event === 'tool_result') {
+          setToolStatus(null);
+          const display = payload.result?.display as ToolDisplay | undefined;
+          if (display) {
+            updateLast((m) => ({ ...m, toolResults: [...(m.toolResults || []), display] }));
+          }
+        } else if (event === 'done') {
           setToolStatus(null);
         } else if (event === 'error') {
-          setMessages((prev) => {
-            const next = [...prev];
-            next[next.length - 1] = { role: 'assistant', content: payload.error };
-            return next;
-          });
+          updateLast((m) => ({ ...m, content: payload.error }));
         }
       };
 

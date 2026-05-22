@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { ArrowRightLeft, Download, ListPlus } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { downloadCsv } from "@/lib/csv";
@@ -41,9 +42,30 @@ export default function PlaylistComparePage() {
   const [result, setResult] = useState<CompareResult | null>(null);
   const [notice, setNotice] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
+  const searchParams = useSearchParams();
+  const autoComparedRef = useRef(false);
   useEffect(() => {
     fetchPlaylists();
   }, []);
+
+  // Deep-link: prefill A/B from ?a&b and auto-trigger compare once playlists load.
+  useEffect(() => {
+    const a = Number(searchParams?.get("a"));
+    const b = Number(searchParams?.get("b"));
+    if (a && b && a !== b) {
+      setPlaylistAId(a);
+      setPlaylistBId(b);
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
+    if (autoComparedRef.current || loading || comparing || result) return;
+    if (playlistAId && playlistBId && playlistAId !== playlistBId) {
+      autoComparedRef.current = true;
+      compare();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playlistAId, playlistBId, loading]);
 
   const fetchPlaylists = async () => {
     try {

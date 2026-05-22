@@ -60,6 +60,20 @@ export const heavyOperationRateLimiter = createLimiter({
 });
 
 /**
+ * Rate limiter for the AI chat endpoint.
+ * Allows 30 chat messages per hour per IP. No-op in development.
+ */
+export const chatRateLimiter = createLimiter({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 30,
+  message: {
+    error: 'Too many chat requests, please slow down and try again later.',
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+/**
  * Light rate limiter for health check endpoint
  * Allows 60 requests per minute per IP (prevents abuse while allowing monitoring)
  */

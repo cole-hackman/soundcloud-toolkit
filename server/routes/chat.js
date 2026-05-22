@@ -9,9 +9,60 @@ import { CHAT_TOOL_DEFINITIONS, dispatchTool } from '../lib/chat-tools.js';
 import { createChatStream } from '../lib/chat-provider.js';
 import { buildSystemPrompt } from '../lib/chat-prompt.js';
 import { formatSseEvent } from '../lib/sse.js';
+import {
+  listConversations,
+  getConversation,
+  createConversation,
+  appendUserMessage,
+  appendAssistantTurn,
+  deleteConversation,
+} from '../lib/chat-history.js';
 
 const router = express.Router();
 const MAX_TOOL_CALLS_PER_TURN = 6;
+
+// ── Conversation CRUD ──────────────────────────────────────────────────────
+
+router.get('/chat/conversations', authenticateUser, async (req, res) => {
+  try {
+    const items = await listConversations(req.user.id);
+    res.json({ conversations: items });
+  } catch (error) {
+    logger.error('List conversations error:', safeError(error));
+    res.status(500).json({ error: 'Failed to list conversations' });
+  }
+});
+
+router.post('/chat/conversations', authenticateUser, async (req, res) => {
+  try {
+    const conv = await createConversation(req.user.id);
+    res.json(conv);
+  } catch (error) {
+    logger.error('Create conversation error:', safeError(error));
+    res.status(500).json({ error: 'Failed to create conversation' });
+  }
+});
+
+router.get('/chat/conversations/:id', authenticateUser, async (req, res) => {
+  try {
+    const conv = await getConversation(req.params.id, req.user.id);
+    if (!conv) return res.status(404).json({ error: 'Not found' });
+    res.json(conv);
+  } catch (error) {
+    logger.error('Get conversation error:', safeError(error));
+    res.status(500).json({ error: 'Failed to load conversation' });
+  }
+});
+
+router.delete('/chat/conversations/:id', authenticateUser, async (req, res) => {
+  try {
+    await deleteConversation(req.params.id, req.user.id);
+    res.json({ success: true });
+  } catch (error) {
+    logger.error('Delete conversation error:', safeError(error));
+    res.status(500).json({ error: 'Failed to delete conversation' });
+  }
+});
 
 /** GET /api/library/snapshot — current index status. */
 router.get('/library/snapshot', authenticateUser, async (req, res) => {
@@ -46,10 +97,29 @@ router.post('/library/sync', authenticateUser, heavyOperationRateLimiter, async 
   res.status(202).json({ status: 'syncing' });
 });
 
-/** POST /api/chat — streaming tool-calling chat over SSE. body: { messages: [{role, content}] } */
+/** POST /api/chat — streaming tool-calling chat over SSE. body: { messages, conversationId? } */
 router.post('/chat', authenticateUser, chatRateLimiter, async (req, res) => {
   const userMessages = Array.isArray(req.body?.messages) ? req.body.messages : [];
   if (!userMessages.length) return res.status(400).json({ error: 'messages array is required' });
+
+  // Verify conversation ownership if persisting; ignore an invalid id silently.
+  let conversationId = req.body?.conversationId || null;
+  if (conversationId) {
+    const conv = await getConversation(conversationId, req.user.id);
+    if (!conv) conversationId = null;
+  }
+
+  // Persist the latest user turn (the last entry in `messages`) before streaming.
+  if (conversationId) {
+    const latest = userMessages[userMessages.length - 1];
+    if (latest?.role === 'user' && typeof latest.content === 'string') {
+      try {
+        await appendUserMessage(conversationId, latest.content);
+      } catch (e) {
+        logger.warn('Failed to persist user message:', safeError(e));
+      }
+    }
+  }
 
   // Trigger a background sync if the index has never been built.
   const snap = await index.getSnapshot(req.user.id);
@@ -74,6 +144,10 @@ router.post('/chat', authenticateUser, chatRateLimiter, async (req, res) => {
     })),
   ];
 
+  // Captured tool-call records for persistence when conversationId is set.
+  const persistedToolCalls = [];
+  let finalAssistantText = '';
+
   try {
     let toolCallsUsed = 0;
     // Tool-calling loop: stream assistant text; when the model requests tools, run them and continue.
@@ -97,6 +171,7 @@ router.post('/chat', authenticateUser, chatRateLimiter, async (req, res) => {
       }
 
       if (!toolCalls.length) {
+        finalAssistantText = assistantText;
         send('done', { ok: true });
         break;
       }
@@ -136,10 +211,18 @@ router.post('/chat', authenticateUser, chatRateLimiter, async (req, res) => {
           index,
         });
         send('tool_result', { name: call.name, result });
+        persistedToolCalls.push({ toolName: call.name, toolArgs: args, toolResult: result });
         messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(result) });
       }
     }
 
+    if (conversationId) {
+      try {
+        await appendAssistantTurn(conversationId, finalAssistantText, persistedToolCalls);
+      } catch (e) {
+        logger.warn('Failed to persist assistant turn:', safeError(e));
+      }
+    }
     logOperation({ userId: req.user.id, action: 'chat', itemCount: toolCallsUsed, status: 'success' });
   } catch (error) {
     logger.error('Chat error:', safeError(error));

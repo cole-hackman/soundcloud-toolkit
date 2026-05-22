@@ -1,5 +1,6 @@
 import defaultPrisma from './prisma.js';
 import { normalizeGenre } from './genre-utils.js';
+import { expandGenreAliases } from './genre-aliases.js';
 import { mapLikeToRow, mapPlaylistTracksToRows } from './library-index-map.js';
 import { topOverlappingPlaylists } from './playlist-overlap.js';
 import { soundcloudClient } from './soundcloud-client.js';
@@ -9,12 +10,25 @@ import { safeError } from './safe-error.js';
 const STALE_MS = 24 * 60 * 60 * 1000;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-/** Search indexed likes by artist substring and/or normalized genre. */
+/**
+ * Search indexed likes by artist substring and/or genre. Genre matching:
+ * expands to known aliases (e.g. "dnb" -> "drum and bass") and matches
+ * against either `genreNormalized` or `tagList` so tracks tagged but not
+ * categorized still surface.
+ */
 export async function searchLikes(userId, { artist, genre, q, limit = 50 } = {}, { prisma = defaultPrisma } = {}) {
   const where = { userId };
   if (artist) where.artistName = { contains: artist, mode: 'insensitive' };
-  if (genre) where.genreNormalized = { contains: normalizeGenre(genre) || genre };
   if (q) where.title = { contains: q, mode: 'insensitive' };
+  if (genre) {
+    const aliases = expandGenreAliases(genre);
+    const fallback = normalizeGenre(genre) || genre;
+    const candidates = aliases.length ? aliases : [fallback];
+    where.OR = candidates.flatMap((c) => [
+      { genreNormalized: { contains: c } },
+      { tagList: { contains: c, mode: 'insensitive' } },
+    ]);
+  }
   return prisma.indexedLike.findMany({ where, take: Math.min(limit, 200) });
 }
 

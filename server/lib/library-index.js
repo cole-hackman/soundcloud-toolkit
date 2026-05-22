@@ -44,6 +44,27 @@ export async function countLikesByGenre(userId, genre, { prisma = defaultPrisma 
   return { count: rows.length, sample: rows.slice(0, 5) };
 }
 
+/**
+ * List the user's playlists from the index — unique (playlistId, title) pairs
+ * with a count of indexed tracks per playlist. Empty array if the index is empty.
+ */
+export async function listPlaylistsFromIndex(userId, { limit = 50 } = {}, { prisma = defaultPrisma } = {}) {
+  const rows = await prisma.indexedPlaylistTrack.findMany({
+    where: { userId },
+    select: { playlistId: true, playlistTitle: true, trackId: true },
+  });
+  const byId = new Map();
+  for (const row of rows) {
+    let entry = byId.get(row.playlistId);
+    if (!entry) {
+      entry = { id: row.playlistId, title: row.playlistTitle, trackCount: 0 };
+      byId.set(row.playlistId, entry);
+    }
+    entry.trackCount++;
+  }
+  return [...byId.values()].slice(0, limit);
+}
+
 /** Compute most-overlapping playlist pairs from indexed playlist tracks. */
 export async function findTopOverlappingPlaylists(userId, { limit = 10 } = {}, { prisma = defaultPrisma } = {}) {
   const rows = await prisma.indexedPlaylistTrack.findMany({

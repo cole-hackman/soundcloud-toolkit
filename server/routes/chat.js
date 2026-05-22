@@ -129,7 +129,12 @@ router.post('/chat', authenticateUser, chatRateLimiter, async (req, res) => {
           /* leave empty */
         }
         send('tool_status', { name: call.name, args });
-        const result = await dispatchTool(call.name, args, { userId: req.user.id, index });
+        const result = await dispatchTool(call.name, args, {
+          userId: req.user.id,
+          accessToken: req.accessToken,
+          refreshToken: req.refreshToken,
+          index,
+        });
         send('tool_result', { name: call.name, result });
         messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(result) });
       }

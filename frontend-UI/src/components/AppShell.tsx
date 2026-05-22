@@ -33,6 +33,7 @@ import {
   ListMusic,
   ArrowRightLeft,
   FileUp,
+  MessageSquare,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/contexts/ThemeContext";
@@ -87,6 +88,7 @@ const NAV: NavEntry[] = [
     label: "Discovery",
     items: [
       { href: "/genre-search", label: "Genre Search", icon: Music },
+      { href: "/library-chat", label: "Library Chat", icon: MessageSquare },
     ],
   },
   {

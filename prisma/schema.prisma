@@ -11,16 +11,19 @@ datasource db {
 }
 
 model User {
-  id          String   @id @default(cuid())
+  id           String   @id @default(cuid())
   soundcloudId Int      @unique
-  username    String
-  displayName String?
-  avatarUrl   String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  username     String
+  displayName  String?
+  avatarUrl    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
-  tokens         Token[]
-  operationLogs  OperationLog[]
+  tokens                Token[]
+  operationLogs         OperationLog[]
+  librarySnapshot       LibrarySnapshot?
+  indexedLikes          IndexedLike[]
+  indexedPlaylistTracks IndexedPlaylistTrack[]
 
   @@map("users")
 }
@@ -29,22 +32,22 @@ model Token {
   id        String   @id @default(cuid())
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  encrypted String   // Encrypted access token
-  refresh   String   // Encrypted refresh token
+  encrypted String // Encrypted access token
+  refresh   String // Encrypted refresh token
   expiresAt DateTime
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@map("tokens")
   @@unique([userId])
+  @@map("tokens")
 }
 
 model OperationLog {
   id         String   @id @default(cuid())
   userId     String
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  action     String   // 'merge' | 'from-likes' | 'bulk-unlike' | 'bulk-unfollow' | 'resolve' | 'batch-resolve' | 'proxy-download' | 'bulk-remove-reposts'
-  status     String   @default("success")  // 'success' | 'split' | 'error'
+  action     String // 'merge' | 'from-likes' | 'bulk-unlike' | 'bulk-unfollow' | 'resolve' | 'batch-resolve' | 'proxy-download' | 'bulk-remove-reposts'
+  status     String   @default("success") // 'success' | 'split' | 'error'
   trackCount Int      @default(0)
   itemCount  Int      @default(0)
   metadata   Json?
@@ -56,4 +59,53 @@ model OperationLog {
   @@index([userId, createdAt])
   @@index([action, createdAt])
   @@map("operation_logs")
+}
+
+model LibrarySnapshot {
+  id                String    @id @default(cuid())
+  userId            String
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status            String    @default("stale") // 'fresh' | 'syncing' | 'stale' | 'error'
+  likeCount         Int       @default(0)
+  playlistCount     Int       @default(0)
+  likesSyncedAt     DateTime?
+  playlistsSyncedAt DateTime?
+  error             String?
+  updatedAt         DateTime  @updatedAt
+
+  @@unique([userId])
+  @@map("library_snapshots")
+}
+
+model IndexedLike {
+  id              String    @id @default(cuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  trackId         Int
+  title           String?
+  artistName      String?
+  artistId        Int?
+  genre           String?
+  genreNormalized String?
+  tagList         String?
+  durationMs      Int?
+  likedAt         DateTime?
+
+  @@unique([userId, trackId])
+  @@index([userId, artistName])
+  @@index([userId, genreNormalized])
+  @@map("indexed_likes")
+}
+
+model IndexedPlaylistTrack {
+  id            String  @id @default(cuid())
+  userId        String
+  user          User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  playlistId    Int
+  playlistTitle String?
+  trackId       Int
+
+  @@unique([userId, playlistId, trackId])
+  @@index([userId, playlistId])
+  @@map("indexed_playlist_tracks")
 }

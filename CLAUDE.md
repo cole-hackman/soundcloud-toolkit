@@ -294,6 +294,16 @@ All are `heavyOperationRateLimiter` (20 requests / hour).
 |--------|------|-------------|
 | `GET` | `/health` | `{ status: 'ok', timestamp }`; rate limited 60/min |
 
+### AI Library Chat
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/library/snapshot` | Current per-user library index status (counts, freshness, `stale` flag) |
+| `POST` | `/api/library/sync` | Async-trigger a full library reindex from SoundCloud. Returns `202 { status: 'syncing' }`; client polls `/library/snapshot` |
+| `POST` | `/api/chat` | Streaming SSE chat. Body `{ messages: [{role, content}, ...] }`. Events: `token`, `tool_status`, `tool_result`, `done`, `error`. Tool-calling loop queries the index (with live-SC fallback). Rate-limited by `chatRateLimiter` (30/hr) |
+
+Powered by a per-user index in Postgres (`LibrarySnapshot`, `IndexedLike`, `IndexedPlaylistTrack`) populated by `server/lib/library-index.js#syncLibrary`. Tools are defined in `server/lib/chat-tools.js` and dispatched by `server/routes/chat.js`. OpenAI access is isolated in `server/lib/chat-provider.js` so the provider is swappable.
+
 ---
 
 ## Key Features & Their Implementation
@@ -419,6 +429,9 @@ All are `heavyOperationRateLimiter` (20 requests / hour).
 | `APP_URLS` | Yes | Comma-separated CORS allowlist (e.g., `https://www.soundcloudtoolkit.com,https://api.soundcloudtoolkit.com`) |
 | `NODE_ENV` | Yes | `development` or `production` |
 | `PORT` | No | HTTP port (default 3001) |
+| `OPENAI_API_KEY` | Chat only | Server-only OpenAI key powering the AI Library Chat |
+| `CHAT_MODEL_REASONING` | No | OpenAI model used by the chat tool-calling loop (default `gpt-4o-mini`) |
+| `CHAT_MODEL_SIMPLE` | No | Reserved for future cheap-model routing |
 
 ### Frontend (`frontend-UI/.env.local`)
 

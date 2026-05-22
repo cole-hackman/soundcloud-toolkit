@@ -293,6 +293,21 @@ export default function PrivacyPage() {
 
             <section>
               <h2 className="text-2xl font-bold mb-4 text-foreground">
+                AI Library Chat
+              </h2>
+              <p>
+                The Library Chat feature sends the text of your questions and
+                derived summaries of your SoundCloud library (track titles,
+                artists, genres, and counts) to OpenAI to generate answers. Your
+                SoundCloud OAuth tokens are never shared with OpenAI — all
+                SoundCloud API calls continue to be made server-side using your
+                encrypted tokens. Chat conversations are not persisted on our
+                servers across sessions.
+              </p>
+            </section>
+
+            <section>
+              <h2 className="text-2xl font-bold mb-4 text-foreground">
                 Contact Us
               </h2>
               <p>

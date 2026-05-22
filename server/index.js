@@ -99,6 +99,7 @@ app.use(cookieParser());
 // Import routes
 import authRoutes from './routes/auth.js';
 import apiRoutes from './routes/api.js';
+import chatRoutes from './routes/chat.js';
 import adminRoutes from './routes/admin.js';
 
 // Stricter OAuth rate limiting only where brute-force matters (/login + /callback).
@@ -116,6 +117,7 @@ app.use('/api', apiRateLimiter);
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api', apiRoutes);
+app.use('/api', chatRoutes);
 app.use('/api/admin', adminRoutes);
 
 // Health check with rate limiting

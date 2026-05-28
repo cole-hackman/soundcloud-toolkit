@@ -541,3 +541,30 @@ export const validateDeletePlaylist = [
   handleValidationErrors
 ];
 
+/**
+ * Validation rules for monetization survey submission
+ */
+export const validateSurveySubmit = [
+  body('preference')
+    .isIn(['ads', 'pro', 'donation', 'none', 'other'])
+    .withMessage('preference must be one of: ads, pro, donation, none, other'),
+  body('lifetimeInterest')
+    .optional({ nullable: true })
+    .isIn(['interested', 'not_interested', 'maybe'])
+    .withMessage('lifetimeInterest must be interested, not_interested, or maybe'),
+  body('comment')
+    .optional({ nullable: true })
+    .isString()
+    .isLength({ max: 2000 })
+    .withMessage('comment must be a string of at most 2000 characters'),
+  body('context')
+    .isIn(['dashboard', 'post-merge', 'post-from-likes'])
+    .withMessage('context must be dashboard, post-merge, or post-from-likes'),
+  body('trackCount')
+    .optional({ nullable: true })
+    .isInt({ min: 0, max: 100000 })
+    .withMessage('trackCount must be an integer between 0 and 100000')
+    .toInt(),
+  handleValidationErrors
+];
+

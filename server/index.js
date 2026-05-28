@@ -100,6 +100,7 @@ app.use(cookieParser());
 import authRoutes from './routes/auth.js';
 import apiRoutes from './routes/api.js';
 import adminRoutes from './routes/admin.js';
+import feedbackRoutes from './routes/feedback.js';
 
 // Stricter OAuth rate limiting only where brute-force matters (/login + /callback).
 // /auth/me runs on every app load; coupling it to the OAuth limit broke sessions for heavy users.
@@ -117,6 +118,7 @@ app.use('/api', apiRateLimiter);
 app.use('/api/auth', authRoutes);
 app.use('/api', apiRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/feedback', feedbackRoutes);
 
 // Health check with rate limiting
 app.get('/health', healthCheckRateLimiter, (req, res) => {

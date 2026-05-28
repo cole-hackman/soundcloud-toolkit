@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ArrowLeft, X, Combine, Check, Music, Trash2, AlertTriangle } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { BulkReviewDetails, ConfirmDialog, EmptyState, LoadingSpinner, PageContainer, PageHeader, Skeleton } from "@/components/ui";
+import { useSurvey } from "@/contexts/SurveyContext";
 
 interface Playlist {
   id: number;
@@ -17,6 +18,7 @@ interface Playlist {
 type MergeMode = "new" | "existing";
 
 export default function CombinePlaylistsPage() {
+  const survey = useSurvey();
   const [selectedPlaylists, setSelectedPlaylists] = useState<Playlist[]>([]);
   const [newPlaylistTitle, setNewPlaylistTitle] = useState("");
   const [mergeMode, setMergeMode] = useState<MergeMode>("new");
@@ -49,6 +51,16 @@ export default function CombinePlaylistsPage() {
   useEffect(() => {
     fetchPlaylists();
   }, []);
+
+  useEffect(() => {
+    if (!isComplete) return;
+    const trackCount =
+      result?.stats?.totalTracks ??
+      result?.stats?.finalCount ??
+      result?.totalTracks ??
+      0;
+    survey.maybeShow({ context: "post-merge", trackCount });
+  }, [isComplete, result, survey]);
 
   const fetchPlaylists = async () => {
     try {

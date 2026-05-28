@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { usePathname } from "next/navigation";
 import { AppLayout } from "@/components/AppLayout";
 import { AppShell } from "@/components/AppShell";
+import { SurveyProvider } from "@/contexts/SurveyContext";
 
 const TOOL_SLUGS: Record<string, string> = {
   "/combine": "combine",
@@ -58,7 +59,9 @@ export default function AppRouteLayout({
 
   return (
     <AppLayout>
-      <AppShell>{children}</AppShell>
+      <SurveyProvider>
+        <AppShell>{children}</AppShell>
+      </SurveyProvider>
     </AppLayout>
   );
 }

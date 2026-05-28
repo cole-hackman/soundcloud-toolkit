@@ -19,10 +19,33 @@ model User {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  tokens         Token[]
-  operationLogs  OperationLog[]
+  tokens           Token[]
+  operationLogs    OperationLog[]
+  surveyResponses  SurveyResponse[]
 
   @@map("users")
+}
+
+model SurveyResponse {
+  id               String   @id @default(cuid())
+  userId           String
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  soundcloudId     Int
+  campaignId       String
+  preference       String // 'ads' | 'pro' | 'donation' | 'none' | 'other'
+  lifetimeInterest String? // 'interested' | 'not_interested' | 'maybe'
+  comment          String?  @db.Text
+  context          String // 'dashboard' | 'post-merge' | 'post-from-likes'
+  operationAction  String? // 'merge' | 'from-likes'
+  trackCount       Int?
+  createdAt        DateTime @default(now())
+
+  @@unique([userId, campaignId])
+  @@index([campaignId, createdAt])
+  @@index([preference])
+  @@index([lifetimeInterest])
+  @@index([soundcloudId])
+  @@map("survey_responses")
 }
 
 model Token {

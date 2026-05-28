@@ -15,6 +15,7 @@ import {
   Skeleton,
   TrackRow,
 } from "@/components/ui";
+import { useSurvey } from "@/contexts/SurveyContext";
 
 interface Track {
   id: number;
@@ -42,6 +43,7 @@ interface CreatedPlaylist {
 type AddMode = "new" | "existing";
 
 export default function LikesToPlaylistPage() {
+  const survey = useSurvey();
   const [prefillTrackId, setPrefillTrackId] = useState<number | null>(null);
   const [likes, setLikes] = useState<Track[]>([]);
   const [selectedTracks, setSelectedTracks] = useState<Set<number>>(new Set());
@@ -67,6 +69,13 @@ export default function LikesToPlaylistPage() {
   useEffect(() => {
     fetchLikes();
   }, []);
+
+  useEffect(() => {
+    if (!success || !result) return;
+    const trackCount = result.totalTracks ?? result.addedCount ?? selectedTracks.size ?? 0;
+    survey.maybeShow({ context: "post-from-likes", trackCount });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [success, result]);
 
   useEffect(() => {
     const idParam = new URLSearchParams(window.location.search).get("id");

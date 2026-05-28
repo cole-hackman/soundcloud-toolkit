@@ -302,6 +302,39 @@ function Donut({ value, max, color = ORANGE, label, size = 96, palette }) {
   );
 }
 
+function FeedbackBreakdown({ title, counts, total, order, labels, colors, palette }) {
+  const P = palette ?? PALETTES.dark;
+  const safeTotal = Math.max(total, 1);
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <div style={{ fontSize: 10, color: P.textDim, fontFamily: "'JetBrains Mono', monospace", textTransform: "uppercase", letterSpacing: 0.8 }}>
+        {title}
+      </div>
+      {order.map(key => {
+        const count = counts[key] || 0;
+        const pct = Math.round((count / safeTotal) * 100);
+        const color = colors[key] || P.textMid;
+        return (
+          <div key={key} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 11, color: P.textMid, fontFamily: "'JetBrains Mono', monospace", width: 110, flexShrink: 0 }}>
+              {labels[key] || key}
+            </span>
+            <div style={{ flex: 1, height: 6, background: P.cardBorder, borderRadius: 3, overflow: "hidden" }}>
+              <div style={{ width: `${pct}%`, height: "100%", background: color, borderRadius: 3, transition: "width 0.3s" }} />
+            </div>
+            <span style={{ fontSize: 11, color: P.text, fontFamily: "'JetBrains Mono', monospace", fontWeight: 600, width: 60, textAlign: "right" }}>
+              {count} <span style={{ color: P.textDim, fontWeight: 400 }}>({pct}%)</span>
+            </span>
+          </div>
+        );
+      })}
+      <div style={{ fontSize: 10, color: P.textDim, fontFamily: "'JetBrains Mono', monospace", marginTop: 2 }}>
+        {total} response{total === 1 ? "" : "s"}
+      </div>
+    </div>
+  );
+}
+
 function SkeletonBlock({ height = 60, palette }) {
   const P = palette ?? PALETTES.dark;
   return (
@@ -337,6 +370,8 @@ export default function AdminDashboard() {
   const [stats, setStats] = useState(null);
   const [daily, setDaily] = useState([]);
   const [operations, setOperations] = useState([]);
+  const [feedbackSummary, setFeedbackSummary] = useState(null);
+  const [feedbackResponses, setFeedbackResponses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [lastRefresh, setLastRefresh] = useState(new Date());
@@ -379,10 +414,12 @@ export default function AdminDashboard() {
     setLoading(true);
     setError(null);
     try {
-      const [statsRes, dailyRes, opsRes] = await Promise.all([
+      const [statsRes, dailyRes, opsRes, fbSummaryRes, fbListRes] = await Promise.all([
         fetch(`${API_BASE}/api/admin/stats?period=${period}`, { credentials: "include" }),
         fetch(`${API_BASE}/api/admin/daily?period=${period}`, { credentials: "include" }),
         fetch(`${API_BASE}/api/admin/operations?period=${period}&limit=20`, { credentials: "include" }),
+        fetch(`${API_BASE}/api/admin/feedback/summary?period=${period}`, { credentials: "include" }),
+        fetch(`${API_BASE}/api/admin/feedback?period=${period}&limit=50`, { credentials: "include" }),
       ]);
       if (!statsRes.ok || !dailyRes.ok || !opsRes.ok) {
         throw new Error(`API error: ${[statsRes, dailyRes, opsRes].find(r => !r.ok)?.status}`);
@@ -391,6 +428,16 @@ export default function AdminDashboard() {
       setStats(s);
       setDaily(d.daily || []);
       setOperations(o.operations || []);
+
+      if (fbSummaryRes.ok) {
+        const fb = await fbSummaryRes.json();
+        setFeedbackSummary(fb);
+      }
+      if (fbListRes.ok) {
+        const fb = await fbListRes.json();
+        setFeedbackResponses(fb.responses || []);
+      }
+
       setLastRefresh(new Date());
     } catch (e) {
       setError(e.message || "Failed to load analytics data");
@@ -784,6 +831,111 @@ export default function AdminDashboard() {
               )}
             </SectionCard>
           </div>
+        </div>
+
+        {/* Monetization Feedback */}
+        <div style={{ marginTop: 20 }}>
+          <SectionCard title={`Monetization Feedback — ${period} Period`} delay={0.55} palette={P}>
+            {loading ? (
+              <SkeletonBlock height={200} palette={P} />
+            ) : !feedbackSummary || feedbackSummary.total === 0 ? (
+              <div style={{ textAlign: "center", padding: "32px 0", color: P.textDim, fontFamily: "'JetBrains Mono', monospace", fontSize: 12 }}>
+                No survey responses yet in this period.
+              </div>
+            ) : (
+              <>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 16, marginBottom: 14 }}>
+                  <FeedbackBreakdown
+                    title="Monetization preference"
+                    palette={P}
+                    counts={feedbackSummary.preference || {}}
+                    total={feedbackSummary.total}
+                    order={["pro", "donation", "ads", "none", "other"]}
+                    labels={{
+                      pro: "Pro plan",
+                      donation: "Donation / tip",
+                      ads: "Ads on free",
+                      none: "No monetization",
+                      other: "Other",
+                    }}
+                    colors={{
+                      pro: ORANGE,
+                      donation: GREEN,
+                      ads: YELLOW,
+                      none: RED,
+                      other: CYAN,
+                    }}
+                  />
+                  <FeedbackBreakdown
+                    title="Lifetime key interest"
+                    palette={P}
+                    counts={feedbackSummary.lifetimeInterest || {}}
+                    total={feedbackSummary.total}
+                    order={["interested", "maybe", "not_interested", "unanswered"]}
+                    labels={{
+                      interested: "Interested",
+                      maybe: "Maybe",
+                      not_interested: "Not interested",
+                      unanswered: "Unanswered",
+                    }}
+                    colors={{
+                      interested: GREEN,
+                      maybe: YELLOW,
+                      not_interested: RED,
+                      unanswered: P.textDim,
+                    }}
+                  />
+                </div>
+
+                <div style={{ borderTop: `1px solid ${P.cardBorder}`, paddingTop: 12 }}>
+                  <div style={{
+                    display: "grid",
+                    gridTemplateColumns: "1.1fr 0.8fr 0.9fr 0.7fr 0.6fr 0.6fr 2fr 0.7fr",
+                    gap: 8,
+                    padding: "0 0 8px",
+                    borderBottom: `1px solid ${P.cardBorder}`,
+                    marginBottom: 4,
+                  }}>
+                    {["User", "SC ID", "Preference", "Lifetime", "Context", "Tracks", "Comment", "When"].map(h => (
+                      <span key={h} style={{ fontSize: 9, color: P.textDim, fontFamily: "'JetBrains Mono', monospace", textTransform: "uppercase", letterSpacing: 0.8 }}>{h}</span>
+                    ))}
+                  </div>
+                  {feedbackResponses.length === 0 ? (
+                    <div style={{ padding: "16px 0", color: P.textDim, fontFamily: "'JetBrains Mono', monospace", fontSize: 11, textAlign: "center" }}>
+                      Aggregates only — no detail rows in this window.
+                    </div>
+                  ) : (
+                    feedbackResponses.map((r, i) => (
+                      <div
+                        key={r.id}
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "1.1fr 0.8fr 0.9fr 0.7fr 0.6fr 0.6fr 2fr 0.7fr",
+                          gap: 8,
+                          padding: "9px 0",
+                          borderBottom: i < feedbackResponses.length - 1 ? `1px solid ${P.cardBorder}33` : "none",
+                          alignItems: "center",
+                          fontSize: 11,
+                          fontFamily: "'JetBrains Mono', monospace",
+                        }}
+                      >
+                        <span style={{ color: ORANGE, fontWeight: 500 }}>@{r.user.username}</span>
+                        <span style={{ color: P.textMid }}>{r.soundcloudId}</span>
+                        <span style={{ color: P.text, fontWeight: 600 }}>{r.preference}</span>
+                        <span style={{ color: P.textMid }}>{r.lifetimeInterest || "—"}</span>
+                        <span style={{ color: P.textDim }}>{r.context.replace("post-", "")}</span>
+                        <span style={{ color: P.text }}>{r.trackCount?.toLocaleString() || "—"}</span>
+                        <span style={{ color: P.textMid, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={r.comment || ""}>
+                          {r.comment || <span style={{ color: P.textDim }}>—</span>}
+                        </span>
+                        <span style={{ color: P.textDim }}>{timeAgo(r.createdAt)}</span>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </>
+            )}
+          </SectionCard>
         </div>
 
         {/* Footer */}

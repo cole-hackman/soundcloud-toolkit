@@ -294,6 +294,17 @@ All are `heavyOperationRateLimiter` (20 requests / hour).
 |--------|------|-------------|
 | `GET` | `/health` | `{ status: 'ok', timestamp }`; rate limited 60/min |
 
+### Monetization Feedback Survey
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/feedback/survey/status` | `{ enabled, campaignId, submitted, submittedAt }` for the current user / active campaign |
+| `POST` | `/api/feedback/survey` | Submit `{ preference, lifetimeInterest?, comment?, context, trackCount? }`; 409 if already submitted for the campaign |
+| `GET` | `/api/admin/feedback/summary` | Admin-only aggregate counts by `preference` + `lifetimeInterest` |
+| `GET` | `/api/admin/feedback` | Admin-only paginated response list with user info + `soundcloudId` |
+
+Survey responses live in the `SurveyResponse` table and are linked to both `userId` and `soundcloudId` (snapshot at submit time) so future lifetime-key entitlements can key off the SoundCloud account directly. Modal display is gated by [`frontend-UI/src/contexts/SurveyContext.tsx`](frontend-UI/src/contexts/SurveyContext.tsx) using server-truth submission + a 14-day client cooldown. Triggers fire on the dashboard, post-merge success, and post-likes-to-playlist success.
+
 ---
 
 ## Key Features & Their Implementation
@@ -419,6 +430,8 @@ All are `heavyOperationRateLimiter` (20 requests / hour).
 | `APP_URLS` | Yes | Comma-separated CORS allowlist (e.g., `https://www.soundcloudtoolkit.com,https://api.soundcloudtoolkit.com`) |
 | `NODE_ENV` | Yes | `development` or `production` |
 | `PORT` | No | HTTP port (default 3001) |
+| `SURVEY_ENABLED` | No | Kill switch for the monetization feedback survey (`true` by default; set to `false` to disable globally without a redeploy) |
+| `SURVEY_CAMPAIGN_ID` | No | Active survey campaign identifier (default `2026-sustainability-v1`). Bumping this opens a new campaign so previously-submitted users see the prompt again |
 
 ### Frontend (`frontend-UI/.env.local`)
 

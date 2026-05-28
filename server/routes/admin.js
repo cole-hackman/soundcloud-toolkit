@@ -262,4 +262,100 @@ router.get('/operations', authenticateUser, adminAuth, async (req, res) => {
   }
 });
 
+/**
+ * GET /api/admin/feedback/summary?period=30d&campaignId=<id>
+ *
+ * Aggregate counts for monetization preference + lifetime-key interest.
+ */
+router.get('/feedback/summary', authenticateUser, adminAuth, async (req, res) => {
+  try {
+    const period = validPeriod(req.query.period);
+    const cutoff = periodToCutoff(period);
+    const campaignId = typeof req.query.campaignId === 'string' && req.query.campaignId.trim()
+      ? req.query.campaignId.trim()
+      : null;
+
+    const where = { createdAt: { gte: cutoff } };
+    if (campaignId) where.campaignId = campaignId;
+
+    const [total, byPreference, byLifetime] = await Promise.all([
+      prisma.surveyResponse.count({ where }),
+      prisma.surveyResponse.groupBy({
+        by: ['preference'],
+        where,
+        _count: { id: true },
+      }),
+      prisma.surveyResponse.groupBy({
+        by: ['lifetimeInterest'],
+        where,
+        _count: { id: true },
+      }),
+    ]);
+
+    const preferenceCounts = byPreference.reduce((acc, row) => {
+      acc[row.preference] = row._count.id;
+      return acc;
+    }, {});
+    const lifetimeCounts = byLifetime.reduce((acc, row) => {
+      const key = row.lifetimeInterest ?? 'unanswered';
+      acc[key] = row._count.id;
+      return acc;
+    }, {});
+
+    res.json({ period, campaignId, total, preference: preferenceCounts, lifetimeInterest: lifetimeCounts });
+  } catch (err) {
+    logger.error('[admin/feedback/summary] Error:', safeError(err));
+    res.status(500).json({ error: 'Failed to fetch feedback summary' });
+  }
+});
+
+/**
+ * GET /api/admin/feedback?period=30d&limit=50&campaignId=<id>
+ */
+router.get('/feedback', authenticateUser, adminAuth, async (req, res) => {
+  try {
+    const period = validPeriod(req.query.period);
+    const cutoff = periodToCutoff(period);
+    const limit = Math.min(parseInt(req.query.limit) || 50, 200);
+    const campaignId = typeof req.query.campaignId === 'string' && req.query.campaignId.trim()
+      ? req.query.campaignId.trim()
+      : null;
+
+    const where = { createdAt: { gte: cutoff } };
+    if (campaignId) where.campaignId = campaignId;
+
+    const rows = await prisma.surveyResponse.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+      include: {
+        user: { select: { username: true, displayName: true, avatarUrl: true } },
+      },
+    });
+
+    const responses = rows.map(r => ({
+      id: r.id,
+      user: {
+        username: r.user.username,
+        displayName: r.user.displayName,
+        avatarUrl: r.user.avatarUrl,
+      },
+      soundcloudId: r.soundcloudId,
+      campaignId: r.campaignId,
+      preference: r.preference,
+      lifetimeInterest: r.lifetimeInterest,
+      comment: r.comment,
+      context: r.context,
+      operationAction: r.operationAction,
+      trackCount: r.trackCount,
+      createdAt: r.createdAt.toISOString(),
+    }));
+
+    res.json({ responses });
+  } catch (err) {
+    logger.error('[admin/feedback] Error:', safeError(err));
+    res.status(500).json({ error: 'Failed to fetch feedback responses' });
+  }
+});
+
 export default router;

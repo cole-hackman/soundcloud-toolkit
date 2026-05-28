@@ -27,6 +27,7 @@ import {
   FileUp,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useSurvey } from "@/contexts/SurveyContext";
 import { Card, EmptyState, Input, PageContainer, Skeleton } from "@/components/ui";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "";
@@ -213,7 +214,8 @@ const RECENT_PATHS: Record<string, string> = {
 const COMING_SOON: FeatureCard[] = [];
 
 export default function DashboardPage() {
-  const { user } = useAuth();
+  const { user, isAuthenticated, loading: authLoading } = useAuth();
+  const survey = useSurvey();
   const router = useRouter();
   const [stats, setStats] = useState<UserStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -225,6 +227,12 @@ export default function DashboardPage() {
   useEffect(() => {
     fetchUserStats();
   }, []);
+
+  useEffect(() => {
+    if (!authLoading && isAuthenticated) {
+      survey.maybeShow({ context: "dashboard" });
+    }
+  }, [authLoading, isAuthenticated, survey]);
 
   useEffect(() => {
     try {

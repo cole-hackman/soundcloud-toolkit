@@ -36,3 +36,7 @@ prisma/prisma/dev.db-journal
 # Build outputs
 build/
 .server/
+
+# Sensitive local files
+security_audit.md
+users.csv

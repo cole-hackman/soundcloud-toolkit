@@ -18,9 +18,18 @@ Managing a large SoundCloud library natively can be tedious and restrictive. Pow
 
 ## 3. What Problems Did It Solve?
 
-One major challenge was dealing with SoundCloud's strict 500-track limit for playlists when users attempted to merge multiple large playlists. This was solved by implementing an algorithm that automatically detects the track count during a merge and intelligently splits the merged result into numbered, sequential playlist parts (e.g., "Merged Playlist pt. 1", "Merged Playlist pt. 2") while removing duplicates.
+SoundCloud Toolkit fills the gaps that the native SoundCloud website and mobile apps leave open for users with large libraries and active social graphs. Each feature targets a specific shortcoming of the native experience:
 
-Another challenge was handling API rate limits during bulk operations like unliking or unfollowing. This was addressed by implementing rate limiting on the backend, processing requests in batches, and using cursor-based linked partitioning for reliable pagination of large libraries.
+- **No native way to combine playlists.** SoundCloud doesn't offer a "merge" button — users have to manually re-add hundreds of tracks one by one. SoundCloud Toolkit lets users pick any number of playlists and combine them into one (or several, when the result exceeds the 500-track ceiling) in a single click.
+- **No way to bulk-unlike tracks.** Natively, every "unlike" is a single click on a single track. Cleaning up thousands of accumulated likes is realistically impossible. The toolkit provides a paginated like manager with multi-select and bulk-unlike.
+- **No way to bulk-unfollow users.** Same story for the social graph — users who want to trim their followings list down from hundreds or thousands of accounts can do it in a single batch operation.
+- **No way to bulk-remove reposts.** Reposts pile up on a user's profile and there's no native cleanup tool. The toolkit lists reposts and lets users remove them in bulk.
+- **No way to turn liked tracks into a playlist.** Likes and playlists are separate concepts on SoundCloud, with no built-in conversion. The toolkit lets users pick any subset of their likes and spin them into a new playlist.
+- **No way to capture the activity feed.** Recent uploads from followed artists scroll off into oblivion. The toolkit lets users convert recent activity into a saved playlist before it's gone.
+- **No playlist health checker.** Tracks go private, get DMCA'd, or become region-blocked, and SoundCloud silently leaves them in playlists as dead entries. The toolkit scans playlists for blocked and unstreamable tracks so users can clean them out.
+- **No easy way to browse a followed user's library in bulk.** The native UI makes it awkward to see what someone you follow has liked or curated; the toolkit surfaces a followed user's public likes and playlists in one place and lets you clone interesting playlists or build a new one from their likes.
+- **No structured URL resolver.** Sharing or scripting against SoundCloud requires knowing whether a URL is a track, playlist, or user — and SoundCloud doesn't expose this directly. The toolkit's resolver normalizes any SoundCloud URL into clean metadata, with batch support.
+- **The 500-track playlist cap is invisible until you hit it.** Rather than failing, the toolkit detects when a merge or likes-to-playlist conversion would exceed the cap and transparently splits the output into numbered parts.
 
 ## 4. What Technologies Are Used?
 
@@ -32,13 +41,33 @@ Another challenge was handling API rate limits during bulk operations like unlik
 
 ## 5. What Did You Implement?
 
-- **Playlist Management**: Combine multiple playlists, auto-split large playlists, remove duplicates, compare playlists for overlap, health-check playlists for dead tracks, clone any public playlist, and securely transfer/copy/duplicate tracks across your playlists.
-- **Likes, Activity & Discovery**: Convert liked tracks to playlists, batch unlike tracks, capture recent activity feeds into playlists, and search playable tracks by genre/tag filters.
-- **Following Library**: Pick someone you follow, browse their public/API-visible liked tracks and playlists, create playlists from their public likes, or clone selected public playlists into your own library.
-- **Social & Profile Management**: Identify non-followers, bulk unfollow accounts to clean up your social graph, and batch unrepost content from your profile.
-- **Library Audit & Downloads**: Scan playlists for duplicates, unavailable tracks, near-cap playlists, and download/purchase links; proxy allowed SoundCloud downloads through the backend.
-- **Link & Metadata Tools**: Resolve any SoundCloud URL (track, playlist, or user) to normalized metadata instantly, with batching and in-memory caching.
-- **Secure Authentication**: End-to-end OAuth flow with AES-256-GCM token encryption and CSRF-protected HttpOnly cookies.
+The toolkit is a full-stack application: a Next.js 15 / React 18 frontend deployed as a static export on Vercel, and an Express.js backend that acts as a secure OAuth2 proxy in front of the SoundCloud API. All SoundCloud credentials live server-side — the browser only ever talks to the backend, and the backend signs every outbound SoundCloud request with the user's encrypted access token.
+
+### Playlist Management
+
+- **Combine Playlists** — `POST /api/playlists/merge` accepts 2–10 source playlist IDs. The backend fetches each source via `GET /playlists/:id` (with a 300ms delay between calls to avoid SoundCloud rate limits), filters out blocked and non-streamable tracks, deduplicates by track ID using a `Set`, and then creates one or more destination playlists via `POST /playlists` followed by batched `PUT /playlists/:id` calls in 100-track windows. If the deduplicated total exceeds 500, the result is automatically split into numbered parts (e.g. "Merge (1/3)") because SoundCloud enforces a hard 500-track cap per playlist.
+- **Likes → Playlist** — `POST /api/playlists/from-likes` takes an array of track IDs the user has selected from their likes view and builds new playlists using the same auto-splitting batched-write pipeline as merge.
+- **Activity → Playlist** — `GET /api/activities?limit=200` returns the user's normalized activity feed; the frontend filters to track activities, and the user can convert any subset into a playlist using the same from-likes endpoint.
+- **Playlist Health Check** — `GET /api/playlists/:id` returns the full track list; the frontend identifies tracks with `blocked_at !== null` or `streamable === false`, and the user can save a cleaned version via `PUT /api/playlists/:id`.
+
+### Likes, Social & Reposts
+
+- **Like Manager** — `GET /api/likes/paged?limit=50&next=<cursor>` paginates likes using SoundCloud's cursor URLs. `POST /api/likes/tracks/bulk-unlike` accepts up to 100 track IDs per request and iterates `DELETE /me/likes/tracks/:id` on each one, returning per-track success/failure status.
+- **Following Manager** — `GET /api/followings` fully paginates the user's followings, and `POST /api/followings/bulk-unfollow` runs `DELETE /me/followings/:id` for each selected user, again capped at 100 per request.
+- **Reposts Cleanup** — `GET /api/reposts` uses a fallback chain (V2 `/stream/users/:id/reposts`, falling back to V1 `/me/activities` filtered to repost types) because SoundCloud's reposts API is inconsistent. `POST /api/reposts/bulk-remove` un-reposts each item.
+
+### URL Resolution & Downloads
+
+- **Resolve** — `GET /api/resolve?url=...` and `POST /api/resolve/batch` sanitize incoming URLs (stripping `utm_*` / `si` params, validating the `soundcloud.com` domain), then call SoundCloud's authenticated `/resolve` endpoint with a fallback to the public `resolve` endpoint. Responses are normalized into `{ id, type, title, user, artwork_url, downloadable }` and cached in-memory for 5 minutes.
+- **Proxy Download** — `GET /api/proxy-download?url=...` validates that the URL matches `api.soundcloud.com/tracks/:id/download`, attaches the user's OAuth token, follows SoundCloud's 302 redirect, validates that the final CDN host is `sndcdn.com`, `cloudfront.net`, or `soundcloud.com`, and redirects the browser to the CDN so the file streams directly.
+
+### Authentication
+
+OAuth2 + PKCE end-to-end: `GET /api/auth/login` generates a verifier with `crypto.randomBytes(32)` and a SHA-256 challenge, stores the verifier in a 10-minute HttpOnly cookie, and redirects to SoundCloud. `GET /api/auth/callback` exchanges the code for tokens, encrypts them with AES-256-GCM (`12-byte IV | 16-byte GCM tag | ciphertext`), stores them in Postgres via Prisma, and issues an HMAC-SHA256-signed session cookie. Access tokens are auto-refreshed inside the SoundCloud client wrapper whenever a request returns 401, transparently to the caller.
+
+### In Progress: AI Library Chat
+
+A conversational interface over the user's library is currently being built out on the `feature/ai-library-chat` branch. The backend maintains a per-user search index in Postgres — `LibrarySnapshot`, `IndexedLike`, and `IndexedPlaylistTrack` tables populated by `server/lib/library-index.js#syncLibrary`. `POST /api/library/sync` kicks off an async reindex from SoundCloud, and `GET /api/library/snapshot` reports freshness and a `stale` flag so the frontend can prompt for a refresh. `POST /api/chat` opens a server-sent-events stream that runs an OpenAI tool-calling loop: the model can query the index (with a live SoundCloud fallback) using tools defined in `server/lib/chat-tools.js`, and write actions (creating playlists, bulk-unliking, etc.) are surfaced to the frontend as confirm-in-UI proposals rather than executed silently. The chat endpoint streams `token`, `tool_status`, `tool_result`, `done`, and `error` events, and is rate-limited at 30 requests per hour. OpenAI access is isolated in `server/lib/chat-provider.js` to keep the provider swappable. The UI lives at `frontend-UI/src/app/(app)/library-chat/page.tsx` with a floating launcher component for cross-app access.
 
 ## 6. How Can Someone Run It Locally?
 

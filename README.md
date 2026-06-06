@@ -35,7 +35,7 @@ SoundCloud Toolkit fills the gaps that the native SoundCloud website and mobile 
 
 ## 4. What Technologies Are Used?
 
-- **Frontend**: Next.js 15, React 18, Tailwind CSS, shadcn/ui
+- **Frontend**: Next.js 15, React 18, Tailwind CSS 3, shadcn/ui
 - **Backend**: Node.js, Express.js, Helmet, CORS
 - **Database**: PostgreSQL with Prisma ORM
 - **Authentication**: SoundCloud OAuth2 + PKCE, AES-256-GCM token encryption
@@ -69,7 +69,7 @@ OAuth2 + PKCE end-to-end: `GET /api/auth/login` generates a verifier with `crypt
 
 ### In Progress: AI Library Chat
 
-A conversational interface over the user's library is currently being built out on the `feature/ai-library-chat` branch. The backend maintains a per-user search index in Postgres — `LibrarySnapshot`, `IndexedLike`, and `IndexedPlaylistTrack` tables populated by `server/lib/library-index.js#syncLibrary`. `POST /api/library/sync` kicks off an async reindex from SoundCloud, and `GET /api/library/snapshot` reports freshness and a `stale` flag so the frontend can prompt for a refresh. `POST /api/chat` opens a server-sent-events stream that runs an OpenAI tool-calling loop: the model can query the index (with a live SoundCloud fallback) using tools defined in `server/lib/chat-tools.js`, and write actions (creating playlists, bulk-unliking, etc.) are surfaced to the frontend as confirm-in-UI proposals rather than executed silently. The chat endpoint streams `token`, `tool_status`, `tool_result`, `done`, and `error` events, and is rate-limited at 30 requests per hour. OpenAI access is isolated in `server/lib/chat-provider.js` to keep the provider swappable. The UI lives at `frontend-UI/src/app/(app)/library-chat/page.tsx` with a floating launcher component for cross-app access.
+**Note: this feature lives on the `feature/ai-library-chat` branch and is not on `main`.** A conversational interface over the user's library is being built out there. The backend maintains a per-user search index in Postgres — `LibrarySnapshot`, `IndexedLike`, and `IndexedPlaylistTrack` tables populated by `server/lib/library-index.js#syncLibrary`. `POST /api/library/sync` kicks off an async reindex from SoundCloud, and `GET /api/library/snapshot` reports freshness and a `stale` flag so the frontend can prompt for a refresh. `POST /api/chat` opens a server-sent-events stream that runs an OpenAI tool-calling loop: the model can query the index (with a live SoundCloud fallback) using tools defined in `server/lib/chat-tools.js`, and write actions (creating playlists, bulk-unliking, etc.) are surfaced to the frontend as confirm-in-UI proposals rather than executed silently. The chat endpoint streams `token`, `tool_status`, `tool_result`, `done`, and `error` events, and is rate-limited at 30 requests per hour. OpenAI access is isolated in `server/lib/chat-provider.js` to keep the provider swappable. The UI lives at `frontend-UI/src/app/(app)/library-chat/page.tsx` with a floating launcher component for cross-app access.
 
 ## 6. How Can Someone Run It Locally?
 

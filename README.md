@@ -2,6 +2,8 @@
 
 A web toolkit for SoundCloud power users — organize playlists, browse public libraries from people you follow, manage followers, bulk-unlike, download tracks, and clean up your library with secure OAuth, a fast React UI, and privacy-first sessions.
 
+Live at https://soundcloudtoolkit.com — 2,200+ registered users, processing 360K+ tracks/month, with zero paid acquisition.
+
 [![Standard Readme compliant](https://img.shields.io/badge/readme-standard-brightgreen.svg)](https://github.com/RichardLitt/standard-readme)
 [![License](https://img.shields.io/badge/license-UNLICENSED-lightgrey.svg)](#license)
 [![Node](https://img.shields.io/badge/node-%E2%89%A5%2018-43853d.svg)](#install)
@@ -37,7 +39,7 @@ SoundCloud Toolkit fills the gaps that the native SoundCloud website and mobile 
 - **Backend**: Node.js, Express.js, Helmet, CORS
 - **Database**: PostgreSQL with Prisma ORM
 - **Authentication**: SoundCloud OAuth2 + PKCE, AES-256-GCM token encryption
-- **Deployment**: Vercel (frontend), Render / Railway (backend)
+- **Deployment**: Vercel (frontend), DigitalOcean App Platform (backend)
 
 ## 5. What Did You Implement?
 

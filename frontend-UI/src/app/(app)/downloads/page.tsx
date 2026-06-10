@@ -181,18 +181,12 @@ export default function DownloadsPage() {
   };
 
   const toggleHypedditMode = () => {
-    const entering = !hypedditMode;
-    setHypedditMode(entering);
+    setHypedditMode(!hypedditMode);
     setSelectionMode(false);
     setSelectedTrackIds(new Set());
     setSelectedHypedditIds(new Set());
     setQueueSent(false);
     setInlineError(null);
-    if (entering) {
-      // Pre-select all Hypeddit tracks
-      const ids = new Set(hypedditTracks.map((t) => t.id));
-      setSelectedHypedditIds(ids);
-    }
   };
 
   const toggleTrackSelection = (id: number) => {
@@ -601,15 +595,23 @@ export default function DownloadsPage() {
                         Cancel
                       </Button>
                       <Button
-                        onClick={() => {
-                          const ids = new Set(hypedditTracks.map((t) => t.id));
-                          setSelectedHypedditIds(ids);
-                        }}
+                        onClick={() =>
+                          setSelectedHypedditIds(new Set(hypedditTracks.map((t) => t.id)))
+                        }
                         variant="secondary"
                         className="h-10 px-4 text-[#666666] dark:text-muted-foreground"
                       >
                         Select All ({hypedditTracks.length})
                       </Button>
+                      {selectedHypedditIds.size > 0 && (
+                        <Button
+                          onClick={() => setSelectedHypedditIds(new Set())}
+                          variant="secondary"
+                          className="h-10 px-4 text-[#666666] dark:text-muted-foreground"
+                        >
+                          Deselect All
+                        </Button>
+                      )}
                       <Button
                         onClick={sendToExtension}
                         disabled={selectedHypedditIds.size === 0}
@@ -705,7 +707,7 @@ export default function DownloadsPage() {
                     return (
                       <div
                         key={track.id}
-                        className="group flex items-center gap-4 rounded-xl bg-gray-50 p-3 transition-colors hover:bg-gray-100 dark:bg-secondary/20 dark:hover:bg-secondary/40"
+                        className={`group flex items-center gap-4 rounded-xl bg-gray-50 p-3 transition-colors dark:bg-secondary/20 ${hypedditMode ? "opacity-40" : "hover:bg-gray-100 dark:hover:bg-secondary/40"}`}
                       >
                         <span className="w-8 text-center text-sm text-[#999999] dark:text-muted-foreground">
                           {index + 1}

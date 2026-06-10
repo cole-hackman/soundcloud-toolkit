@@ -51,6 +51,8 @@ const LIKED_TRACKS_ID = -1;
 const isHypedditUrl = (url?: string) =>
   !!url && url.includes("hypeddit");
 
+const hasGateUrl = (url?: string) => !!url;
+
 export default function DownloadsPage() {
   const { user } = useAuth();
   const isOwner = user?.id === OWNER_USER_ID;
@@ -285,7 +287,8 @@ export default function DownloadsPage() {
     (t) => Boolean(t.downloadable) || t.downloadable === "true" || !!t.download_url || !!t.purchase_url
   );
 
-  const hypedditTracks = downloadableTracks.filter((t) => isHypedditUrl(t.purchase_url));
+  // Any track with a purchase_url can be queued — Hypeddit, ToneDen, link trees, etc.
+  const hypedditTracks = downloadableTracks.filter((t) => hasGateUrl(t.purchase_url));
 
   const filteredPlaylists = playlists.filter((p) =>
     p.title.toLowerCase().includes(sourceSearch.toLowerCase())
@@ -582,7 +585,7 @@ export default function DownloadsPage() {
                       className="h-10 px-4 text-purple-700 dark:text-purple-400 border-purple-200 dark:border-purple-900"
                     >
                       <Zap className="w-4 h-4" />
-                      Auto-Download Hypeddit ({hypedditTracks.length})
+                      Auto-Download ({hypedditTracks.length})
                     </Button>
                   ) : (
                     <>
@@ -683,7 +686,7 @@ export default function DownloadsPage() {
                       );
                     }
 
-                    if (hypedditMode && isHypeddit) {
+                    if (hypedditMode && track.purchase_url) {
                       return (
                         <TrackRow
                           key={track.id}
@@ -695,9 +698,11 @@ export default function DownloadsPage() {
                               <span className="text-xs text-[#666666] dark:text-muted-foreground">
                                 {formatDuration(track.duration)}
                               </span>
-                              <span className="rounded-md px-2 py-0.5 text-xs font-medium bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300">
-                                Hypeddit
-                              </span>
+                              {isHypeddit && (
+                                <span className="rounded-md px-2 py-0.5 text-xs font-medium bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300">
+                                  H
+                                </span>
+                              )}
                             </div>
                           }
                         />

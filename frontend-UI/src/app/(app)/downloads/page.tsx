@@ -2,9 +2,12 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { ArrowLeft, Download, Heart, ListMusic, Trash2, X, CheckSquare, Search } from "lucide-react";
+import { ArrowLeft, Download, Heart, ListMusic, Trash2, X, CheckSquare, Search, Zap } from "lucide-react";
 import { apiFetch } from "@/lib/api";
+import { useAuth } from "@/contexts/AuthContext";
 import { Button, BulkReviewDetails, ConfirmDialog, EmptyState, Input, LoadingSpinner, PageContainer, PageHeader, TrackRow } from "@/components/ui";
+
+const OWNER_USER_ID = "cmfxhbsop0000dp0crm6vnd18";
 
 interface Playlist {
   id: number;
@@ -28,9 +31,30 @@ interface Track {
   permalink_url: string;
 }
 
+interface HypedditQueueItem {
+  id: number;
+  title: string;
+  artist: string;
+  hypedditUrl: string;
+}
+
+interface HypedditProgress {
+  total: number;
+  index: number;
+  completed: number;
+  failed: number;
+  active: boolean;
+}
+
 const LIKED_TRACKS_ID = -1;
 
+const isHypedditUrl = (url?: string) =>
+  !!url && url.includes("hypeddit");
+
 export default function DownloadsPage() {
+  const { user } = useAuth();
+  const isOwner = user?.id === OWNER_USER_ID;
+
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [selectedSource, setSelectedSource] = useState<Playlist | null>(null);
   const [tracks, setTracks] = useState<Track[]>([]);
@@ -39,7 +63,7 @@ export default function DownloadsPage() {
   const [likesCount, setLikesCount] = useState<number | null>(null);
   const [sourceSearch, setSourceSearch] = useState("");
 
-  // Selection mode
+  // Selection mode (remove from playlist)
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedTrackIds, setSelectedTrackIds] = useState<Set<number>>(new Set());
   const [isRemoving, setIsRemoving] = useState(false);
@@ -48,6 +72,13 @@ export default function DownloadsPage() {
   const [showRemoveConfirm, setShowRemoveConfirm] = useState(false);
   const [inlineError, setInlineError] = useState<string | null>(null);
   const [downloadingTrackId, setDownloadingTrackId] = useState<number | null>(null);
+
+  // Hypeddit batch mode
+  const [hypedditMode, setHypedditMode] = useState(false);
+  const [selectedHypedditIds, setSelectedHypedditIds] = useState<Set<number>>(new Set());
+  const [extInstalled, setExtInstalled] = useState(false);
+  const [hypedditProgress, setHypedditProgress] = useState<HypedditProgress | null>(null);
+  const [queueSent, setQueueSent] = useState(false);
 
   useEffect(() => {
     fetchPlaylists();
@@ -58,6 +89,29 @@ export default function DownloadsPage() {
     const urlParam = new URLSearchParams(window.location.search).get("url");
     if (urlParam) setSourceSearch(urlParam);
   }, []);
+
+  // Detect extension and load persisted progress on mount
+  useEffect(() => {
+    setExtInstalled(localStorage.getItem("sc-toolkit-ext-installed") === "1.0");
+    const saved = localStorage.getItem("sc-toolkit-hypeddit-progress");
+    if (saved) {
+      try { setHypedditProgress(JSON.parse(saved)); } catch { /* ignore */ }
+    }
+
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail as HypedditProgress;
+      setHypedditProgress(detail);
+    };
+    window.addEventListener("sc-toolkit-progress-update", handler);
+    return () => window.removeEventListener("sc-toolkit-progress-update", handler);
+  }, []);
+
+  // Re-check extension presence whenever a source is selected
+  useEffect(() => {
+    if (selectedSource) {
+      setExtInstalled(localStorage.getItem("sc-toolkit-ext-installed") === "1.0");
+    }
+  }, [selectedSource]);
 
   const fetchPlaylists = async () => {
     try {
@@ -111,14 +165,34 @@ export default function DownloadsPage() {
     setSelectedSource(p);
     fetchTracks(p);
     setSelectionMode(false);
+    setHypedditMode(false);
     setSelectedTrackIds(new Set());
+    setSelectedHypedditIds(new Set());
     setInlineError(null);
+    setQueueSent(false);
   };
 
   const toggleSelectionMode = () => {
     setSelectionMode(!selectionMode);
+    setHypedditMode(false);
     setSelectedTrackIds(new Set());
+    setSelectedHypedditIds(new Set());
     setInlineError(null);
+  };
+
+  const toggleHypedditMode = () => {
+    const entering = !hypedditMode;
+    setHypedditMode(entering);
+    setSelectionMode(false);
+    setSelectedTrackIds(new Set());
+    setSelectedHypedditIds(new Set());
+    setQueueSent(false);
+    setInlineError(null);
+    if (entering) {
+      // Pre-select all Hypeddit tracks
+      const ids = new Set(hypedditTracks.map((t) => t.id));
+      setSelectedHypedditIds(ids);
+    }
   };
 
   const toggleTrackSelection = (id: number) => {
@@ -129,6 +203,16 @@ export default function DownloadsPage() {
       newSelected.add(id);
     }
     setSelectedTrackIds(newSelected);
+  };
+
+  const toggleHypedditSelection = (id: number) => {
+    const newSelected = new Set(selectedHypedditIds);
+    if (newSelected.has(id)) {
+      newSelected.delete(id);
+    } else {
+      newSelected.add(id);
+    }
+    setSelectedHypedditIds(newSelected);
   };
 
   const handleRemoveSelected = () => {
@@ -181,9 +265,33 @@ export default function DownloadsPage() {
     }
   };
 
+  const sendToExtension = () => {
+    const toQueue = hypedditTracks.filter(
+      (t) => selectedHypedditIds.size === 0 || selectedHypedditIds.has(t.id)
+    );
+    const queue: HypedditQueueItem[] = toQueue.map((t) => ({
+      id: t.id,
+      title: t.title,
+      artist: t.user?.username ?? "",
+      hypedditUrl: t.purchase_url!,
+    }));
+    localStorage.setItem("sc-toolkit-hypeddit-queue", JSON.stringify(queue));
+    window.dispatchEvent(new CustomEvent("sc-toolkit-queue-set", { detail: { queue } }));
+    setQueueSent(true);
+    setHypedditMode(false);
+    setSelectedHypedditIds(new Set());
+  };
+
+  const dismissProgress = () => {
+    localStorage.removeItem("sc-toolkit-hypeddit-progress");
+    setHypedditProgress(null);
+  };
+
   const downloadableTracks = tracks.filter(
     (t) => Boolean(t.downloadable) || t.downloadable === "true" || !!t.download_url || !!t.purchase_url
   );
+
+  const hypedditTracks = downloadableTracks.filter((t) => isHypedditUrl(t.purchase_url));
 
   const filteredPlaylists = playlists.filter((p) =>
     p.title.toLowerCase().includes(sourceSearch.toLowerCase())
@@ -197,12 +305,16 @@ export default function DownloadsPage() {
 
   const getDownloadLabel = (track: Track) => {
     if (track.download_url) return "Download directly";
+    if (isHypedditUrl(track.purchase_url)) return "Hypeddit download";
     if (track.purchase_url) return track.purchase_title || "Go to download/buy";
     return "Open on SoundCloud";
   };
 
-  const getDownloadTone = (track: Track) =>
-    track.download_url ? "bg-green-500 hover:bg-green-600" : "bg-[#FF5500] hover:bg-[#E64D00]";
+  const getDownloadTone = (track: Track) => {
+    if (track.download_url) return "bg-green-500 hover:bg-green-600";
+    if (isHypedditUrl(track.purchase_url)) return "bg-purple-600 hover:bg-purple-700";
+    return "bg-[#FF5500] hover:bg-[#E64D00]";
+  };
 
   const handleDownload = async (track: Track) => {
     setInlineError(null);
@@ -235,6 +347,12 @@ export default function DownloadsPage() {
       setDownloadingTrackId(null);
     }
   };
+
+  const hdActive = hypedditProgress?.active ?? false;
+  const hdTotal = hypedditProgress?.total ?? 0;
+  const hdCompleted = hypedditProgress?.completed ?? 0;
+  const hdFailed = hypedditProgress?.failed ?? 0;
+  const showProgressBanner = hdTotal > 0;
 
   return (
     <PageContainer maxWidth="default">
@@ -342,6 +460,8 @@ export default function DownloadsPage() {
                 setSelectedSource(null);
                 setTracks([]);
                 setInlineError(null);
+                setHypedditMode(false);
+                setSelectionMode(false);
               }}
               className="text-[#666666] dark:text-muted-foreground hover:text-[#FF5500] transition mb-4 flex items-center gap-2"
             >
@@ -361,6 +481,53 @@ export default function DownloadsPage() {
               </span>
             </h2>
 
+            {/* Hypeddit progress banner (owner-only) */}
+            {isOwner && showProgressBanner && (
+              <div className="mb-4 rounded-xl border border-purple-200 dark:border-purple-900/40 bg-purple-50 dark:bg-purple-950/30 px-4 py-3">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-medium text-purple-800 dark:text-purple-300">
+                    {hdActive
+                      ? `Auto-downloading… ${hdCompleted}/${hdTotal}`
+                      : `Done — ${hdCompleted}/${hdTotal}`}
+                    {hdFailed > 0 && (
+                      <span className="ml-2 text-red-500 dark:text-red-400">({hdFailed} failed)</span>
+                    )}
+                  </span>
+                  <button
+                    onClick={dismissProgress}
+                    className="text-purple-400 hover:text-purple-600 dark:hover:text-purple-200 transition"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+                <div className="h-1.5 rounded-full bg-purple-200 dark:bg-purple-900/50 overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-purple-500 transition-all duration-500"
+                    style={{ width: `${hdTotal ? Math.round(((hdCompleted + hdFailed) / hdTotal) * 100) : 0}%` }}
+                  />
+                </div>
+                {!extInstalled && (
+                  <p className="mt-2 text-xs text-purple-600 dark:text-purple-400">
+                    Extension not detected — open the panel from the Chrome toolbar to control the download.
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Queue-sent confirmation (owner-only) */}
+            {isOwner && queueSent && (
+              <div className="mb-4 flex items-start gap-3 rounded-xl bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-900/40 px-4 py-3 text-sm text-purple-800 dark:text-purple-300">
+                <Zap className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>
+                  Queue sent to extension. Open the SoundCloud Toolkit side panel from the Chrome toolbar
+                  and click <strong>Start</strong> to begin downloading.
+                </span>
+                <button onClick={() => setQueueSent(false)} className="shrink-0 hover:opacity-70">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+
             {/* Inline error */}
             {inlineError && (
               <div className="flex items-start gap-3 mb-4 text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-900/30 rounded-lg px-4 py-3">
@@ -372,41 +539,92 @@ export default function DownloadsPage() {
             )}
 
             {/* Toolbar */}
-            {selectedSource.id !== LIKED_TRACKS_ID && downloadableTracks.length > 0 && (
-              <div className="flex items-center gap-4 mb-6">
-                {!selectionMode ? (
-                  <Button
-                    onClick={toggleSelectionMode}
-                    variant="secondary"
-                    className="h-10 px-4 text-[#666666] dark:text-muted-foreground"
-                  >
-                    <CheckSquare className="w-4 h-4" />
-                    Select to Remove
-                  </Button>
-                ) : (
-                  <>
+            {downloadableTracks.length > 0 && (
+              <div className="flex flex-wrap items-center gap-3 mb-6">
+                {/* Remove-from-playlist mode (playlists only, not likes) */}
+                {selectedSource.id !== LIKED_TRACKS_ID && !hypedditMode && (
+                  !selectionMode ? (
                     <Button
                       onClick={toggleSelectionMode}
                       variant="secondary"
                       className="h-10 px-4 text-[#666666] dark:text-muted-foreground"
                     >
-                      <X className="w-4 h-4" />
-                      Cancel
+                      <CheckSquare className="w-4 h-4" />
+                      Select to Remove
                     </Button>
+                  ) : (
+                    <>
+                      <Button
+                        onClick={toggleSelectionMode}
+                        variant="secondary"
+                        className="h-10 px-4 text-[#666666] dark:text-muted-foreground"
+                      >
+                        <X className="w-4 h-4" />
+                        Cancel
+                      </Button>
+                      <Button
+                        onClick={handleRemoveSelected}
+                        disabled={selectedTrackIds.size === 0 || isRemoving}
+                        variant="destructive"
+                        className="h-10 px-4"
+                      >
+                        {isRemoving ? (
+                          <LoadingSpinner className="w-4 h-4 text-white" />
+                        ) : (
+                          <Trash2 className="w-4 h-4" />
+                        )}
+                        Remove ({selectedTrackIds.size})
+                      </Button>
+                    </>
+                  )
+                )}
+
+                {/* Hypeddit batch mode (owner-only, only when Hypeddit tracks exist) */}
+                {isOwner && hypedditTracks.length > 0 && !selectionMode && (
+                  !hypedditMode ? (
                     <Button
-                      onClick={handleRemoveSelected}
-                      disabled={selectedTrackIds.size === 0 || isRemoving}
-                      variant="destructive"
-                      className="h-10 px-4"
+                      onClick={toggleHypedditMode}
+                      variant="secondary"
+                      className="h-10 px-4 text-purple-700 dark:text-purple-400 border-purple-200 dark:border-purple-900"
                     >
-                      {isRemoving ? (
-                        <LoadingSpinner className="w-4 h-4 text-white" />
-                      ) : (
-                        <Trash2 className="w-4 h-4" />
-                      )}
-                      Remove ({selectedTrackIds.size})
+                      <Zap className="w-4 h-4" />
+                      Auto-Download Hypeddit ({hypedditTracks.length})
                     </Button>
-                  </>
+                  ) : (
+                    <>
+                      <Button
+                        onClick={toggleHypedditMode}
+                        variant="secondary"
+                        className="h-10 px-4 text-[#666666] dark:text-muted-foreground"
+                      >
+                        <X className="w-4 h-4" />
+                        Cancel
+                      </Button>
+                      <Button
+                        onClick={() => {
+                          const ids = new Set(hypedditTracks.map((t) => t.id));
+                          setSelectedHypedditIds(ids);
+                        }}
+                        variant="secondary"
+                        className="h-10 px-4 text-[#666666] dark:text-muted-foreground"
+                      >
+                        Select All ({hypedditTracks.length})
+                      </Button>
+                      <Button
+                        onClick={sendToExtension}
+                        disabled={selectedHypedditIds.size === 0}
+                        className="h-10 px-4 bg-purple-600 hover:bg-purple-700 text-white"
+                      >
+                        <Zap className="w-4 h-4" />
+                        Queue {selectedHypedditIds.size} track{selectedHypedditIds.size !== 1 ? "s" : ""}
+                      </Button>
+                      {!extInstalled && (
+                        <span className="text-xs text-[#999999] dark:text-muted-foreground self-center">
+                          SC Toolkit extension required
+                        </span>
+                      )}
+                    </>
+                  )
                 )}
               </div>
             )}
@@ -427,6 +645,8 @@ export default function DownloadsPage() {
               ) : (
                 <div className="space-y-2">
                   {downloadableTracks.map((track, index) => {
+                    const isHypeddit = isHypedditUrl(track.purchase_url);
+
                     if (selectionMode) {
                       return (
                         <TrackRow
@@ -461,6 +681,27 @@ export default function DownloadsPage() {
                       );
                     }
 
+                    if (hypedditMode && isHypeddit) {
+                      return (
+                        <TrackRow
+                          key={track.id}
+                          track={{ ...track, subtitle: track.user?.username }}
+                          isSelected={selectedHypedditIds.has(track.id)}
+                          onToggle={() => toggleHypedditSelection(track.id)}
+                          rightSlot={
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-[#666666] dark:text-muted-foreground">
+                                {formatDuration(track.duration)}
+                              </span>
+                              <span className="rounded-md px-2 py-0.5 text-xs font-medium bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300">
+                                Hypeddit
+                              </span>
+                            </div>
+                          }
+                        />
+                      );
+                    }
+
                     return (
                       <div
                         key={track.id}
@@ -482,6 +723,11 @@ export default function DownloadsPage() {
                             {track.user?.username} • {formatDuration(track.duration)}
                           </div>
                         </div>
+                        {isOwner && isHypeddit && !hypedditMode && (
+                          <span className="rounded-md px-2 py-0.5 text-xs font-medium bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 shrink-0">
+                            H
+                          </span>
+                        )}
                         <button
                           type="button"
                           disabled={downloadingTrackId === track.id}

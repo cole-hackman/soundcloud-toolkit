@@ -60,3 +60,6 @@ __pycache__/
 
 # Kiro IDE planning specs (local only)
 .kiro/
+
+# Chrome extension (personal use, sideloaded only)
+/extension/

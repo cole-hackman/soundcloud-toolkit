@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
   Shuffle,
@@ -27,6 +28,12 @@ import {
   Skeleton,
 } from "@/components/ui";
 import { apiFetch } from "@/lib/api";
+import {
+  invalidatePlaylistCaches,
+  playlistDetailQueryOptions,
+  usePlaylistDetailQuery,
+  usePlaylistsQuery,
+} from "@/lib/queries";
 
 interface Playlist {
   id: number;
@@ -55,11 +62,9 @@ type TransferAction = "move" | "duplicate";
 type BannerState = { tone: "success" | "warning" | "error"; text: string } | null;
 
 export default function PlaylistModifierPage() {
-  const [playlists, setPlaylists] = useState<Playlist[]>([]);
+  const queryClient = useQueryClient();
   const [selectedPlaylist, setSelectedPlaylist] = useState<Playlist | null>(null);
   const [tracks, setTracks] = useState<Track[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadingTracks, setLoadingTracks] = useState(false);
   const [saving, setSaving] = useState(false);
   const [trackFilter, setTrackFilter] = useState<TrackFilter>("all");
   const [loadError, setLoadError] = useState(false);
@@ -85,9 +90,16 @@ export default function PlaylistModifierPage() {
   const downloadCount = tracks.filter((t) => Boolean(t.downloadable) || t.downloadable === "true").length;
   const buyLinkCount = tracks.filter((t) => !!t.purchase_url).length;
 
-  useEffect(() => {
-    fetchPlaylists();
-  }, []);
+  const playlistsQuery = usePlaylistsQuery();
+  const playlists = useMemo(
+    () => (playlistsQuery.data?.collection || []) as unknown as Playlist[],
+    [playlistsQuery.data?.collection],
+  );
+  const selectedPlaylistQuery = usePlaylistDetailQuery(selectedPlaylist?.id ?? 0, {
+    enabled: selectedPlaylist != null,
+  });
+  const loading = playlistsQuery.isLoading;
+  const loadingTracks = selectedPlaylist != null && selectedPlaylistQuery.isLoading;
 
   useEffect(() => {
     if (!banner) return;
@@ -114,52 +126,34 @@ export default function PlaylistModifierPage() {
     return () => document.removeEventListener("keydown", onKey);
   }, [transfer]);
 
-  const fetchPlaylists = async () => {
-    try {
-      setLoadError(false);
-      const response = await apiFetch("/api/playlists");
-      if (response.ok) {
-        const data = await response.json();
-        const coll: Playlist[] = data.collection || [];
-        setPlaylists(coll);
-        setSelectedPlaylist((prev) => {
-          if (!prev) return prev;
-          const next = coll.find((p) => p.id === prev.id);
-          return next ? { ...prev, ...next } : prev;
-        });
-      } else {
-        setLoadError(true);
-      }
-    } catch (error) {
-      console.error("Failed to fetch playlists:", error);
+  useEffect(() => {
+    if (playlistsQuery.isError) {
       setLoadError(true);
-    } finally {
-      setLoading(false);
     }
-  };
+  }, [playlistsQuery.isError]);
 
-  const fetchTracks = async (playlistId: number) => {
-    setLoadingTracks(true);
-    setTracksError(false);
-    try {
-      const response = await apiFetch(`/api/playlists/${playlistId}`);
-      if (response.ok) {
-        const data = await response.json();
-        setTracks(data.tracks || []);
-      } else {
-        setTracksError(true);
-      }
-    } catch (error) {
-      console.error("Failed to fetch tracks:", error);
+  useEffect(() => {
+    setSelectedPlaylist((prev) => {
+      if (!prev) return prev;
+      const next = playlists.find((playlist) => playlist.id === prev.id);
+      return next ? { ...prev, ...next } : prev;
+    });
+  }, [playlists]);
+
+  useEffect(() => {
+    if (selectedPlaylistQuery.isError) {
       setTracksError(true);
-    } finally {
-      setLoadingTracks(false);
+      return;
     }
-  };
+
+    if (selectedPlaylistQuery.data) {
+      setTracks((selectedPlaylistQuery.data.tracks || []) as unknown as Track[]);
+      setTracksError(false);
+    }
+  }, [selectedPlaylistQuery.data, selectedPlaylistQuery.isError]);
 
   const selectPlaylist = (playlist: Playlist) => {
     setSelectedPlaylist(playlist);
-    fetchTracks(playlist.id);
   };
 
   const removeTrack = (trackId: number) => {
@@ -243,8 +237,8 @@ export default function PlaylistModifierPage() {
                 : "The track may have been added to the target playlist, but the source could not be updated.",
         });
         setTransfer(null);
-        await fetchTracks(selectedPlaylist.id);
-        await fetchPlaylists();
+        await invalidatePlaylistCaches(queryClient, selectedPlaylist.id);
+        await Promise.all([selectedPlaylistQuery.refetch(), playlistsQuery.refetch()]);
         return;
       }
 
@@ -270,8 +264,8 @@ export default function PlaylistModifierPage() {
       }
 
       setTransfer(null);
-      await fetchTracks(selectedPlaylist.id);
-      await fetchPlaylists();
+      await invalidatePlaylistCaches(queryClient, selectedPlaylist.id);
+      await Promise.all([selectedPlaylistQuery.refetch(), playlistsQuery.refetch()]);
     } catch {
       setBanner({ tone: "error", text: "Network error — try again." });
     } finally {
@@ -305,6 +299,7 @@ export default function PlaylistModifierPage() {
         body: JSON.stringify({ tracks: tracks.map((t) => t.id) }),
       });
       if (response.ok) {
+        await invalidatePlaylistCaches(queryClient, selectedPlaylist.id);
         setBanner({ tone: "success", text: "Playlist saved successfully." });
       } else {
         setBanner({ tone: "error", text: "Failed to save playlist." });
@@ -386,8 +381,7 @@ export default function PlaylistModifierPage() {
                   <button
                     type="button"
                     onClick={() => {
-                      setLoading(true);
-                      fetchPlaylists();
+                      playlistsQuery.refetch();
                     }}
                     className="px-4 py-2 rounded-lg text-sm font-semibold bg-gradient-to-r from-[#FF5500] to-[#E64A00] text-white hover:shadow-md transition"
                   >
@@ -506,7 +500,7 @@ export default function PlaylistModifierPage() {
                   action={
                     <button
                       type="button"
-                      onClick={() => selectedPlaylist && fetchTracks(selectedPlaylist.id)}
+                      onClick={() => selectedPlaylistQuery.refetch()}
                       className="px-4 py-2 rounded-lg text-sm font-semibold bg-gradient-to-r from-[#FF5500] to-[#E64A00] text-white hover:shadow-md transition"
                     >
                       Retry

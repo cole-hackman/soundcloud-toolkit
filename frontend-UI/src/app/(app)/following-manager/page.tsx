@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Users, Search, UserMinus, Loader2, Check, ExternalLink } from "lucide-react";
 import {
   ConfirmDialog,
@@ -14,6 +15,12 @@ import {
 } from "@/components/ui";
 import { ProgressiveBlur } from "@/components/ui/ProgressiveBlur";
 import { apiFetch } from "@/lib/api";
+import {
+  invalidateDashboardSummary,
+  removeUsersFromFollowingsCache,
+  useFollowersQuery,
+  useFollowingsQuery,
+} from "@/lib/queries";
 
 interface Following {
   id: number;
@@ -29,49 +36,27 @@ interface Following {
 type SortOption = "alpha" | "followers" | "tracks" | "reposts" | "last_modified";
 
 export default function FollowingManagerPage() {
-  const [followings, setFollowings] = useState<Following[]>([]);
+  const queryClient = useQueryClient();
   const [selected, setSelected] = useState<Set<number>>(new Set());
-  const [loading, setLoading] = useState(true);
   const [removing, setRemoving] = useState(false);
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<SortOption>("alpha");
-  const [followers, setFollowers] = useState<Set<number>>(new Set());
   const [filterMode, setFilterMode] = useState<"all" | "not-following-back">("all");
   const [progress, setProgress] = useState<{ current: number; total: number } | null>(null);
   const [showUnfollowConfirm, setShowUnfollowConfirm] = useState(false);
   const [notice, setNotice] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
+  const followingsQuery = useFollowingsQuery();
+  const followersQuery = useFollowersQuery();
+  const followings = (followingsQuery.data?.collection || []) as unknown as Following[];
+  const followers = new Set<number>(((followersQuery.data?.collection || []) as unknown as Following[]).map((u) => u.id));
+  const loading = followingsQuery.isLoading || followersQuery.isLoading;
+
   useEffect(() => {
-    fetchFollowings();
-  }, []);
-
-  const fetchFollowings = async () => {
-    try {
-      const [followingsRes, followersRes] = await Promise.all([
-        apiFetch("/api/followings"),
-        apiFetch("/api/followers")
-      ]);
-
-      if (followingsRes.ok) {
-        const data = await followingsRes.json();
-        setFollowings(data.collection || []);
-      }
-      
-      if (followersRes.ok) {
-        const data = await followersRes.json();
-        const followerIds = new Set<number>((data.collection || []).map((u: Following) => u.id));
-        setFollowers(followerIds);
-      }
-      if (!followingsRes.ok) {
-        setNotice({ type: "error", text: "Couldn’t load the accounts you follow. Try refreshing the page." });
-      }
-    } catch (error) {
-      console.error("Failed to fetch data:", error);
+    if (followingsQuery.isError || followersQuery.isError) {
       setNotice({ type: "error", text: "Couldn’t load your social data. Try refreshing the page." });
-    } finally {
-      setLoading(false);
     }
-  };
+  }, [followingsQuery.isError, followersQuery.isError]);
 
   const toggleUser = (id: number) => {
     setSelected((prev) => {
@@ -137,7 +122,8 @@ export default function FollowingManagerPage() {
       
       // Update UI state
       if (successfullyRemoved.size > 0) {
-        setFollowings((prev) => prev.filter((f) => !successfullyRemoved.has(f.id)));
+        removeUsersFromFollowingsCache(queryClient, successfullyRemoved);
+        await invalidateDashboardSummary(queryClient);
         
         // Remove successfully unfollowed IDs from selection
         setSelected(prev => {

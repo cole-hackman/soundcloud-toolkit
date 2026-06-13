@@ -1,11 +1,13 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { ArrowLeft, X, Combine, Check, Music, Trash2, AlertTriangle } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { BulkReviewDetails, ConfirmDialog, EmptyState, LoadingSpinner, PageContainer, PageHeader, Skeleton } from "@/components/ui";
 import { useSurvey } from "@/contexts/SurveyContext";
+import { invalidatePlaylistCaches, usePlaylistsQuery } from "@/lib/queries";
 
 interface Playlist {
   id: number;
@@ -18,6 +20,7 @@ interface Playlist {
 type MergeMode = "new" | "existing";
 
 export default function CombinePlaylistsPage() {
+  const queryClient = useQueryClient();
   const survey = useSurvey();
   const [selectedPlaylists, setSelectedPlaylists] = useState<Playlist[]>([]);
   const [newPlaylistTitle, setNewPlaylistTitle] = useState("");
@@ -28,9 +31,6 @@ export default function CombinePlaylistsPage() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isComplete, setIsComplete] = useState(false);
-  const [userPlaylists, setUserPlaylists] = useState<Playlist[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState(false);
   const [mergeError, setMergeError] = useState<string | null>(null);
   const [result, setResult] = useState<{
     playlists?: { title: string }[];
@@ -48,9 +48,10 @@ export default function CombinePlaylistsPage() {
     totalTracks?: number;
   } | null>(null);
 
-  useEffect(() => {
-    fetchPlaylists();
-  }, []);
+  const playlistsQuery = usePlaylistsQuery();
+  const userPlaylists = (playlistsQuery.data?.collection || []) as unknown as Playlist[];
+  const loading = playlistsQuery.isLoading;
+  const loadError = playlistsQuery.isError;
 
   useEffect(() => {
     if (!isComplete) return;
@@ -61,24 +62,6 @@ export default function CombinePlaylistsPage() {
       0;
     survey.maybeShow({ context: "post-merge", trackCount });
   }, [isComplete, result, survey]);
-
-  const fetchPlaylists = async () => {
-    try {
-      setLoadError(false);
-      const response = await apiFetch("/api/playlists");
-      if (response.ok) {
-        const data = await response.json();
-        setUserPlaylists(data.collection || []);
-      } else {
-        setLoadError(true);
-      }
-    } catch (error) {
-      console.error("Failed to fetch playlists:", error);
-      setLoadError(true);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handlePlaylistToggle = (playlist: Playlist) => {
     const idNum = Number(playlist.id);
@@ -134,6 +117,7 @@ export default function CombinePlaylistsPage() {
 
       if (response.ok) {
         const data = await response.json();
+        await invalidatePlaylistCaches(queryClient, targetPlaylist?.id ?? null);
         setResult(data);
         setIsComplete(true);
       } else {
@@ -275,7 +259,9 @@ export default function CombinePlaylistsPage() {
                   action={
                     <button
                       type="button"
-                      onClick={() => { setLoading(true); fetchPlaylists(); }}
+                      onClick={() => {
+                        playlistsQuery.refetch();
+                      }}
                       className="px-4 py-2 rounded-lg text-sm font-semibold bg-gradient-to-r from-[#FF5500] to-[#E64A00] text-white hover:shadow-md transition"
                     >
                       Retry

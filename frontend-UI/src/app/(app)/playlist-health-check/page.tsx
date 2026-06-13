@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Stethoscope, Music, AlertTriangle, CheckCircle, Trash2 } from "lucide-react";
 import {
   Button,
@@ -14,6 +15,11 @@ import {
   Skeleton,
 } from "@/components/ui";
 import { apiFetch } from "@/lib/api";
+import {
+  invalidatePlaylistCaches,
+  usePlaylistDetailQuery,
+  usePlaylistsQuery,
+} from "@/lib/queries";
 
 interface Playlist {
   id: number;
@@ -36,59 +42,42 @@ interface Track {
 type HealthFilter = "all" | "healthy" | "issues";
 
 export default function PlaylistHealthCheckPage() {
-  const [playlists, setPlaylists] = useState<Playlist[]>([]);
+  const queryClient = useQueryClient();
   const [selectedPlaylist, setSelectedPlaylist] = useState<Playlist | null>(null);
   const [tracks, setTracks] = useState<Track[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadingTracks, setLoadingTracks] = useState(false);
   const [saving, setSaving] = useState(false);
   const [filter, setFilter] = useState<HealthFilter>("all");
   const [showRemoveConfirm, setShowRemoveConfirm] = useState(false);
   const [notice, setNotice] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
+  const playlistsQuery = usePlaylistsQuery();
+  const playlistDetailQuery = usePlaylistDetailQuery(selectedPlaylist?.id ?? 0, {
+    enabled: selectedPlaylist != null,
+  });
+  const playlists = (playlistsQuery.data?.collection || []) as unknown as Playlist[];
+  const loading = playlistsQuery.isLoading;
+  const loadingTracks = selectedPlaylist != null && playlistDetailQuery.isLoading;
+
   useEffect(() => {
-    fetchPlaylists();
-  }, []);
-
-  const fetchPlaylists = async () => {
-    try {
-      const response = await apiFetch("/api/playlists");
-      if (response.ok) {
-        const data = await response.json();
-        setPlaylists(data.collection || []);
-      } else {
-        setNotice({ type: "error", text: "Couldn’t load your playlists. Try refreshing the page." });
-      }
-    } catch (error) {
-      console.error("Failed to fetch playlists:", error);
+    if (playlistsQuery.isError) {
       setNotice({ type: "error", text: "Couldn’t load your playlists. Try refreshing the page." });
-    } finally {
-      setLoading(false);
     }
-  };
+  }, [playlistsQuery.isError]);
 
-  const fetchTracks = async (playlistId: number) => {
-    setLoadingTracks(true);
-    try {
-      const response = await apiFetch(`/api/playlists/${playlistId}`);
-      if (response.ok) {
-        const data = await response.json();
-        setTracks(data.tracks || []);
-      } else {
-        setNotice({ type: "error", text: "Couldn’t load tracks for this playlist." });
-      }
-    } catch (error) {
-      console.error("Failed to fetch tracks:", error);
+  useEffect(() => {
+    if (playlistDetailQuery.isError) {
       setNotice({ type: "error", text: "Couldn’t load tracks for this playlist." });
-    } finally {
-      setLoadingTracks(false);
+      return;
     }
-  };
+
+    if (playlistDetailQuery.data) {
+      setTracks((playlistDetailQuery.data.tracks || []) as unknown as Track[]);
+    }
+  }, [playlistDetailQuery.data, playlistDetailQuery.isError]);
 
   const selectPlaylist = (playlist: Playlist) => {
     setSelectedPlaylist(playlist);
     setFilter("all");
-    fetchTracks(playlist.id);
   };
 
   const getTrackStatus = (track: Track): { label: string; color: string; bg: string; icon: "ok" | "warn" | "bad" } => {
@@ -136,6 +125,7 @@ export default function PlaylistHealthCheckPage() {
         body: JSON.stringify({ tracks: healthyTracks.map((t) => t.id) }),
       });
       if (response.ok) {
+        await invalidatePlaylistCaches(queryClient, selectedPlaylist.id);
         setTracks(healthyTracks);
         setNotice({
           type: "success",

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Heart, Search, Trash2, Loader2 } from "lucide-react";
 import {
   ConfirmDialog,
@@ -15,6 +16,7 @@ import {
 } from "@/components/ui";
 import { ProgressiveBlur } from "@/components/ui/ProgressiveBlur";
 import { apiFetch } from "@/lib/api";
+import { invalidateDashboardSummary, removeTracksFromLikesCache, useLikesQuery } from "@/lib/queries";
 
 interface Track {
   id: number;
@@ -34,52 +36,38 @@ interface Like {
 type SortOption = "recent" | "oldest" | "alpha";
 
 export default function LikeManagerPage() {
-  const [likes, setLikes] = useState<Like[]>([]);
+  const queryClient = useQueryClient();
   const [selected, setSelected] = useState<Set<number>>(new Set());
-  const [loading, setLoading] = useState(true);
   const [removing, setRemoving] = useState(false);
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<SortOption>("recent");
   const [showUnlikeConfirm, setShowUnlikeConfirm] = useState(false);
   const [notice, setNotice] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const { data, isLoading: loading, isError } = useLikesQuery();
 
   useEffect(() => {
-    fetchLikes();
-  }, []);
-
-  const fetchLikes = async () => {
-    try {
-      const response = await apiFetch("/api/likes");
-      if (response.ok) {
-        const data = await response.json();
-        const collection = data.collection || [];
-        setLikes(
-          collection.map((item: { track?: Track; created_at?: string } & Track, index: number) => {
-            if (item.track) {
-              return {
-                track: item.track,
-                liked_at: item.created_at || "",
-                liked_order: index,
-              };
-            }
-
-            return {
-              track: item,
-              liked_at: "",
-              liked_order: index,
-            };
-          })
-        );
-      } else {
-        setNotice({ type: "error", text: "Couldn’t load your liked tracks. Try refreshing the page." });
-      }
-    } catch (error) {
-      console.error("Failed to fetch likes:", error);
+    if (isError) {
       setNotice({ type: "error", text: "Couldn’t load your liked tracks. Try refreshing the page." });
-    } finally {
-      setLoading(false);
     }
-  };
+  }, [isError]);
+
+  const likes: Like[] = ((data?.collection || []) as unknown as Array<{ track?: Track; created_at?: string } & Track>).map(
+    (item, index) => {
+      if (item.track) {
+        return {
+          track: item.track,
+          liked_at: item.created_at || "",
+          liked_order: index,
+        };
+      }
+
+      return {
+        track: item,
+        liked_at: "",
+        liked_order: index,
+      };
+    },
+  );
 
   const toggleTrack = (id: number) => {
     setSelected((prev) => {
@@ -116,8 +104,13 @@ export default function LikeManagerPage() {
       });
       if (response.ok) {
         const data = await response.json();
-        const removedIds = new Set(data.results.filter((r: { status: string }) => r.status === "ok").map((r: { trackId: number }) => r.trackId));
-        setLikes((prev) => prev.filter((l) => !removedIds.has(l.track.id)));
+        const removedIds = new Set<number>(
+          data.results
+            .filter((r: { status: string }) => r.status === "ok")
+            .map((r: { trackId: number }) => r.trackId),
+        );
+        removeTracksFromLikesCache(queryClient, removedIds);
+        await invalidateDashboardSummary(queryClient);
         setSelected(new Set());
         if (removedIds.size === trackIds.length) {
           setNotice({ type: "success", text: `Unliked ${removedIds.size} track${removedIds.size === 1 ? "" : "s"}.` });

@@ -5,6 +5,7 @@ import { ArrowRightLeft, Download, ListPlus } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { downloadCsv } from "@/lib/csv";
 import { Button, EmptyState, InlineAlert, LoadingSpinner, PageHeader } from "@/components/ui";
+import { usePlaylistsQuery } from "@/lib/queries";
 
 interface Playlist {
   id: number;
@@ -33,31 +34,20 @@ interface CompareResult {
 }
 
 export default function PlaylistComparePage() {
-  const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [playlistAId, setPlaylistAId] = useState<number | "">("");
   const [playlistBId, setPlaylistBId] = useState<number | "">("");
-  const [loading, setLoading] = useState(true);
   const [comparing, setComparing] = useState(false);
   const [result, setResult] = useState<CompareResult | null>(null);
   const [notice, setNotice] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const playlistsQuery = usePlaylistsQuery();
+  const playlists = (playlistsQuery.data?.collection || []) as unknown as Playlist[];
+  const loading = playlistsQuery.isLoading;
 
   useEffect(() => {
-    fetchPlaylists();
-  }, []);
-
-  const fetchPlaylists = async () => {
-    try {
-      const response = await apiFetch("/api/playlists");
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Could not load playlists");
-      setPlaylists(data.collection || []);
-    } catch (error) {
-      console.error("Failed to load playlists:", error);
+    if (playlistsQuery.isError) {
       setNotice({ type: "error", text: "Could not load playlists. Try refreshing." });
-    } finally {
-      setLoading(false);
     }
-  };
+  }, [playlistsQuery.isError]);
 
   const compare = async () => {
     if (!playlistAId || !playlistBId || playlistAId === playlistBId) return;

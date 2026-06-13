@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Radio, Music, Loader2, Search, SquarePlus } from "lucide-react";
 import {
   Button,
@@ -13,6 +14,12 @@ import {
   TrackRow,
 } from "@/components/ui";
 import { apiFetch } from "@/lib/api";
+import {
+  invalidatePlaylistCaches,
+  useActivitiesQuery,
+  usePlaylistDetailQuery,
+  usePlaylistsQuery,
+} from "@/lib/queries";
 
 interface Track {
   id: number;
@@ -36,46 +43,28 @@ interface Playlist {
 }
 
 export default function ActivityToPlaylistPage() {
-  const [activities, setActivities] = useState<Activity[]>([]);
-  const [playlists, setPlaylists] = useState<Playlist[]>([]);
+  const queryClient = useQueryClient();
   const [selected, setSelected] = useState<Set<number>>(new Set());
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState("");
   const [mode, setMode] = useState<"new" | "existing">("new");
   const [newPlaylistName, setNewPlaylistName] = useState("");
   const [selectedPlaylistId, setSelectedPlaylistId] = useState<number | null>(null);
   const [notice, setNotice] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const activitiesQuery = useActivitiesQuery(200);
+  const playlistsQuery = usePlaylistsQuery();
+  const selectedPlaylistQuery = usePlaylistDetailQuery(selectedPlaylistId ?? 0, {
+    enabled: mode === "existing" && selectedPlaylistId != null,
+  });
+  const activities = (activitiesQuery.data?.collection || []) as unknown as Activity[];
+  const playlists = (playlistsQuery.data?.collection || []) as unknown as Playlist[];
+  const loading = activitiesQuery.isLoading || playlistsQuery.isLoading;
 
   useEffect(() => {
-    fetchData();
-  }, []);
-
-  const fetchData = async () => {
-    try {
-      const [actRes, plRes] = await Promise.all([
-        apiFetch("/api/activities?limit=200"),
-        apiFetch("/api/playlists"),
-      ]);
-
-      if (actRes.ok) {
-        const actData = await actRes.json();
-        setActivities(actData.collection || []);
-      }
-      if (plRes.ok) {
-        const plData = await plRes.json();
-        setPlaylists(plData.collection || []);
-      }
-      if (!actRes.ok) {
-        setNotice({ type: "error", text: "Couldn’t load your activity feed. Try refreshing the page." });
-      }
-    } catch (error) {
-      console.error("Failed to fetch data:", error);
+    if (activitiesQuery.isError || playlistsQuery.isError) {
       setNotice({ type: "error", text: "Couldn’t load your activity feed. Try refreshing the page." });
-    } finally {
-      setLoading(false);
     }
-  };
+  }, [activitiesQuery.isError, playlistsQuery.isError]);
 
   const toggleTrack = (id: number) => {
     setSelected((prev) => {
@@ -121,17 +110,15 @@ export default function ActivityToPlaylistPage() {
           body: JSON.stringify({ trackIds, title }),
         });
         if (response.ok) {
+          await invalidatePlaylistCaches(queryClient);
           setNotice({ type: "success", text: "Playlist saved successfully." });
           setSelected(new Set());
         } else {
           setNotice({ type: "error", text: "Failed to create playlist." });
         }
       } else if (selectedPlaylistId) {
-        // Get existing tracks and append
-        const plRes = await apiFetch(`/api/playlists/${selectedPlaylistId}`);
-        if (plRes.ok) {
-          const plData = await plRes.json();
-          const existingIds = (plData.tracks || []).map((t: Track) => t.id);
+        if (selectedPlaylistQuery.data) {
+          const existingIds = ((selectedPlaylistQuery.data.tracks || []) as unknown as Track[]).map((t) => t.id);
           const mergedIds = [...existingIds, ...trackIds];
           const response = await apiFetch(`/api/playlists/${selectedPlaylistId}`, {
             method: "PUT",
@@ -139,6 +126,7 @@ export default function ActivityToPlaylistPage() {
             body: JSON.stringify({ tracks: mergedIds }),
           });
           if (response.ok) {
+            await invalidatePlaylistCaches(queryClient, selectedPlaylistId);
             setNotice({ type: "success", text: "Playlist saved successfully." });
             setSelected(new Set());
           } else {

@@ -7,12 +7,14 @@ import { logOperation } from '../lib/analytics.js';
 import logger from '../lib/logger.js';
 import { safeError } from '../lib/safe-error.js';
 import { isAllowedDownloadRedirectTarget, isAllowedDownloadUrl } from '../lib/download-utils.js';
+import { buildDashboardSummary } from '../lib/dashboard-summary.js';
 import { summarizeLibraryAudit } from '../lib/library-audit.js';
 import { comparePlaylists } from '../lib/playlist-compare.js';
 import {
   duplicateTrackBetweenPlaylists,
   moveTrackBetweenPlaylists,
 } from '../lib/playlist-transfer.js';
+import { requestCache } from '../lib/request-cache.js';
 import { mergeIntoExisting, splitIntoChunks } from '../lib/merge-utils.js';
 import {
   validatePlaylistId,
@@ -38,6 +40,34 @@ import {
 } from '../middleware/validation.js';
 
 const router = express.Router();
+
+const CACHE_TTL = {
+  playlists: 5 * 60 * 1000,
+  followings: 5 * 60 * 1000,
+  followers: 5 * 60 * 1000,
+  likes: 60 * 1000,
+  reposts: 60 * 1000,
+  activities: 60 * 1000,
+};
+
+function getCachedUserPayload(namespace, userId, key, load, ttlMs) {
+  const cached = requestCache.get(namespace, userId, key);
+  if (cached !== undefined) return Promise.resolve(cached);
+  return Promise.resolve(load()).then((data) => {
+    requestCache.set(namespace, userId, key, data, ttlMs);
+    return data;
+  });
+}
+
+function invalidateUserNamespaces(userId, namespaces) {
+  namespaces.forEach((namespace) => {
+    requestCache.invalidateNamespaceForUser(namespace, userId);
+  });
+}
+
+function invalidatePlaylistState(userId) {
+  invalidateUserNamespaces(userId, ['playlists']);
+}
 
 const SC_TOOLKIT_PLAYLIST_SITE = 'www.soundcloudtoolkit.com';
 const SC_TOOLKIT_PLAYLIST_FOOTER = `Created using SC Toolkit. Try it for free ${SC_TOOLKIT_PLAYLIST_SITE}`;
@@ -293,6 +323,87 @@ router.get('/me', authenticateUser, async (req, res) => {
   }
 });
 
+router.get('/dashboard/summary', authenticateUser, async (req, res) => {
+  try {
+    const me = await soundcloudClient.getMe(req.accessToken, req.refreshToken);
+    const userId = req.user.id;
+    const likesCount = me?.public_favorites_count ?? me?.likes_count;
+
+    const needsFollowers = !(typeof me?.followers_count === 'number' && me.followers_count > 0);
+    const needsFollowings = !(typeof me?.followings_count === 'number' && me.followings_count > 0);
+    const needsLikes = !(typeof likesCount === 'number' && likesCount > 0);
+    const needsPlaylists = !(typeof me?.playlist_count === 'number' && me.playlist_count > 0);
+
+    const [followers, followings, likes, playlists] = await Promise.all([
+      needsFollowers
+        ? getCachedUserPayload(
+            'followers',
+            userId,
+            'default',
+            async () => {
+              const collection = await soundcloudClient.getFollowers(req.accessToken, req.refreshToken);
+              return { collection, total: collection.length };
+            },
+            CACHE_TTL.followers,
+          )
+        : Promise.resolve(undefined),
+      needsFollowings
+        ? getCachedUserPayload(
+            'followings',
+            userId,
+            'default',
+            async () => {
+              const collection = await soundcloudClient.getFollowings(req.accessToken, req.refreshToken);
+              return { collection, total: collection.length };
+            },
+            CACHE_TTL.followings,
+          )
+        : Promise.resolve(undefined),
+      needsLikes
+        ? getCachedUserPayload(
+            'likes',
+            userId,
+            'default',
+            async () => {
+              const collection = await soundcloudClient.paginate(
+                '/me/likes/tracks',
+                req.accessToken,
+                req.refreshToken,
+                200,
+              ).catch(() => soundcloudClient.paginate(
+                '/me/favorites',
+                req.accessToken,
+                req.refreshToken,
+                200,
+              ));
+              return { collection, total_results: collection.length };
+            },
+            CACHE_TTL.likes,
+          )
+        : Promise.resolve(undefined),
+      needsPlaylists
+        ? getCachedUserPayload(
+            'playlists',
+            userId,
+            'limit=50&offset=0',
+            async () => soundcloudClient.getPlaylists(
+              req.accessToken,
+              req.refreshToken,
+              50,
+              0,
+            ),
+            CACHE_TTL.playlists,
+          )
+        : Promise.resolve(undefined),
+    ]);
+
+    res.json(buildDashboardSummary({ me, followers, followings, likes, playlists }));
+  } catch (error) {
+    logger.error('Dashboard summary error:', safeError(error));
+    res.status(500).json({ error: 'Failed to fetch dashboard summary' });
+  }
+});
+
 router.get('/library/audit', authenticateUser, heavyOperationRateLimiter, async (req, res) => {
   try {
     const limit = Math.min(Math.max(Number(req.query.limit) || 20, 1), 50);
@@ -366,28 +477,36 @@ router.post('/playlists/compare', authenticateUser, heavyOperationRateLimiter, a
 router.get('/playlists', authenticateUser, validatePagination, async (req, res) => {
   try {
     const { limit = 50, offset = 0 } = req.query;
-    const playlists = await soundcloudClient.getPlaylists(
-      req.accessToken,
-      req.refreshToken,
-      parseInt(limit),
-      parseInt(offset)
+    const cacheKey = `limit=${parseInt(limit)}&offset=${parseInt(offset)}`;
+    const withCovers = await getCachedUserPayload(
+      'playlists',
+      req.user.id,
+      cacheKey,
+      async () => {
+        const playlists = await soundcloudClient.getPlaylists(
+          req.accessToken,
+          req.refreshToken,
+          parseInt(limit),
+          parseInt(offset)
+        );
+        const payload = { ...playlists };
+        payload.collection = await Promise.all((playlists.collection || []).map(async (p) => {
+          const idNum = typeof p.id === 'string' ? parseInt(p.id, 10) : p.id;
+          let coverUrl = p.artwork_url || '';
+          if (!coverUrl) {
+            try {
+              const full = await soundcloudClient.getPlaylistWithTracks(req.accessToken, req.refreshToken, idNum);
+              const first = Array.isArray(full.tracks) && full.tracks.length ? full.tracks[0] : null;
+              coverUrl = first?.artwork_url || first?.user?.avatar_url || '';
+            } catch {}
+          }
+          if (!coverUrl) coverUrl = p.user?.avatar_url || '';
+          return { ...p, id: idNum, coverUrl };
+        }));
+        return payload;
+      },
+      CACHE_TTL.playlists,
     );
-    // Compute coverUrl with priority: playlist.artwork_url -> first track artwork -> playlist.user.avatar_url -> ''
-    const withCovers = { ...playlists };
-    withCovers.collection = await Promise.all((playlists.collection || []).map(async (p) => {
-      // Normalize id to number for client selection stability
-      const idNum = typeof p.id === 'string' ? parseInt(p.id, 10) : p.id;
-      let coverUrl = p.artwork_url || '';
-      if (!coverUrl) {
-        try {
-          const full = await soundcloudClient.getPlaylistWithTracks(req.accessToken, req.refreshToken, idNum);
-          const first = Array.isArray(full.tracks) && full.tracks.length ? full.tracks[0] : null;
-          coverUrl = first?.artwork_url || first?.user?.avatar_url || '';
-        } catch {}
-      }
-      if (!coverUrl) coverUrl = p.user?.avatar_url || '';
-      return { ...p, id: idNum, coverUrl };
-    }));
     res.json(withCovers);
   } catch (error) {
     logger.error('Get playlists error:', safeError(error));
@@ -490,6 +609,7 @@ router.post('/playlists/clone', authenticateUser, heavyOperationRateLimiter, val
       }
 
       logOperation({ userId: req.user.id, action: 'clone', trackCount: trackIdsArray.length, status: 'split' });
+      invalidatePlaylistState(req.user.id);
       res.json({
         playlists: createdPlaylists.map(p => p.playlist),
         stats: {
@@ -524,6 +644,7 @@ router.post('/playlists/clone', authenticateUser, heavyOperationRateLimiter, val
       }
 
       logOperation({ userId: req.user.id, action: 'clone', trackCount: trackIdsArray.length, status: 'success' });
+      invalidatePlaylistState(req.user.id);
       res.json({
         playlist: newPlaylist,
         stats: {
@@ -572,6 +693,7 @@ router.post(
             status: 'success',
             metadata: { kind: 'duplicate', noop: !!result.noop },
           });
+          invalidatePlaylistState(req.user.id);
           return res.json(result);
         }
 
@@ -596,6 +718,7 @@ router.post(
             status: 'success',
             metadata: { kind: 'move' },
           });
+          invalidatePlaylistState(req.user.id);
           return res.json(result);
         }
 
@@ -671,6 +794,7 @@ router.put('/playlists/:id', authenticateUser, validateUpdatePlaylist, async (re
       } catch {}
     }
 
+    invalidatePlaylistState(req.user.id);
     res.json(updated);
   } catch (error) {
     logger.error('Update playlist error:', safeError(error));
@@ -684,19 +808,27 @@ router.put('/playlists/:id', authenticateUser, validateUpdatePlaylist, async (re
  */
 router.get('/likes', authenticateUser, async (req, res) => {
   try {
-    // Return full likes list (linked_partitioning paginate)
-    const items = await soundcloudClient.paginate(
-      '/me/likes/tracks',
-      req.accessToken,
-      req.refreshToken,
-      200
-    ).catch(() => soundcloudClient.paginate(
-      '/me/favorites',
-      req.accessToken,
-      req.refreshToken,
-      200
-    ));
-    res.json({ collection: items, total_results: items.length });
+    const payload = await getCachedUserPayload(
+      'likes',
+      req.user.id,
+      'default',
+      async () => {
+        const items = await soundcloudClient.paginate(
+          '/me/likes/tracks',
+          req.accessToken,
+          req.refreshToken,
+          200
+        ).catch(() => soundcloudClient.paginate(
+          '/me/favorites',
+          req.accessToken,
+          req.refreshToken,
+          200
+        ));
+        return { collection: items, total_results: items.length };
+      },
+      CACHE_TTL.likes,
+    );
+    res.json(payload);
   } catch (error) {
     logger.error('Get likes error:', safeError(error));
     res.status(500).json({ error: 'Failed to get likes' });
@@ -993,6 +1125,7 @@ router.post('/playlists/merge', authenticateUser, heavyOperationRateLimiter, val
       });
 
       logOperation({ userId: req.user.id, action: 'merge', trackCount: addedCount, status: 'success' });
+      invalidatePlaylistState(req.user.id);
 
       return res.json({
         playlist: { id: targetPlaylistId, title: targetPlaylist.title },
@@ -1115,6 +1248,7 @@ router.post('/playlists/merge', authenticateUser, heavyOperationRateLimiter, val
         }
       });
       logOperation({ userId: req.user.id, action: 'merge', trackCount: trackIdsArray.length, status: 'split' });
+      invalidatePlaylistState(req.user.id);
     } else {
       // Single playlist (<= 500 tracks) with 100-track batches
       const playlistTitle = baseTitle;
@@ -1180,6 +1314,7 @@ router.post('/playlists/merge', authenticateUser, heavyOperationRateLimiter, val
         }
       });
       logOperation({ userId: req.user.id, action: 'merge', trackCount: trackIdsArray.length, status: 'success' });
+      invalidatePlaylistState(req.user.id);
     }
   } catch (error) {
     logger.error('Merge playlists error:', safeError(error));
@@ -1479,6 +1614,7 @@ router.post(
         status: result.numPlaylistsCreated && result.numPlaylistsCreated > 1 ? 'split' : 'success',
       });
 
+      invalidatePlaylistState(req.user.id);
       res.json({
         ...result,
         stats: {
@@ -1572,6 +1708,7 @@ router.post(
         status: errors.length > 0 ? 'partial' : 'success',
       });
 
+      invalidatePlaylistState(req.user.id);
       res.status(errors.length > 0 ? 207 : 200).json({
         playlists,
         errors: errors.length > 0 ? errors : undefined,
@@ -1665,6 +1802,7 @@ router.post('/playlists/from-likes', authenticateUser, heavyOperationRateLimiter
       }
 
       logOperation({ userId: req.user.id, action: 'from-likes', trackCount: addedCount, status: 'success' });
+      invalidatePlaylistState(req.user.id);
 
       return res.json({
         playlist: { id: targetPlaylistId, title: targetPlaylist.title },
@@ -1693,6 +1831,7 @@ router.post('/playlists/from-likes', authenticateUser, heavyOperationRateLimiter
         totalTracks: trackIds.length
       });
       logOperation({ userId: req.user.id, action: 'from-likes', trackCount: trackIds.length, status: 'success' });
+      invalidatePlaylistState(req.user.id);
       return;
     }
 
@@ -1732,6 +1871,7 @@ router.post('/playlists/from-likes', authenticateUser, heavyOperationRateLimiter
       numPlaylistsCreated: numPlaylists
     });
     logOperation({ userId: req.user.id, action: 'from-likes', trackCount: trackIds.length, status: 'split' });
+    invalidatePlaylistState(req.user.id);
     return;
   } catch (error) {
     logger.error('Create playlist from likes error:', safeError(error));
@@ -1748,6 +1888,7 @@ router.delete('/playlists/:id', authenticateUser, validateDeletePlaylist, async 
     const playlistId = req.params.id;
     await soundcloudClient.deletePlaylist(req.accessToken, req.refreshToken, playlistId);
     logOperation({ userId: req.user.id, action: 'delete-playlist', itemCount: 1, status: 'success' });
+    invalidatePlaylistState(req.user.id);
     res.json({ ok: true });
   } catch (error) {
     logger.error('Delete playlist error:', safeError(error));
@@ -1882,39 +2023,39 @@ router.post('/resolve/batch', authenticateUser, heavyOperationRateLimiter, valid
 router.get('/activities', authenticateUser, validateActivities, async (req, res) => {
   try {
     const limit = req.query.limit || 200;
-    const activities = await soundcloudClient.getActivities(req.accessToken, req.refreshToken, limit);
+    const payload = await getCachedUserPayload(
+      'activities',
+      req.user.id,
+      `limit=${limit}`,
+      async () => {
+        const activities = await soundcloudClient.getActivities(req.accessToken, req.refreshToken, limit);
+        logger.info(`[/api/activities] Fetched ${activities.length} raw activities`);
 
-    // Filter to track-related activities and map to useful shape
-    logger.info(`[/api/activities] Fetched ${activities.length} raw activities`);
-    
-    let trackCount = 0;
-    const trackActivities = activities.map(item => {
-      // Check for track origin
-      if (!item.origin || item.origin.kind !== 'track') return null;
-      
-      // Normalize the items
-      const normalized = normalizeResource(item.origin);
-      if (!normalized || normalized.type !== 'track') return null;
+        const trackActivities = activities.map(item => {
+          if (!item.origin || item.origin.kind !== 'track') return null;
+          const normalized = normalizeResource(item.origin);
+          if (!normalized || normalized.type !== 'track') return null;
 
-      trackCount++;
-      return {
-        type: item.type,
-        created_at: item.created_at,
-        origin: {
-          ...normalized,
-          // Frontend expects 'duration', normalizeResource provides 'duration_ms'
-          duration: normalized.duration_ms, 
-          // Ensure user object has username for display
-          user: {
-            ...normalized.user,
-            username: normalized.user?.username || normalized.username || 'Unknown User'
-          }
-        }
-      };
-    }).filter(Boolean);
+          return {
+            type: item.type,
+            created_at: item.created_at,
+            origin: {
+              ...normalized,
+              duration: normalized.duration_ms,
+              user: {
+                ...normalized.user,
+                username: normalized.user?.username || normalized.username || 'Unknown User'
+              }
+            }
+          };
+        }).filter(Boolean);
 
-    logger.info(`[/api/activities] Returning ${trackActivities.length} valid track activities`);
-    res.json({ collection: trackActivities });
+        logger.info(`[/api/activities] Returning ${trackActivities.length} valid track activities`);
+        return { collection: trackActivities };
+      },
+      CACHE_TTL.activities,
+    );
+    res.json(payload);
   } catch (error) {
     logger.error('Get activities error:', safeError(error));
     res.status(500).json({ error: 'Failed to fetch activities' });
@@ -1940,6 +2081,7 @@ router.post('/likes/tracks/bulk-unlike', authenticateUser, heavyOperationRateLim
       }
     }
 
+    invalidateUserNamespaces(req.user.id, ['likes']);
     res.json({ results });
     logOperation({ userId: req.user.id, action: 'bulk-unlike', trackCount: results.filter(r => r.status === 'ok').length, itemCount: results.length, status: 'success' });
   } catch (error) {
@@ -1954,8 +2096,17 @@ router.post('/likes/tracks/bulk-unlike', authenticateUser, heavyOperationRateLim
  */
 router.get('/followers', authenticateUser, async (req, res) => {
   try {
-    const followers = await soundcloudClient.getFollowers(req.accessToken, req.refreshToken);
-    res.json({ collection: followers, total: followers.length });
+    const payload = await getCachedUserPayload(
+      'followers',
+      req.user.id,
+      'default',
+      async () => {
+        const followers = await soundcloudClient.getFollowers(req.accessToken, req.refreshToken);
+        return { collection: followers, total: followers.length };
+      },
+      CACHE_TTL.followers,
+    );
+    res.json(payload);
   } catch (error) {
     logger.error('Get followers error:', safeError(error));
     res.status(500).json({ error: 'Failed to fetch followers' });
@@ -1968,8 +2119,17 @@ router.get('/followers', authenticateUser, async (req, res) => {
  */
 router.get('/followings', authenticateUser, async (req, res) => {
   try {
-    const followings = await soundcloudClient.getFollowings(req.accessToken, req.refreshToken);
-    res.json({ collection: followings, total: followings.length });
+    const payload = await getCachedUserPayload(
+      'followings',
+      req.user.id,
+      'default',
+      async () => {
+        const followings = await soundcloudClient.getFollowings(req.accessToken, req.refreshToken);
+        return { collection: followings, total: followings.length };
+      },
+      CACHE_TTL.followings,
+    );
+    res.json(payload);
   } catch (error) {
     logger.error('Get followings error:', safeError(error));
     res.status(500).json({ error: 'Failed to fetch followings' });
@@ -1995,6 +2155,7 @@ router.post('/followings/bulk-unfollow', authenticateUser, heavyOperationRateLim
       }
     }
 
+    invalidateUserNamespaces(req.user.id, ['followings']);
     res.json({ results });
     logOperation({ userId: req.user.id, action: 'bulk-unfollow', itemCount: results.filter(r => r.status === 'ok').length, status: 'success' });
   } catch (error) {
@@ -2009,9 +2170,18 @@ router.post('/followings/bulk-unfollow', authenticateUser, heavyOperationRateLim
  */
 router.get('/reposts', authenticateUser, async (req, res) => {
   try {
-    const reposts = await soundcloudClient.getReposts(req.accessToken, req.refreshToken);
-    logger.info(`[GET /api/reposts] returning ${reposts.length} reposts`);
-    res.json({ collection: reposts, total_results: reposts.length });
+    const payload = await getCachedUserPayload(
+      'reposts',
+      req.user.id,
+      'default',
+      async () => {
+        const reposts = await soundcloudClient.getReposts(req.accessToken, req.refreshToken);
+        logger.info(`[GET /api/reposts] returning ${reposts.length} reposts`);
+        return { collection: reposts, total_results: reposts.length };
+      },
+      CACHE_TTL.reposts,
+    );
+    res.json(payload);
   } catch (error) {
     logger.error('Get reposts error:', safeError(error));
     res.status(500).json({ error: 'Failed to fetch reposts' });
@@ -2133,6 +2303,7 @@ router.post('/reposts/bulk-remove', authenticateUser, heavyOperationRateLimiter,
       }
     }
 
+    invalidateUserNamespaces(req.user.id, ['reposts']);
     res.json({ results });
     logOperation({ userId: req.user.id, action: 'bulk-remove-reposts', itemCount: items.length, status: 'success' });
   } catch (error) {

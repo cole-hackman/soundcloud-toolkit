@@ -1,19 +1,19 @@
 "use client";
 
+import { useQueryClient } from "@tanstack/react-query";
 import { Users } from "lucide-react";
 import { PageContainer, PageHeader } from "@/components/ui";
 import { ExportBackLink } from "@/components/export/ExportBackLink";
 import { ListExportCard } from "@/components/export/ListExportCard";
-import { apiFetch } from "@/lib/api";
 import { FOLLOWING_FORMATS } from "@/lib/export-config";
 import type { ExportFollowing } from "@/lib/export";
+import { followingsQueryOptions } from "@/lib/queries";
 
 export default function ExportFollowingsPage() {
+  const queryClient = useQueryClient();
   const loadFollowings = async (): Promise<ExportFollowing[]> => {
-    const response = await apiFetch("/api/followings");
-    if (!response.ok) throw new Error("Failed to fetch followings");
-    const data = await response.json();
-    return data.collection || [];
+    const data = await queryClient.ensureQueryData(followingsQueryOptions());
+    return (data.collection || []) as unknown as ExportFollowing[];
   };
 
   return (

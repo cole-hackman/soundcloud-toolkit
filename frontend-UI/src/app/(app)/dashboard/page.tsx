@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { apiFetch } from "@/lib/api";
 import {
   Combine,
   Heart,
@@ -29,6 +28,7 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { useSurvey } from "@/contexts/SurveyContext";
 import { Card, EmptyState, Input, PageContainer, Skeleton } from "@/components/ui";
+import { useDashboardSummaryQuery } from "@/lib/queries";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "";
 const LAST_TOOLS_KEY = "sc-toolkit-last-tools";
@@ -217,16 +217,15 @@ export default function DashboardPage() {
   const { user, isAuthenticated, loading: authLoading } = useAuth();
   const survey = useSurvey();
   const router = useRouter();
-  const [stats, setStats] = useState<UserStats | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [statsError, setStatsError] = useState(false);
   const [linkUrl, setLinkUrl] = useState("");
   const [recentTools, setRecentTools] = useState<string[]>([]);
   const [toolQuery, setToolQuery] = useState("");
-
-  useEffect(() => {
-    fetchUserStats();
-  }, []);
+  const {
+    data: stats,
+    isLoading: loading,
+    isError: statsError,
+    refetch: refetchStats,
+  } = useDashboardSummaryQuery();
 
   useEffect(() => {
     if (!authLoading && isAuthenticated) {
@@ -243,75 +242,6 @@ export default function DashboardPage() {
     }
   }, []);
 
-  const fetchUserStats = async () => {
-    setStatsError(false);
-    try {
-      // Fetch user profile from SC API for follower/following/likes counts
-      const [meRes, playlistsRes, likesRes, followingsRes] = await Promise.all([
-        apiFetch("/api/me"),
-        apiFetch("/api/playlists?limit=1&offset=0"),
-        apiFetch("/api/likes/paged?limit=1&offset=0"),
-        apiFetch("/api/followings?limit=1&offset=0"),
-      ]);
-
-      let followers = 0;
-      let followings = 0;
-      let likes = 0;
-      let playlists = 0;
-
-      if (meRes.ok) {
-        const userData = await meRes.json();
-        followers = userData.followers_count ?? 0;
-        followings = userData.followings_count ?? 0;
-        likes = userData.public_favorites_count ?? userData.likes_count ?? 0;
-        playlists = userData.playlist_count ?? 0;
-      }
-
-      // Fallback: count playlists from the playlists endpoint
-      if (playlists === 0 && playlistsRes.ok) {
-        const playlistData = await playlistsRes.json();
-        if (Array.isArray(playlistData)) {
-          playlists = playlistData.length;
-        } else if (playlistData.collection) {
-          playlists = playlistData.total ?? playlistData.collection.length;
-        }
-      }
-
-      // Fallback: count likes from the likes endpoint
-      if (likes === 0 && likesRes.ok) {
-        const likesData = await likesRes.json();
-        if (likesData.total != null) {
-          likes = likesData.total;
-        } else if (likesData.collection) {
-          likes = likesData.collection.length;
-        }
-      }
-
-      // Fallback: count followings from the followings endpoint
-      if (followings === 0 && followingsRes.ok) {
-        const followingsData = await followingsRes.json();
-        if (followingsData.total != null) {
-          followings = followingsData.total;
-        } else if (followingsData.collection) {
-          followings = followingsData.collection.length;
-        }
-      }
-
-      setStats({
-        followers_count: followers,
-        followings_count: followings,
-        public_favorites_count: likes,
-        track_count: 0,
-        playlist_count: playlists,
-      });
-    } catch (error) {
-      console.error("Failed to fetch user stats:", error);
-      setStatsError(true);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleResolveLink = () => {
     const trimmed = linkUrl.trim();
     if (!trimmed) return;
@@ -322,7 +252,7 @@ export default function DashboardPage() {
   const statsData = useMemo(
     () => [
       { label: "Playlists", value: stats?.playlist_count ?? 0, icon: ListMusic, link: "/combine" },
-      { label: "Liked tracks", value: stats?.public_favorites_count ?? 0, icon: Heart, link: "/like-manager" },
+      { label: "Liked tracks", value: stats?.likes_count ?? 0, icon: Heart, link: "/like-manager" },
       { label: "Following", value: stats?.followings_count ?? 0, icon: Users, link: "/following-manager" },
       { label: "Followers", value: stats?.followers_count ?? 0, icon: Star, link: null },
     ],
@@ -396,8 +326,7 @@ export default function DashboardPage() {
                 <button
                   type="button"
                   onClick={() => {
-                    setLoading(true);
-                    fetchUserStats();
+                    refetchStats();
                   }}
                   className="px-4 py-2 rounded-lg text-sm font-semibold bg-gradient-to-r from-[#FF5500] to-[#E64A00] text-white hover:shadow-md transition"
                 >

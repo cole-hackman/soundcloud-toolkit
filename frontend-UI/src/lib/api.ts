@@ -67,3 +67,21 @@ export async function apiFetch(
 
   return response;
 }
+
+export async function apiFetchJson<T>(
+  path: string,
+  init?: RequestInit,
+): Promise<T> {
+  const response = await apiFetch(path, init);
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    const message =
+      typeof data?.error === "string"
+        ? data.error
+        : `Request failed with status ${response.status}`;
+    throw new Error(message);
+  }
+
+  return data as T;
+}

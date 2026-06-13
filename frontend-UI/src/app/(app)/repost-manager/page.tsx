@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Repeat2,
   Music,
@@ -21,6 +22,7 @@ import {
   SelectionBanner,
 } from "@/components/ui";
 import { apiFetch } from "@/lib/api";
+import { removeItemsFromRepostsCache, useRepostsQuery } from "@/lib/queries";
 
 interface Repost {
   id: number;
@@ -36,36 +38,23 @@ interface Repost {
 type SortOption = "recent" | "oldest" | "alpha";
 
 export default function RepostManagerPage() {
-  const [reposts, setReposts] = useState<Repost[]>([]);
+  const queryClient = useQueryClient();
   const [selected, setSelected] = useState<Set<number>>(new Set());
-  const [loading, setLoading] = useState(true);
   const [removing, setRemoving] = useState(false);
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<SortOption>("recent");
   const [showRemoveConfirm, setShowRemoveConfirm] = useState(false);
   const [notice, setNotice] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
-  useEffect(() => {
-    fetchReposts();
-  }, []);
+  const repostsQuery = useRepostsQuery();
+  const reposts = (repostsQuery.data?.collection || []) as unknown as Repost[];
+  const loading = repostsQuery.isLoading;
 
-  const fetchReposts = async () => {
-    setLoading(true);
-    try {
-      const response = await apiFetch("/api/reposts");
-      if (response.ok) {
-        const data = await response.json();
-        setReposts(data.collection || []);
-      } else {
-        setNotice({ type: "error", text: "Couldn’t load your reposts. Try refreshing the page." });
-      }
-    } catch (error) {
-      console.error("Failed to fetch reposts:", error);
+  useEffect(() => {
+    if (repostsQuery.isError) {
       setNotice({ type: "error", text: "Couldn’t load your reposts. Try refreshing the page." });
-    } finally {
-      setLoading(false);
     }
-  };
+  }, [repostsQuery.isError]);
 
   const toggleItem = (id: number) => {
     setSelected((prev) => {
@@ -106,12 +95,12 @@ export default function RepostManagerPage() {
 
       if (response.ok) {
         const data = await response.json();
-        const removedIds = new Set(
+        const removedIds = new Set<number>(
           data.results
             .filter((r: { status: string }) => r.status === "ok")
             .map((r: { id: number }) => r.id)
         );
-        setReposts((prev) => prev.filter((r) => !removedIds.has(r.id)));
+        removeItemsFromRepostsCache(queryClient, removedIds);
         setSelected(new Set());
         if (removedIds.size === items.length) {
           setNotice({ type: "success", text: `Removed ${removedIds.size} repost${removedIds.size === 1 ? "" : "s"}.` });

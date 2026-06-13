@@ -1,18 +1,20 @@
 "use client";
 
+import { useQueryClient } from "@tanstack/react-query";
 import { Heart } from "lucide-react";
 import { PageContainer, PageHeader } from "@/components/ui";
 import { ExportBackLink } from "@/components/export/ExportBackLink";
 import { TrackExportCard } from "@/components/export/TrackExportCard";
-import { apiFetch } from "@/lib/api";
 import { likesToTracks, normalizeLikesCollection } from "@/lib/export";
+import { likesQueryOptions } from "@/lib/queries";
 
 export default function ExportLikesPage() {
+  const queryClient = useQueryClient();
   const loadLikes = async () => {
-    const response = await apiFetch("/api/likes");
-    if (!response.ok) throw new Error("Failed to fetch likes");
-    const data = await response.json();
-    return likesToTracks(normalizeLikesCollection(data.collection || []));
+    const data = await queryClient.ensureQueryData(likesQueryOptions());
+    return likesToTracks(
+      normalizeLikesCollection((data.collection || []) as never),
+    );
   };
 
   return (

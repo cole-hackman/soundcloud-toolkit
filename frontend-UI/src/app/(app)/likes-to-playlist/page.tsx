@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { Check, Plus, Music, X } from "lucide-react";
 import { apiFetch } from "@/lib/api";
@@ -16,6 +17,7 @@ import {
   TrackRow,
 } from "@/components/ui";
 import { useSurvey } from "@/contexts/SurveyContext";
+import { invalidatePlaylistCaches, useLikesQuery, usePlaylistsQuery } from "@/lib/queries";
 
 interface Track {
   id: number;
@@ -43,17 +45,14 @@ interface CreatedPlaylist {
 type AddMode = "new" | "existing";
 
 export default function LikesToPlaylistPage() {
+  const queryClient = useQueryClient();
   const survey = useSurvey();
   const [prefillTrackId, setPrefillTrackId] = useState<number | null>(null);
-  const [likes, setLikes] = useState<Track[]>([]);
   const [selectedTracks, setSelectedTracks] = useState<Set<number>>(new Set());
   const [playlistName, setPlaylistName] = useState("");
   const [addMode, setAddMode] = useState<AddMode>("new");
-  const [userPlaylists, setUserPlaylists] = useState<Playlist[]>([]);
   const [targetPlaylist, setTargetPlaylist] = useState<Playlist | null>(null);
-  const [loadingPlaylists, setLoadingPlaylists] = useState(false);
   const [showPlaylistPicker, setShowPlaylistPicker] = useState(false);
-  const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [notice, setNotice] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [success, setSuccess] = useState(false);
@@ -66,9 +65,24 @@ export default function LikesToPlaylistPage() {
     numPlaylistsCreated?: number;
   } | null>(null);
 
+  const likesQuery = useLikesQuery();
+  const playlistsQuery = usePlaylistsQuery({ enabled: addMode === "existing" });
+  const likes = useMemo(
+    () => (likesQuery.data?.collection || []) as unknown as Track[],
+    [likesQuery.data?.collection],
+  );
+  const userPlaylists = useMemo(
+    () => (playlistsQuery.data?.collection || []) as unknown as Playlist[],
+    [playlistsQuery.data?.collection],
+  );
+  const loading = likesQuery.isLoading;
+  const loadingPlaylists = playlistsQuery.isLoading;
+
   useEffect(() => {
-    fetchLikes();
-  }, []);
+    if (likesQuery.isError) {
+      setNotice({ type: "error", text: "Couldn’t load your liked tracks. Try refreshing the page." });
+    }
+  }, [likesQuery.isError]);
 
   useEffect(() => {
     if (!success || !result) return;
@@ -88,46 +102,6 @@ export default function LikesToPlaylistPage() {
       setSelectedTracks(new Set([prefillTrackId]));
     }
   }, [likes, prefillTrackId]);
-
-  // Fetch user playlists when switching to "existing" mode
-  useEffect(() => {
-    if (addMode === "existing" && userPlaylists.length === 0) {
-      fetchUserPlaylists();
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [addMode]);
-
-  const fetchLikes = async () => {
-    try {
-      const response = await apiFetch("/api/likes");
-      if (response.ok) {
-        const data = await response.json();
-        setLikes(data.collection || []);
-      } else {
-        setNotice({ type: "error", text: "Couldn’t load your liked tracks. Try refreshing the page." });
-      }
-    } catch (error) {
-      console.error("Failed to fetch likes:", error);
-      setNotice({ type: "error", text: "Couldn’t load your liked tracks. Try refreshing the page." });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchUserPlaylists = async () => {
-    setLoadingPlaylists(true);
-    try {
-      const response = await apiFetch("/api/playlists");
-      if (response.ok) {
-        const data = await response.json();
-        setUserPlaylists(data.collection || []);
-      }
-    } catch (error) {
-      console.error("Failed to fetch playlists:", error);
-    } finally {
-      setLoadingPlaylists(false);
-    }
-  };
 
   const toggleTrack = (id: number) => {
     setSelectedTracks((prev) => {
@@ -171,6 +145,7 @@ export default function LikesToPlaylistPage() {
       });
       const data = await response.json().catch(() => ({}));
       if (response.ok) {
+        await invalidatePlaylistCaches(queryClient, targetPlaylist?.id ?? null);
         setResult(data);
         setSuccess(true);
       } else {

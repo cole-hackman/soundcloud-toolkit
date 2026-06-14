@@ -1,15 +1,18 @@
-"use client";
-
+import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
+import { buildPublicMetadata } from "@/lib/seo/metadata";
+
+export const metadata: Metadata = buildPublicMetadata({
+  title: "Privacy Policy | SC Toolkit",
+  description:
+    "Read how SC Toolkit stores SoundCloud account data, protects tokens, and handles cookies, analytics, and account deletion.",
+  path: "/privacy/",
+});
+
+const lastUpdated = "June 13, 2026";
 
 export default function PrivacyPage() {
-  const lastUpdated = new Date().toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
-
   return (
     <div className="min-h-screen bg-background text-foreground">
       <div className="max-w-4xl mx-auto px-6 py-10 md:py-16">
@@ -318,4 +321,3 @@ export default function PrivacyPage() {
     </div>
   );
 }
-

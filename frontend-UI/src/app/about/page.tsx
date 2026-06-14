@@ -1,7 +1,14 @@
-"use client";
-
+import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
+import { buildPublicMetadata } from "@/lib/seo/metadata";
+
+export const metadata: Metadata = buildPublicMetadata({
+  title: "About SC Toolkit | SoundCloud Playlist Management Tools",
+  description:
+    "Learn what SC Toolkit does, who it helps, and how it handles SoundCloud playlist management, security, and privacy.",
+  path: "/about/",
+});
 
 export default function AboutPage() {
   return (

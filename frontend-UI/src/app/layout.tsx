@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Plus_Jakarta_Sans, Space_Grotesk } from "next/font/google";
-import Script from "next/script";
+import { siteMetadata } from "@/lib/seo/metadata";
 import "./globals.css";
 import { GoogleAnalytics } from "@/components/Analytics";
 import { Providers } from "@/components/Providers";
@@ -26,9 +26,8 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: "SC Toolkit – Organize, Merge & Clean SoundCloud Playlists",
-  description:
-    "SC Toolkit helps SoundCloud power users organize, merge, and clean playlists. Remove duplicates, manage tracks, and build better playlists faster.",
+  title: siteMetadata.defaultTitle,
+  description: siteMetadata.defaultDescription,
   keywords: [
     "SoundCloud",
     "playlist",
@@ -56,19 +55,18 @@ export const metadata: Metadata = {
     },
   },
   alternates: {
-    canonical: "https://www.soundcloudtoolkit.com/",
+    canonical: siteMetadata.siteUrl,
   },
   openGraph: {
     type: "website",
     locale: "en_US",
-    url: "https://www.soundcloudtoolkit.com/",
+    url: siteMetadata.siteUrl,
     siteName: "SC Toolkit",
-    title: "SC Toolkit – Organize, Merge & Clean SoundCloud Playlists",
-    description:
-      "SC Toolkit helps SoundCloud power users organize, merge, and clean playlists. Remove duplicates, manage tracks, and build better playlists faster.",
+    title: siteMetadata.defaultTitle,
+    description: siteMetadata.defaultDescription,
     images: [
       {
-        url: "https://www.soundcloudtoolkit.com/og-image.png",
+        url: siteMetadata.ogImage,
         width: 1200,
         height: 630,
         alt: "SC Toolkit - Smarter SoundCloud Playlist Management",
@@ -77,17 +75,16 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "SC Toolkit – Organize, Merge & Clean SoundCloud Playlists",
-    description:
-      "SC Toolkit helps SoundCloud power users organize, merge, and clean playlists. Remove duplicates, manage tracks, and build better playlists faster.",
-    images: ["https://www.soundcloudtoolkit.com/og-image.png"],
+    title: siteMetadata.defaultTitle,
+    description: siteMetadata.defaultDescription,
+    images: [siteMetadata.ogImage],
   },
   icons: {
     icon: "/SC Toolkit Icon.png",
     apple: "/SC Toolkit Icon.png",
   },
   manifest: "/manifest.json",
-  metadataBase: new URL("https://www.soundcloudtoolkit.com"),
+  metadataBase: new URL(siteMetadata.siteUrl),
 };
 
 export default function RootLayout({
@@ -98,26 +95,12 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${display.variable} ${sans.variable}`}>
       <head>
-        <link rel="canonical" href="https://www.soundcloudtoolkit.com/" />
         <meta name="theme-color" content="#FF5500" />
       </head>
       <body className="antialiased font-sans">
         <Providers>
           {children}
         </Providers>
-        <Script
-          src="https://cdnjs.buymeacoffee.com/1.0.0/button.prod.min.js"
-          data-name="bmc-button"
-          data-slug="hackman"
-          data-color="#fcffff"
-          data-emoji="☕"
-          data-font="Lato"
-          data-text="Support Me"
-          data-outline-color="#000000"
-          data-font-color="#000000"
-          data-coffee-color="#FFDD00"
-          strategy="afterInteractive"
-        />
         <GoogleAnalytics />
         <Analytics />
         <SpeedInsights />

@@ -63,3 +63,9 @@ __pycache__/
 
 # Chrome extension (personal use, sideloaded only)
 /extension/
+
+# Local SEO audit cache
+.seo-cache/
+
+# Local git worktrees
+.worktrees/

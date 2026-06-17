@@ -51,6 +51,7 @@ export default function ActivityToPlaylistPage() {
   const [mode, setMode] = useState<"new" | "existing">("new");
   const [newPlaylistName, setNewPlaylistName] = useState("");
   const [selectedPlaylistId, setSelectedPlaylistId] = useState<number | null>(null);
+  const [lastSelectedIndex, setLastSelectedIndex] = useState<number | null>(null);
   const [notice, setNotice] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const activitiesQuery = useActivitiesQuery(200);
   const playlistsQuery = usePlaylistsQuery();
@@ -67,13 +68,29 @@ export default function ActivityToPlaylistPage() {
     }
   }, [activitiesQuery.isError, playlistsQuery.isError]);
 
-  const toggleTrack = (id: number) => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+  const toggleTrack = (id: number, index: number, currentFilteredActivities: Activity[], event?: React.MouseEvent | React.KeyboardEvent) => {
+    const isShiftKey = event && 'shiftKey' in event && event.shiftKey;
+
+    if (isShiftKey && lastSelectedIndex !== null) {
+      const start = Math.min(lastSelectedIndex, index);
+      const end = Math.max(lastSelectedIndex, index);
+      
+      setSelected((prev) => {
+        const next = new Set(prev);
+        for (let i = start; i <= end; i++) {
+          next.add(currentFilteredActivities[i].origin.id);
+        }
+        return next;
+      });
+    } else {
+      setSelected((prev) => {
+        const next = new Set(prev);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        return next;
+      });
+      setLastSelectedIndex(index);
+    }
   };
 
   const selectAll = () => {
@@ -198,7 +215,7 @@ export default function ActivityToPlaylistPage() {
               </div>
 
               <div className="space-y-2 max-h-[600px] overflow-y-auto">
-                {filteredActivities.map((activity) => {
+                {filteredActivities.map((activity, index) => {
                   const track = activity.origin;
                   const isSelected = selected.has(track.id);
                   const isRepost = activity.type.includes('repost');
@@ -221,7 +238,7 @@ export default function ActivityToPlaylistPage() {
                         subtitle,
                       }}
                       isSelected={isSelected}
-                      onToggle={() => toggleTrack(track.id)}
+                      onToggle={(e) => toggleTrack(track.id, index, filteredActivities, e)}
                     />
                   );
                 })}

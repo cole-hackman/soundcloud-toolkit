@@ -7,8 +7,6 @@ import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button, BulkReviewDetails, ConfirmDialog, EmptyState, Input, LoadingSpinner, PageContainer, PageHeader, TrackRow } from "@/components/ui";
 
-const OWNER_USER_ID = "cmfxhbsop0000dp0crm6vnd18";
-
 interface Playlist {
   id: number;
   title: string;
@@ -55,7 +53,9 @@ const hasGateUrl = (url?: string) => !!url;
 
 export default function DownloadsPage() {
   const { user } = useAuth();
-  const isOwner = user?.id === OWNER_USER_ID;
+  // Gated server-side: /api/auth/me returns canDownload based on the
+  // DOWNLOAD_ALLOWLIST env (SoundCloud IDs) + admins.
+  const isOwner = !!user?.canDownload;
 
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [selectedSource, setSelectedSource] = useState<Playlist | null>(null);

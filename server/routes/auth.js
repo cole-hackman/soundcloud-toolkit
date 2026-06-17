@@ -250,7 +250,18 @@ router.get('/me', async (req, res) => {
     const isAdmin = !!sessionData.soundcloudId &&
       adminIds.includes(Number(sessionData.soundcloudId));
 
-    res.json({ ...sessionData, isAdmin });
+    // Download (Hypeddit auto-download) allowlist — comma-separated SoundCloud
+    // IDs in DOWNLOAD_ALLOWLIST. Admins always qualify. Add a person by editing
+    // the env var and restarting the backend; no frontend redeploy needed.
+    const downloadAllowlist = (process.env.DOWNLOAD_ALLOWLIST || '')
+      .split(',')
+      .map(s => Number(s.trim()))
+      .filter(n => !isNaN(n) && n > 0);
+
+    const canDownload = isAdmin || (!!sessionData.soundcloudId &&
+      downloadAllowlist.includes(Number(sessionData.soundcloudId)));
+
+    res.json({ ...sessionData, isAdmin, canDownload });
   } catch (error) {
     logger.error('Me error:', safeError(error));
     res.status(500).json({ error: 'Failed to get user info' });

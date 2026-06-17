@@ -42,6 +42,7 @@ type SortOption = "recent" | "oldest" | "alpha";
 export default function LikeManagerPage() {
   const queryClient = useQueryClient();
   const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [lastSelectedIndex, setLastSelectedIndex] = useState<number | null>(null);
   const [removing, setRemoving] = useState(false);
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<SortOption>("recent");
@@ -70,13 +71,29 @@ export default function LikeManagerPage() {
     },
   );
 
-  const toggleTrack = (id: number) => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+  const toggleTrack = (id: number, index: number, currentFilteredLikes: Like[], event?: React.MouseEvent | React.KeyboardEvent) => {
+    const isShiftKey = event && 'shiftKey' in event && event.shiftKey;
+
+    if (isShiftKey && lastSelectedIndex !== null) {
+      const start = Math.min(lastSelectedIndex, index);
+      const end = Math.max(lastSelectedIndex, index);
+      
+      setSelected((prev) => {
+        const next = new Set(prev);
+        for (let i = start; i <= end; i++) {
+          next.add(currentFilteredLikes[i].track.id);
+        }
+        return next;
+      });
+    } else {
+      setSelected((prev) => {
+        const next = new Set(prev);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        return next;
+      });
+      setLastSelectedIndex(index);
+    }
   };
 
   const uniqueGenres = Array.from(
@@ -264,7 +281,7 @@ export default function LikeManagerPage() {
               fadeHeight={72}
             >
               <div className="space-y-2">
-                {filteredLikes.map((like) => {
+                {filteredLikes.map((like, index) => {
                   const track = like.track;
                   const isSelected = selected.has(track.id);
                   return (
@@ -272,7 +289,7 @@ export default function LikeManagerPage() {
                       key={track.id}
                       track={{ ...track, subtitle: track.user?.username }}
                       isSelected={isSelected}
-                      onToggle={() => toggleTrack(track.id)}
+                      onToggle={(e) => toggleTrack(track.id, index, filteredLikes, e)}
                       rightSlot={
                         <span className="text-xs text-muted-foreground">
                           {formatDuration(track.duration)}

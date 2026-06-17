@@ -12,10 +12,10 @@ interface TrackRowTrack {
   artworkAlt?: string;
 }
 
-interface TrackRowProps extends React.HTMLAttributes<HTMLDivElement> {
+interface TrackRowProps extends Omit<React.HTMLAttributes<HTMLDivElement>, "onClick"> {
   track: TrackRowTrack;
   isSelected: boolean;
-  onToggle: () => void;
+  onToggle: (event?: React.MouseEvent | React.KeyboardEvent) => void;
   rightSlot?: React.ReactNode;
 }
 
@@ -38,7 +38,7 @@ export function TrackRow({
       onKeyDown={(event) => {
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
-          onToggle();
+          onToggle(event);
         }
       }}
       className={cn(

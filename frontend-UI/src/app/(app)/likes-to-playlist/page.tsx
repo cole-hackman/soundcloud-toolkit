@@ -91,6 +91,8 @@ export default function LikesToPlaylistPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [success, result]);
 
+  const [lastSelectedIndex, setLastSelectedIndex] = useState<number | null>(null);
+
   useEffect(() => {
     const idParam = new URLSearchParams(window.location.search).get("id");
     const trackId = idParam ? Number(idParam) : NaN;
@@ -103,13 +105,31 @@ export default function LikesToPlaylistPage() {
     }
   }, [likes, prefillTrackId]);
 
-  const toggleTrack = (id: number) => {
-    setSelectedTracks((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+  const toggleTrack = (id: number, index: number, event?: React.MouseEvent | React.KeyboardEvent) => {
+    const isShiftKey = event && 'shiftKey' in event && event.shiftKey;
+
+    if (isShiftKey && lastSelectedIndex !== null) {
+      // Select a range
+      const start = Math.min(lastSelectedIndex, index);
+      const end = Math.max(lastSelectedIndex, index);
+      
+      setSelectedTracks((prev) => {
+        const next = new Set(prev);
+        for (let i = start; i <= end; i++) {
+          next.add(likes[i].id);
+        }
+        return next;
+      });
+    } else {
+      // Standard toggle
+      setSelectedTracks((prev) => {
+        const next = new Set(prev);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        return next;
+      });
+      setLastSelectedIndex(index);
+    }
   };
 
   const selectAll = () => {
@@ -289,14 +309,14 @@ export default function LikesToPlaylistPage() {
                 <EmptyState icon={<Music className="w-12 h-12" />} title="No liked tracks found" />
               ) : (
                 <div className="space-y-2 max-h-[600px] overflow-y-auto">
-                  {likes.map((track) => {
+                  {likes.map((track, index) => {
                     const isSelected = selectedTracks.has(track.id);
                     return (
                       <TrackRow
                         key={track.id}
                         track={{ ...track, subtitle: track.user?.username }}
                         isSelected={isSelected}
-                        onToggle={() => toggleTrack(track.id)}
+                        onToggle={(e) => toggleTrack(track.id, index, e)}
                         rightSlot={
                           <span className="text-xs text-[#666666] dark:text-muted-foreground">
                             {formatDuration(track.duration)}

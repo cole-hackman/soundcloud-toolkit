@@ -12,7 +12,7 @@ interface TrackRowTrack {
   artworkAlt?: string;
 }
 
-interface TrackRowProps extends Omit<React.HTMLAttributes<HTMLDivElement>, "onClick"> {
+interface TrackRowProps extends Omit<React.HTMLAttributes<HTMLDivElement>, "onClick" | "onToggle"> {
   track: TrackRowTrack;
   isSelected: boolean;
   onToggle: (event?: React.MouseEvent | React.KeyboardEvent) => void;

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Repeat2,
   Music,
@@ -21,6 +22,7 @@ import {
   SelectionBanner,
 } from "@/components/ui";
 import { apiFetch } from "@/lib/api";
+import { removeItemsFromRepostsCache, useRepostsQuery } from "@/lib/queries";
 
 interface Repost {
   id: number;
@@ -36,36 +38,26 @@ interface Repost {
 type SortOption = "recent" | "oldest" | "alpha";
 
 export default function RepostManagerPage() {
-  const [reposts, setReposts] = useState<Repost[]>([]);
+  const queryClient = useQueryClient();
   const [selected, setSelected] = useState<Set<number>>(new Set());
-  const [loading, setLoading] = useState(true);
   const [removing, setRemoving] = useState(false);
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<SortOption>("recent");
   const [showRemoveConfirm, setShowRemoveConfirm] = useState(false);
   const [notice, setNotice] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [keepList, setKeepList] = useState("");
+  const [limitInput, setLimitInput] = useState("");
+  const [showAutoSelect, setShowAutoSelect] = useState(false);
+
+  const repostsQuery = useRepostsQuery();
+  const reposts = (repostsQuery.data?.collection || []) as unknown as Repost[];
+  const loading = repostsQuery.isLoading;
 
   useEffect(() => {
-    fetchReposts();
-  }, []);
-
-  const fetchReposts = async () => {
-    setLoading(true);
-    try {
-      const response = await apiFetch("/api/reposts");
-      if (response.ok) {
-        const data = await response.json();
-        setReposts(data.collection || []);
-      } else {
-        setNotice({ type: "error", text: "Couldn’t load your reposts. Try refreshing the page." });
-      }
-    } catch (error) {
-      console.error("Failed to fetch reposts:", error);
+    if (repostsQuery.isError) {
       setNotice({ type: "error", text: "Couldn’t load your reposts. Try refreshing the page." });
-    } finally {
-      setLoading(false);
     }
-  };
+  }, [repostsQuery.isError]);
 
   const toggleItem = (id: number) => {
     setSelected((prev) => {
@@ -98,31 +90,50 @@ export default function RepostManagerPage() {
         .filter((r) => selected.has(r.id))
         .map((r) => ({ id: r.id, resourceType: r.resourceType }));
 
-      const response = await apiFetch("/api/reposts/bulk-remove", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ items }),
+      // The API caps each request at 100 items, so chunk larger selections.
+      const CHUNK = 100;
+      const removedIds = new Set<number>();
+      let rateLimited = false;
+
+      for (let i = 0; i < items.length; i += CHUNK) {
+        const chunk = items.slice(i, i + CHUNK);
+        const response = await apiFetch("/api/reposts/bulk-remove", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ items: chunk }),
+        });
+
+        if (response.status === 429) {
+          rateLimited = true;
+          break;
+        }
+        if (!response.ok) break;
+
+        const data = await response.json();
+        for (const r of data.results as { id: number; status: string }[]) {
+          if (r.status === "ok") removedIds.add(r.id);
+        }
+      }
+
+      removeItemsFromRepostsCache(queryClient, removedIds);
+      setSelected((prev) => {
+        const next = new Set(prev);
+        removedIds.forEach((id) => next.delete(id));
+        return next;
       });
 
-      if (response.ok) {
-        const data = await response.json();
-        const removedIds = new Set(
-          data.results
-            .filter((r: { status: string }) => r.status === "ok")
-            .map((r: { id: number }) => r.id)
-        );
-        setReposts((prev) => prev.filter((r) => !removedIds.has(r.id)));
-        setSelected(new Set());
-        if (removedIds.size === items.length) {
-          setNotice({ type: "success", text: `Removed ${removedIds.size} repost${removedIds.size === 1 ? "" : "s"}.` });
-        } else {
-          setNotice({
-            type: "error",
-            text: `Removed ${removedIds.size} of ${items.length} reposts. Some failed.`,
-          });
-        }
+      if (removedIds.size === items.length) {
+        setNotice({ type: "success", text: `Removed ${removedIds.size} repost${removedIds.size === 1 ? "" : "s"}.` });
+      } else if (rateLimited) {
+        setNotice({
+          type: "error",
+          text: `Removed ${removedIds.size} of ${items.length} before hitting SoundCloud's rate limit. Wait a bit and run it again to finish.`,
+        });
       } else {
-        setNotice({ type: "error", text: "Bulk remove failed. Please try again." });
+        setNotice({
+          type: "error",
+          text: `Removed ${removedIds.size} of ${items.length} reposts. Some failed — try again.`,
+        });
       }
     } catch (error) {
       console.error("Bulk remove error:", error);
@@ -146,6 +157,44 @@ export default function RepostManagerPage() {
       if (sort === "oldest") return aTime - bTime;
       return bTime - aTime;
     });
+
+  // Build a matcher for each keep-list entry. Lines wrapped in /slashes/ are
+  // treated as regex; everything else is a case-insensitive substring match.
+  // Matched against both the title and the uploader's username.
+  const keepMatchers = keepList
+    .split(/[\n,]+/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((entry) => {
+      const rx = entry.match(/^\/(.*)\/([a-z]*)$/i);
+      if (rx) {
+        try {
+          return new RegExp(rx[1], rx[2].includes("i") ? rx[2] : rx[2] + "i");
+        } catch {
+          /* fall through to substring on invalid regex */
+        }
+      }
+      const lower = entry.toLowerCase();
+      return { test: (s: string) => s.toLowerCase().includes(lower) } as RegExp;
+    });
+
+  const matchesKeepList = (r: Repost) => {
+    const haystack = `${r.title} ${r.user?.username ?? ""}`;
+    return keepMatchers.some((m) => m.test(haystack));
+  };
+
+  // Reposts in the current (search-filtered) view that are NOT protected by the keep-list.
+  const removableReposts = filteredReposts.filter((r) => !matchesKeepList(r));
+  const keptCount = filteredReposts.length - removableReposts.length;
+  const parsedLimit = (() => {
+    const n = parseInt(limitInput, 10);
+    return Number.isFinite(n) && n > 0 ? n : Infinity;
+  })();
+
+  const selectExceptKeepList = () => {
+    const targets = removableReposts.slice(0, parsedLimit === Infinity ? undefined : parsedLimit);
+    setSelected(new Set(targets.map((r) => r.id)));
+  };
 
   return (
     <PageContainer maxWidth="wide" className={selected.size > 0 ? "pb-28" : ""}>
@@ -211,7 +260,56 @@ export default function RepostManagerPage() {
               >
                 {selected.size === filteredReposts.length ? "Deselect All" : "Select All"}
               </button>
+              <button
+                onClick={() => setShowAutoSelect((v) => !v)}
+                className="text-sm text-[#666666] dark:text-muted-foreground hover:text-[#333333] dark:hover:text-foreground font-medium whitespace-nowrap"
+              >
+                {showAutoSelect ? "Hide auto-select" : "Auto-select…"}
+              </button>
             </div>
+
+            {/* Auto-select with a keep-list (everything except matches gets selected) */}
+            {showAutoSelect && (
+              <div className="mb-4 p-4 rounded-xl bg-gray-50 dark:bg-secondary/20 border-2 border-gray-200 dark:border-border">
+                <div className="text-sm font-semibold text-[#333333] dark:text-foreground mb-1">
+                  Auto-select everything except your keep-list
+                </div>
+                <p className="text-xs text-[#666666] dark:text-muted-foreground mb-3">
+                  One artist or title per line (or comma-separated). Matches are kept; everything
+                  else in the current view is selected. Wrap a line in <code>/slashes/</code> for regex.
+                  Nothing is removed until you confirm.
+                </p>
+                <textarea
+                  value={keepList}
+                  onChange={(e) => setKeepList(e.target.value)}
+                  placeholder={"Phibes\nMyFavoriteArtist\n/remix$/"}
+                  rows={3}
+                  className="w-full px-3 py-2 mb-3 border-2 border-gray-200 dark:border-border rounded-lg text-sm font-mono text-[#333333] dark:text-foreground bg-white dark:bg-secondary/20 focus:border-[#FF5500] focus:outline-none resize-y"
+                />
+                <div className="flex items-center gap-3 flex-wrap">
+                  <label className="text-xs text-[#666666] dark:text-muted-foreground flex items-center gap-2">
+                    Limit
+                    <input
+                      type="number"
+                      min={1}
+                      value={limitInput}
+                      onChange={(e) => setLimitInput(e.target.value)}
+                      placeholder="all"
+                      className="w-20 px-2 py-1 border-2 border-gray-200 dark:border-border rounded-lg text-sm text-[#333333] dark:text-foreground bg-white dark:bg-secondary/20 focus:border-[#FF5500] focus:outline-none"
+                    />
+                  </label>
+                  <button
+                    onClick={selectExceptKeepList}
+                    className="px-3 py-1.5 rounded-lg bg-[#FF5500] hover:bg-[#E64D00] text-white text-sm font-medium"
+                  >
+                    Select {Math.min(removableReposts.length, parsedLimit === Infinity ? removableReposts.length : parsedLimit)} to remove
+                  </button>
+                  <span className="text-xs text-[#999999] dark:text-muted-foreground">
+                    {keptCount} kept · {removableReposts.length} removable in view
+                  </span>
+                </div>
+              </div>
+            )}
 
             <div className="text-sm text-[#999999] dark:text-muted-foreground mb-2">
               {filteredReposts.length} of {reposts.length} reposts

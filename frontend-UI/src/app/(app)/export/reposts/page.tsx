@@ -1,19 +1,19 @@
 "use client";
 
+import { useQueryClient } from "@tanstack/react-query";
 import { Repeat2 } from "lucide-react";
 import { PageContainer, PageHeader } from "@/components/ui";
 import { ExportBackLink } from "@/components/export/ExportBackLink";
 import { ListExportCard } from "@/components/export/ListExportCard";
-import { apiFetch } from "@/lib/api";
 import { REPOST_FORMATS } from "@/lib/export-config";
 import type { ExportRepost } from "@/lib/export";
+import { repostsQueryOptions } from "@/lib/queries";
 
 export default function ExportRepostsPage() {
+  const queryClient = useQueryClient();
   const loadReposts = async (): Promise<ExportRepost[]> => {
-    const response = await apiFetch("/api/reposts");
-    if (!response.ok) throw new Error("Failed to fetch reposts");
-    const data = await response.json();
-    return data.collection || [];
+    const data = await queryClient.ensureQueryData(repostsQueryOptions());
+    return (data.collection || []) as unknown as ExportRepost[];
   };
 
   return (

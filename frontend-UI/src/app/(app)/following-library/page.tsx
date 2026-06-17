@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Check,
   Copy,
@@ -31,6 +32,7 @@ import {
   TrackRow,
 } from "@/components/ui";
 import { cn } from "@/lib/utils";
+import { invalidatePlaylistCaches, useFollowingsQuery, usePlaylistsQuery } from "@/lib/queries";
 
 interface Following {
   id: number;
@@ -75,14 +77,13 @@ const TAB_LABELS: Record<LibraryTab, string> = {
 };
 
 export default function FollowingLibraryPage() {
-  const [followings, setFollowings] = useState<Following[]>([]);
+  const queryClient = useQueryClient();
   const [selectedUser, setSelectedUser] = useState<Following | null>(null);
   const [userSearch, setUserSearch] = useState("");
   const [activeTab, setActiveTab] = useState<LibraryTab>("likes");
   const [tracks, setTracks] = useState<Track[]>([]);
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [nextHref, setNextHref] = useState<string | null>(null);
-  const [loadingUsers, setLoadingUsers] = useState(true);
   const [loadingContent, setLoadingContent] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [selectedTracks, setSelectedTracks] = useState<Set<number>>(new Set());
@@ -90,8 +91,6 @@ export default function FollowingLibraryPage() {
   const [playlistName, setPlaylistName] = useState("");
   const [addMode, setAddMode] = useState<AddMode>("new");
   const [targetPlaylist, setTargetPlaylist] = useState<Playlist | null>(null);
-  const [ownPlaylists, setOwnPlaylists] = useState<Playlist[]>([]);
-  const [loadingOwnPlaylists, setLoadingOwnPlaylists] = useState(false);
   const [showPlaylistPicker, setShowPlaylistPicker] = useState(false);
   const [titlePrefix, setTitlePrefix] = useState("");
   const [working, setWorking] = useState(false);
@@ -106,9 +105,18 @@ export default function FollowingLibraryPage() {
     errors?: { id: number; error: string }[];
   } | null>(null);
 
-  useEffect(() => {
-    fetchFollowings();
-  }, []);
+  const followingsQuery = useFollowingsQuery();
+  const ownPlaylistsQuery = usePlaylistsQuery({ enabled: addMode === "existing" });
+  const followings = useMemo(
+    () => (followingsQuery.data?.collection || []) as unknown as Following[],
+    [followingsQuery.data?.collection],
+  );
+  const ownPlaylists = useMemo(
+    () => (ownPlaylistsQuery.data?.collection || []) as unknown as Playlist[],
+    [ownPlaylistsQuery.data?.collection],
+  );
+  const loadingUsers = followingsQuery.isLoading;
+  const loadingOwnPlaylists = ownPlaylistsQuery.isLoading;
 
   useEffect(() => {
     if (selectedUser) {
@@ -118,11 +126,16 @@ export default function FollowingLibraryPage() {
   }, [selectedUser, activeTab]);
 
   useEffect(() => {
-    if (addMode === "existing" && ownPlaylists.length === 0) {
-      fetchOwnPlaylists();
+    if (followingsQuery.isError) {
+      setNotice({ type: "error", text: "Couldn't load the accounts you follow. Try refreshing the page." });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [addMode]);
+  }, [followingsQuery.isError]);
+
+  useEffect(() => {
+    if (!selectedUser && followings.length > 0) {
+      setSelectedUser(followings[0]);
+    }
+  }, [followings, selectedUser]);
 
   const filteredFollowings = useMemo(() => {
     const query = userSearch.trim().toLowerCase();
@@ -135,25 +148,6 @@ export default function FollowingLibraryPage() {
     () => playlists.filter((playlist) => selectedPlaylists.has(playlist.id)),
     [playlists, selectedPlaylists],
   );
-
-  const fetchFollowings = async () => {
-    setLoadingUsers(true);
-    try {
-      const response = await apiFetch("/api/followings");
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to load followings");
-      }
-      const collection = data.collection || [];
-      setFollowings(collection);
-      if (collection.length > 0) setSelectedUser(collection[0]);
-    } catch (error) {
-      console.error("Failed to fetch followings:", error);
-      setNotice({ type: "error", text: "Couldn't load the accounts you follow. Try refreshing the page." });
-    } finally {
-      setLoadingUsers(false);
-    }
-  };
 
   const fetchLibraryPage = async (tab: LibraryTab, reset: boolean) => {
     if (!selectedUser) return;
@@ -199,19 +193,6 @@ export default function FollowingLibraryPage() {
     } finally {
       setLoadingContent(false);
       setLoadingMore(false);
-    }
-  };
-
-  const fetchOwnPlaylists = async () => {
-    setLoadingOwnPlaylists(true);
-    try {
-      const response = await apiFetch("/api/playlists");
-      const data = await response.json().catch(() => ({}));
-      if (response.ok) setOwnPlaylists(data.collection || []);
-    } catch (error) {
-      console.error("Failed to load own playlists:", error);
-    } finally {
-      setLoadingOwnPlaylists(false);
     }
   };
 
@@ -279,6 +260,7 @@ export default function FollowingLibraryPage() {
       if (!response.ok) {
         throw new Error(data.error || "Failed to create playlist");
       }
+      await invalidatePlaylistCaches(queryClient, targetPlaylist?.id ?? null);
       setResult(data);
       setNotice({
         type: "success",
@@ -310,6 +292,7 @@ export default function FollowingLibraryPage() {
       if (!response.ok) {
         throw new Error(data.error || "Failed to clone playlists");
       }
+      await invalidatePlaylistCaches(queryClient);
       setResult(data);
       setNotice({ type: "success", text: "Selected playlists were cloned into your library." });
     } catch (error) {

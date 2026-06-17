@@ -101,6 +101,7 @@ const NAV: NavEntry[] = [
 const FOOTER_ITEMS = [
   { href: "/about", label: "About", icon: FileText },
   { href: "/privacy", label: "Privacy", icon: Shield },
+  { href: "/accessibility", label: "Accessibility", icon: Shield },
 ];
 
 /* ── Collapsible sidebar group ── */

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Search, Plus, Music, ChevronDown, X } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import {
@@ -13,6 +14,7 @@ import {
   SelectionBanner,
   TrackRow,
 } from "@/components/ui";
+import { invalidatePlaylistCaches, usePlaylistsQuery } from "@/lib/queries";
 
 const COMMON_GENRES = [
   "house", "techno", "ambient", "hip-hop", "drum-and-bass",
@@ -45,6 +47,7 @@ function formatDuration(ms: number) {
 }
 
 export default function GenreSearchPage() {
+  const queryClient = useQueryClient();
   // Search form state
   const [genre, setGenre] = useState("");
   const [tags, setTags] = useState("");
@@ -67,12 +70,13 @@ export default function GenreSearchPage() {
   const [showAddPanel, setShowAddPanel] = useState(false);
   const [addMode, setAddMode] = useState<AddMode>("new");
   const [playlistName, setPlaylistName] = useState("");
-  const [userPlaylists, setUserPlaylists] = useState<Playlist[]>([]);
   const [targetPlaylist, setTargetPlaylist] = useState<Playlist | null>(null);
-  const [loadingPlaylists, setLoadingPlaylists] = useState(false);
   const [adding, setAdding] = useState(false);
   const [addSuccess, setAddSuccess] = useState("");
   const [addError, setAddError] = useState("");
+  const playlistsQuery = usePlaylistsQuery({ enabled: showAddPanel && addMode === "existing" });
+  const userPlaylists = (playlistsQuery.data?.collection || []) as unknown as Playlist[];
+  const loadingPlaylists = playlistsQuery.isLoading;
 
   const buildSearchParams = () => {
     const params = new URLSearchParams();
@@ -146,27 +150,10 @@ export default function GenreSearchPage() {
     });
   };
 
-  const fetchUserPlaylists = async () => {
-    if (userPlaylists.length > 0) return;
-    setLoadingPlaylists(true);
-    try {
-      const res = await apiFetch("/api/playlists");
-      if (res.ok) {
-        const data = await res.json();
-        setUserPlaylists(data.collection || []);
-      }
-    } catch {
-      // ignore
-    } finally {
-      setLoadingPlaylists(false);
-    }
-  };
-
   const handleOpenAddPanel = () => {
     setShowAddPanel(true);
     setAddSuccess("");
     setAddError("");
-    if (addMode === "existing") fetchUserPlaylists();
   };
 
   const handleAddToPlaylist = async () => {
@@ -193,6 +180,7 @@ export default function GenreSearchPage() {
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
+        await invalidatePlaylistCaches(queryClient, targetPlaylist?.id ?? null);
         const count = data.addedCount ?? data.totalTracks ?? selectedTracks.size;
         const name = addMode === "existing" ? targetPlaylist?.title : (data.playlist?.title || playlistName);
         setAddSuccess(`${count} track${count !== 1 ? "s" : ""} added to "${name}".`);
@@ -437,7 +425,7 @@ export default function GenreSearchPage() {
                   New playlist
                 </button>
                 <button
-                  onClick={() => { setAddMode("existing"); fetchUserPlaylists(); }}
+                  onClick={() => { setAddMode("existing"); }}
                   className={`flex-1 py-2 text-sm font-medium transition ${
                     addMode === "existing"
                       ? "bg-[#FF5500] text-white"

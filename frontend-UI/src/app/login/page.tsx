@@ -217,6 +217,12 @@ export default function LoginPage() {
                     >
                       Privacy
                     </Link>
+                    <Link
+                      className="transition-colors hover:text-primary"
+                      href="/accessibility"
+                    >
+                      Accessibility
+                    </Link>
                   </div>
                 </CardFooter>
               </Card>

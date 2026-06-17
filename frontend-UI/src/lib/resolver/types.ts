@@ -58,6 +58,7 @@ export interface ResolverUser extends ResolverBase {
   playlist_count?: number | null;
   likes_count?: number | null;
   avatar_url?: string;
+  urn?: string;
 }
 
 export type ResolverResource = ResolverTrack | ResolverPlaylist | ResolverUser;

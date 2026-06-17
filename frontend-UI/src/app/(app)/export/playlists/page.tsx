@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, ListMusic } from "lucide-react";
 import { Button, PageContainer, PageHeader } from "@/components/ui";
 import { ExportBackLink } from "@/components/export/ExportBackLink";
@@ -9,44 +10,24 @@ import {
   PlaylistSelectGrid,
   type PlaylistSummary,
 } from "@/components/playlists/PlaylistSelectGrid";
-import { apiFetch } from "@/lib/api";
 import type { ExportTrack } from "@/lib/export";
+import {
+  playlistDetailQueryOptions,
+  usePlaylistsQuery,
+} from "@/lib/queries";
 
 export default function ExportPlaylistsPage() {
-  const [playlists, setPlaylists] = useState<PlaylistSummary[]>([]);
+  const queryClient = useQueryClient();
   const [selectedPlaylist, setSelectedPlaylist] = useState<PlaylistSummary | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState(false);
-
-  const fetchPlaylists = useCallback(async () => {
-    setLoading(true);
-    setLoadError(false);
-    try {
-      const response = await apiFetch("/api/playlists");
-      if (response.ok) {
-        const data = await response.json();
-        setPlaylists(data.collection || []);
-      } else {
-        setLoadError(true);
-      }
-    } catch (error) {
-      console.error("Failed to fetch playlists:", error);
-      setLoadError(true);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchPlaylists();
-  }, [fetchPlaylists]);
+  const playlistsQuery = usePlaylistsQuery();
+  const playlists = (playlistsQuery.data?.collection || []) as unknown as PlaylistSummary[];
+  const loading = playlistsQuery.isLoading;
+  const loadError = playlistsQuery.isError;
 
   const loadPlaylistTracks = async (): Promise<ExportTrack[]> => {
     if (!selectedPlaylist) throw new Error("Select a playlist first");
-    const response = await apiFetch(`/api/playlists/${selectedPlaylist.id}`);
-    if (!response.ok) throw new Error("Failed to fetch playlist");
-    const data = await response.json();
-    return (data.tracks || []) as ExportTrack[];
+    const data = await queryClient.ensureQueryData(playlistDetailQueryOptions(selectedPlaylist.id));
+    return (data.tracks || []) as unknown as ExportTrack[];
   };
 
   return (
@@ -62,7 +43,7 @@ export default function ExportPlaylistsPage() {
           playlists={playlists}
           loading={loading}
           loadError={loadError}
-          onRetry={fetchPlaylists}
+          onRetry={() => playlistsQuery.refetch()}
           onSelect={setSelectedPlaylist}
           title="Select a playlist to export"
           emptyDescription="Create some playlists on SoundCloud first."

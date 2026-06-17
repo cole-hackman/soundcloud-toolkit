@@ -1,11 +1,13 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { ArrowLeft, X, Combine, Check, Music, Trash2, AlertTriangle } from "lucide-react";
 import { apiFetch } from "@/lib/api";
-import { BulkReviewDetails, ConfirmDialog, EmptyState, LoadingSpinner, PageContainer, PageHeader, Skeleton } from "@/components/ui";
+import { BulkReviewDetails, ConfirmDialog, EmptyState, LoadingSpinner, PageContainer, PageHeader, Skeleton, Card, Button } from "@/components/ui";
 import { useSurvey } from "@/contexts/SurveyContext";
+import { invalidatePlaylistCaches, playlistsQueryOptions } from "@/lib/queries";
 
 interface Playlist {
   id: number;
@@ -18,7 +20,12 @@ interface Playlist {
 type MergeMode = "new" | "existing";
 
 export default function CombinePlaylistsPage() {
+  const queryClient = useQueryClient();
   const survey = useSurvey();
+  
+  const { data: playlistsData } = useSuspenseQuery(playlistsQueryOptions());
+  const userPlaylists = (playlistsData?.collection || []) as unknown as Playlist[];
+
   const [selectedPlaylists, setSelectedPlaylists] = useState<Playlist[]>([]);
   const [newPlaylistTitle, setNewPlaylistTitle] = useState("");
   const [mergeMode, setMergeMode] = useState<MergeMode>("new");
@@ -28,9 +35,6 @@ export default function CombinePlaylistsPage() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isComplete, setIsComplete] = useState(false);
-  const [userPlaylists, setUserPlaylists] = useState<Playlist[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState(false);
   const [mergeError, setMergeError] = useState<string | null>(null);
   const [result, setResult] = useState<{
     playlists?: { title: string }[];
@@ -49,10 +53,6 @@ export default function CombinePlaylistsPage() {
   } | null>(null);
 
   useEffect(() => {
-    fetchPlaylists();
-  }, []);
-
-  useEffect(() => {
     if (!isComplete) return;
     const trackCount =
       result?.stats?.totalTracks ??
@@ -61,24 +61,6 @@ export default function CombinePlaylistsPage() {
       0;
     survey.maybeShow({ context: "post-merge", trackCount });
   }, [isComplete, result, survey]);
-
-  const fetchPlaylists = async () => {
-    try {
-      setLoadError(false);
-      const response = await apiFetch("/api/playlists");
-      if (response.ok) {
-        const data = await response.json();
-        setUserPlaylists(data.collection || []);
-      } else {
-        setLoadError(true);
-      }
-    } catch (error) {
-      console.error("Failed to fetch playlists:", error);
-      setLoadError(true);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handlePlaylistToggle = (playlist: Playlist) => {
     const idNum = Number(playlist.id);
@@ -134,6 +116,7 @@ export default function CombinePlaylistsPage() {
 
       if (response.ok) {
         const data = await response.json();
+        await invalidatePlaylistCaches(queryClient, targetPlaylist?.id ?? null);
         setResult(data);
         setIsComplete(true);
       } else {
@@ -175,14 +158,14 @@ export default function CombinePlaylistsPage() {
     return (
       <div className="flex items-center justify-center px-6 py-12">
         <div className="max-w-2xl w-full">
-          <div className="text-center rounded-2xl p-10 shadow-xl border-2 bg-white dark:bg-card border-gray-200 dark:border-border">
-            <div className="w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-6 bg-gradient-to-br from-[#22c55e] to-[#16a34a] shadow-lg">
-              <Check className="w-12 h-12 text-white" />
+          <Card className="text-center rounded-2xl p-10 shadow-xl border-2">
+            <div className="w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-6 bg-primary shadow-lg">
+              <Check className="w-12 h-12 text-primary-foreground" />
             </div>
-            <h1 className="text-4xl md:text-5xl font-bold mb-4 text-[#333333] dark:text-foreground">
+            <h1 className="text-4xl md:text-5xl font-bold mb-4 text-foreground">
               {mergeMode === "existing" ? "Playlist Updated!" : numPlaylists > 1 ? `${numPlaylists} Playlists Created!` : "Playlist Created!"}
             </h1>
-            <p className="text-lg mb-4 leading-relaxed text-[#666666] dark:text-muted-foreground">
+            <p className="text-lg mb-4 leading-relaxed text-muted-foreground">
               {mergeMode === "existing" ? (
                 <>
                   Added {addedCount ?? totalTracksCreated} new tracks to &quot;{playlists[0]?.title || targetPlaylist?.title}&quot;.
@@ -207,13 +190,13 @@ export default function CombinePlaylistsPage() {
               </div>
             )}
             {deleteErrors.length > 0 && (
-              <div className="mb-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg text-left">
-                <p className="text-sm font-medium text-yellow-700 dark:text-yellow-400 mb-1">
+              <div className="mb-4 p-3 bg-destructive/10 rounded-lg text-left">
+                <p className="text-sm font-medium text-destructive mb-1">
                   <AlertTriangle className="w-4 h-4 inline mr-1" />
                   {deleteErrors.length} playlist{deleteErrors.length > 1 ? "s" : ""} could not be deleted
                 </p>
-                <ul className="text-xs text-yellow-600 dark:text-yellow-500 space-y-0.5">
-                  {deleteErrors.map((e) => (
+                <ul className="text-xs text-destructive/80 space-y-0.5">
+                  {deleteErrors.map((e: { id: number; error: string }) => (
                     <li key={e.id}>ID {e.id}: {e.error}</li>
                   ))}
                 </ul>
@@ -221,13 +204,14 @@ export default function CombinePlaylistsPage() {
             )}
 
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <Link
-                href="/dashboard"
-                className="px-8 py-3 rounded-lg font-semibold transition-all bg-gradient-to-r from-[#FF5500] to-[#E64A00] text-white hover:shadow-lg"
-              >
-                Back to Dashboard
+              <Link href="/dashboard" className="w-full sm:w-auto">
+                <Button size="lg" className="w-full">
+                  Back to Dashboard
+                </Button>
               </Link>
-              <button
+              <Button
+                variant="outline"
+                size="lg"
                 onClick={() => {
                   setIsComplete(false);
                   setSelectedPlaylists([]);
@@ -236,12 +220,11 @@ export default function CombinePlaylistsPage() {
                   setDeleteAfterMerge(false);
                   setResult(null);
                 }}
-                className="px-8 py-3 rounded-lg font-semibold transition-all border-2 border-gray-200 dark:border-border text-[#333333] dark:text-foreground hover:border-[#FF5500]"
               >
                 Merge More Playlists
-              </button>
+              </Button>
             </div>
-          </div>
+          </Card>
         </div>
       </div>
     );
@@ -258,31 +241,11 @@ export default function CombinePlaylistsPage() {
         <div className="grid lg:grid-cols-3 gap-8">
           {/* Playlist Selection */}
           <div className="lg:col-span-2">
-            <div className="bg-white dark:bg-card rounded-2xl p-6 border-2 border-gray-200 dark:border-border">
-              <h2 className="text-xl font-bold mb-4 text-[#333333] dark:text-foreground">
+            <Card className="rounded-2xl p-6 border-2 border-border">
+              <h2 className="text-xl font-bold mb-4 text-foreground">
                 Your Playlists
               </h2>
-              {loading ? (
-                <div className="space-y-3">
-                  {Array.from({ length: 5 }).map((_, i) => (
-                    <Skeleton key={i} className="h-16 rounded-lg bg-gray-100 dark:bg-secondary/40" />
-                  ))}
-                </div>
-              ) : loadError ? (
-                <EmptyState
-                  title="Couldn't load your playlists"
-                  description="The backend may be unreachable. Retry to refresh the list."
-                  action={
-                    <button
-                      type="button"
-                      onClick={() => { setLoading(true); fetchPlaylists(); }}
-                      className="px-4 py-2 rounded-lg text-sm font-semibold bg-gradient-to-r from-[#FF5500] to-[#E64A00] text-white hover:shadow-md transition"
-                    >
-                      Retry
-                    </button>
-                  }
-                />
-              ) : userPlaylists.length === 0 ? (
+              {userPlaylists.length === 0 ? (
                 <EmptyState
                   icon={<Music className="w-12 h-12" />}
                   title="No playlists found"
@@ -303,10 +266,10 @@ export default function CombinePlaylistsPage() {
                         disabled={isTarget === true}
                         className={`w-full flex items-center gap-4 p-4 rounded-xl transition-all ${
                           isTarget
-                            ? "opacity-40 cursor-not-allowed bg-gray-50 dark:bg-secondary/20 border-2 border-transparent"
+                            ? "opacity-40 cursor-not-allowed bg-secondary/20 border-2 border-transparent"
                             : isSelected
-                            ? "bg-[#FF5500]/10 border-2 border-[#FF5500]"
-                            : "bg-gray-50 dark:bg-secondary/20 border-2 border-transparent hover:border-gray-200 dark:hover:border-border"
+                            ? "bg-primary/10 border-2 border-primary"
+                            : "bg-secondary/20 border-2 border-transparent hover:border-border"
                         }`}
                       >
                         <img
@@ -315,43 +278,43 @@ export default function CombinePlaylistsPage() {
                           className="w-12 h-12 rounded-lg object-cover"
                         />
                         <div className="flex-1 text-left">
-                          <div className="font-semibold text-[#333333] dark:text-foreground">
+                          <div className="font-semibold text-foreground">
                             {playlist.title}
                           </div>
-                          <div className="text-sm text-[#666666] dark:text-muted-foreground">
+                          <div className="text-sm text-muted-foreground">
                             {playlist.track_count} tracks
-                            {isTarget && <span className="ml-2 text-[#FF5500]">(target)</span>}
+                            {isTarget && <span className="ml-2 text-primary">(target)</span>}
                           </div>
                         </div>
                         {isSelected && (
-                          <div className="w-6 h-6 rounded-full bg-[#FF5500] flex items-center justify-center">
-                            <Check className="w-4 h-4 text-white" />
+                          <div className="w-6 h-6 rounded-full bg-primary flex items-center justify-center">
+                            <Check className="w-4 h-4 text-primary-foreground" />
                           </div>
                         )}
                       </button>
                     );
                   })}
                 </div>
-                <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-white dark:from-card to-transparent rounded-b-xl" />
+                <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-card to-transparent rounded-b-xl" />
                 </div>
               )}
-            </div>
+            </Card>
           </div>
 
           {/* Merge Panel */}
           <div className="lg:col-span-1">
-            <div className="bg-white dark:bg-card rounded-2xl p-6 border-2 border-gray-200 dark:border-border sticky top-24 space-y-5">
-              <h2 className="text-xl font-bold text-[#333333] dark:text-foreground">
+            <Card className="rounded-2xl p-6 border-2 border-border sticky top-24 space-y-5">
+              <h2 className="text-xl font-bold text-foreground">
                 Merge Settings
               </h2>
 
               {/* Selected Playlists */}
               <div>
-                <label className="block text-sm font-medium mb-2 text-[#666666] dark:text-muted-foreground">
+                <label className="block text-sm font-medium mb-2 text-muted-foreground">
                   Selected ({selectedPlaylists.length})
                 </label>
                 {selectedPlaylists.length === 0 ? (
-                  <p className="text-sm text-[#999999] dark:text-muted-foreground py-4 text-center border-2 border-dashed border-gray-200 dark:border-border rounded-lg">
+                  <p className="text-sm text-muted-foreground py-4 text-center border-2 border-dashed border-border rounded-lg">
                     Select at least 2 playlists
                   </p>
                 ) : (
@@ -359,21 +322,21 @@ export default function CombinePlaylistsPage() {
                     {selectedPlaylists.map((playlist) => (
                       <div
                         key={playlist.id}
-                        className="flex items-center gap-2 p-2 bg-gray-50 dark:bg-secondary/20 rounded-lg"
+                        className="flex items-center gap-2 p-2 bg-secondary/20 rounded-lg"
                       >
                         <img
                           src={playlist.artwork_url || playlist.coverUrl || "/SC Toolkit Icon.png"}
                           alt={playlist.title}
                           className="w-7 h-7 rounded object-cover shrink-0"
                         />
-                        <span className="text-sm truncate flex-1 text-[#333333] dark:text-foreground">
+                        <span className="text-sm truncate flex-1 text-foreground">
                           {playlist.title}
                         </span>
                         <button
                           onClick={() => handlePlaylistToggle(playlist)}
-                          className="p-1 hover:bg-gray-200 dark:hover:bg-secondary/50 rounded shrink-0"
+                          className="p-1 hover:bg-secondary/50 rounded shrink-0"
                         >
-                          <X className="w-4 h-4 text-[#666666] dark:text-muted-foreground" />
+                          <X className="w-4 h-4 text-muted-foreground" />
                         </button>
                       </div>
                     ))}
@@ -382,11 +345,11 @@ export default function CombinePlaylistsPage() {
               </div>
 
               {/* Total Tracks */}
-              <div className="p-4 bg-gray-50 dark:bg-secondary/20 rounded-lg">
-                <div className="text-sm text-[#666666] dark:text-muted-foreground">Total Tracks</div>
-                <div className="text-2xl font-bold text-[#333333] dark:text-foreground">{totalTracks}</div>
+              <div className="p-4 bg-secondary/20 rounded-lg">
+                <div className="text-sm text-muted-foreground">Total Tracks</div>
+                <div className="text-2xl font-bold text-foreground">{totalTracks}</div>
                 {totalTracks > 500 && (
-                  <p className="text-xs text-[#FF5500] mt-1">
+                  <p className="text-xs text-primary mt-1">
                     Will be split into multiple playlists (500 max each)
                   </p>
                 )}
@@ -394,16 +357,16 @@ export default function CombinePlaylistsPage() {
 
               {/* Merge Mode Toggle */}
               <div>
-                <label className="block text-sm font-medium mb-2 text-[#666666] dark:text-muted-foreground">
+                <label className="block text-sm font-medium mb-2 text-muted-foreground">
                   Merge into
                 </label>
-                <div className="flex rounded-lg border-2 border-gray-200 dark:border-border overflow-hidden">
+                <div className="flex rounded-lg border-2 border-border overflow-hidden">
                   <button
                     onClick={() => setMergeMode("new")}
                     className={`flex-1 py-2 text-sm font-medium transition ${
                       mergeMode === "new"
-                        ? "bg-[#FF5500] text-white"
-                        : "text-[#666666] dark:text-muted-foreground hover:bg-gray-50 dark:hover:bg-secondary/20"
+                        ? "bg-primary text-primary-foreground"
+                        : "text-muted-foreground hover:bg-secondary/20"
                     }`}
                   >
                     New playlist
@@ -412,8 +375,8 @@ export default function CombinePlaylistsPage() {
                     onClick={() => setMergeMode("existing")}
                     className={`flex-1 py-2 text-sm font-medium transition ${
                       mergeMode === "existing"
-                        ? "bg-[#FF5500] text-white"
-                        : "text-[#666666] dark:text-muted-foreground hover:bg-gray-50 dark:hover:bg-secondary/20"
+                        ? "bg-primary text-primary-foreground"
+                        : "text-muted-foreground hover:bg-secondary/20"
                     }`}
                   >
                     Existing playlist
@@ -424,7 +387,7 @@ export default function CombinePlaylistsPage() {
               {/* New Playlist Title (only in "new" mode) */}
               {mergeMode === "new" && (
                 <div>
-                  <label className="block text-sm font-medium mb-2 text-[#666666] dark:text-muted-foreground">
+                  <label className="block text-sm font-medium mb-2 text-muted-foreground">
                     New Playlist Name
                   </label>
                   <input
@@ -432,7 +395,7 @@ export default function CombinePlaylistsPage() {
                     value={newPlaylistTitle}
                     onChange={(e) => setNewPlaylistTitle(e.target.value)}
                     placeholder="Enter playlist name..."
-                    className="w-full px-4 py-3 rounded-lg border-2 border-gray-200 dark:border-border focus:border-[#FF5500] focus:outline-none transition dark:bg-secondary/20 dark:text-foreground"
+                    className="w-full px-4 py-3 rounded-lg border-2 border-border focus:border-primary focus:outline-none transition bg-secondary/20 text-foreground"
                   />
                 </div>
               )}
@@ -440,17 +403,17 @@ export default function CombinePlaylistsPage() {
               {/* Target Playlist Picker (only in "existing" mode) */}
               {mergeMode === "existing" && (
                 <div>
-                  <label className="block text-sm font-medium mb-2 text-[#666666] dark:text-muted-foreground">
+                  <label className="block text-sm font-medium mb-2 text-muted-foreground">
                     Target Playlist
                   </label>
                   {availableTargets.length === 0 ? (
-                    <p className="text-sm text-[#999999] dark:text-muted-foreground py-3 text-center border-2 border-dashed border-gray-200 dark:border-border rounded-lg">
+                    <p className="text-sm text-muted-foreground py-3 text-center border-2 border-dashed border-border rounded-lg">
                       No available targets (deselect a source first)
                     </p>
                   ) : targetPlaylist ? (
                     <button
                       onClick={() => setShowPlaylistPicker(true)}
-                      className="w-full flex items-center gap-3 p-3 rounded-xl bg-[#FF5500]/10 border-2 border-[#FF5500] transition-all hover:bg-[#FF5500]/15 text-left"
+                      className="w-full flex items-center gap-3 p-3 rounded-xl bg-primary/10 border-2 border-primary transition-all hover:bg-primary/15 text-left"
                     >
                       <img
                         src={targetPlaylist.coverUrl || targetPlaylist.artwork_url || "/SC Toolkit Icon.png"}
@@ -458,19 +421,19 @@ export default function CombinePlaylistsPage() {
                         className="w-10 h-10 rounded-lg object-cover"
                       />
                       <div className="flex-1 min-w-0">
-                        <div className="font-semibold text-[#333333] dark:text-foreground text-sm truncate">
+                        <div className="font-semibold text-foreground text-sm truncate">
                           {targetPlaylist.title}
                         </div>
-                        <div className="text-xs text-[#666666] dark:text-muted-foreground">
+                        <div className="text-xs text-muted-foreground">
                           {targetPlaylist.track_count} tracks
                         </div>
                       </div>
-                      <span className="text-xs text-[#FF5500] font-medium shrink-0">Change</span>
+                      <span className="text-xs text-primary font-medium shrink-0">Change</span>
                     </button>
                   ) : (
                     <button
                       onClick={() => setShowPlaylistPicker(true)}
-                      className="w-full px-4 py-3 rounded-lg border-2 border-dashed border-gray-300 dark:border-border text-sm text-[#999999] dark:text-muted-foreground hover:border-[#FF5500] hover:text-[#FF5500] transition-all text-center"
+                      className="w-full px-4 py-3 rounded-lg border-2 border-dashed border-border text-sm text-muted-foreground hover:border-primary hover:text-primary transition-all text-center"
                     >
                       Choose a target playlist…
                     </button>
@@ -485,9 +448,9 @@ export default function CombinePlaylistsPage() {
                     type="checkbox"
                     checked={deleteAfterMerge}
                     onChange={(e) => setDeleteAfterMerge(e.target.checked)}
-                    className="mt-0.5 w-4 h-4 accent-[#FF5500]"
+                    className="mt-0.5 w-4 h-4 accent-primary"
                   />
-                  <span className="text-sm text-[#666666] dark:text-muted-foreground group-hover:text-[#333333] dark:group-hover:text-foreground transition">
+                  <span className="text-sm text-muted-foreground group-hover:text-foreground transition">
                     Delete source playlists after merge
                   </span>
                 </label>
@@ -495,16 +458,17 @@ export default function CombinePlaylistsPage() {
 
               {/* Inline merge error */}
               {mergeError && (
-                <div className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-900/30 rounded-lg px-4 py-3">
+                <div className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-4 py-3">
                   {mergeError}
                 </div>
               )}
 
               {/* Merge Button */}
-              <button
+              <Button
                 onClick={handleMergeClick}
                 disabled={!canMerge || isProcessing}
-                className="w-full py-4 rounded-lg font-semibold transition-all bg-gradient-to-r from-[#FF5500] to-[#E64A00] text-white hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                size="lg"
+                className="w-full"
               >
                 {isProcessing ? (
                   <>
@@ -517,8 +481,8 @@ export default function CombinePlaylistsPage() {
                     Merge Playlists
                   </>
                 )}
-              </button>
-            </div>
+              </Button>
+            </Card>
           </div>
         </div>
 
@@ -554,27 +518,27 @@ export default function CombinePlaylistsPage() {
           <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
 
           {/* Modal */}
-          <div
-            className="relative w-full max-w-lg bg-white dark:bg-card rounded-2xl shadow-2xl border-2 border-gray-200 dark:border-border overflow-hidden animate-in fade-in zoom-in-95 duration-200"
+          <Card
+            className="relative w-full max-w-lg rounded-2xl shadow-2xl border-2 border-border overflow-hidden animate-in fade-in zoom-in-95 duration-200"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
             <div className="flex items-center justify-between px-6 pt-6 pb-4">
-              <h3 className="text-xl font-bold text-[#333333] dark:text-foreground">
+              <h3 className="text-xl font-bold text-foreground">
                 Target Playlist
               </h3>
               <button
                 onClick={() => setShowPlaylistPicker(false)}
-                className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-secondary/40 transition"
+                className="p-1.5 rounded-lg hover:bg-secondary/40 transition"
               >
-                <X className="w-5 h-5 text-[#666666] dark:text-muted-foreground" />
+                <X className="w-5 h-5 text-muted-foreground" />
               </button>
             </div>
 
             {/* Playlist list */}
             <div className="px-6 pb-6 space-y-2 max-h-[60vh] overflow-y-auto">
               {availableTargets.length === 0 ? (
-                <p className="text-sm text-[#999999] dark:text-muted-foreground py-3 text-center border-2 border-dashed border-gray-200 dark:border-border rounded-lg">
+                <p className="text-sm text-muted-foreground py-3 text-center border-2 border-dashed border-border rounded-lg">
                   No available targets (deselect a source first)
                 </p>
               ) : (
@@ -589,8 +553,8 @@ export default function CombinePlaylistsPage() {
                       }}
                       className={`w-full flex items-center gap-4 p-4 rounded-xl transition-all ${
                         isSelected
-                          ? "bg-[#FF5500]/10 border-2 border-[#FF5500]"
-                          : "bg-gray-50 dark:bg-secondary/20 border-2 border-transparent hover:border-gray-200 dark:hover:border-border"
+                          ? "bg-primary/10 border-2 border-primary"
+                          : "bg-secondary/20 border-2 border-transparent hover:border-border"
                       }`}
                     >
                       <img
@@ -599,16 +563,16 @@ export default function CombinePlaylistsPage() {
                         className="w-12 h-12 rounded-lg object-cover"
                       />
                       <div className="flex-1 text-left min-w-0">
-                        <div className="font-semibold text-[#333333] dark:text-foreground truncate">
+                        <div className="font-semibold text-foreground truncate">
                           {playlist.title}
                         </div>
-                        <div className="text-sm text-[#666666] dark:text-muted-foreground">
+                        <div className="text-sm text-muted-foreground">
                           {playlist.track_count} tracks
                         </div>
                       </div>
                       {isSelected && (
-                        <div className="w-6 h-6 rounded-full bg-[#FF5500] flex items-center justify-center shrink-0">
-                          <Check className="w-4 h-4 text-white" />
+                        <div className="w-6 h-6 rounded-full bg-primary flex items-center justify-center shrink-0">
+                          <Check className="w-4 h-4 text-primary-foreground" />
                         </div>
                       )}
                     </button>
@@ -616,7 +580,7 @@ export default function CombinePlaylistsPage() {
                 })
               )}
             </div>
-          </div>
+          </Card>
         </div>
       )}
     </PageContainer>

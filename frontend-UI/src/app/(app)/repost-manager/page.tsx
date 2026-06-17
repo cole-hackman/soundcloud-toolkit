@@ -59,13 +59,31 @@ export default function RepostManagerPage() {
     }
   }, [repostsQuery.isError]);
 
-  const toggleItem = (id: number) => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+  const [lastSelectedIndex, setLastSelectedIndex] = useState<number | null>(null);
+
+  const toggleItem = (id: number, index: number, currentFilteredReposts: Repost[], event?: React.MouseEvent | React.KeyboardEvent) => {
+    const isShiftKey = event && 'shiftKey' in event && event.shiftKey;
+
+    if (isShiftKey && lastSelectedIndex !== null) {
+      const start = Math.min(lastSelectedIndex, index);
+      const end = Math.max(lastSelectedIndex, index);
+      
+      setSelected((prev) => {
+        const next = new Set(prev);
+        for (let i = start; i <= end; i++) {
+          next.add(currentFilteredReposts[i].id);
+        }
+        return next;
+      });
+    } else {
+      setSelected((prev) => {
+        const next = new Set(prev);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        return next;
+      });
+      setLastSelectedIndex(index);
+    }
   };
 
   const selectAll = () => {
@@ -316,12 +334,12 @@ export default function RepostManagerPage() {
             </div>
 
             <div className="space-y-2 max-h-[600px] overflow-y-auto">
-              {filteredReposts.map((repost) => {
+              {filteredReposts.map((repost, index) => {
                 const isSelected = selected.has(repost.id);
                 return (
                   <button
                     key={`${repost.resourceType}-${repost.id}`}
-                    onClick={() => toggleItem(repost.id)}
+                    onClick={(e) => toggleItem(repost.id, index, filteredReposts, e)}
                     className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all text-left ${
                       isSelected
                         ? "bg-red-50 dark:bg-red-900/10 border-2 border-red-200 dark:border-red-900/30"

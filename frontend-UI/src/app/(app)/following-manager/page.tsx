@@ -59,14 +59,31 @@ export default function FollowingManagerPage() {
 
   const followings = (followingsData?.collection || []) as unknown as Following[];
   const followers = new Set<number>(((followersData?.collection || []) as unknown as Following[]).map((u) => u.id));
+  const [lastSelectedIndex, setLastSelectedIndex] = useState<number | null>(null);
 
-  const toggleUser = (id: number) => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+  const toggleUser = (id: number, index: number, currentFilteredFollowings: Following[], event?: React.MouseEvent | React.KeyboardEvent) => {
+    const isShiftKey = event && 'shiftKey' in event && event.shiftKey;
+
+    if (isShiftKey && lastSelectedIndex !== null) {
+      const start = Math.min(lastSelectedIndex, index);
+      const end = Math.max(lastSelectedIndex, index);
+      
+      setSelected((prev) => {
+        const next = new Set(prev);
+        for (let i = start; i <= end; i++) {
+          next.add(currentFilteredFollowings[i].id);
+        }
+        return next;
+      });
+    } else {
+      setSelected((prev) => {
+        const next = new Set(prev);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        return next;
+      });
+      setLastSelectedIndex(index);
+    }
   };
 
   const selectAll = () => {
@@ -305,7 +322,7 @@ export default function FollowingManagerPage() {
               active={filteredFollowings.length > 8}
               fadeHeight={72}
             >
-              {filteredFollowings.map((user) => {
+              {filteredFollowings.map((user, index) => {
                 const isSelected = selected.has(user.id);
                 return (
                   <div
@@ -315,9 +332,17 @@ export default function FollowingManagerPage() {
                         ? "bg-destructive/5 border-2 border-destructive/30"
                         : "bg-secondary/20 border-2 border-transparent hover:border-border"
                     }`}
+                    onClick={(e) => toggleUser(user.id, index, filteredFollowings, e)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        toggleUser(user.id, index, filteredFollowings, e);
+                      }
+                    }}
                   >
                     <button
-                      onClick={() => toggleUser(user.id)}
                       className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${
                         isSelected ? "bg-destructive text-destructive-foreground" : "bg-secondary"
                       }`}

@@ -51,6 +51,7 @@ export default function CombinePlaylistsPage() {
     };
     totalTracks?: number;
   } | null>(null);
+  const [lastSelectedIndex, setLastSelectedIndex] = useState<number | null>(null);
 
   useEffect(() => {
     if (!isComplete) return;
@@ -62,13 +63,37 @@ export default function CombinePlaylistsPage() {
     survey.maybeShow({ context: "post-merge", trackCount });
   }, [isComplete, result, survey]);
 
-  const handlePlaylistToggle = (playlist: Playlist) => {
+  const handlePlaylistToggle = (playlist: Playlist, index?: number, event?: React.MouseEvent | React.KeyboardEvent) => {
     const idNum = Number(playlist.id);
-    setSelectedPlaylists((prev) =>
-      prev.find((p) => Number(p.id) === idNum)
-        ? prev.filter((p) => Number(p.id) !== idNum)
-        : [...prev, { ...playlist, id: idNum }]
-    );
+    const isShiftKey = event && 'shiftKey' in event && event.shiftKey;
+
+    if (isShiftKey && index !== undefined && lastSelectedIndex !== null) {
+      const start = Math.min(lastSelectedIndex, index);
+      const end = Math.max(lastSelectedIndex, index);
+      
+      setSelectedPlaylists((prev) => {
+        // Keep existing selections, toggle the range
+        // For simplicity in playlists, let's just add the range
+        const next = [...prev];
+        for (let i = start; i <= end; i++) {
+          const p = userPlaylists[i];
+          if (!next.some((s) => Number(s.id) === Number(p.id))) {
+            next.push({ ...p, id: Number(p.id) });
+          }
+        }
+        return next;
+      });
+    } else {
+      setSelectedPlaylists((prev) =>
+        prev.find((p) => Number(p.id) === idNum)
+          ? prev.filter((p) => Number(p.id) !== idNum)
+          : [...prev, { ...playlist, id: idNum }]
+      );
+      if (index !== undefined) {
+        setLastSelectedIndex(index);
+      }
+    }
+    
     // Clear target if it gets selected as source
     if (targetPlaylist && Number(targetPlaylist.id) === idNum) {
       setTargetPlaylist(null);
@@ -254,7 +279,7 @@ export default function CombinePlaylistsPage() {
               ) : (
                 <div className="relative">
                 <div className="space-y-2 max-h-[600px] overflow-y-auto pr-1">
-                  {userPlaylists.map((playlist) => {
+                  {userPlaylists.map((playlist, index) => {
                     const isSelected = selectedPlaylists.some(
                       (p) => Number(p.id) === Number(playlist.id)
                     );
@@ -262,7 +287,7 @@ export default function CombinePlaylistsPage() {
                     return (
                       <button
                         key={playlist.id}
-                        onClick={() => handlePlaylistToggle(playlist)}
+                        onClick={(e) => handlePlaylistToggle(playlist, index, e)}
                         disabled={isTarget === true}
                         className={`w-full flex items-center gap-4 p-4 rounded-xl transition-all ${
                           isTarget

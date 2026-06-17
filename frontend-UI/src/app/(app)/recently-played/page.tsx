@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Radio, Music, Loader2, Search, SquarePlus } from "lucide-react";
+import { Radio, Music, Loader2, Search, SquarePlus, History } from "lucide-react";
 import {
   Button,
   EmptyState,
@@ -16,7 +16,7 @@ import {
 import { apiFetch } from "@/lib/api";
 import {
   invalidatePlaylistCaches,
-  useActivitiesQuery,
+  useRecentlyPlayedQuery,
   usePlaylistDetailQuery,
   usePlaylistsQuery,
 } from "@/lib/queries";
@@ -30,20 +30,13 @@ interface Track {
   permalink_url: string;
 }
 
-interface Activity {
-  type: string;
-  created_at: string;
-  reposter?: string | null;
-  origin: Track;
-}
-
 interface Playlist {
   id: number;
   title: string;
   track_count: number;
 }
 
-export default function ActivityToPlaylistPage() {
+export default function RecentlyPlayedPage() {
   const queryClient = useQueryClient();
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [saving, setSaving] = useState(false);
@@ -52,20 +45,22 @@ export default function ActivityToPlaylistPage() {
   const [newPlaylistName, setNewPlaylistName] = useState("");
   const [selectedPlaylistId, setSelectedPlaylistId] = useState<number | null>(null);
   const [notice, setNotice] = useState<{ type: "success" | "error"; text: string } | null>(null);
-  const activitiesQuery = useActivitiesQuery(200);
+  
+  const recentlyPlayedQuery = useRecentlyPlayedQuery();
   const playlistsQuery = usePlaylistsQuery();
   const selectedPlaylistQuery = usePlaylistDetailQuery(selectedPlaylistId ?? 0, {
     enabled: mode === "existing" && selectedPlaylistId != null,
   });
-  const activities = (activitiesQuery.data?.collection || []) as unknown as Activity[];
+  
+  const tracks = (recentlyPlayedQuery.data?.collection || []) as unknown as Track[];
   const playlists = (playlistsQuery.data?.collection || []) as unknown as Playlist[];
-  const loading = activitiesQuery.isLoading || playlistsQuery.isLoading;
+  const loading = recentlyPlayedQuery.isLoading || playlistsQuery.isLoading;
 
   useEffect(() => {
-    if (activitiesQuery.isError || playlistsQuery.isError) {
-      setNotice({ type: "error", text: "Couldn’t load your activity feed. Try refreshing the page." });
+    if (recentlyPlayedQuery.isError || playlistsQuery.isError) {
+      setNotice({ type: "error", text: "Couldn’t load your recently played tracks. Try refreshing the page." });
     }
-  }, [activitiesQuery.isError, playlistsQuery.isError]);
+  }, [recentlyPlayedQuery.isError, playlistsQuery.isError]);
 
   const toggleTrack = (id: number) => {
     setSelected((prev) => {
@@ -77,22 +72,23 @@ export default function ActivityToPlaylistPage() {
   };
 
   const selectAll = () => {
-    if (selected.size === filteredActivities.length) {
+    if (selected.size === filteredTracks.length) {
       setSelected(new Set());
     } else {
-      setSelected(new Set(filteredActivities.map((a) => a.origin.id)));
+      setSelected(new Set(filteredTracks.map((t) => t.id)));
     }
   };
 
   const formatDuration = (ms: number) => {
+    if (!ms) return "0:00";
     const minutes = Math.floor(ms / 60000);
     const seconds = Math.floor((ms % 60000) / 1000);
     return `${minutes}:${seconds.toString().padStart(2, "0")}`;
   };
 
-  const filteredActivities = activities.filter((a) =>
-    !search || a.origin.title.toLowerCase().includes(search.toLowerCase()) ||
-    a.origin.user?.username?.toLowerCase().includes(search.toLowerCase())
+  const filteredTracks = tracks.filter((t) =>
+    !search || t.title.toLowerCase().includes(search.toLowerCase()) ||
+    t.user?.username?.toLowerCase().includes(search.toLowerCase())
   );
 
   const handleSave = async () => {
@@ -104,7 +100,7 @@ export default function ActivityToPlaylistPage() {
       const trackIds = Array.from(selected);
 
       if (mode === "new") {
-        const title = newPlaylistName.trim() || `Activity Tracks ${new Date().toLocaleDateString()}`;
+        const title = newPlaylistName.trim() || `Recently Played ${new Date().toLocaleDateString()}`;
         const response = await apiFetch("/api/playlists/from-likes", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -148,8 +144,8 @@ export default function ActivityToPlaylistPage() {
   return (
     <PageContainer maxWidth="wide">
         <PageHeader
-          title="Activity → Playlist"
-          description="Select tracks from your activity feed and save them to a playlist."
+          title="Recently Played"
+          description="View your last 25 played tracks and save them to a playlist."
         />
 
         {notice && (
@@ -166,12 +162,12 @@ export default function ActivityToPlaylistPage() {
           <div className="bg-white dark:bg-card rounded-2xl p-12 border-2 border-gray-200 dark:border-border flex items-center justify-center">
             <LoadingSpinner />
           </div>
-        ) : activities.length === 0 ? (
+        ) : tracks.length === 0 ? (
           <div className="bg-white dark:bg-card rounded-2xl p-8 border-2 border-gray-200 dark:border-border">
             <EmptyState
-              icon={<Radio className="w-12 h-12" />}
-              title="No activities found"
-              description="Your activity feed appears to be empty."
+              icon={<History className="w-12 h-12" />}
+              title="No recently played tracks found"
+              description="Go listen to some music on SoundCloud and come back!"
             />
           </div>
         ) : (
@@ -193,26 +189,15 @@ export default function ActivityToPlaylistPage() {
                   onClick={selectAll}
                   className="text-sm text-[#FF5500] hover:text-[#E64D00] font-medium whitespace-nowrap"
                 >
-                  {selected.size === filteredActivities.length ? "Deselect All" : "Select All"}
+                  {selected.size === filteredTracks.length ? "Deselect All" : "Select All"}
                 </button>
               </div>
 
               <div className="space-y-2 max-h-[600px] overflow-y-auto">
-                {filteredActivities.map((activity) => {
-                  const track = activity.origin;
+                {filteredTracks.map((track) => {
                   const isSelected = selected.has(track.id);
-                  const isRepost = activity.type.includes('repost');
-                  let subtitle = `${track.user?.username || "Unknown"} • ${formatDuration(track.duration)}`;
+                  const subtitle = `${track.user?.username || "Unknown"} • ${formatDuration(track.duration)}`;
                   
-                  if (isRepost && activity.reposter) {
-                    // Extract numeric ID or username from URN if possible, or just show "Reposted"
-                    const reposterMatch = activity.reposter.match(/:(\d+)$/);
-                    const reposterId = reposterMatch ? reposterMatch[1] : activity.reposter;
-                    subtitle += ` • Reposted by ${reposterId}`;
-                  } else if (isRepost) {
-                    subtitle += ` • Reposted`;
-                  }
-
                   return (
                     <TrackRow
                       key={track.id}

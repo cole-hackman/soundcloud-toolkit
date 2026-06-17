@@ -1,29 +1,31 @@
 import { cn } from "@/lib/utils";
+import * as React from "react";
 
-interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
+export interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
   interactive?: boolean;
+  variant?: "default" | "glass" | "outline";
 }
 
-export function Card({
-  children,
-  className,
-  interactive,
-  ...props
-}: React.PropsWithChildren<CardProps>) {
-  return (
-    <div
-      className={cn(
-        "rounded-xl border bg-surface text-foreground shadow-elevation-1 transition-all duration-200",
-        "dark:glass-card",
-        interactive && "hover:border-primary/60 hover:shadow-elevation-2",
-        className,
-      )}
-      {...props}
-    >
-      {children}
-    </div>
-  );
-}
+const Card = React.forwardRef<HTMLDivElement, CardProps>(
+  ({ className, interactive, variant = "default", ...props }, ref) => {
+    return (
+      <div
+        ref={ref}
+        className={cn(
+          "rounded-xl text-card-foreground transition-all duration-200",
+          variant === "default" && "bg-card border shadow-sm",
+          variant === "glass" && "glass-card",
+          variant === "outline" && "border-2 border-border bg-transparent",
+          interactive && "hover:border-primary/50 hover:shadow-elevation-1 cursor-pointer",
+          className
+        )}
+        {...props}
+      />
+    );
+  }
+)
+Card.displayName = "Card"
+export { Card }
 
 export function CardHeader({
   className,

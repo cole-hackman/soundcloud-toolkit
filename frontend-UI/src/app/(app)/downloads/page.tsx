@@ -271,11 +271,35 @@ export default function DownloadsPage() {
       artist: t.user?.username ?? "",
       hypedditUrl: t.purchase_url!,
     }));
-    localStorage.setItem("sc-toolkit-hypeddit-queue", JSON.stringify(queue));
-    window.dispatchEvent(new CustomEvent("sc-toolkit-queue-set", { detail: { queue } }));
+    // Wrap with a timestamp so the poller always sees a changed value, even
+    // when the same tracks are queued twice in a row.
+    const ts = Date.now();
+    localStorage.setItem("sc-toolkit-hypeddit-queue", JSON.stringify({ queue, ts }));
+    window.postMessage({ type: "sc-toolkit-queue-set", queue, ts }, "*");
     setQueueSent(true);
     setHypedditMode(false);
     setSelectedHypedditIds(new Set());
+  };
+
+  // Export the selected (or all) Hypeddit tracks as JSON for the headless
+  // localhost downloader to import.
+  const exportQueue = () => {
+    const toQueue = hypedditTracks.filter(
+      (t) => selectedHypedditIds.size === 0 || selectedHypedditIds.has(t.id)
+    );
+    const queue: HypedditQueueItem[] = toQueue.map((t) => ({
+      id: t.id,
+      title: t.title,
+      artist: t.user?.username ?? "",
+      hypedditUrl: t.purchase_url!,
+    }));
+    const blob = new Blob([JSON.stringify({ queue }, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "hypeddit-queue.json";
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   const dismissProgress = () => {
@@ -288,7 +312,7 @@ export default function DownloadsPage() {
   );
 
   // Any track with a purchase_url can be queued — Hypeddit, ToneDen, link trees, etc.
-  const hypedditTracks = downloadableTracks.filter((t) => hasGateUrl(t.purchase_url));
+  const hypedditTracks = downloadableTracks.filter((t) => isHypedditUrl(t.purchase_url));
 
   const filteredPlaylists = playlists.filter((p) =>
     p.title.toLowerCase().includes(sourceSearch.toLowerCase())
@@ -623,6 +647,14 @@ export default function DownloadsPage() {
                         <Zap className="w-4 h-4" />
                         Queue {selectedHypedditIds.size} track{selectedHypedditIds.size !== 1 ? "s" : ""}
                       </Button>
+                      <Button
+                        onClick={exportQueue}
+                        variant="secondary"
+                        className="h-10 px-4 text-[#666666] dark:text-muted-foreground"
+                        title="Download a JSON queue for the headless localhost downloader"
+                      >
+                        Export queue (JSON)
+                      </Button>
                       {!extInstalled && (
                         <span className="text-xs text-[#999999] dark:text-muted-foreground self-center">
                           SC Toolkit extension required
@@ -649,7 +681,7 @@ export default function DownloadsPage() {
                 />
               ) : (
                 <div className="space-y-2">
-                  {downloadableTracks.map((track, index) => {
+                  {(hypedditMode ? hypedditTracks : downloadableTracks).map((track, index) => {
                     const isHypeddit = isHypedditUrl(track.purchase_url);
 
                     if (selectionMode) {
@@ -686,7 +718,7 @@ export default function DownloadsPage() {
                       );
                     }
 
-                    if (hypedditMode && track.purchase_url) {
+                    if (hypedditMode && isHypedditUrl(track.purchase_url)) {
                       return (
                         <TrackRow
                           key={track.id}

@@ -1,7 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 
 type ValidElement =
   | "article"
@@ -49,7 +49,7 @@ export function TypingAnimation({
   blinkCursor = true,
   cursorStyle = "line",
 }: TypingAnimationProps) {
-  const wordList = words ?? (children ? [children] : [""]);
+  const wordList = useMemo(() => words ?? (children ? [children] : [""]), [words, children]);
   const [displayed, setDisplayed] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
   const [wordIndex, setWordIndex] = useState(0);

@@ -1,25 +1,26 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
+import { useQueryClient, useSuspenseQueries } from "@tanstack/react-query";
 import { Users, Search, UserMinus, Loader2, Check, ExternalLink } from "lucide-react";
 import {
   ConfirmDialog,
   BulkReviewDetails,
   EmptyState,
   InlineAlert,
-  LoadingSpinner,
   PageContainer,
   PageHeader,
   SelectionBanner,
+  Card,
+  Input
 } from "@/components/ui";
 import { ProgressiveBlur } from "@/components/ui/ProgressiveBlur";
 import { apiFetch } from "@/lib/api";
 import {
   invalidateDashboardSummary,
   removeUsersFromFollowingsCache,
-  useFollowersQuery,
-  useFollowingsQuery,
+  followingsQueryOptions,
+  followersQueryOptions
 } from "@/lib/queries";
 
 interface Following {
@@ -46,17 +47,18 @@ export default function FollowingManagerPage() {
   const [showUnfollowConfirm, setShowUnfollowConfirm] = useState(false);
   const [notice, setNotice] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
-  const followingsQuery = useFollowingsQuery();
-  const followersQuery = useFollowersQuery();
-  const followings = (followingsQuery.data?.collection || []) as unknown as Following[];
-  const followers = new Set<number>(((followersQuery.data?.collection || []) as unknown as Following[]).map((u) => u.id));
-  const loading = followingsQuery.isLoading || followersQuery.isLoading;
+  const [
+    { data: followingsData },
+    { data: followersData }
+  ] = useSuspenseQueries({
+    queries: [
+      followingsQueryOptions(),
+      followersQueryOptions(),
+    ]
+  });
 
-  useEffect(() => {
-    if (followingsQuery.isError || followersQuery.isError) {
-      setNotice({ type: "error", text: "Couldn’t load your social data. Try refreshing the page." });
-    }
-  }, [followingsQuery.isError, followersQuery.isError]);
+  const followings = (followingsData?.collection || []) as unknown as Following[];
+  const followers = new Set<number>(((followersData?.collection || []) as unknown as Following[]).map((u) => u.id));
 
   const toggleUser = (id: number) => {
     setSelected((prev) => {
@@ -233,36 +235,32 @@ export default function FollowingManagerPage() {
           </InlineAlert>
         )}
 
-        {loading ? (
-          <div className="bg-white dark:bg-card rounded-2xl p-12 border-2 border-gray-200 dark:border-border flex items-center justify-center">
-            <LoadingSpinner />
-          </div>
-        ) : followings.length === 0 ? (
-          <div className="bg-white dark:bg-card rounded-2xl p-8 border-2 border-gray-200 dark:border-border">
+        {followings.length === 0 ? (
+          <Card className="p-8">
             <EmptyState
               icon={<Users className="w-12 h-12" />}
               title="Not following anyone"
               description="You don't follow any users yet."
             />
-          </div>
+          </Card>
         ) : (
-          <div className="bg-white dark:bg-card rounded-2xl p-6 border-2 border-gray-200 dark:border-border">
+          <Card className="p-6">
             {/* Controls */}
             <div className="flex items-center gap-3 mb-4 flex-wrap">
               <div className="relative flex-1 min-w-[200px]">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#999999] dark:text-muted-foreground" />
-                <input
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
                   type="text"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder="Search followings..."
-                  className="w-full pl-10 pr-3 py-2 border-2 border-gray-200 dark:border-border rounded-lg text-sm text-[#333333] dark:text-foreground bg-gray-50 dark:bg-secondary/20 focus:border-[#FF5500] focus:outline-none"
+                  className="pl-9 h-10 bg-secondary/20 border-border"
                 />
               </div>
               <select
                 value={sort}
                 onChange={(e) => setSort(e.target.value as SortOption)}
-                className="px-3 py-2 border-2 border-gray-200 dark:border-border rounded-lg text-sm text-[#333333] dark:text-foreground bg-gray-50 dark:bg-secondary/20 focus:border-[#FF5500] focus:outline-none"
+                className="h-10 px-3 border-2 border-border rounded-lg text-sm text-foreground bg-secondary/20 focus:border-primary focus:outline-none"
               >
                 <option value="alpha">A → Z</option>
                 <option value="followers">Most Followers</option>
@@ -271,19 +269,19 @@ export default function FollowingManagerPage() {
                 <option value="last_modified">Recently Active</option>
               </select>
               
-              <div className="flex bg-gray-100 dark:bg-secondary/20 p-1 rounded-lg">
+              <div className="flex bg-secondary/20 p-1 rounded-lg border-2 border-border/50">
                 <button
                   onClick={() => setFilterMode("all")}
-                  className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
-                    filterMode === "all" ? "bg-white dark:bg-card text-[#333333] dark:text-foreground shadow-sm" : "text-[#666666] dark:text-muted-foreground hover:text-[#333333] dark:hover:text-foreground"
+                  className={`px-3 py-1 rounded-md text-sm font-medium transition-all ${
+                    filterMode === "all" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
                   }`}
                 >
                   All
                 </button>
                 <button
                   onClick={() => setFilterMode("not-following-back")}
-                  className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
-                    filterMode === "not-following-back" ? "bg-white dark:bg-card text-[#FF5500] shadow-sm" : "text-[#666666] dark:text-muted-foreground hover:text-[#333333] dark:hover:text-foreground"
+                  className={`px-3 py-1 rounded-md text-sm font-medium transition-all ${
+                    filterMode === "not-following-back" ? "bg-card text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"
                   }`}
                 >
                   Not Following Back
@@ -292,13 +290,13 @@ export default function FollowingManagerPage() {
 
               <button
                 onClick={selectAll}
-                className="text-sm text-[#FF5500] hover:text-[#E64D00] font-medium whitespace-nowrap"
+                className="text-sm text-primary hover:text-primary/80 font-medium whitespace-nowrap"
               >
                 {selected.size === filteredFollowings.length ? "Deselect All" : "Select All"}
               </button>
             </div>
 
-            <div className="text-sm text-[#999999] dark:text-muted-foreground mb-2">
+            <div className="text-sm text-muted-foreground mb-2">
               {filteredFollowings.length} of {followings.length} followings
             </div>
 
@@ -314,14 +312,14 @@ export default function FollowingManagerPage() {
                     key={user.id}
                     className={`flex items-center gap-3 p-3 rounded-xl transition-all ${
                       isSelected
-                        ? "bg-red-50 dark:bg-red-900/10 border-2 border-red-200 dark:border-red-900/30"
-                        : "bg-gray-50 dark:bg-secondary/20 border-2 border-transparent hover:border-gray-200 dark:hover:border-border"
+                        ? "bg-destructive/5 border-2 border-destructive/30"
+                        : "bg-secondary/20 border-2 border-transparent hover:border-border"
                     }`}
                   >
                     <button
                       onClick={() => toggleUser(user.id)}
                       className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${
-                        isSelected ? "bg-red-500 text-white" : "bg-gray-200 dark:bg-secondary"
+                        isSelected ? "bg-destructive text-destructive-foreground" : "bg-secondary"
                       }`}
                     >
                       {isSelected && <Check className="w-3.5 h-3.5" />}
@@ -333,16 +331,16 @@ export default function FollowingManagerPage() {
                     />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <div className="font-semibold text-[#333333] dark:text-foreground text-sm truncate">
+                        <div className="font-semibold text-foreground text-sm truncate">
                           {user.username}
                         </div>
                         {user.last_modified && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300">
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-secondary/80 text-muted-foreground">
                              Active: {formatDate(user.last_modified)}
                           </span>
                         )}
                       </div>
-                      <div className="text-xs text-[#666666] dark:text-muted-foreground mt-0.5 flex flex-wrap gap-x-3">
+                      <div className="text-xs text-muted-foreground mt-0.5 flex flex-wrap gap-x-3">
                         <span>{formatNumber(user.followers_count || 0)} followers</span>
                         <span>{formatNumber(user.track_count || 0)} tracks</span>
                         {user.reposts_count !== undefined && (
@@ -354,7 +352,7 @@ export default function FollowingManagerPage() {
                       href={user.permalink_url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-[#FF5500] hover:text-[#E64D00] flex-shrink-0"
+                      className="text-primary hover:text-primary/80 flex-shrink-0"
                       onClick={(e) => e.stopPropagation()}
                     >
                       <ExternalLink className="w-4 h-4" />
@@ -363,7 +361,7 @@ export default function FollowingManagerPage() {
                 );
               })}
             </ProgressiveBlur>
-          </div>
+          </Card>
         )}
       <SelectionBanner
         count={selected.size}

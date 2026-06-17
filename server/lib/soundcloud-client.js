@@ -5,6 +5,29 @@ import logger from './logger.js';
 import prisma from './prisma.js';
 import { getTokenContext } from './token-context.js';
 
+/**
+ * Safely parse a fetch Response body as JSON.
+ * Reads the body as text first so empty bodies (common for DELETEs, and for
+ * SoundCloud hiccups that return empty 2xx responses) don't throw the opaque
+ * "Unexpected end of JSON input" error. On a non-empty/unparseable body, logs the
+ * real status plus a short snippet and throws a clear, sanitized error.
+ */
+async function parseScJson(response, { context = 'SoundCloud API', allowEmpty = true } = {}) {
+  const text = await response.text();
+  if (!text || text.trim() === '') {
+    if (allowEmpty) return null;            // empty 2xx — fatal only where a body is required
+    logger.warn(`[${context}] empty response body (status ${response.status})`);
+    throw new Error(`${context}: empty response (status ${response.status})`);
+  }
+  try {
+    return JSON.parse(text);
+  } catch {
+    const snippet = text.length > 200 ? `${text.slice(0, 200)}…` : text;
+    logger.warn(`[${context}] non-JSON response (status ${response.status}): ${snippet}`);
+    throw new Error(`${context}: invalid JSON response (status ${response.status})`);
+  }
+}
+
 class SoundCloudClient {
   constructor() {
     this.baseUrl = 'https://api.soundcloud.com';
@@ -48,7 +71,7 @@ class SoundCloudClient {
       throw new Error(`Token exchange failed: ${response.status}`);
     }
 
-    return response.json();
+    return parseScJson(response, { context: 'Token exchange', allowEmpty: false });
   }
 
   /**
@@ -76,7 +99,7 @@ class SoundCloudClient {
       throw new Error(`Token refresh failed: ${response.status}`);
     }
 
-    return response.json();
+    return parseScJson(response, { context: 'Token refresh', allowEmpty: false });
   }
 
   async refreshTokensAndPersist(refreshToken) {
@@ -145,7 +168,7 @@ class SoundCloudClient {
           throw new Error(`API request failed after token refresh: ${retryResponse.status}`);
         }
 
-        return retryResponse.json();
+        return parseScJson(retryResponse, { context: endpoint });
       } catch (refreshError) {
         // Don't expose refresh error details
         throw new Error(`Token refresh failed`);
@@ -173,7 +196,7 @@ class SoundCloudClient {
       throw new Error(`API request failed: ${response.status}`);
     }
 
-    return response.json();
+    return parseScJson(response, { context: endpoint });
   }
 
   /**
@@ -255,7 +278,7 @@ class SoundCloudClient {
         throw new Error(`API request failed: ${res.status}`);
       }
 
-      const data = await res.json();
+      const data = (await parseScJson(res, { context: endpoint })) || {};
       if (Array.isArray(data.collection)) {
         allItems.push(...data.collection);
       }
@@ -344,13 +367,13 @@ class SoundCloudClient {
           // Don't include response body in error message
           throw new Error(`Resolve follow error: ${res2.status}`);
         }
-        return res2.json();
+        return parseScJson(res2, { context: 'resolve' });
       }
       if (!res.ok) {
         // Don't include response body in error message
         throw new Error(`Resolve error: ${res.status}`);
       }
-      return res.json();
+      return parseScJson(res, { context: 'resolve' });
     };
 
     try {
@@ -380,13 +403,13 @@ class SoundCloudClient {
         // Don't include response body in error message
         throw new Error(`Resolve follow error: ${res2.status}`);
       }
-      return res2.json();
+      return parseScJson(res2, { context: 'resolve (public)' });
     }
     if (!res.ok) {
       // Don't include response body in error message
       throw new Error(`Resolve error: ${res.status}`);
     }
-    return res.json();
+    return parseScJson(res, { context: 'resolve (public)' });
   }
 
   buildPagedEndpoint(endpoint, { limit = 50, next, extraParams = {} } = {}) {
@@ -481,161 +504,66 @@ class SoundCloudClient {
    * Falls back to the V1 activity feed if the V2 endpoint fails.
    */
   async getReposts(accessToken, refreshToken) {
-    // Step 1: get authenticated user's SC ID
-    let myScId = null;
     try {
-      const me = await this.scRequest('/me', accessToken, refreshToken);
-      myScId = me?.id ?? null;
-      logger.info('[getReposts] authenticated SC user id:', myScId);
-    } catch (e) {
-      logger.warn('[getReposts] could not fetch /me:', e.message);
-    }
+      const [trackReposts, playlistReposts] = await Promise.all([
+        this.paginate('/me/reposts/tracks', accessToken, refreshToken, 200),
+        this.paginate('/me/reposts/playlists', accessToken, refreshToken, 200),
+      ]);
 
-    if (!myScId) {
-      logger.error('[getReposts] cannot determine user ID, aborting');
+      const normalize = (items, resourceType) => {
+        return items.map(item => {
+          // Some endpoints return { track: {...} }, others return the resource directly
+          const resource = item.track || item.playlist || item;
+          const id = resource.id ? Number(resource.id) : null;
+          if (!id) return null;
+
+          return {
+            id,
+            urn: resource.urn || `soundcloud:${resourceType}s:${id}`,
+            resourceType,
+            title: resource.title || 'Unknown',
+            user: { username: resource.user?.username || 'Unknown' },
+            artwork_url: resource.artwork_url || resource.user?.avatar_url || null,
+            permalink_url: resource.permalink_url || null,
+            created_at: item.created_at || resource.created_at || null,
+          };
+        }).filter(Boolean);
+      };
+
+      const results = [
+        ...normalize(trackReposts, 'track'),
+        ...normalize(playlistReposts, 'playlist')
+      ];
+
+      // Sort by created_at descending if available
+      results.sort((a, b) => {
+        if (!a.created_at) return 1;
+        if (!b.created_at) return -1;
+        return new Date(b.created_at) - new Date(a.created_at);
+      });
+
+      logger.info(`[getReposts] returning ${results.length} reposts`);
+      return results;
+    } catch (e) {
+      logger.error('[getReposts] error fetching reposts:', e.message);
       return [];
     }
+  }
 
-    // Step 2: paginate the V2 reposts stream
-    const rawItems = [];
-    try {
-      let nextUrl = `https://api-v2.soundcloud.com/stream/users/${myScId}/reposts?limit=200&client_id=${this.clientId}`;
-      let currentToken = accessToken;
-      let pageCount = 0;
+  /**
+   * Get the user's recently played tracks
+   */
+  async getRecentlyPlayed(accessToken, refreshToken) {
+    const data = await this.scRequest('/me/recently-played/tracks', accessToken, refreshToken);
+    return data?.collection || [];
+  }
 
-      while (nextUrl && pageCount < 20) {
-        pageCount++;
-        const res = await fetch(nextUrl, {
-          headers: {
-            'Authorization': `OAuth ${currentToken}`,
-            'Accept': 'application/json',
-          },
-        });
-
-        if (res.status === 401) {
-          logger.info('[getReposts] 401 on v2 – refreshing token');
-          const refreshed = await this.refreshTokens(refreshToken);
-          currentToken = refreshed.access_token;
-          continue;
-        }
-
-        if (!res.ok) {
-          logger.warn(`[getReposts] v2 stream/reposts returned HTTP ${res.status} – will fall back to v1`);
-          break;
-        }
-
-        const data = await res.json();
-        const items = data.collection ?? [];
-        logger.info(`[getReposts] v2 page ${pageCount}: ${items.length} items, next: ${data.next_href ? 'yes' : 'no'}`);
-        rawItems.push(...items);
-        nextUrl = data.next_href || null;
-      }
-    } catch (e) {
-      logger.warn('[getReposts] v2 request error:', e.message);
-    }
-
-    logger.info('[getReposts] v2 raw item count:', rawItems.length);
-
-    // Step 3: normalize V2 items
-    // V2 format: { type: "track-repost"|"playlist-repost", track: {...}|playlist: {...}, created_at }
-    if (rawItems.length > 0) {
-      const seen = new Set();
-      const results = [];
-
-      for (const item of rawItems) {
-        const resource = item.track || item.playlist || null;
-        if (!resource) continue;
-
-        const isPlaylist = !!(item.playlist) || String(item.type).includes('playlist');
-        const resourceType = isPlaylist ? 'playlist' : 'track';
-        const id = resource.id ? Number(resource.id) : null;
-        if (!id) continue;
-
-        const key = `${resourceType}:${id}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-
-        results.push({
-          id,
-          urn: resource.urn || `soundcloud:${resourceType}s:${id}`,
-          resourceType,
-          title: resource.title || 'Unknown',
-          user: { username: resource.user?.username || 'Unknown' },
-          artwork_url: resource.artwork_url || resource.user?.avatar_url || null,
-          permalink_url: resource.permalink_url || null,
-          created_at: item.created_at || null,
-        });
-      }
-
-      logger.info('[getReposts] returning', results.length, 'reposts (v2)');
-      return results;
-    }
-
-    // Step 4: V2 returned nothing – fall back to V1 activity feed
-    logger.info('[getReposts] v2 returned 0 items, trying v1 activity feed as fallback');
-    // Official SC API uses "track:repost" / "playlist:repost" (colons per Swagger spec).
-    // Older docs used hyphens/underscores — include all variants for safety.
-    const REPOST_TYPES = new Set([
-      'track:repost', 'playlist:repost',       // official Swagger format
-      'track-repost', 'playlist-repost',        // alternative hyphen format
-      'track_repost', 'playlist_repost',        // alternative underscore format
-      'repost',                                 // catch-all
-    ]);
-    const allItems = [];
-
-    try {
-      const streamItems = await this.paginate('/me/activities', accessToken, refreshToken, 200);
-      logger.info('[getReposts] v1 /me/activities count:', streamItems.length, 'types:', [...new Set(streamItems.map(i => i.type))]);
-      for (const item of streamItems) {
-        if (!REPOST_TYPES.has(item.type)) continue;
-        const itemUserId = item.user?.id ?? item.origin?.user?.id ?? null;
-        if (myScId !== null && itemUserId !== null && Number(itemUserId) !== myScId) continue;
-        allItems.push(item);
-      }
-    } catch (e) {
-      logger.warn('[getReposts] v1 /me/activities failed:', e.message);
-    }
-
-    try {
-      const ownItems = await this.paginate('/me/activities/all/own', accessToken, refreshToken, 200);
-      logger.info('[getReposts] v1 /me/activities/all/own count:', ownItems.length);
-      for (const item of ownItems) {
-        if (REPOST_TYPES.has(item.type)) allItems.push(item);
-      }
-    } catch (e) {
-      logger.warn('[getReposts] v1 /me/activities/all/own failed:', e.message);
-    }
-
-    const seen = new Set();
-    const fallbackResults = [];
-    for (const item of allItems) {
-      const origin = item.origin || {};
-      const isPlaylist = item.type.includes('playlist');
-      const resourceType = isPlaylist ? 'playlist' : 'track';
-      let id = origin.id;
-      if (id == null && origin.urn) {
-        const m = String(origin.urn).match(/(\d+)$/);
-        if (m) id = Number(m[1]);
-      }
-      if (id == null) continue;
-      id = Number(id);
-      const key = `${resourceType}:${id}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      fallbackResults.push({
-        id,
-        urn: origin.urn || `soundcloud:${resourceType}s:${id}`,
-        resourceType,
-        title: origin.title || 'Unknown',
-        user: { username: origin.user?.username || 'Unknown' },
-        artwork_url: origin.artwork_url || origin.user?.avatar_url || null,
-        permalink_url: origin.permalink_url || null,
-        created_at: item.created_at || null,
-      });
-    }
-
-    logger.info('[getReposts] returning', fallbackResults.length, 'reposts (v1 fallback)');
-    return fallbackResults;
+  /**
+   * Get related artists for a user
+   */
+  async getRelatedArtists(userUrn, accessToken, refreshToken, limit = 10) {
+    const data = await this.scRequest(`/users/${userUrn}/related?limit=${limit}&linked_partitioning=1`, accessToken, refreshToken);
+    return data?.collection || [];
   }
 
   /**
@@ -718,7 +646,7 @@ class SoundCloudClient {
         // Let's check headers.
         const type = res.headers.get('content-type');
         if (type && type.includes('application/json')) {
-            const json = await res.json();
+            const json = (await parseScJson(res, { context: 'download' })) || {};
             return { redirect: json.redirectUri || json.url || json.link }; // Handle various JSON responses
         }
         // If it's a file, we might be in trouble if we expected a link.

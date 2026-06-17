@@ -565,6 +565,13 @@ export default function Home() {
                 >
                   Privacy
                 </Link>
+                <span className="hidden sm:inline">•</span>
+                <Link
+                  href="/accessibility"
+                  className="hover:text-foreground transition-colors"
+                >
+                  Accessibility
+                </Link>
               </div>
               <div className="text-center sm:text-right">
                 <p>SC Toolkit is not affiliated with SoundCloud.</p>

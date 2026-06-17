@@ -46,6 +46,7 @@ export const queryKeys = {
   followings: () => ["followings"] as const,
   followers: () => ["followers"] as const,
   reposts: () => ["reposts"] as const,
+  recentlyPlayed: () => ["recently-played"] as const,
   activities: (limit = 200) => ["activities", limit] as const,
 };
 
@@ -58,6 +59,7 @@ const timings = {
   followings: { staleTime: 5 * 60 * 1000, gcTime: 15 * 60 * 1000 },
   followers: { staleTime: 5 * 60 * 1000, gcTime: 15 * 60 * 1000 },
   reposts: { staleTime: 60 * 1000, gcTime: 10 * 60 * 1000 },
+  recentlyPlayed: { staleTime: 60 * 1000, gcTime: 10 * 60 * 1000 },
   activities: { staleTime: 60 * 1000, gcTime: 10 * 60 * 1000 },
 };
 
@@ -146,6 +148,14 @@ export function activitiesQueryOptions(limit = 200) {
   };
 }
 
+export function recentlyPlayedQueryOptions() {
+  return {
+    queryKey: queryKeys.recentlyPlayed(),
+    queryFn: () => apiFetchJson<CollectionResponse<Record<string, unknown>>>("/api/recently-played"),
+    ...timings.recentlyPlayed,
+  };
+}
+
 export function useMeQuery(options?: QueryOverrides<Record<string, unknown>>) {
   return useQuery({ ...meQueryOptions(), ...options });
 }
@@ -186,6 +196,10 @@ export function useActivitiesQuery(
   options?: QueryOverrides<CollectionResponse<Record<string, unknown>>>,
 ) {
   return useQuery({ ...activitiesQueryOptions(limit), ...options });
+}
+
+export function useRecentlyPlayedQuery(options?: QueryOverrides<CollectionResponse<Record<string, unknown>>>) {
+  return useQuery({ ...recentlyPlayedQueryOptions(), ...options });
 }
 
 function getTrackId(item: Record<string, unknown>) {

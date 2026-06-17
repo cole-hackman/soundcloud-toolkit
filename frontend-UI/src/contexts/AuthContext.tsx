@@ -8,6 +8,8 @@ interface User {
   username: string;
   avatar_url: string;
   display_name: string;
+  soundcloudId?: number;
+  canDownload?: boolean;
 }
 
 interface AuthContextType {
@@ -62,6 +64,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           username: userData.username,
           avatar_url: userData.avatarUrl || "",
           display_name: userData.displayName || userData.username,
+          soundcloudId: userData.soundcloudId,
+          canDownload: !!userData.canDownload,
         });
         setIsAuthenticated(true);
       } else {

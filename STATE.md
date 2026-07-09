@@ -1,35 +1,33 @@
 # STATE
 
 ## Now
-UI/UX audit overhaul is complete and committed on branch `ui-audit-overhaul`
-(commit 1b4edd1, branched from main@8bfd62a). Full audit report lives in
-`docs/ui-audit-2026-07-08.md`. The branch is NOT pushed or merged yet, and
-nothing is deployed. Separately, an in-progress "growth" feature (not part of
-this work) sits uncommitted in the working tree: modified
-`server/routes/api.js`, `server/middleware/validation.js`,
-`server/lib/soundcloud-client.js`, `prisma/schema.prisma`,
-`tests/validation.test.js`, plus untracked `frontend-UI/src/app/(app)/growth/`,
-`server/lib/growth-engine.js`, `tests/growth-engine.test.js`.
+Branch `ui-audit-overhaul` (from main@8bfd62a) now holds the UI overhaul AND
+the growth-feature audit fixes, all committed. Nothing pushed/merged/deployed.
+Two manual assets still block full landing polish: a real dashboard screenshot
+(set `HERO_SHOT` in frontend-UI/src/app/page.tsx) and real testimonial quotes
+(fill `testimonials[]` in the same file). A Prisma migration for the new
+`GrowthAction.inspirationNames` column must be run before growth ships.
 
 ## Just done
-- 1b4edd1 — UI overhaul, all 4 phases: landing rework (animation diet 10→3
-  components, 9-tool feature grid, concrete hero subhead, static headings,
-  nav CTA "Get started"), ~330 hardcoded hex classes → theme tokens across
-  20 files, sidebar dark-mode readability fix, glass-card light shadow fix,
-  gradient contrast fix, ConfirmDialog + combine picker dialog a11y
-  (role/aria-modal/Escape/autofocus), dashboard tools grouped by category,
-  SelectionBanner destructive pulse now red.
-- Verified: `next build` passes, `next lint` clean, static export
-  screenshotted at 1440px + 390px and visually confirmed.
-- Audit report written: `docs/ui-audit-2026-07-08.md` (sections A–J).
+- 478bab1 — hero product-shot frame (gated by HERO_SHOT, null=hidden),
+  testimonials scaffold (empty array=hidden), following-library SelectionBanner
+  bottom padding.
+- de0bfdb — growth audit fixes: server-enforced daily follow cap (50/24h) +
+  cooldown, paced background batch runner w/ poll+cancel, likeTrack PUT→POST,
+  'followings' strategy + genre-affinity scoring (follow-ratio downweighted),
+  discovery excludes prior targets, id validation, opt-in auto-like, track
+  preview, analytics tab (per-seed conversion + follow-back curve), daily
+  follow-back scheduler, session CSV export.
+- 7edeadb — committed the pre-existing growth WIP as a clean base.
+- 1b4edd1 — UI overhaul all 4 phases (animation diet, token sweep, a11y,
+  dashboard grouping). Report: docs/ui-audit-2026-07-08.md.
+- Verified: full jest suite green (78), `next build` + `next lint` clean.
 
 ## Next
-1. Cole reviews branch `ui-audit-overhaul` (esp. landing copy + dashboard
-   grouping), then merge/PR and deploy; run /verify-deploy on the live site.
-2. Decide on remaining audit items not implemented: real product screenshot
-   in hero, genuine testimonials to back "2,000+" claim, bottom padding on
-   pages under the fixed SelectionBanner.
-3. Finish/commit the separate growth-engine WIP (untouched by this work).
+1. Run `npx prisma migrate dev --name growth-inspiration-names` (or db push)
+   against the dev DB before testing growth end-to-end.
+2. Add the two manual landing assets (HERO_SHOT screenshot + testimonials).
+3. Review branch, merge/PR, deploy, run /verify-deploy.
 
 ## Decisions
 - Headline "The Ultimate SoundCloud Toolkit" kept as-is — only subhead copy
@@ -45,10 +43,21 @@ this work) sits uncommitted in the working tree: modified
   Export / Discovery & Links (2026-07-08).
 - Auth funnel naming: nav "Get started" → landing "Connect with SoundCloud"
   → login page "Continue with SoundCloud" (2026-07-08).
+- No fabricated social proof: testimonials[] and HERO_SHOT default empty/null
+  so nothing fake or broken ships; both are opt-in via real content (2026-07-09).
+- Growth follows are capped server-side (50/24h + 30-min cooldown) and paced;
+  auto-like is opt-in; genre affinity outranks follow-back ratio in scoring —
+  the feature is positioned as scene discovery, not follow-churn (2026-07-09).
 
 ## Landmines
-- Growth-feature WIP in working tree (see Now) — do not discard, do not
-  commit into unrelated work; it predates the UI branch.
+- Growth needs a DB migration (`GrowthAction.inspirationNames`) before it
+  runs; `npx prisma generate` already done, but the column won't exist until
+  a migrate/db-push runs.
+- Growth engagement job registry is in-memory (one job/user, single-instance
+  assumption, like the resolve cache). Multiple backend instances would each
+  hold separate jobs — fine on the current single-instance deploy.
+- The "Trusted by 2,000+ DJs & producers" line on the landing is an unbacked
+  claim; verify it's real or soften it before leaning on testimonials.
 - `next.config.js` rewrites/headers warnings under `output: export` are
   pre-existing and expected (dev-only rewrites).
 - Landing gradient text uses `.text-gradient` — do not lighten end stops

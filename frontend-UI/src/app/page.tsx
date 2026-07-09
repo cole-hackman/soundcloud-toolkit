@@ -239,6 +239,7 @@ export default function Home() {
           </div>
         </nav>
 
+        <main id="main-content" tabIndex={-1} className="focus:outline-none">
         {/* Hero Section */}
         <section className="relative overflow-hidden px-4 pb-20 pt-28 sm:px-6 sm:pt-32 md:pb-28 md:pt-40">
           {/* Flickering grid background */}
@@ -582,6 +583,7 @@ export default function Home() {
             </div>
           </div>
         </section>
+        </main>
 
         {/* Footer */}
         <footer className="border-t border-border/60 bg-background/90 px-4 py-10 sm:px-6">

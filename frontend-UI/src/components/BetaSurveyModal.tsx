@@ -203,6 +203,7 @@ export function BetaSurveyModal({
       <button
         type="button"
         key={value}
+        aria-pressed={selected}
         onClick={() => onSelect(value)}
         className={`w-full text-left px-3.5 py-2.5 rounded-lg border-2 transition-all ${
           selected
@@ -230,6 +231,7 @@ export function BetaSurveyModal({
       <button
         type="button"
         key={value}
+        aria-pressed={selected}
         onClick={() => toggle(set, setter, value)}
         className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border-2 transition-all ${
           selected
@@ -325,6 +327,7 @@ export function BetaSurveyModal({
                       <button
                         type="button"
                         key={o.value}
+                        aria-pressed={selected}
                         onClick={() => setPlatform(selected ? null : o.value)}
                         className={`px-3.5 py-1.5 rounded-full text-sm font-medium border-2 transition-all ${
                           selected
@@ -379,6 +382,7 @@ export function BetaSurveyModal({
                       <button
                         type="button"
                         key={o.value}
+                        aria-pressed={selected}
                         onClick={() => setTrustDirectWrite(selected ? null : o.value)}
                         className={`px-3.5 py-1.5 rounded-full text-sm font-medium border-2 transition-all ${
                           selected
@@ -403,6 +407,7 @@ export function BetaSurveyModal({
                       <button
                         type="button"
                         key={o.value}
+                        aria-pressed={selected}
                         onClick={() => setInterest(o.value)}
                         className={`px-3.5 py-1.5 rounded-full text-sm font-medium border-2 transition-all ${
                           selected

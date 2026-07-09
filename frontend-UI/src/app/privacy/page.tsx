@@ -171,6 +171,39 @@ export default function PrivacyPage() {
 
             <section>
               <h2 className="text-2xl font-bold mb-4 text-foreground">
+                Feedback Surveys &amp; Beta Program
+              </h2>
+              <p>
+                We occasionally show an optional in-app survey to gather product
+                feedback and to invite interested users to test related apps we
+                build (such as SongSwipe, a Rekordbox library tool). Taking the
+                survey is entirely voluntary.
+              </p>
+              <ul className="list-disc list-inside space-y-2 ml-4 mt-2">
+                <li>
+                  <strong className="text-foreground">Email is optional</strong>{" "}
+                  and only requested if you choose to join a beta or ask to be
+                  contacted. You can complete the survey without providing it.
+                </li>
+                <li>
+                  If you provide an email, we use it{" "}
+                  <strong className="text-foreground">only</strong> to invite you
+                  to the beta or follow up on your feedback — never for
+                  advertising, and we do not sell or share it.
+                </li>
+                <li>
+                  Your survey answers are stored alongside your SoundCloud user
+                  ID so we don&apos;t prompt you twice for the same survey.
+                </li>
+                <li>
+                  You can ask us to delete your survey responses and email at any
+                  time (see Data Retention below).
+                </li>
+              </ul>
+            </section>
+
+            <section>
+              <h2 className="text-2xl font-bold mb-4 text-foreground">
                 Data Retention
               </h2>
               <p>

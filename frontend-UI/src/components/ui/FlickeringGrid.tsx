@@ -94,6 +94,16 @@ export function FlickeringGrid({
 
     const { ctx, cols, rows, opacities } = setupCanvas(canvas, w, h);
 
+    // Respect reduced-motion: paint one static frame, don't animate.
+    const reduceMotion =
+      typeof window !== "undefined" &&
+      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+
+    if (reduceMotion) {
+      draw(ctx, cols, rows, opacities, w, h);
+      return;
+    }
+
     let rafId: number;
     const loop = () => {
       draw(ctx, cols, rows, opacities, w, h);

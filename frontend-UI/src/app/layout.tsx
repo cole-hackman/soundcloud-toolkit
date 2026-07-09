@@ -102,6 +102,9 @@ export default function RootLayout({
         <meta name="theme-color" content="#FF5500" />
       </head>
       <body className="antialiased font-sans">
+        <a href="#main-content" className="skip-link">
+          Skip to content
+        </a>
         <Providers>
           {children}
         </Providers>

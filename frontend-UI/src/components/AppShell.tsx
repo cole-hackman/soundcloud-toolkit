@@ -530,7 +530,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       )}
 
       {/* Main content */}
-      <main className="flex-1 min-w-0 min-h-0 pt-12 lg:pt-0">
+      <main id="main-content" tabIndex={-1} className="flex-1 min-w-0 min-h-0 pt-12 lg:pt-0 focus:outline-none">
         {children}
       </main>
     </div>

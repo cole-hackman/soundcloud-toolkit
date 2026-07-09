@@ -209,7 +209,7 @@ function StatCard({ label, value, sub, trend, trendDir, spark, sparkColor, delay
   );
 }
 
-function SectionCard({ title, children, span = 1, delay = 0, style: s, palette }) {
+function SectionCard({ title, children, span = 1, delay = 0, style: s, palette, action }) {
   const P = palette ?? PALETTES.dark;
   return (
     <div
@@ -239,7 +239,8 @@ function SectionCard({ title, children, span = 1, delay = 0, style: s, palette }
         }}
       >
         <span style={{ width: 4, height: 4, borderRadius: "50%", background: ORANGE, display: "inline-block" }} />
-        {title}
+        <span style={{ flex: 1 }}>{title}</span>
+        {action}
       </div>
       {children}
     </div>
@@ -833,9 +834,29 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* Monetization Feedback */}
+        {/* SongSwipe Beta Survey */}
         <div style={{ marginTop: 20 }}>
-          <SectionCard title={`Monetization Feedback — ${period} Period`} delay={0.55} palette={P}>
+          <SectionCard
+            title={`SongSwipe Beta Survey — ${period} Period`}
+            delay={0.55}
+            palette={P}
+            action={
+              <a
+                href={`${API_BASE}/api/admin/feedback/beta-emails`}
+                style={{
+                  fontSize: 11,
+                  fontFamily: "'JetBrains Mono', monospace",
+                  color: ORANGE,
+                  textDecoration: "none",
+                  border: `1px solid ${ORANGE}55`,
+                  borderRadius: 6,
+                  padding: "5px 10px",
+                }}
+              >
+                ↓ Export beta emails ({feedbackSummary?.wantsBetaCount ?? 0})
+              </a>
+            }
+          >
             {loading ? (
               <SkeletonBlock height={200} palette={P} />
             ) : !feedbackSummary || feedbackSummary.total === 0 ? (
@@ -844,59 +865,51 @@ export default function AdminDashboard() {
               </div>
             ) : (
               <>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 16, marginBottom: 14 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16, marginBottom: 14 }}>
                   <FeedbackBreakdown
-                    title="Monetization preference"
+                    title="Interest"
                     palette={P}
-                    counts={feedbackSummary.preference || {}}
+                    counts={feedbackSummary.interest || {}}
                     total={feedbackSummary.total}
-                    order={["pro", "donation", "ads", "none", "other"]}
-                    labels={{
-                      pro: "Pro plan",
-                      donation: "Donation / tip",
-                      ads: "Ads on free",
-                      none: "No monetization",
-                      other: "Other",
-                    }}
-                    colors={{
-                      pro: ORANGE,
-                      donation: GREEN,
-                      ads: YELLOW,
-                      none: RED,
-                      other: CYAN,
-                    }}
+                    order={["very", "somewhat", "not"]}
+                    labels={{ very: "Very interested", somewhat: "Somewhat", not: "Not for me" }}
+                    colors={{ very: GREEN, somewhat: YELLOW, not: RED }}
                   />
                   <FeedbackBreakdown
-                    title="Lifetime key interest"
+                    title="Rekordbox use"
                     palette={P}
-                    counts={feedbackSummary.lifetimeInterest || {}}
+                    counts={feedbackSummary.rekordboxUse || {}}
                     total={feedbackSummary.total}
-                    order={["interested", "maybe", "not_interested", "unanswered"]}
+                    order={["rekordbox_primary", "rekordbox_sometimes", "other_software", "no"]}
                     labels={{
-                      interested: "Interested",
-                      maybe: "Maybe",
-                      not_interested: "Not interested",
-                      unanswered: "Unanswered",
+                      rekordbox_primary: "Primary",
+                      rekordbox_sometimes: "Sometimes",
+                      other_software: "Other software",
+                      no: "No",
                     }}
-                    colors={{
-                      interested: GREEN,
-                      maybe: YELLOW,
-                      not_interested: RED,
-                      unanswered: P.textDim,
-                    }}
+                    colors={{ rekordbox_primary: ORANGE, rekordbox_sometimes: YELLOW, other_software: CYAN, no: RED }}
+                  />
+                  <FeedbackBreakdown
+                    title="Platform"
+                    palette={P}
+                    counts={feedbackSummary.platform || {}}
+                    total={feedbackSummary.total}
+                    order={["mac", "windows", "both", "unanswered"]}
+                    labels={{ mac: "macOS", windows: "Windows", both: "Both", unanswered: "—" }}
+                    colors={{ mac: CYAN, windows: ORANGE, both: GREEN, unanswered: P.textDim }}
                   />
                 </div>
 
                 <div style={{ borderTop: `1px solid ${P.cardBorder}`, paddingTop: 12 }}>
                   <div style={{
                     display: "grid",
-                    gridTemplateColumns: "1.1fr 0.8fr 0.9fr 0.7fr 0.6fr 0.6fr 2fr 0.7fr",
+                    gridTemplateColumns: "1fr 1.4fr 0.7fr 0.6fr 0.5fr 2fr 0.7fr",
                     gap: 8,
                     padding: "0 0 8px",
                     borderBottom: `1px solid ${P.cardBorder}`,
                     marginBottom: 4,
                   }}>
-                    {["User", "SC ID", "Preference", "Lifetime", "Context", "Tracks", "Comment", "When"].map(h => (
+                    {["User", "Email", "Interest", "Beta", "Plat", "Ideas / name", "When"].map(h => (
                       <span key={h} style={{ fontSize: 9, color: P.textDim, fontFamily: "'JetBrains Mono', monospace", textTransform: "uppercase", letterSpacing: 0.8 }}>{h}</span>
                     ))}
                   </div>
@@ -905,32 +918,36 @@ export default function AdminDashboard() {
                       Aggregates only — no detail rows in this window.
                     </div>
                   ) : (
-                    feedbackResponses.map((r, i) => (
-                      <div
-                        key={r.id}
-                        style={{
-                          display: "grid",
-                          gridTemplateColumns: "1.1fr 0.8fr 0.9fr 0.7fr 0.6fr 0.6fr 2fr 0.7fr",
-                          gap: 8,
-                          padding: "9px 0",
-                          borderBottom: i < feedbackResponses.length - 1 ? `1px solid ${P.cardBorder}33` : "none",
-                          alignItems: "center",
-                          fontSize: 11,
-                          fontFamily: "'JetBrains Mono', monospace",
-                        }}
-                      >
-                        <span style={{ color: ORANGE, fontWeight: 500 }}>@{r.user.username}</span>
-                        <span style={{ color: P.textMid }}>{r.soundcloudId}</span>
-                        <span style={{ color: P.text, fontWeight: 600 }}>{r.preference}</span>
-                        <span style={{ color: P.textMid }}>{r.lifetimeInterest || "—"}</span>
-                        <span style={{ color: P.textDim }}>{r.context.replace("post-", "")}</span>
-                        <span style={{ color: P.text }}>{r.trackCount?.toLocaleString() || "—"}</span>
-                        <span style={{ color: P.textMid, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={r.comment || ""}>
-                          {r.comment || <span style={{ color: P.textDim }}>—</span>}
-                        </span>
-                        <span style={{ color: P.textDim }}>{timeAgo(r.createdAt)}</span>
-                      </div>
-                    ))
+                    feedbackResponses.map((r, i) => {
+                      const ideas = [r.suggestions, r.nameIdea ? `name: ${r.nameIdea}` : null].filter(Boolean).join(" · ");
+                      return (
+                        <div
+                          key={r.id}
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns: "1fr 1.4fr 0.7fr 0.6fr 0.5fr 2fr 0.7fr",
+                            gap: 8,
+                            padding: "9px 0",
+                            borderBottom: i < feedbackResponses.length - 1 ? `1px solid ${P.cardBorder}33` : "none",
+                            alignItems: "center",
+                            fontSize: 11,
+                            fontFamily: "'JetBrains Mono', monospace",
+                          }}
+                        >
+                          <span style={{ color: ORANGE, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>@{r.user.username}</span>
+                          <span style={{ color: P.textMid, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={r.email || ""}>
+                            {r.email || <span style={{ color: P.textDim }}>—</span>}
+                          </span>
+                          <span style={{ color: P.text, fontWeight: 600 }}>{r.interest}</span>
+                          <span style={{ color: r.wantsBeta ? GREEN : P.textDim }}>{r.wantsBeta ? "✓" : "—"}</span>
+                          <span style={{ color: P.textDim }}>{r.platform || "—"}</span>
+                          <span style={{ color: P.textMid, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={ideas}>
+                            {ideas || <span style={{ color: P.textDim }}>—</span>}
+                          </span>
+                          <span style={{ color: P.textDim }}>{timeAgo(r.createdAt)}</span>
+                        </div>
+                      );
+                    })
                   )}
                 </div>
               </>

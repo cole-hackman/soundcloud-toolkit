@@ -10,6 +10,12 @@ dashboard screenshot (`HERO_SHOT`) and testimonial quotes (`testimonials[]`),
 both in frontend-UI/src/app/page.tsx.
 
 ## Just done
+- (this session) — privacy line for beta email; accessibility pass backing the
+  WCAG 2.1 AA claim (prefers-reduced-motion global CSS + FlickeringGrid static
+  frame, skip-to-content link + #main-content landmarks, global focus-visible
+  fallback, aria-pressed on survey toggles); admin dashboard repointed to the
+  beta-survey fields + beta-emails export button (the old admin UI would have
+  shown empty after the API change); CLAUDE.md updated for the new survey.
 - 6d2d4e9 — SongSwipe beta survey replaces monetization survey: new
   `beta_signups` table, `validateBetaSignup` (email required only if wantsBeta),
   feedback.js on the new table (campaign `2026-songswipe-beta-v1`), admin

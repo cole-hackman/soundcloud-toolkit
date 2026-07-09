@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import { Trash2, AlertTriangle } from "lucide-react";
 import { Button } from "./Button";
 
@@ -26,6 +27,18 @@ export function ConfirmDialog({
   onCancel,
   children,
 }: ConfirmDialogProps) {
+  const cancelRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    cancelRef.current?.focus();
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onCancel();
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [open, onCancel]);
+
   if (!open) return null;
 
   const Icon = variant === "destructive" ? Trash2 : AlertTriangle;
@@ -48,7 +61,10 @@ export function ConfirmDialog({
 
       {/* Modal */}
       <div
-        className="relative w-full max-w-md bg-white dark:bg-card rounded-2xl shadow-xl border-2 border-gray-200 dark:border-border animate-in fade-in zoom-in-95 duration-200"
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        className="relative w-full max-w-md bg-card rounded-2xl shadow-xl border-2 border-border animate-in fade-in zoom-in-95 duration-200"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="px-6 py-6 space-y-4">
@@ -59,14 +75,14 @@ export function ConfirmDialog({
             >
               <Icon className={`w-5 h-5 ${iconColor}`} />
             </div>
-            <h2 className="text-lg font-bold text-[#333333] dark:text-foreground">
+            <h2 className="text-lg font-bold text-foreground">
               {title}
             </h2>
           </div>
 
           {/* Description */}
           {description && (
-            <p className="text-sm text-[#666666] dark:text-muted-foreground">
+            <p className="text-sm text-muted-foreground">
               {description}
             </p>
           )}
@@ -77,6 +93,7 @@ export function ConfirmDialog({
           {/* Buttons */}
           <div className="flex gap-3 pt-1">
             <Button
+              ref={cancelRef}
               variant="outline"
               onClick={onCancel}
               className="flex-1"

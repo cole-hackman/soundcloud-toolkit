@@ -140,7 +140,7 @@ export default function PlaylistComparePage() {
             <TrackSection title="In both playlists" tracks={result.overlap} />
 
             <div className="rounded-xl border border-border bg-card p-4 text-sm text-muted-foreground">
-              <ListPlus className="mr-2 inline h-4 w-4 text-[#FF5500]" />
+              <ListPlus className="mr-2 inline h-4 w-4 text-primary" />
               Next step: use Combine Playlists or Playlist Modifier to add missing tracks after reviewing the export.
             </div>
           </div>
@@ -167,7 +167,7 @@ function PlaylistSelect({
       <select
         value={value}
         onChange={(event) => onChange(event.target.value ? Number(event.target.value) : "")}
-        className="w-full rounded-lg border-2 border-gray-200 bg-white px-3 py-2 text-sm text-[#333333] focus:border-[#FF5500] focus:outline-none dark:border-border dark:bg-secondary/20 dark:text-foreground"
+        className="w-full rounded-lg border-2 border-gray-200 bg-white px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none dark:border-border dark:bg-secondary/20 dark:text-foreground"
       >
         <option value="">Choose a playlist...</option>
         {playlists.map((playlist) => (

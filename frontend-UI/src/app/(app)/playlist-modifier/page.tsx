@@ -361,7 +361,7 @@ export default function PlaylistModifierPage() {
         {!selectedPlaylist ? (
           /* Playlist Selection */
           <div className="bg-white dark:bg-card rounded-2xl p-6 border-2 border-gray-200 dark:border-border">
-            <h2 className="text-xl font-bold mb-4 text-[#333333] dark:text-foreground">
+            <h2 className="text-xl font-bold mb-4 text-foreground">
               Select a Playlist to Modify
             </h2>
             {loading ? (
@@ -400,7 +400,7 @@ export default function PlaylistModifierPage() {
                   <button
                     key={playlist.id}
                     onClick={() => selectPlaylist(playlist)}
-                    className="flex items-center gap-4 p-4 rounded-xl bg-gray-50 dark:bg-secondary/20 border-2 border-transparent hover:border-[#FF5500] transition-all text-left"
+                    className="flex items-center gap-4 p-4 rounded-xl bg-gray-50 dark:bg-secondary/20 border-2 border-transparent hover:border-primary transition-all text-left"
                   >
                     <img
                       src={playlist.coverUrl || playlist.artwork_url || "/SC Toolkit Icon.png"}
@@ -408,10 +408,10 @@ export default function PlaylistModifierPage() {
                       className="w-16 h-16 rounded-lg object-cover"
                     />
                     <div>
-                      <div className="font-semibold text-[#333333] dark:text-foreground">
+                      <div className="font-semibold text-foreground">
                         {playlist.title}
                       </div>
-                      <div className="text-sm text-[#666666] dark:text-muted-foreground">
+                      <div className="text-sm text-muted-foreground">
                         {playlist.track_count} tracks
                       </div>
                     </div>
@@ -435,7 +435,7 @@ export default function PlaylistModifierPage() {
                   <ArrowLeft className="h-4 w-4" />
                   Back to playlists
                 </button>
-                <h2 className="text-2xl font-bold text-[#333333] dark:text-foreground">
+                <h2 className="text-2xl font-bold text-foreground">
                   {selectedPlaylist.title}
                 </h2>
               </div>
@@ -475,8 +475,8 @@ export default function PlaylistModifierPage() {
                       onClick={() => setTrackFilter(key)}
                       className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all ${
                         trackFilter === key
-                          ? "bg-[#FF5500] text-white"
-                          : "bg-gray-100 dark:bg-secondary/20 text-[#666666] dark:text-muted-foreground hover:bg-gray-200 dark:hover:bg-secondary/40"
+                          ? "bg-primary text-white"
+                          : "bg-gray-100 dark:bg-secondary/20 text-muted-foreground hover:bg-gray-200 dark:hover:bg-secondary/40"
                       }`}
                     >
                       {label} ({count})
@@ -527,7 +527,7 @@ export default function PlaylistModifierPage() {
                       key={track.id}
                       className="flex items-center gap-4 p-3 rounded-xl bg-gray-50 dark:bg-secondary/20 group"
                     >
-                      <span className="w-8 text-center text-sm text-[#999999] dark:text-muted-foreground">
+                      <span className="w-8 text-center text-sm text-muted-foreground/70">
                         {globalIndex + 1}
                       </span>
                       <img
@@ -536,7 +536,7 @@ export default function PlaylistModifierPage() {
                         className="w-12 h-12 rounded-lg object-cover"
                       />
                       <div className="flex-1 min-w-0">
-                        <div className="font-semibold text-[#333333] dark:text-foreground truncate flex items-center gap-2">
+                        <div className="font-semibold text-foreground truncate flex items-center gap-2">
                           {track.title}
                           {(Boolean(track.downloadable) || track.downloadable === "true") && track.download_url && (
                             <button
@@ -571,7 +571,7 @@ export default function PlaylistModifierPage() {
                             </a>
                           )}
                         </div>
-                        <div className="text-sm text-[#666666] dark:text-muted-foreground truncate">
+                        <div className="text-sm text-muted-foreground truncate">
                           {track.user?.username} •{" "}
                           {formatDuration(track.duration)}
                         </div>
@@ -585,7 +585,7 @@ export default function PlaylistModifierPage() {
                                 openMenuTrackId === track.id ? null : track.id
                               )
                             }
-                            className="p-2 hover:bg-gray-200 dark:hover:bg-secondary/40 rounded text-[#333333] dark:text-foreground"
+                            className="p-2 hover:bg-gray-200 dark:hover:bg-secondary/40 rounded text-foreground"
                             title="More actions"
                             aria-expanded={openMenuTrackId === track.id}
                             aria-haspopup="true"
@@ -596,7 +596,7 @@ export default function PlaylistModifierPage() {
                             <div className="absolute right-0 top-full z-30 mt-1 w-52 rounded-xl border-2 border-gray-200 dark:border-border bg-white dark:bg-card shadow-lg py-1 text-left">
                               <button
                                 type="button"
-                                className="w-full px-3 py-2 text-sm text-left hover:bg-gray-100 dark:hover:bg-secondary/40 flex items-center gap-2 text-[#333333] dark:text-foreground"
+                                className="w-full px-3 py-2 text-sm text-left hover:bg-gray-100 dark:hover:bg-secondary/40 flex items-center gap-2 text-foreground"
                                 onClick={() => openTransferModal("move", track)}
                               >
                                 <ArrowRightLeft className="w-4 h-4 shrink-0" />
@@ -604,7 +604,7 @@ export default function PlaylistModifierPage() {
                               </button>
                               <button
                                 type="button"
-                                className="w-full px-3 py-2 text-sm text-left hover:bg-gray-100 dark:hover:bg-secondary/40 flex items-center gap-2 text-[#333333] dark:text-foreground"
+                                className="w-full px-3 py-2 text-sm text-left hover:bg-gray-100 dark:hover:bg-secondary/40 flex items-center gap-2 text-foreground"
                                 onClick={() => openTransferModal("duplicate", track)}
                               >
                                 <Copy className="w-4 h-4 shrink-0" />
@@ -659,14 +659,14 @@ export default function PlaylistModifierPage() {
           >
             <h3
               id="transfer-dialog-title"
-              className="text-lg font-bold text-[#333333] dark:text-foreground mb-2"
+              className="text-lg font-bold text-foreground mb-2"
             >
               {transfer.action === "move"
                 ? "Move track to playlist"
                 : "Duplicate track to playlist"}
             </h3>
             <p
-              className="text-sm text-[#666666] dark:text-muted-foreground mb-4 truncate"
+              className="text-sm text-muted-foreground mb-4 truncate"
               title={transfer.track.title}
             >
               {transfer.track.title}
@@ -677,11 +677,11 @@ export default function PlaylistModifierPage() {
               </p>
             ) : (
               <label className="block mb-4">
-                <span className="text-sm font-medium text-[#333333] dark:text-foreground mb-1 block">
+                <span className="text-sm font-medium text-foreground mb-1 block">
                   Target playlist
                 </span>
                 <select
-                  className="w-full rounded-lg border-2 border-gray-200 dark:border-border bg-white dark:bg-background px-3 py-2 text-[#333333] dark:text-foreground"
+                  className="w-full rounded-lg border-2 border-gray-200 dark:border-border bg-white dark:bg-background px-3 py-2 text-foreground"
                   value={transferTargetId === "" ? "" : String(transferTargetId)}
                   onChange={(e) =>
                     setTransferTargetId(
@@ -698,7 +698,7 @@ export default function PlaylistModifierPage() {
                 </select>
               </label>
             )}
-            <p className="text-xs text-[#666666] dark:text-muted-foreground mb-4">
+            <p className="text-xs text-muted-foreground mb-4">
               {transfer.action === "move"
                 ? "The track is added to the target playlist first, then removed from this one."
                 : "The track is copied to the end of the target playlist. Playlists you don’t own aren’t listed."}
@@ -706,7 +706,7 @@ export default function PlaylistModifierPage() {
             <div className="flex justify-end gap-3">
               <button
                 type="button"
-                className="px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-border text-[#333333] dark:text-foreground hover:bg-gray-50 dark:hover:bg-secondary/40 disabled:opacity-50"
+                className="px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-border text-foreground hover:bg-gray-50 dark:hover:bg-secondary/40 disabled:opacity-50"
                 onClick={() => !transferLoading && setTransfer(null)}
               >
                 Cancel

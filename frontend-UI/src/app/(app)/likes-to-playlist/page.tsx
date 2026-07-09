@@ -222,10 +222,10 @@ export default function LikesToPlaylistPage() {
                     href={p.permalink_url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="block px-4 py-3 rounded-lg border-2 border-gray-200 dark:border-border hover:border-[#FF5500] hover:bg-[#FF5500]/5 transition"
+                    className="block px-4 py-3 rounded-lg border-2 border-gray-200 dark:border-border hover:border-primary hover:bg-primary/5 transition"
                   >
-                    <span className="font-semibold text-[#333333] dark:text-foreground">{p.title}</span>
-                    <span className="text-sm text-[#666666] dark:text-muted-foreground ml-2">({p.trackCount} tracks)</span>
+                    <span className="font-semibold text-foreground">{p.title}</span>
+                    <span className="text-sm text-muted-foreground ml-2">({p.trackCount} tracks)</span>
                   </a>
                 ))}
               </div>
@@ -236,7 +236,7 @@ export default function LikesToPlaylistPage() {
                   href={result.playlist.permalink_url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-block px-6 py-3 rounded-lg font-semibold bg-[#FF5500]/10 text-[#FF5500] hover:bg-[#FF5500]/20 transition"
+                  className="inline-block px-6 py-3 rounded-lg font-semibold bg-primary/10 text-primary hover:bg-primary/20 transition"
                 >
                   Open in SoundCloud
                 </a>
@@ -257,7 +257,7 @@ export default function LikesToPlaylistPage() {
                   setPlaylistName("");
                   setTargetPlaylist(null);
                 }}
-                className="px-8 py-3 rounded-lg font-semibold border-2 border-gray-200 dark:border-border text-[#333333] dark:text-foreground hover:border-[#FF5500] transition"
+                className="px-8 py-3 rounded-lg font-semibold border-2 border-gray-200 dark:border-border text-foreground hover:border-primary transition"
               >
                 {isExisting ? "Add More" : "Create Another"}
               </button>
@@ -291,10 +291,10 @@ export default function LikesToPlaylistPage() {
           <div className="lg:col-span-2">
             <div className="bg-white dark:bg-card rounded-2xl p-6 border-2 border-gray-200 dark:border-border">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-bold text-[#333333] dark:text-foreground">
+                <h2 className="text-xl font-bold text-foreground">
                   Your Liked Tracks ({likes.length})
                 </h2>
-                <button onClick={selectAll} className="text-sm text-[#FF5500] hover:underline">
+                <button onClick={selectAll} className="text-sm text-primary hover:underline">
                   {selectedTracks.size === likes.length ? "Deselect All" : "Select All"}
                 </button>
               </div>
@@ -318,7 +318,7 @@ export default function LikesToPlaylistPage() {
                         isSelected={isSelected}
                         onToggle={(e) => toggleTrack(track.id, index, e)}
                         rightSlot={
-                          <span className="text-xs text-[#666666] dark:text-muted-foreground">
+                          <span className="text-xs text-muted-foreground">
                             {formatDuration(track.duration)}
                           </span>
                         }
@@ -333,26 +333,26 @@ export default function LikesToPlaylistPage() {
           {/* Create Panel */}
           <div className="lg:col-span-1">
             <div className="bg-white dark:bg-card rounded-2xl p-6 border-2 border-gray-200 dark:border-border sticky top-24 space-y-5">
-              <h2 className="text-xl font-bold text-[#333333] dark:text-foreground">
+              <h2 className="text-xl font-bold text-foreground">
                 {addMode === "existing" ? "Add to Playlist" : "Create Playlist"}
               </h2>
 
               <div className="p-4 bg-gray-50 dark:bg-secondary/20 rounded-lg">
-                <div className="text-sm text-[#666666] dark:text-muted-foreground">Selected Tracks</div>
-                <div className="text-2xl font-bold text-[#333333] dark:text-foreground">
+                <div className="text-sm text-muted-foreground">Selected Tracks</div>
+                <div className="text-2xl font-bold text-foreground">
                   {selectedTracks.size}
                 </div>
               </div>
 
               {selectedTracks.size > 500 && addMode === "new" && (
-                <p className="text-sm text-[#FF5500]">
+                <p className="text-sm text-primary">
                   Selection exceeds 500 tracks; multiple playlists will be created.
                 </p>
               )}
 
               {/* Mode Toggle */}
               <div>
-                <label className="block text-sm font-medium mb-2 text-[#666666] dark:text-muted-foreground">
+                <label className="block text-sm font-medium mb-2 text-muted-foreground">
                   Add to
                 </label>
                 <div className="flex rounded-lg border-2 border-gray-200 dark:border-border overflow-hidden">
@@ -360,8 +360,8 @@ export default function LikesToPlaylistPage() {
                     onClick={() => setAddMode("new")}
                     className={`flex-1 py-2 text-sm font-medium transition ${
                       addMode === "new"
-                        ? "bg-[#FF5500] text-white"
-                        : "text-[#666666] dark:text-muted-foreground hover:bg-gray-50 dark:hover:bg-secondary/20"
+                        ? "bg-primary text-white"
+                        : "text-muted-foreground hover:bg-gray-50 dark:hover:bg-secondary/20"
                     }`}
                   >
                     New playlist
@@ -370,8 +370,8 @@ export default function LikesToPlaylistPage() {
                     onClick={() => setAddMode("existing")}
                     className={`flex-1 py-2 text-sm font-medium transition ${
                       addMode === "existing"
-                        ? "bg-[#FF5500] text-white"
-                        : "text-[#666666] dark:text-muted-foreground hover:bg-gray-50 dark:hover:bg-secondary/20"
+                        ? "bg-primary text-white"
+                        : "text-muted-foreground hover:bg-gray-50 dark:hover:bg-secondary/20"
                     }`}
                   >
                     Existing playlist
@@ -382,7 +382,7 @@ export default function LikesToPlaylistPage() {
               {/* New Playlist Name (only in "new" mode) */}
               {addMode === "new" && (
                 <div>
-                  <label className="block text-sm font-medium mb-2 text-[#666666] dark:text-muted-foreground">
+                  <label className="block text-sm font-medium mb-2 text-muted-foreground">
                     Playlist Name
                   </label>
                   <input
@@ -390,7 +390,7 @@ export default function LikesToPlaylistPage() {
                     value={playlistName}
                     onChange={(e) => setPlaylistName(e.target.value)}
                     placeholder="Enter playlist name..."
-                    className="w-full px-4 py-3 rounded-lg border-2 border-gray-200 dark:border-border focus:border-[#FF5500] focus:outline-none transition dark:bg-secondary/20 dark:text-foreground"
+                    className="w-full px-4 py-3 rounded-lg border-2 border-gray-200 dark:border-border focus:border-primary focus:outline-none transition dark:bg-secondary/20 dark:text-foreground"
                   />
                 </div>
               )}
@@ -398,22 +398,22 @@ export default function LikesToPlaylistPage() {
               {/* Target Playlist Picker (only in "existing" mode) */}
               {addMode === "existing" && (
                 <div>
-                  <label className="block text-sm font-medium mb-2 text-[#666666] dark:text-muted-foreground">
+                  <label className="block text-sm font-medium mb-2 text-muted-foreground">
                     Target Playlist
                   </label>
                   {loadingPlaylists ? (
-                    <div className="flex items-center gap-2 py-3 text-sm text-[#999999] dark:text-muted-foreground">
+                    <div className="flex items-center gap-2 py-3 text-sm text-muted-foreground/70">
                       <LoadingSpinner size="sm" />
                       Loading playlists…
                     </div>
                   ) : userPlaylists.length === 0 ? (
-                    <p className="text-sm text-[#999999] dark:text-muted-foreground py-3 text-center border-2 border-dashed border-gray-200 dark:border-border rounded-lg">
+                    <p className="text-sm text-muted-foreground/70 py-3 text-center border-2 border-dashed border-gray-200 dark:border-border rounded-lg">
                       No playlists found
                     </p>
                   ) : targetPlaylist ? (
                     <button
                       onClick={() => setShowPlaylistPicker(true)}
-                      className="w-full flex items-center gap-3 p-3 rounded-xl bg-[#FF5500]/10 border-2 border-[#FF5500] transition-all hover:bg-[#FF5500]/15 text-left"
+                      className="w-full flex items-center gap-3 p-3 rounded-xl bg-primary/10 border-2 border-primary transition-all hover:bg-primary/15 text-left"
                     >
                       <img
                         src={targetPlaylist.coverUrl || targetPlaylist.artwork_url || "/SC Toolkit Icon.png"}
@@ -421,19 +421,19 @@ export default function LikesToPlaylistPage() {
                         className="w-10 h-10 rounded-lg object-cover"
                       />
                       <div className="flex-1 min-w-0">
-                        <div className="font-semibold text-[#333333] dark:text-foreground text-sm truncate">
+                        <div className="font-semibold text-foreground text-sm truncate">
                           {targetPlaylist.title}
                         </div>
-                        <div className="text-xs text-[#666666] dark:text-muted-foreground">
+                        <div className="text-xs text-muted-foreground">
                           {targetPlaylist.track_count} tracks
                         </div>
                       </div>
-                      <span className="text-xs text-[#FF5500] font-medium shrink-0">Change</span>
+                      <span className="text-xs text-primary font-medium shrink-0">Change</span>
                     </button>
                   ) : (
                     <button
                       onClick={() => setShowPlaylistPicker(true)}
-                      className="w-full px-4 py-3 rounded-lg border-2 border-dashed border-gray-300 dark:border-border text-sm text-[#999999] dark:text-muted-foreground hover:border-[#FF5500] hover:text-[#FF5500] transition-all text-center"
+                      className="w-full px-4 py-3 rounded-lg border-2 border-dashed border-gray-300 dark:border-border text-sm text-muted-foreground/70 hover:border-primary hover:text-primary transition-all text-center"
                     >
                       Choose a playlist…
                     </button>
@@ -478,14 +478,14 @@ export default function LikesToPlaylistPage() {
           >
             {/* Header */}
             <div className="flex items-center justify-between px-6 pt-6 pb-4">
-              <h3 className="text-xl font-bold text-[#333333] dark:text-foreground">
+              <h3 className="text-xl font-bold text-foreground">
                 Your Playlists
               </h3>
               <button
                 onClick={() => setShowPlaylistPicker(false)}
                 className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-secondary/40 transition"
               >
-                <X className="w-5 h-5 text-[#666666] dark:text-muted-foreground" />
+                <X className="w-5 h-5 text-muted-foreground" />
               </button>
             </div>
 
@@ -502,7 +502,7 @@ export default function LikesToPlaylistPage() {
                     }}
                     className={`w-full flex items-center gap-4 p-4 rounded-xl transition-all ${
                       isSelected
-                        ? "bg-[#FF5500]/10 border-2 border-[#FF5500]"
+                        ? "bg-primary/10 border-2 border-primary"
                         : "bg-gray-50 dark:bg-secondary/20 border-2 border-transparent hover:border-gray-200 dark:hover:border-border"
                     }`}
                   >
@@ -512,15 +512,15 @@ export default function LikesToPlaylistPage() {
                       className="w-12 h-12 rounded-lg object-cover"
                     />
                     <div className="flex-1 text-left min-w-0">
-                      <div className="font-semibold text-[#333333] dark:text-foreground truncate">
+                      <div className="font-semibold text-foreground truncate">
                         {playlist.title}
                       </div>
-                      <div className="text-sm text-[#666666] dark:text-muted-foreground">
+                      <div className="text-sm text-muted-foreground">
                         {playlist.track_count} tracks
                       </div>
                     </div>
                     {isSelected && (
-                      <div className="w-6 h-6 rounded-full bg-[#FF5500] flex items-center justify-center shrink-0">
+                      <div className="w-6 h-6 rounded-full bg-primary flex items-center justify-center shrink-0">
                         <Check className="w-4 h-4 text-white" />
                       </div>
                     )}

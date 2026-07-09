@@ -208,7 +208,7 @@ export default function GenreSearchPage() {
           <div className="grid sm:grid-cols-2 gap-4 mb-4">
             {/* Genre input with suggestions */}
             <div>
-              <label className="block text-sm font-medium mb-1.5 text-[#666666] dark:text-muted-foreground">
+              <label className="block text-sm font-medium mb-1.5 text-muted-foreground">
                 Genre
               </label>
               <input
@@ -218,7 +218,7 @@ export default function GenreSearchPage() {
                 onKeyDown={(e) => e.key === "Enter" && handleSearch()}
                 placeholder="e.g. house, techno, ambient…"
                 list="genre-suggestions"
-                className="w-full px-4 py-2.5 rounded-lg border-2 border-gray-200 dark:border-border focus:border-[#FF5500] focus:outline-none transition dark:bg-secondary/20 dark:text-foreground text-sm"
+                className="w-full px-4 py-2.5 rounded-lg border-2 border-gray-200 dark:border-border focus:border-primary focus:outline-none transition dark:bg-secondary/20 dark:text-foreground text-sm"
               />
               <datalist id="genre-suggestions">
                 {COMMON_GENRES.map((g) => <option key={g} value={g} />)}
@@ -231,8 +231,8 @@ export default function GenreSearchPage() {
                     onClick={() => setGenre(g)}
                     className={`px-2.5 py-1 rounded-full text-xs font-medium transition ${
                       genre === g
-                        ? "bg-[#FF5500] text-white"
-                        : "bg-gray-100 dark:bg-secondary/40 text-[#666666] dark:text-muted-foreground hover:bg-[#FF5500]/10 hover:text-[#FF5500]"
+                        ? "bg-primary text-white"
+                        : "bg-gray-100 dark:bg-secondary/40 text-muted-foreground hover:bg-primary/10 hover:text-primary"
                     }`}
                   >
                     {g}
@@ -243,8 +243,8 @@ export default function GenreSearchPage() {
 
             {/* Tags input */}
             <div>
-              <label className="block text-sm font-medium mb-1.5 text-[#666666] dark:text-muted-foreground">
-                Tags <span className="font-normal text-[#999999]">(comma-separated)</span>
+              <label className="block text-sm font-medium mb-1.5 text-muted-foreground">
+                Tags <span className="font-normal text-muted-foreground/70">(comma-separated)</span>
               </label>
               <input
                 type="text"
@@ -252,7 +252,7 @@ export default function GenreSearchPage() {
                 onChange={(e) => setTags(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleSearch()}
                 placeholder="e.g. deep, melodic, chill…"
-                className="w-full px-4 py-2.5 rounded-lg border-2 border-gray-200 dark:border-border focus:border-[#FF5500] focus:outline-none transition dark:bg-secondary/20 dark:text-foreground text-sm"
+                className="w-full px-4 py-2.5 rounded-lg border-2 border-gray-200 dark:border-border focus:border-primary focus:outline-none transition dark:bg-secondary/20 dark:text-foreground text-sm"
               />
             </div>
           </div>
@@ -260,7 +260,7 @@ export default function GenreSearchPage() {
           {/* Advanced filters toggle */}
           <button
             onClick={() => setShowAdvanced((v) => !v)}
-            className="flex items-center gap-1.5 text-sm text-[#666666] dark:text-muted-foreground hover:text-[#FF5500] transition mb-3"
+            className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-primary transition mb-3"
           >
             <ChevronDown className={`w-4 h-4 transition-transform ${showAdvanced ? "rotate-180" : ""}`} />
             Advanced filters
@@ -269,7 +269,7 @@ export default function GenreSearchPage() {
           {showAdvanced && (
             <div className="grid sm:grid-cols-2 gap-4 mb-4 pt-2 border-t border-gray-100 dark:border-border">
               <div>
-                <label className="block text-sm font-medium mb-1.5 text-[#666666] dark:text-muted-foreground">
+                <label className="block text-sm font-medium mb-1.5 text-muted-foreground">
                   BPM range
                 </label>
                 <div className="flex items-center gap-2">
@@ -280,9 +280,9 @@ export default function GenreSearchPage() {
                     placeholder="Min"
                     min={1}
                     max={300}
-                    className="w-full px-3 py-2 rounded-lg border-2 border-gray-200 dark:border-border focus:border-[#FF5500] focus:outline-none transition dark:bg-secondary/20 dark:text-foreground text-sm"
+                    className="w-full px-3 py-2 rounded-lg border-2 border-gray-200 dark:border-border focus:border-primary focus:outline-none transition dark:bg-secondary/20 dark:text-foreground text-sm"
                   />
-                  <span className="text-[#999999]">–</span>
+                  <span className="text-muted-foreground/70">–</span>
                   <input
                     type="number"
                     value={bpmMax}
@@ -290,7 +290,7 @@ export default function GenreSearchPage() {
                     placeholder="Max"
                     min={1}
                     max={300}
-                    className="w-full px-3 py-2 rounded-lg border-2 border-gray-200 dark:border-border focus:border-[#FF5500] focus:outline-none transition dark:bg-secondary/20 dark:text-foreground text-sm"
+                    className="w-full px-3 py-2 rounded-lg border-2 border-gray-200 dark:border-border focus:border-primary focus:outline-none transition dark:bg-secondary/20 dark:text-foreground text-sm"
                   />
                 </div>
               </div>
@@ -354,7 +354,7 @@ export default function GenreSearchPage() {
                         onToggle={() => toggleTrack(track.id)}
                         rightSlot={
                           track.duration ? (
-                            <span className="text-xs text-[#666666] dark:text-muted-foreground">
+                            <span className="text-xs text-muted-foreground">
                               {formatDuration(track.duration)}
                             </span>
                           ) : null
@@ -394,7 +394,7 @@ export default function GenreSearchPage() {
           <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 px-4 pb-4 sm:pb-0">
             <div className="w-full max-w-md bg-white dark:bg-card rounded-2xl p-6 border-2 border-gray-200 dark:border-border shadow-2xl space-y-4">
               <div className="flex items-center justify-between">
-                <h3 className="text-lg font-bold text-[#333333] dark:text-foreground">
+                <h3 className="text-lg font-bold text-foreground">
                   Add {selectedTracks.size} track{selectedTracks.size !== 1 ? "s" : ""} to playlist
                 </h3>
                 <button
@@ -418,8 +418,8 @@ export default function GenreSearchPage() {
                   onClick={() => setAddMode("new")}
                   className={`flex-1 py-2 text-sm font-medium transition ${
                     addMode === "new"
-                      ? "bg-[#FF5500] text-white"
-                      : "text-[#666666] dark:text-muted-foreground hover:bg-gray-50 dark:hover:bg-secondary/20"
+                      ? "bg-primary text-white"
+                      : "text-muted-foreground hover:bg-gray-50 dark:hover:bg-secondary/20"
                   }`}
                 >
                   New playlist
@@ -428,8 +428,8 @@ export default function GenreSearchPage() {
                   onClick={() => { setAddMode("existing"); }}
                   className={`flex-1 py-2 text-sm font-medium transition ${
                     addMode === "existing"
-                      ? "bg-[#FF5500] text-white"
-                      : "text-[#666666] dark:text-muted-foreground hover:bg-gray-50 dark:hover:bg-secondary/20"
+                      ? "bg-primary text-white"
+                      : "text-muted-foreground hover:bg-gray-50 dark:hover:bg-secondary/20"
                   }`}
                 >
                   Existing playlist
@@ -442,10 +442,10 @@ export default function GenreSearchPage() {
                   value={playlistName}
                   onChange={(e) => setPlaylistName(e.target.value)}
                   placeholder="Playlist name…"
-                  className="w-full px-4 py-2.5 rounded-lg border-2 border-gray-200 dark:border-border focus:border-[#FF5500] focus:outline-none transition dark:bg-secondary/20 dark:text-foreground text-sm"
+                  className="w-full px-4 py-2.5 rounded-lg border-2 border-gray-200 dark:border-border focus:border-primary focus:outline-none transition dark:bg-secondary/20 dark:text-foreground text-sm"
                 />
               ) : loadingPlaylists ? (
-                <div className="flex items-center gap-2 py-2 text-sm text-[#999999]">
+                <div className="flex items-center gap-2 py-2 text-sm text-muted-foreground/70">
                   <LoadingSpinner size="sm" /> Loading playlists…
                 </div>
               ) : (
@@ -455,7 +455,7 @@ export default function GenreSearchPage() {
                     const id = Number(e.target.value);
                     setTargetPlaylist(userPlaylists.find((p) => Number(p.id) === id) || null);
                   }}
-                  className="w-full px-3 py-2.5 rounded-lg border-2 border-gray-200 dark:border-border focus:border-[#FF5500] focus:outline-none transition dark:bg-secondary/20 dark:text-foreground text-sm"
+                  className="w-full px-3 py-2.5 rounded-lg border-2 border-gray-200 dark:border-border focus:border-primary focus:outline-none transition dark:bg-secondary/20 dark:text-foreground text-sm"
                 >
                   <option value="">Select a playlist…</option>
                   {userPlaylists.map((p) => (
@@ -469,7 +469,7 @@ export default function GenreSearchPage() {
               <div className="flex gap-3">
                 <button
                   onClick={() => setShowAddPanel(false)}
-                  className="flex-1 py-2.5 rounded-lg font-semibold border-2 border-gray-200 dark:border-border text-[#333333] dark:text-foreground hover:border-[#FF5500] transition text-sm"
+                  className="flex-1 py-2.5 rounded-lg font-semibold border-2 border-gray-200 dark:border-border text-foreground hover:border-primary transition text-sm"
                 >
                   Cancel
                 </button>

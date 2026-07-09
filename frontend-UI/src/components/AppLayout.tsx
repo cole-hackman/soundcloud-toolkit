@@ -21,7 +21,7 @@ export function AppLayout({ children }: AppLayoutProps) {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#F2F2F2] dark:bg-background">
+      <div className="min-h-screen flex items-center justify-center bg-background">
         <LoadingSpinner size="lg" />
       </div>
     );

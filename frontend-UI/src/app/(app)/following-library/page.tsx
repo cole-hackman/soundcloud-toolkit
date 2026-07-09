@@ -331,8 +331,8 @@ export default function FollowingLibraryPage() {
       <div className="grid gap-5 lg:grid-cols-[320px_minmax(0,1fr)]">
         <Card className="self-start">
           <CardHeader>
-            <div className="flex items-center gap-2 text-base font-semibold text-[#333] dark:text-foreground">
-              <Users className="h-4 w-4 text-[#FF5500]" />
+            <div className="flex items-center gap-2 text-base font-semibold text-foreground">
+              <Users className="h-4 w-4 text-primary" />
               People you follow
             </div>
           </CardHeader>
@@ -362,7 +362,7 @@ export default function FollowingLibraryPage() {
                       onClick={() => selectUser(user)}
                       className={`flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-left transition ${
                         isActive
-                          ? "border-[#FF5500]/40 bg-orange-50 text-[#333] dark:bg-orange-950/20 dark:text-foreground"
+                          ? "border-primary/40 bg-orange-50 text-foreground dark:bg-orange-950/20 dark:text-foreground"
                           : "border-transparent bg-gray-50 hover:border-border dark:bg-secondary/20"
                       }`}
                     >
@@ -379,7 +379,7 @@ export default function FollowingLibraryPage() {
                           </div>
                         )}
                       </div>
-                      {isActive && <Check className="h-4 w-4 text-[#FF5500]" />}
+                      {isActive && <Check className="h-4 w-4 text-primary" />}
                     </button>
                   );
                 })
@@ -410,7 +410,7 @@ export default function FollowingLibraryPage() {
                       className="h-12 w-12 shrink-0 rounded-full object-cover ring-2 ring-border/60"
                     />
                     <div className="min-w-0">
-                      <h2 className="truncate text-lg font-semibold text-[#333] dark:text-foreground">{selectedUser.username}</h2>
+                      <h2 className="truncate text-lg font-semibold text-foreground">{selectedUser.username}</h2>
                       <p className="text-sm text-muted-foreground">Public content only — private items won&apos;t appear.</p>
                     </div>
                   </div>
@@ -441,7 +441,7 @@ export default function FollowingLibraryPage() {
                       className={cn(
                         "flex min-h-[44px] items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-sm font-semibold transition",
                         activeTab === tab
-                          ? "bg-surface text-[#FF5500] shadow-sm ring-1 ring-[#FF5500]/25 dark:bg-secondary/40"
+                          ? "bg-surface text-primary shadow-sm ring-1 ring-primary/25 dark:bg-secondary/40"
                           : "text-muted-foreground hover:bg-surface/80 hover:text-foreground",
                       )}
                     >
@@ -459,8 +459,8 @@ export default function FollowingLibraryPage() {
                   <>
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <div>
-                        <div className="flex items-center gap-2 text-base font-semibold text-[#333] dark:text-foreground">
-                          <Music className="h-4 w-4 text-[#FF5500]" />
+                        <div className="flex items-center gap-2 text-base font-semibold text-foreground">
+                          <Music className="h-4 w-4 text-primary" />
                           Liked tracks
                         </div>
                         <p className="text-sm text-muted-foreground">Tap tracks to select; use the bottom bar for bulk actions.</p>
@@ -528,8 +528,8 @@ export default function FollowingLibraryPage() {
                   <>
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <div>
-                        <div className="flex items-center gap-2 text-base font-semibold text-[#333] dark:text-foreground">
-                          <ListMusic className="h-4 w-4 text-[#FF5500]" />
+                        <div className="flex items-center gap-2 text-base font-semibold text-foreground">
+                          <ListMusic className="h-4 w-4 text-primary" />
                           {TAB_LABELS[activeTab]}
                         </div>
                         <p className="text-sm text-muted-foreground">Select playlists, add an optional name prefix, then clone from the bar below.</p>
@@ -570,7 +570,7 @@ export default function FollowingLibraryPage() {
                             >
                               <div
                                 className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border ${
-                                  isSelected ? "border-[#FF5500] bg-[#FF5500] text-white" : "border-gray-300 text-transparent dark:border-muted-foreground/40"
+                                  isSelected ? "border-primary bg-primary text-white" : "border-gray-300 text-transparent dark:border-muted-foreground/40"
                                 }`}
                               >
                                 <Check className="h-3.5 w-3.5" />
@@ -581,7 +581,7 @@ export default function FollowingLibraryPage() {
                                 className="h-12 w-12 rounded-lg object-cover"
                               />
                               <div className="min-w-0 flex-1">
-                                <div className="truncate text-sm font-semibold text-[#333] dark:text-foreground">{playlist.title}</div>
+                                <div className="truncate text-sm font-semibold text-foreground">{playlist.title}</div>
                                 <div className="text-xs text-muted-foreground">
                                   {(playlist.track_count || 0).toLocaleString()} tracks
                                 </div>
@@ -658,7 +658,7 @@ function CreatePanel({
             className={cn(
               "rounded-lg border px-3 py-2 text-sm font-semibold transition",
               addMode === "new"
-                ? "border-[#FF5500]/50 bg-orange-50 text-[#FF5500] dark:bg-orange-950/20"
+                ? "border-primary/50 bg-orange-50 text-primary dark:bg-orange-950/20"
                 : "border-border bg-background/60 hover:bg-surface-hover",
             )}
           >
@@ -670,7 +670,7 @@ function CreatePanel({
             className={cn(
               "rounded-lg border px-3 py-2 text-sm font-semibold transition",
               addMode === "existing"
-                ? "border-[#FF5500]/50 bg-orange-50 text-[#FF5500] dark:bg-orange-950/20"
+                ? "border-primary/50 bg-orange-50 text-primary dark:bg-orange-950/20"
                 : "border-border bg-background/60 hover:bg-surface-hover",
             )}
           >
@@ -747,7 +747,7 @@ function PlaylistPicker({
                 type="button"
                 onClick={() => onSelect(playlist)}
                 className={`flex w-full items-center justify-between rounded-lg border px-3 py-2 text-left text-sm ${
-                  selected?.id === playlist.id ? "border-[#FF5500]/50 bg-orange-50 dark:bg-orange-950/20" : "border-border"
+                  selected?.id === playlist.id ? "border-primary/50 bg-orange-50 dark:bg-orange-950/20" : "border-border"
                 }`}
               >
                 <span className="truncate font-semibold">{playlist.title}</span>
@@ -809,7 +809,7 @@ function ResultSummary({ result }: { result: { playlist?: CreatedPlaylist; playl
                   {playlist.trackCount != null && <div className="text-xs text-muted-foreground">{playlist.trackCount} tracks</div>}
                 </div>
                 {playlist.permalink_url && (
-                  <a href={playlist.permalink_url} target="_blank" rel="noreferrer" className="text-sm font-semibold text-[#FF5500]">
+                  <a href={playlist.permalink_url} target="_blank" rel="noreferrer" className="text-sm font-semibold text-primary">
                     Open
                   </a>
                 )}

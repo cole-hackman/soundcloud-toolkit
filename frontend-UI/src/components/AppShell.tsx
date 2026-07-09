@@ -33,6 +33,7 @@ import {
   ListMusic,
   ArrowRightLeft,
   FileUp,
+  Sparkles,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/contexts/ThemeContext";
@@ -81,6 +82,7 @@ const NAV: NavEntry[] = [
       { href: "/following-library", label: "Following Library", icon: ListMusic },
       { href: "/repost-manager", label: "Repost Manager", icon: Repeat },
       { href: "/activity-to-playlist", label: "Activity → Playlist", icon: Activity },
+      { href: "/growth", label: "Grow Your Network", icon: Sparkles },
     ],
   },
   {
@@ -147,18 +149,18 @@ function SidebarGroup({
               className={cn(
                 "group relative flex items-center justify-center overflow-hidden px-3 py-2 rounded-lg transition-colors duration-150",
                 isActive
-                  ? "bg-[#FF5500]/8 text-[#FF5500]"
-                  : "text-[#555555]"
+                  ? "bg-primary/10 text-primary"
+                  : "text-muted-foreground"
               )}
             >
               {/* Slide-in hover bg */}
               {!isActive && (
-                <span className="absolute inset-0 translate-x-[-100%] group-hover:translate-x-0 rounded-lg bg-black/[0.04] transition-transform duration-200" />
+                <span className="absolute inset-0 translate-x-[-100%] group-hover:translate-x-0 rounded-lg bg-black/[0.04] dark:bg-white/[0.04] transition-transform duration-200" />
               )}
               {isActive && (
-                <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-[#FF5500] rounded-r-full" />
+                <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-primary rounded-r-full" />
               )}
-              <Icon className={cn("relative z-10 w-[18px] h-[18px] shrink-0", isActive ? "text-[#FF5500]" : "group-hover:text-[#333333] transition-colors")} />
+              <Icon className={cn("relative z-10 w-[18px] h-[18px] shrink-0", isActive ? "text-primary" : "group-hover:text-foreground dark:group-hover:text-white transition-colors")} />
             </Link>
           );
         })}
@@ -170,7 +172,7 @@ function SidebarGroup({
     <div>
       <button
         onClick={() => setOpen((o) => !o)}
-        className="w-full flex items-center justify-between px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-[#999999] hover:text-[#666666] transition-colors"
+        className="w-full flex items-center justify-between px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70 hover:text-muted-foreground transition-colors"
       >
         <span>{group.label}</span>
         <ChevronDown
@@ -195,21 +197,21 @@ function SidebarGroup({
                 className={cn(
                   "group relative flex items-center gap-3 overflow-hidden pl-5 pr-3 py-2 rounded-lg transition-colors duration-150 text-[13px] font-medium",
                   isActive
-                    ? "bg-[#FF5500]/8 text-[#FF5500]"
-                    : "text-[#555555]"
+                    ? "bg-primary/10 text-primary"
+                    : "text-muted-foreground"
                 )}
               >
                 {/* Slide-in hover bg */}
                 {!isActive && (
-                  <span className="absolute inset-0 translate-x-[-100%] group-hover:translate-x-0 rounded-lg bg-black/[0.04] transition-transform duration-200" />
+                  <span className="absolute inset-0 translate-x-[-100%] group-hover:translate-x-0 rounded-lg bg-black/[0.04] dark:bg-white/[0.04] transition-transform duration-200" />
                 )}
                 {isActive && (
-                  <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-[#FF5500] rounded-r-full" />
+                  <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-primary rounded-r-full" />
                 )}
                 <Icon
                   className={cn(
                     "relative z-10 w-[16px] h-[16px] shrink-0",
-                    isActive ? "text-[#FF5500]" : "group-hover:text-[#333333] transition-colors"
+                    isActive ? "text-primary" : "group-hover:text-foreground dark:group-hover:text-white transition-colors"
                   )}
                 />
                 <span className="relative z-10 truncate">{item.label}</span>
@@ -286,8 +288,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               className={cn(
                 "group relative flex items-center gap-3 overflow-hidden px-3 py-2 rounded-lg transition-colors duration-150 text-[13px] font-medium",
                   isActive
-                  ? "bg-[#FF5500]/8 text-[#FF5500]"
-                  : "text-[#555555] dark:text-[#a1a1aa]"
+                  ? "bg-primary/10 text-primary"
+                  : "text-muted-foreground"
               )}
             >
               {/* Slide-in hover bg */}
@@ -295,15 +297,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 <span className="absolute inset-0 translate-x-[-100%] group-hover:translate-x-0 rounded-lg bg-black/[0.04] dark:bg-white/[0.04] transition-transform duration-200" />
               )}
               {isActive && !effectiveCollapsed && !isMobile && (
-                <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-[#FF5500] rounded-r-full" />
+                <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-primary rounded-r-full" />
               )}
               {isActive && isMobile && (
-                <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-[#FF5500] rounded-r-full" />
+                <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-primary rounded-r-full" />
               )}
               <Icon
                 className={cn(
                   "relative z-10 w-[18px] h-[18px] shrink-0",
-                  isActive ? "text-[#FF5500]" : "group-hover:text-[#333333] dark:group-hover:text-white transition-colors"
+                  isActive ? "text-primary" : "group-hover:text-foreground dark:group-hover:text-white transition-colors"
                 )}
               />
               {(isMobile || !effectiveCollapsed) && (
@@ -317,7 +319,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <div className="mx-4 my-3 border-t border-gray-200/80 dark:border-border" />
 
       <div className="px-2 mb-1">
-        <span className="px-3 text-[10px] font-semibold uppercase tracking-wider text-[#999999] dark:text-[#71717a]">
+        <span className="px-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">
           Info
         </span>
       </div>
@@ -329,7 +331,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               key={item.href}
               href={item.href}
               onClick={onNavigate}
-              className="flex items-center gap-3 px-3 py-2 rounded-lg text-[#777777] dark:text-[#a1a1aa] hover:bg-black/[0.04] dark:hover:bg-white/[0.04] hover:text-[#333333] dark:hover:text-white transition-all duration-150 text-[13px] font-medium"
+              className="flex items-center gap-3 px-3 py-2 rounded-lg text-muted-foreground hover:bg-black/[0.04] dark:hover:bg-white/[0.04] hover:text-foreground dark:hover:text-white transition-all duration-150 text-[13px] font-medium"
             >
               <Icon className="w-[18px] h-[18px] shrink-0" />
               {(isMobile || !effectiveCollapsed) && (
@@ -348,21 +350,21 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <img
                 src={user?.avatar_url || "/SC Toolkit Icon.png"}
                 alt={user?.display_name || "User"}
-                className="w-6 h-6 rounded-full ring-1 ring-[#FF5500]/20 shrink-0"
+                className="w-6 h-6 rounded-full ring-1 ring-primary/20 shrink-0"
               />
-              <span className="text-[13px] font-medium text-[#333333] dark:text-foreground truncate flex-1">
+              <span className="text-[13px] font-medium text-foreground truncate flex-1">
                 {user?.display_name}
               </span>
               <button
                 onClick={toggleTheme}
-                className="p-1.5 rounded-md hover:bg-black/[0.04] dark:hover:bg-white/[0.04] text-[#888888] dark:text-[#a1a1aa] transition"
+                className="p-1.5 rounded-md hover:bg-black/[0.04] dark:hover:bg-white/[0.04] text-muted-foreground transition"
                 aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
               >
                 {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
               </button>
               <button
                 onClick={logout}
-                className="p-1.5 rounded-md hover:bg-black/[0.04] dark:hover:bg-white/[0.04] text-[#888888] dark:text-[#a1a1aa] hover:text-[#FF5500] dark:hover:text-[#FF5500] transition"
+                className="p-1.5 rounded-md hover:bg-black/[0.04] dark:hover:bg-white/[0.04] text-muted-foreground hover:text-primary dark:hover:text-primary transition"
                 aria-label="Log out"
               >
                 <LogOut className="w-4 h-4" />
@@ -387,17 +389,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <img
               src={user?.avatar_url || "/SC Toolkit Icon.png"}
               alt={user?.display_name || "User"}
-              className="w-6 h-6 rounded-full ring-1 ring-[#FF5500]/20 shrink-0"
+              className="w-6 h-6 rounded-full ring-1 ring-primary/20 shrink-0"
             />
             <button
               onClick={toggleTheme}
-              className="p-1.5 rounded-md hover:bg-black/[0.04] dark:hover:bg-white/[0.04] text-[#888888] dark:text-[#a1a1aa] transition"
+              className="p-1.5 rounded-md hover:bg-black/[0.04] dark:hover:bg-white/[0.04] text-muted-foreground transition"
             >
               {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
             </button>
             <button
               onClick={logout}
-              className="p-1.5 rounded-md hover:bg-black/[0.04] dark:hover:bg-white/[0.04] text-[#888888] dark:text-[#a1a1aa] hover:text-[#FF5500] dark:hover:text-[#FF5500] transition"
+              className="p-1.5 rounded-md hover:bg-black/[0.04] dark:hover:bg-white/[0.04] text-muted-foreground hover:text-primary dark:hover:text-primary transition"
             >
               <LogOut className="w-4 h-4" />
             </button>
@@ -418,7 +420,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <div className="min-h-screen flex bg-[#F2F2F2] dark:bg-background">
+    <div className="min-h-screen flex bg-background">
       {/* Desktop sidebar */}
       <aside
         className={cn(
@@ -459,7 +461,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   className="h-7 w-auto object-contain"
                 />
               </div>
-              <span className="ml-2 font-bold text-sm text-[#333333] dark:text-foreground truncate">
+              <span className="ml-2 font-bold text-sm text-foreground truncate">
                 SC Toolkit
               </span>
             </Link>
@@ -467,7 +469,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           {!effectiveCollapsed && (
             <button
               onClick={toggleSidebar}
-              className="p-1 rounded-md hover:bg-black/[0.04] dark:hover:bg-white/[0.04] text-[#999999] dark:text-[#a1a1aa] hidden lg:flex"
+              className="p-1 rounded-md hover:bg-black/[0.04] dark:hover:bg-white/[0.04] text-muted-foreground/70 hidden lg:flex"
               aria-label="Collapse sidebar"
             >
               <ChevronLeft className="w-3.5 h-3.5" />
@@ -482,7 +484,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <div className="lg:hidden fixed top-0 left-0 right-0 z-50 bg-white/95 dark:bg-background/95 backdrop-blur-sm border-b border-gray-200/80 dark:border-border h-12 flex items-center justify-between px-4">
         <button
           onClick={() => setMobileOpen(true)}
-          className="p-1.5 rounded-md hover:bg-black/[0.04] dark:hover:bg-white/[0.04] text-[#666666] dark:text-[#a1a1aa]"
+          className="p-1.5 rounded-md hover:bg-black/[0.04] dark:hover:bg-white/[0.04] text-muted-foreground"
           aria-label="Open menu"
         >
           <Menu className="w-5 h-5" />
@@ -512,10 +514,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <div className="h-[2px] bg-gradient-to-r from-[#FF5500] to-[#FF7733] shrink-0" />
 
             <div className="flex items-center justify-between h-12 px-4 border-b border-gray-200/80 dark:border-border">
-              <span className="font-bold text-sm text-[#333333] dark:text-foreground">Menu</span>
+              <span className="font-bold text-sm text-foreground">Menu</span>
               <button
                 onClick={closeMobile}
-                className="p-1.5 rounded-md hover:bg-black/[0.04] dark:hover:bg-white/[0.04] text-[#666666] dark:text-[#a1a1aa]"
+                className="p-1.5 rounded-md hover:bg-black/[0.04] dark:hover:bg-white/[0.04] text-muted-foreground"
                 aria-label="Close menu"
               >
                 <X className="w-4 h-4" />

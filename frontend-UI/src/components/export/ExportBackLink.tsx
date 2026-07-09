@@ -7,7 +7,7 @@ export function ExportBackLink() {
   return (
     <Link
       href="/export"
-      className="mb-4 inline-flex items-center gap-2 text-sm font-medium text-muted-foreground transition hover:text-[#FF5500]"
+      className="mb-4 inline-flex items-center gap-2 text-sm font-medium text-muted-foreground transition hover:text-primary"
     >
       <ArrowLeft className="h-4 w-4" />
       Back to Export

@@ -41,7 +41,15 @@ interface FeatureCard {
   description: string;
   icon: React.ElementType;
   path: string;
+  category: string;
 }
+
+const CATEGORY_ORDER = [
+  "Playlists",
+  "Likes & Social",
+  "Library & Export",
+  "Discovery & Links",
+];
 
 const FEATURES: FeatureCard[] = [
   {
@@ -50,6 +58,7 @@ const FEATURES: FeatureCard[] = [
     description: "Merge multiple playlists and remove duplicates automatically",
     icon: Combine,
     path: "/combine",
+    category: "Playlists",
   },
   {
     id: "downloads",
@@ -57,6 +66,7 @@ const FEATURES: FeatureCard[] = [
     description: "Find downloadable tracks in your library",
     icon: Download,
     path: "/downloads",
+    category: "Library & Export",
   },
   {
     id: "export",
@@ -64,6 +74,7 @@ const FEATURES: FeatureCard[] = [
     description: "Export likes, playlists, followings, and reposts as TXT or CSV",
     icon: FileUp,
     path: "/export",
+    category: "Library & Export",
   },
   {
     id: "library-audit",
@@ -71,6 +82,7 @@ const FEATURES: FeatureCard[] = [
     description: "Scan playlists for duplicates, unavailable tracks, and download links",
     icon: ClipboardCheck,
     path: "/library-audit",
+    category: "Library & Export",
   },
   {
     id: "likes",
@@ -78,6 +90,7 @@ const FEATURES: FeatureCard[] = [
     description: "Convert your liked tracks into an organized playlist",
     icon: Heart,
     path: "/likes-to-playlist",
+    category: "Likes & Social",
   },
   {
     id: "modifier",
@@ -85,6 +98,7 @@ const FEATURES: FeatureCard[] = [
     description: "Reorder and remove tracks in your playlists",
     icon: Shuffle,
     path: "/playlist-modifier",
+    category: "Playlists",
   },
   {
     id: "resolver",
@@ -92,6 +106,7 @@ const FEATURES: FeatureCard[] = [
     description: "Get detailed info from any SoundCloud link",
     icon: LinkIcon,
     path: "/link-resolver",
+    category: "Discovery & Links",
   },
   {
     id: "recently-played",
@@ -99,6 +114,7 @@ const FEATURES: FeatureCard[] = [
     description: "View your last played tracks and save them to a playlist",
     icon: History,
     path: "/recently-played",
+    category: "Library & Export",
   },
   {
     id: "like-manager",
@@ -106,6 +122,7 @@ const FEATURES: FeatureCard[] = [
     description: "Browse, search, and bulk-unlike your liked tracks",
     icon: ThumbsUp,
     path: "/like-manager",
+    category: "Likes & Social",
   },
   {
     id: "following-manager",
@@ -113,6 +130,7 @@ const FEATURES: FeatureCard[] = [
     description: "Browse and bulk-unfollow the users you follow",
     icon: Users,
     path: "/following-manager",
+    category: "Likes & Social",
   },
   {
     id: "following-library",
@@ -120,6 +138,7 @@ const FEATURES: FeatureCard[] = [
     description: "Copy public likes and playlists from people you follow",
     icon: ListMusic,
     path: "/following-library",
+    category: "Likes & Social",
   },
   {
     id: "health-check",
@@ -127,6 +146,7 @@ const FEATURES: FeatureCard[] = [
     description: "Scan playlists for blocked or unavailable tracks",
     icon: Stethoscope,
     path: "/playlist-health-check",
+    category: "Playlists",
   },
   {
     id: "batch-resolver",
@@ -134,6 +154,7 @@ const FEATURES: FeatureCard[] = [
     description: "Resolve up to 50 SoundCloud URLs at once",
     icon: ListChecks,
     path: "/batch-link-resolver",
+    category: "Discovery & Links",
   },
   {
     id: "playlist-cloner",
@@ -141,6 +162,7 @@ const FEATURES: FeatureCard[] = [
     description: "Clone any public playlist to your account",
     icon: Copy,
     path: "/playlist-cloner",
+    category: "Playlists",
   },
   {
     id: "playlist-compare",
@@ -148,6 +170,7 @@ const FEATURES: FeatureCard[] = [
     description: "Compare two playlists for overlap and missing tracks",
     icon: ArrowRightLeft,
     path: "/playlist-compare",
+    category: "Playlists",
   },
   {
     id: "genre-search",
@@ -155,6 +178,7 @@ const FEATURES: FeatureCard[] = [
     description: "Discover tracks by genre or tag and add them to your playlists",
     icon: Music,
     path: "/genre-search",
+    category: "Discovery & Links",
   },
   {
     id: "repost-manager",
@@ -162,6 +186,7 @@ const FEATURES: FeatureCard[] = [
     description: "Browse and bulk-remove your reposts",
     icon: Repeat,
     path: "/repost-manager",
+    category: "Likes & Social",
   },
   {
     id: "activity-to-playlist",
@@ -169,6 +194,7 @@ const FEATURES: FeatureCard[] = [
     description: "Create playlists directly from your feed",
     icon: Activity,
     path: "/activity-to-playlist",
+    category: "Likes & Social",
   },
 ];
 
@@ -416,41 +442,47 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Quick Actions - Feature Cards */}
-      {!toolQuery && (
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
-          All Tools
-        </h2>
-      )}
+      {/* Quick Actions - Feature Cards, grouped by category */}
       {filteredFeatures.length === 0 ? (
         <Card className="p-6">
           <EmptyState title="No tools match your search" description="Try a different keyword." />
         </Card>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-          {filteredFeatures.map((feature) => (
-            <Card
-              key={feature.id}
-              interactive
-              className="group p-4 sm:p-5"
-            >
-              <Link href={feature.path} className="block">
-                <div className="flex items-start justify-between mb-3">
-                  <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center text-primary-foreground shadow-sm">
-                    <feature.icon className="w-5 h-5" />
-                  </div>
-                  <ArrowRight className="w-4 h-4 text-primary opacity-0 group-hover:opacity-100 transition-opacity" />
-                </div>
-                <h3 className="text-base font-bold mb-1 group-hover:text-primary transition text-foreground">
-                  {feature.title}
-                </h3>
-                <p className="leading-relaxed text-sm text-muted-foreground">
-                  {feature.description}
-                </p>
-              </Link>
-            </Card>
-          ))}
-        </div>
+        CATEGORY_ORDER.map((category) => {
+          const tools = filteredFeatures.filter((f) => f.category === category);
+          if (tools.length === 0) return null;
+          return (
+            <div key={category} className="mb-6">
+              <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+                {category}
+              </h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {tools.map((feature) => (
+                  <Card
+                    key={feature.id}
+                    interactive
+                    className="group p-4 sm:p-5"
+                  >
+                    <Link href={feature.path} className="block">
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center text-primary-foreground shadow-sm">
+                          <feature.icon className="w-5 h-5" />
+                        </div>
+                        <ArrowRight className="w-4 h-4 text-primary opacity-0 group-hover:opacity-100 transition-opacity" />
+                      </div>
+                      <h3 className="text-base font-bold mb-1 group-hover:text-primary transition text-foreground">
+                        {feature.title}
+                      </h3>
+                      <p className="leading-relaxed text-sm text-muted-foreground">
+                        {feature.description}
+                      </p>
+                    </Link>
+                  </Card>
+                ))}
+              </div>
+            </div>
+          );
+        })
       )}
 
       {/* Coming Soon */}

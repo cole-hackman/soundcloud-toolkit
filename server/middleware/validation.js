@@ -569,6 +569,80 @@ export const validateSurveySubmit = [
 ];
 
 /**
+ * Validation for the SongSwipe beta signup / feedback survey
+ * (POST /api/feedback/survey). Email is required only when wantsBeta is true.
+ */
+export const validateBetaSignup = [
+  body('rekordboxUse')
+    .isIn(['rekordbox_primary', 'rekordbox_sometimes', 'other_software', 'no'])
+    .withMessage('rekordboxUse is invalid'),
+  body('interest')
+    .isIn(['very', 'somewhat', 'not'])
+    .withMessage('interest must be very, somewhat, or not'),
+  body('wantsBeta')
+    .optional()
+    .isBoolean()
+    .withMessage('wantsBeta must be a boolean')
+    .toBoolean(),
+  body('wantsCall')
+    .optional()
+    .isBoolean()
+    .withMessage('wantsCall must be a boolean')
+    .toBoolean(),
+  body('email')
+    .optional({ nullable: true, checkFalsy: true })
+    .isEmail()
+    .withMessage('email must be a valid email address')
+    .isLength({ max: 254 })
+    .normalizeEmail(),
+  // Email is required when the user opts into the beta.
+  body().custom((value) => {
+    if (value.wantsBeta === true || value.wantsBeta === 'true') {
+      if (!value.email || !String(value.email).trim()) {
+        throw new Error('email is required to join the beta');
+      }
+    }
+    return true;
+  }),
+  body('platform')
+    .optional({ nullable: true })
+    .isIn(['mac', 'windows', 'both'])
+    .withMessage('platform must be mac, windows, or both'),
+  body('cullMethod')
+    .optional({ nullable: true })
+    .isIn(['dont', 'manual', 'tedious', 'other_tool'])
+    .withMessage('cullMethod is invalid'),
+  body('trustDirectWrite')
+    .optional({ nullable: true })
+    .isIn(['yes', 'maybe', 'xml_only'])
+    .withMessage('trustDirectWrite must be yes, maybe, or xml_only'),
+  body('featuresWanted')
+    .optional({ nullable: true })
+    .isString()
+    .isLength({ max: 300 })
+    .withMessage('featuresWanted must be at most 300 characters'),
+  body('editHesitations')
+    .optional({ nullable: true })
+    .isString()
+    .isLength({ max: 300 })
+    .withMessage('editHesitations must be at most 300 characters'),
+  body('suggestions')
+    .optional({ nullable: true })
+    .isString()
+    .isLength({ max: 2000 })
+    .withMessage('suggestions must be at most 2000 characters'),
+  body('nameIdea')
+    .optional({ nullable: true })
+    .isString()
+    .isLength({ max: 120 })
+    .withMessage('nameIdea must be at most 120 characters'),
+  body('context')
+    .isIn(['dashboard', 'post-merge', 'post-from-likes'])
+    .withMessage('context must be dashboard, post-merge, or post-from-likes'),
+  handleValidationErrors
+];
+
+/**
  * Validation rules for discover suggested follows (POST /api/growth/discover)
  */
 export const validateGrowthDiscover = [

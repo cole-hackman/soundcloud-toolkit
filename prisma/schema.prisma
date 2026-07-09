@@ -23,6 +23,7 @@ model User {
   operationLogs    OperationLog[]
   surveyResponses  SurveyResponse[]
   growthActions    GrowthAction[]
+  betaSignups      BetaSignup[]
 
   @@map("users")
 }
@@ -47,6 +48,35 @@ model SurveyResponse {
   @@index([lifetimeInterest])
   @@index([soundcloudId])
   @@map("survey_responses")
+}
+
+model BetaSignup {
+  id               String   @id @default(cuid())
+  userId           String
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  soundcloudId     Int
+  campaignId       String
+  email            String?  // PII — required only when wantsBeta is true
+  rekordboxUse     String   // rekordbox_primary | rekordbox_sometimes | other_software | no
+  platform         String?  // mac | windows | both
+  cullMethod       String?  // dont | manual | tedious | other_tool
+  featuresWanted   String?  // comma-separated slugs
+  editHesitations  String?  // comma-separated slugs
+  trustDirectWrite String?  // yes | maybe | xml_only
+  interest         String   // very | somewhat | not
+  wantsBeta        Boolean  @default(false)
+  wantsCall        Boolean  @default(false)
+  suggestions      String?  @db.Text // ideas for SC Toolkit or SongSwipe
+  nameIdea         String?  // product name suggestion
+  context          String   // dashboard | post-merge | post-from-likes
+  createdAt        DateTime @default(now())
+
+  @@unique([userId, campaignId])
+  @@index([campaignId, createdAt])
+  @@index([interest])
+  @@index([wantsBeta])
+  @@index([soundcloudId])
+  @@map("beta_signups")
 }
 
 model Token {

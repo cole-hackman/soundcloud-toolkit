@@ -265,7 +265,8 @@ router.get('/operations', authenticateUser, adminAuth, async (req, res) => {
 /**
  * GET /api/admin/feedback/summary?period=30d&campaignId=<id>
  *
- * Aggregate counts for monetization preference + lifetime-key interest.
+ * Aggregate counts for the SongSwipe beta survey: interest, Rekordbox use,
+ * platform, and beta opt-in count.
  */
 router.get('/feedback/summary', authenticateUser, adminAuth, async (req, res) => {
   try {
@@ -278,31 +279,28 @@ router.get('/feedback/summary', authenticateUser, adminAuth, async (req, res) =>
     const where = { createdAt: { gte: cutoff } };
     if (campaignId) where.campaignId = campaignId;
 
-    const [total, byPreference, byLifetime] = await Promise.all([
-      prisma.surveyResponse.count({ where }),
-      prisma.surveyResponse.groupBy({
-        by: ['preference'],
-        where,
-        _count: { id: true },
-      }),
-      prisma.surveyResponse.groupBy({
-        by: ['lifetimeInterest'],
-        where,
-        _count: { id: true },
-      }),
+    const [total, byInterest, byRekordbox, byPlatform, wantsBeta] = await Promise.all([
+      prisma.betaSignup.count({ where }),
+      prisma.betaSignup.groupBy({ by: ['interest'], where, _count: { id: true } }),
+      prisma.betaSignup.groupBy({ by: ['rekordboxUse'], where, _count: { id: true } }),
+      prisma.betaSignup.groupBy({ by: ['platform'], where, _count: { id: true } }),
+      prisma.betaSignup.count({ where: { ...where, wantsBeta: true } }),
     ]);
 
-    const preferenceCounts = byPreference.reduce((acc, row) => {
-      acc[row.preference] = row._count.id;
-      return acc;
-    }, {});
-    const lifetimeCounts = byLifetime.reduce((acc, row) => {
-      const key = row.lifetimeInterest ?? 'unanswered';
-      acc[key] = row._count.id;
+    const toCounts = (rows, field) => rows.reduce((acc, row) => {
+      acc[row[field] ?? 'unanswered'] = row._count.id;
       return acc;
     }, {});
 
-    res.json({ period, campaignId, total, preference: preferenceCounts, lifetimeInterest: lifetimeCounts });
+    res.json({
+      period,
+      campaignId,
+      total,
+      wantsBetaCount: wantsBeta,
+      interest: toCounts(byInterest, 'interest'),
+      rekordboxUse: toCounts(byRekordbox, 'rekordboxUse'),
+      platform: toCounts(byPlatform, 'platform'),
+    });
   } catch (err) {
     logger.error('[admin/feedback/summary] Error:', safeError(err));
     res.status(500).json({ error: 'Failed to fetch feedback summary' });
@@ -324,7 +322,7 @@ router.get('/feedback', authenticateUser, adminAuth, async (req, res) => {
     const where = { createdAt: { gte: cutoff } };
     if (campaignId) where.campaignId = campaignId;
 
-    const rows = await prisma.surveyResponse.findMany({
+    const rows = await prisma.betaSignup.findMany({
       where,
       orderBy: { createdAt: 'desc' },
       take: limit,
@@ -342,12 +340,19 @@ router.get('/feedback', authenticateUser, adminAuth, async (req, res) => {
       },
       soundcloudId: r.soundcloudId,
       campaignId: r.campaignId,
-      preference: r.preference,
-      lifetimeInterest: r.lifetimeInterest,
-      comment: r.comment,
+      email: r.email,
+      rekordboxUse: r.rekordboxUse,
+      platform: r.platform,
+      cullMethod: r.cullMethod,
+      featuresWanted: r.featuresWanted,
+      editHesitations: r.editHesitations,
+      trustDirectWrite: r.trustDirectWrite,
+      interest: r.interest,
+      wantsBeta: r.wantsBeta,
+      wantsCall: r.wantsCall,
+      suggestions: r.suggestions,
+      nameIdea: r.nameIdea,
       context: r.context,
-      operationAction: r.operationAction,
-      trackCount: r.trackCount,
       createdAt: r.createdAt.toISOString(),
     }));
 
@@ -355,6 +360,53 @@ router.get('/feedback', authenticateUser, adminAuth, async (req, res) => {
   } catch (err) {
     logger.error('[admin/feedback] Error:', safeError(err));
     res.status(500).json({ error: 'Failed to fetch feedback responses' });
+  }
+});
+
+/**
+ * GET /api/admin/feedback/beta-emails?campaignId=<id>
+ * CSV export of beta opt-ins — the invite list.
+ */
+router.get('/feedback/beta-emails', authenticateUser, adminAuth, async (req, res) => {
+  try {
+    const campaignId = typeof req.query.campaignId === 'string' && req.query.campaignId.trim()
+      ? req.query.campaignId.trim()
+      : null;
+
+    const where = { wantsBeta: true, email: { not: null } };
+    if (campaignId) where.campaignId = campaignId;
+
+    const rows = await prisma.betaSignup.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      select: {
+        email: true,
+        platform: true,
+        interest: true,
+        wantsCall: true,
+        rekordboxUse: true,
+        createdAt: true,
+      },
+    });
+
+    const escape = (v) => {
+      const s = v === null || v === undefined ? '' : String(v);
+      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const header = ['email', 'platform', 'interest', 'wantsCall', 'rekordboxUse', 'createdAt'];
+    const lines = [header.join(',')];
+    for (const r of rows) {
+      lines.push([
+        r.email, r.platform, r.interest, r.wantsCall, r.rekordboxUse, r.createdAt.toISOString(),
+      ].map(escape).join(','));
+    }
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="beta-emails.csv"');
+    res.send(`﻿${lines.join('\n')}`);
+  } catch (err) {
+    logger.error('[admin/feedback/beta-emails] Error:', safeError(err));
+    res.status(500).json({ error: 'Failed to export beta emails' });
   }
 });
 

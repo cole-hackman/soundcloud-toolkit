@@ -6,6 +6,7 @@ import {
   validateGrowthDiscover,
   validateGrowthEngageBatch,
   validateReverseGrowthActions,
+  validateBetaSignup,
 } from '../server/middleware/validation.js';
 
 async function runValidation(middlewares, { params = {}, query = {}, body = {} } = {}) {
@@ -180,6 +181,73 @@ describe('growth discovery validators', () => {
   test('rejects reverse request when both actionIds and filter are absent', async () => {
     const result = await runValidation(validateReverseGrowthActions, {
       body: {},
+    });
+    expect(result.statusCode).toBe(400);
+  });
+});
+
+describe('beta signup validator', () => {
+  test('accepts a feedback-only response without email', async () => {
+    const result = await runValidation(validateBetaSignup, {
+      body: {
+        rekordboxUse: 'rekordbox_primary',
+        interest: 'somewhat',
+        wantsBeta: false,
+        context: 'dashboard',
+      },
+    });
+    expect(result.statusCode).toBeNull();
+  });
+
+  test('requires email when wantsBeta is true', async () => {
+    const result = await runValidation(validateBetaSignup, {
+      body: {
+        rekordboxUse: 'rekordbox_primary',
+        interest: 'very',
+        wantsBeta: true,
+        context: 'post-merge',
+      },
+    });
+    expect(result.statusCode).toBe(400);
+  });
+
+  test('accepts a full beta signup with valid email', async () => {
+    const result = await runValidation(validateBetaSignup, {
+      body: {
+        rekordboxUse: 'rekordbox_primary',
+        platform: 'mac',
+        cullMethod: 'tedious',
+        featuresWanted: 'swipe_cull,waveform_cue',
+        editHesitations: 'corrupt_db',
+        trustDirectWrite: 'yes',
+        interest: 'very',
+        wantsBeta: true,
+        email: 'dj@example.com',
+        wantsCall: true,
+        suggestions: 'BPM sorting please',
+        nameIdea: 'CrateCull',
+        context: 'dashboard',
+      },
+    });
+    expect(result.statusCode).toBeNull();
+  });
+
+  test('rejects an invalid rekordboxUse value', async () => {
+    const result = await runValidation(validateBetaSignup, {
+      body: { rekordboxUse: 'serato', interest: 'very', context: 'dashboard' },
+    });
+    expect(result.statusCode).toBe(400);
+  });
+
+  test('rejects a malformed email even when provided', async () => {
+    const result = await runValidation(validateBetaSignup, {
+      body: {
+        rekordboxUse: 'rekordbox_primary',
+        interest: 'very',
+        wantsBeta: true,
+        email: 'not-an-email',
+        context: 'dashboard',
+      },
     });
     expect(result.statusCode).toBe(400);
   });

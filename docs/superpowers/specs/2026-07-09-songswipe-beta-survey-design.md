@@ -76,16 +76,19 @@ Ordered for fast completion; only email + interest are required.
 8. **Up for a 20-min call about your workflow?** (checkbox, optional)
 9. **Anything you'd want it to do?** (optional textarea, max 2000)
 
-Rationale for "email required": the entire point is reaching these users for the
-beta. Requiring it will lower completion vs. optional — acceptable for a
-recruitment funnel, and mitigated by keeping the form to ~45 seconds.
+**Email requirement (decided):** email is **required only when the user opts
+into the beta** (`wantsBeta = true`). Pure feedback/interest responses submit
+without it, so we don't suppress signal from people who are curious but not
+ready to sign up. Submit gating:
+- `wantsBeta` checked → `email` required + valid.
+- `wantsBeta` unchecked → `email` optional (may still be given for follow-up).
 
 ## Data model
 
 Two viable paths; **recommend Option A** (dedicated table) for clean admin
 aggregation and to isolate PII.
 
-### Option A — new `BetaSignup` table (recommended)
+### Option A — new `BetaSignup` table (DECIDED)
 
 ```prisma
 model BetaSignup {
@@ -140,7 +143,9 @@ new PII, add a short line to the privacy policy (see Privacy).
 
 ### Validation (`validateSurveySubmit` rewrite)
 
-- `email` — required, `isEmail`, normalized, max 254.
+- `email` — required **only if `wantsBeta === true`**; when present must be
+  `isEmail`, normalized, max 254. (custom validator: reject missing email when
+  `wantsBeta` is true.)
 - `rekordboxUse` — required, `isIn([...])`.
 - `interest` — required, `isIn(['very','somewhat','not'])`.
 - `platform` / `cullFrequency` — optional `isIn`.
@@ -214,10 +219,56 @@ cooldown bypass; a DJ who just merged 800 tracks is a prime SongSwipe lead.
 Old monetization data and code path are retired but the `survey_responses` table
 is left intact for history.
 
-## Open questions for Cole
+## Feature-reaction questions (optional module)
 
-1. Data model: Option A (dedicated `beta_signups`) or Option B (generic JSON)?
-   Recommend A.
-2. Keep the retired monetization modal/table around, or delete after this ships?
-3. Any incentive to boost signup (early-access badge, free lifetime SongSwipe
-   for first N testers)? Optional field if so.
+Since respondents can't run SongSwipe yet, these surface the feature set from
+the README and measure *appeal and priority* — useful for beta cohort framing
+and roadmap ordering. **Keep the survey short:** pick at most 2–3 of these to
+run alongside the core questions; every added question costs completion.
+Recommended picks marked ★.
+
+**★ Which of these would actually change your workflow?** (multi-select)
+- Swipe/keyboard to keep-or-cull tracks fast
+- Waveform preview with jump-to-hot-cue
+- Skip presets — Intro / 32 bars / Drop / Outro
+- Rate & color-tag while triaging
+- Auto-suggest keep/cull by BPM, rating, or key
+- Duplicate detection
+- A/B compare two tracks
+- Stats (keep ratio, avg BPM, color spread)
+- _None of these grab me_
+
+**★ Biggest hesitation about a tool that edits your Rekordbox library?** (multi-select)
+_Validates whether the README's safety story lands._
+- Corrupting `master.db`
+- Losing hot cues / beatgrids
+- Deleting files by accident
+- Trusting a third-party tool
+- None — sounds fine
+
+**Would you trust writing directly to `master.db` if it auto-backs-up first and never runs while Rekordbox is open?** (single)
+- Yes · Maybe · No, I'd only use XML export
+
+**How do you cull your library today?** (single)
+- I don't — it just grows · Manually, playlist by playlist · I have a system but it's tedious · Spreadsheet/other tool
+
+**How would you want to drive the swipe deck?** (multi-select)
+- Keyboard · Trackpad/mouse swipe · Gamepad · MIDI controller
+
+**Which commit path fits you?** (single)
+- Write straight to Rekordbox (auto-backup) · Export XML and import myself · Not sure yet
+
+Design guidance: the two ★ questions give the most value — one measures feature
+pull, one measures the trust barrier that could sink adoption. Everything else
+is optional depth. Store multi-selects as comma-joined slugs (same pattern as
+`painPoints`), single-selects as their own column or a small `featureAnswers`
+JSON field if we don't want a migration per question.
+
+## Decisions (resolved 2026-07-09)
+
+1. **Data model:** Option A — dedicated `beta_signups` table. ✅
+2. **Retired monetization survey:** keep modal + `survey_responses` table for
+   history; new survey lives alongside, not on top. ✅
+3. **Signup incentive:** none for now. ✅
+4. **Email:** required only when `wantsBeta` is checked; feedback-only responses
+   submit without it. ✅

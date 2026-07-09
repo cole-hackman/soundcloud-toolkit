@@ -605,6 +605,53 @@ class SoundCloudClient {
   }
 
   /**
+   * Get any user's profile
+   */
+  async getUserProfile(userId, accessToken, refreshToken) {
+    return this.scRequest(`/users/${userId}`, accessToken, refreshToken);
+  }
+
+  /**
+   * Get any user's followers (paginated)
+   */
+  async getUserFollowers(userId, accessToken, refreshToken, limit = 200) {
+    return this.paginate(`/users/${userId}/followers`, accessToken, refreshToken, limit);
+  }
+
+  /**
+   * Get any user's followings (paginated)
+   */
+  async getUserFollowings(userId, accessToken, refreshToken, limit = 200) {
+    return this.paginate(`/users/${userId}/followings`, accessToken, refreshToken, limit);
+  }
+
+  /**
+   * Get any user's tracks
+   */
+  async getUserTracks(userId, accessToken, refreshToken, limit = 10) {
+    const data = await this.scRequest(
+      `/users/${userId}/tracks?limit=${limit}&linked_partitioning=1`,
+      accessToken,
+      refreshToken
+    );
+    return data?.collection || [];
+  }
+
+  /**
+   * Follow a user
+   */
+  async followUser(userId, accessToken, refreshToken) {
+    return this.scRequest(`/me/followings/${userId}`, accessToken, refreshToken, { method: 'PUT' });
+  }
+
+  /**
+   * Like a track
+   */
+  async likeTrack(trackId, accessToken, refreshToken) {
+    return this.scRequest(`/likes/tracks/${trackId}`, accessToken, refreshToken, { method: 'PUT' });
+  }
+
+  /**
    * Get the final download link for a track
    * Handles the redirect manually to ensure we get the final URL
    */

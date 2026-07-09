@@ -3,6 +3,9 @@ import {
   validateCreateFromFollowedLikes,
   validateFollowedUserLibraryPagination,
   validateFollowingUserId,
+  validateGrowthDiscover,
+  validateFollowAndEngage,
+  validateReverseGrowthActions,
 } from '../server/middleware/validation.js';
 
 async function runValidation(middlewares, { params = {}, query = {}, body = {} } = {}) {
@@ -112,6 +115,57 @@ describe('followed user library validators', () => {
       body: { playlistIds: Array.from({ length: 21 }, (_, index) => index + 1) },
     });
 
+    expect(result.statusCode).toBe(400);
+  });
+});
+
+describe('growth discovery validators', () => {
+  test('accepts valid growth discovery payload', async () => {
+    const result = await runValidation(validateGrowthDiscover, {
+      body: { inspirationUserIds: [1, 2], limit: 25, strategy: 'followers' },
+    });
+    expect(result.statusCode).toBeNull();
+  });
+
+  test('rejects empty inspirationUserIds list', async () => {
+    const result = await runValidation(validateGrowthDiscover, {
+      body: { inspirationUserIds: [], limit: 25 },
+    });
+    expect(result.statusCode).toBe(400);
+  });
+
+  test('rejects strategy not in list', async () => {
+    const result = await runValidation(validateGrowthDiscover, {
+      body: { inspirationUserIds: [1], strategy: 'invalid_strategy' },
+    });
+    expect(result.statusCode).toBe(400);
+  });
+
+  test('accepts follow and engage payload', async () => {
+    const result = await runValidation(validateFollowAndEngage, {
+      body: { userId: 42, likeTrackId: 101, targetName: 'DJ Cool' },
+    });
+    expect(result.statusCode).toBeNull();
+  });
+
+  test('rejects invalid userId in follow and engage', async () => {
+    const result = await runValidation(validateFollowAndEngage, {
+      body: { userId: 'not_an_int' },
+    });
+    expect(result.statusCode).toBe(400);
+  });
+
+  test('accepts valid reverse filter', async () => {
+    const result = await runValidation(validateReverseGrowthActions, {
+      body: { filter: { sessionId: 'sess123', actionType: 'follow' } },
+    });
+    expect(result.statusCode).toBeNull();
+  });
+
+  test('rejects reverse request when both actionIds and filter are absent', async () => {
+    const result = await runValidation(validateReverseGrowthActions, {
+      body: {},
+    });
     expect(result.statusCode).toBe(400);
   });
 });

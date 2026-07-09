@@ -22,6 +22,7 @@ model User {
   tokens           Token[]
   operationLogs    OperationLog[]
   surveyResponses  SurveyResponse[]
+  growthActions    GrowthAction[]
 
   @@map("users")
 }
@@ -80,3 +81,32 @@ model OperationLog {
   @@index([action, createdAt])
   @@map("operation_logs")
 }
+
+model GrowthAction {
+  id               String    @id @default(cuid())
+  userId           String
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  actionType       String    // 'follow' | 'like'
+  targetId         Int       // SC user ID or track ID
+  targetName       String?
+  targetAvatar     String?
+  targetFollowers  Int?
+  targetFollowings Int?
+  followedBack     Boolean?  // null = unchecked, true = yes, false = no
+  checkedAt        DateTime?
+  reversed         Boolean   @default(false)
+  reversedAt       DateTime?
+  sessionId        String?
+  sessionLabel     String?
+  inspirationIds   String?   // comma-separated SC user IDs
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([userId, actionType])
+  @@index([userId, reversed])
+  @@index([userId, sessionId])
+  @@index([userId, followedBack])
+  @@index([createdAt])
+  @@map("growth_actions")
+}
+

@@ -38,10 +38,18 @@ import {
   validateTrackSearch,
   validateDeletePlaylist,
   validateGrowthDiscover,
-  validateFollowAndEngage,
+  validateGrowthEngageBatch,
   validateReverseGrowthActions,
 } from '../middleware/validation.js';
-import { GrowthEngine } from '../lib/growth-engine.js';
+import {
+  GrowthEngine,
+  getGrowthBudget,
+  getEngagementJob,
+  cancelEngagementJob,
+  startEngagementJob,
+  serializeJob,
+  GROWTH_BATCH_MAX,
+} from '../lib/growth-engine.js';
 
 const growthEngine = new GrowthEngine(soundcloudClient);
 
@@ -2284,7 +2292,10 @@ router.post('/reposts/bulk-remove', authenticateUser, heavyOperationRateLimiter,
  */
 router.get('/users/:id/profile', authenticateUser, async (req, res) => {
   try {
-    const { id } = req.params;
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isInteger(id) || id < 1) {
+      return res.status(400).json({ error: 'Invalid user ID' });
+    }
     const profile = await soundcloudClient.getUserProfile(id, req.accessToken, req.refreshToken);
     res.json(profile);
   } catch (error) {
@@ -2299,7 +2310,10 @@ router.get('/users/:id/profile', authenticateUser, async (req, res) => {
  */
 router.get('/users/:id/tracks', authenticateUser, async (req, res) => {
   try {
-    const { id } = req.params;
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isInteger(id) || id < 1) {
+      return res.status(400).json({ error: 'Invalid user ID' });
+    }
     const limit = req.query.limit ? parseInt(req.query.limit, 10) : 10;
     const tracks = await soundcloudClient.getUserTracks(id, req.accessToken, req.refreshToken, limit);
     res.json({ collection: tracks });
@@ -2316,6 +2330,14 @@ router.get('/users/:id/tracks', authenticateUser, async (req, res) => {
 router.post('/growth/discover', authenticateUser, heavyOperationRateLimiter, validateGrowthDiscover, async (req, res) => {
   try {
     const { inspirationUserIds, limit, strategy } = req.body;
+
+    // Never resurface anyone previously targeted (including reversed follows)
+    const priorTargets = await prisma.growthAction.findMany({
+      where: { userId: req.user.id, actionType: 'follow' },
+      select: { targetId: true },
+      distinct: ['targetId'],
+    });
+
     const result = await growthEngine.discoverSuggestions({
       inspirationUserIds,
       authUserId: req.user.id,
@@ -2324,6 +2346,7 @@ router.post('/growth/discover', authenticateUser, heavyOperationRateLimiter, val
       refreshToken: req.refreshToken,
       strategy,
       limit,
+      excludedTargetIds: priorTargets.map((t) => t.targetId),
     });
     res.json(result);
   } catch (error) {
@@ -2333,84 +2356,159 @@ router.post('/growth/discover', authenticateUser, heavyOperationRateLimiter, val
 });
 
 /**
- * POST /api/growth/follow-and-engage
- * Follow user and optionally like their track, logging actions
+ * GET /api/growth/limits
+ * Daily follow budget and session cooldown for the current user
  */
-router.post('/growth/follow-and-engage', authenticateUser, validateFollowAndEngage, async (req, res) => {
+router.get('/growth/limits', authenticateUser, async (req, res) => {
   try {
-    const {
-      userId,
-      likeTrackId,
-      targetName,
-      targetAvatar,
-      targetFollowers,
-      targetFollowings,
-      sessionId,
+    const budget = await getGrowthBudget(prisma, req.user.id);
+    res.json(budget);
+  } catch (error) {
+    logger.error('Get growth limits error:', safeError(error));
+    res.status(500).json({ error: 'Failed to fetch growth limits' });
+  }
+});
+
+/**
+ * POST /api/growth/engage
+ * Start a paced background engagement batch (follow + optional like).
+ * Server enforces the daily follow cap and session cooldown.
+ */
+router.post('/growth/engage', authenticateUser, heavyOperationRateLimiter, validateGrowthEngageBatch, async (req, res) => {
+  try {
+    const { targets, likeTracks, sessionLabel, inspirationIds, inspirationNames } = req.body;
+
+    const budget = await getGrowthBudget(prisma, req.user.id);
+    if (budget.remaining <= 0) {
+      return res.status(429).json({
+        error: `Daily follow limit reached (${budget.dailyCap} per 24h). Try again later.`,
+        budget,
+      });
+    }
+    if (budget.cooldownRemainingMs > 0) {
+      const mins = Math.ceil(budget.cooldownRemainingMs / 60000);
+      return res.status(429).json({
+        error: `Session cooldown active. You can start a new batch in ${mins} minute${mins === 1 ? '' : 's'}.`,
+        budget,
+      });
+    }
+    if (targets.length > budget.remaining) {
+      return res.status(400).json({
+        error: `Only ${budget.remaining} follows remaining in your daily budget. Select ${budget.remaining} or fewer users.`,
+        budget,
+      });
+    }
+
+    const job = startEngagementJob(growthEngine, {
+      prisma,
+      userId: req.user.id,
+      accessToken: req.accessToken,
+      refreshToken: req.refreshToken,
+      targets,
+      likeTracks,
       sessionLabel,
       inspirationIds,
-    } = req.body;
+      inspirationNames,
+    });
 
-    const errors = [];
-    let followed = false;
-    let liked = false;
-
-    // 1. Follow User
-    try {
-      await soundcloudClient.followUser(userId, req.accessToken, req.refreshToken);
-      followed = true;
-      await prisma.growthAction.create({
-        data: {
-          userId: req.user.id,
-          actionType: 'follow',
-          targetId: userId,
-          targetName,
-          targetAvatar,
-          targetFollowers,
-          targetFollowings,
-          sessionId,
-          sessionLabel,
-          inspirationIds,
-        },
-      });
-    } catch (err) {
-      logger.error(`Failed to follow user ${userId}:`, safeError(err));
-      errors.push(`Follow failed: ${err.message || err}`);
-    }
-
-    // 2. Like Track
-    if (likeTrackId) {
-      try {
-        await soundcloudClient.likeTrack(likeTrackId, req.accessToken, req.refreshToken);
-        liked = true;
-        await prisma.growthAction.create({
-          data: {
-            userId: req.user.id,
-            actionType: 'like',
-            targetId: likeTrackId,
-            targetName: targetName ? `${targetName} - Track` : 'Track',
-            targetAvatar,
-            sessionId,
-            sessionLabel,
-            inspirationIds,
-          },
-        });
-      } catch (err) {
-        logger.error(`Failed to like track ${likeTrackId}:`, safeError(err));
-        errors.push(`Like failed: ${err.message || err}`);
-      }
-    }
-
-    invalidateUserNamespaces(req.user.id, ['followings', 'followers', 'likes']);
-    res.json({ followed, liked, errors });
+    invalidateUserNamespaces(req.user.id, ['followings', 'likes']);
+    res.status(202).json({ job: serializeJob(job), budget });
     logOperation({
       userId: req.user.id,
-      action: 'growth-engage',
-      itemCount: 1 + (likeTrackId ? 1 : 0),
-      status: errors.length === 0 ? 'success' : (followed || liked ? 'split' : 'error'),
+      action: 'growth-engage-start',
+      itemCount: targets.length,
+      status: 'success',
     });
   } catch (error) {
-    logger.error('Follow and engage error:', safeError(error));
-    res.status(500).json({ error: 'Follow and engage operation failed' });
+    if (error.code === 'JOB_RUNNING') {
+      return res.status(409).json({ error: 'An engagement batch is already running.' });
+    }
+    logger.error('Growth engage error:', safeError(error));
+    res.status(500).json({ error: 'Failed to start engagement batch' });
+  }
+});
+
+/**
+ * GET /api/growth/engage/status
+ * Progress of the current (or most recent) engagement batch
+ */
+router.get('/growth/engage/status', authenticateUser, (req, res) => {
+  const job = getEngagementJob(req.user.id);
+  res.json({ job: serializeJob(job) });
+});
+
+/**
+ * POST /api/growth/engage/cancel
+ * Request cancellation of the running engagement batch
+ */
+router.post('/growth/engage/cancel', authenticateUser, (req, res) => {
+  const cancelled = cancelEngagementJob(req.user.id);
+  res.json({ cancelled });
+});
+
+/**
+ * GET /api/growth/analytics
+ * Per-seed conversion rates and follow-back timing buckets
+ */
+router.get('/growth/analytics', authenticateUser, async (req, res) => {
+  try {
+    const follows = await prisma.growthAction.findMany({
+      where: { userId: req.user.id, actionType: 'follow' },
+      select: {
+        targetId: true,
+        followedBack: true,
+        checkedAt: true,
+        createdAt: true,
+        inspirationIds: true,
+        inspirationNames: true,
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 2000,
+    });
+
+    // Per-seed conversion (each follow attributes to every seed in its session)
+    const seedMap = new Map(); // seedId -> { seedId, name, follows, followedBack, checked }
+    for (const f of follows) {
+      if (!f.inspirationIds) continue;
+      const ids = f.inspirationIds.split(',').map((x) => x.trim()).filter(Boolean);
+      const names = (f.inspirationNames || '').split(',').map((x) => x.trim());
+      ids.forEach((id, idx) => {
+        if (!seedMap.has(id)) {
+          seedMap.set(id, { seedId: id, name: names[idx] || `User ${id}`, follows: 0, followedBack: 0, checked: 0 });
+        }
+        const entry = seedMap.get(id);
+        entry.follows++;
+        if (f.followedBack !== null) {
+          entry.checked++;
+          if (f.followedBack === true) entry.followedBack++;
+        }
+        // Prefer a real name if a later record has one
+        if (names[idx] && entry.name.startsWith('User ')) entry.name = names[idx];
+      });
+    }
+    const perSeed = Array.from(seedMap.values())
+      .map((s) => ({ ...s, rate: s.checked > 0 ? s.followedBack / s.checked : null }))
+      .sort((a, b) => (b.rate ?? -1) - (a.rate ?? -1));
+
+    // Follow-back timing buckets (days between follow and confirmation check)
+    const curve = [
+      { bucket: '0-3 days', followedBack: 0, notFollowedBack: 0 },
+      { bucket: '4-7 days', followedBack: 0, notFollowedBack: 0 },
+      { bucket: '8-14 days', followedBack: 0, notFollowedBack: 0 },
+      { bucket: '15+ days', followedBack: 0, notFollowedBack: 0 },
+    ];
+    for (const f of follows) {
+      if (f.followedBack === null || !f.checkedAt) continue;
+      const days = (new Date(f.checkedAt).getTime() - new Date(f.createdAt).getTime()) / 86400000;
+      const idx = days <= 3 ? 0 : days <= 7 ? 1 : days <= 14 ? 2 : 3;
+      if (f.followedBack) curve[idx].followedBack++;
+      else curve[idx].notFollowedBack++;
+    }
+
+    res.json({ perSeed, followBackCurve: curve, totalFollows: follows.length });
+  } catch (error) {
+    logger.error('Get growth analytics error:', safeError(error));
+    res.status(500).json({ error: 'Failed to fetch growth analytics' });
   }
 });
 
@@ -2439,6 +2537,7 @@ router.get('/growth/history', authenticateUser, async (req, res) => {
     const actions = await prisma.growthAction.findMany({
       where: whereClause,
       orderBy: { createdAt: 'desc' },
+      take: 500,
     });
 
     // Fetch and aggregate session groups
@@ -2631,7 +2730,7 @@ router.post('/growth/reverse', authenticateUser, validateReverseGrowthActions, a
         reversed++;
       } catch (err) {
         logger.error(`Failed to reverse growth action ${action.id}:`, safeError(err));
-        results.push({ actionId: action.id, targetId: action.targetId, status: 'error', error: err.message || err });
+        results.push({ actionId: action.id, targetId: action.targetId, status: 'error', error: 'Reversal failed' });
         failed++;
       }
       // sequential delay

@@ -1,25 +1,25 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
-import { 
-  Sparkles, 
-  History, 
-  Search, 
-  Check, 
-  Loader2, 
-  ExternalLink, 
-  UserPlus, 
-  ThumbsUp, 
-  TrendingUp, 
-  RefreshCw, 
-  Undo2, 
-  X,
+import {
+  Sparkles,
+  History,
+  Search,
+  Check,
+  Loader2,
+  ExternalLink,
+  UserPlus,
+  RefreshCw,
+  Undo2,
   Play,
   Heart,
   ChevronRight,
   Info,
-  Clock
+  Clock,
+  ShieldAlert,
+  BarChart3,
+  Download,
 } from "lucide-react";
 import {
   PageContainer,
@@ -31,15 +31,17 @@ import {
   ConfirmDialog,
   BulkReviewDetails,
   SelectionBanner,
-  LoadingSpinner,
   Input
 } from "@/components/ui";
 import { ProgressiveBlur } from "@/components/ui/ProgressiveBlur";
 import { apiFetch } from "@/lib/api";
-import { 
-  followingsQueryOptions, 
-  invalidateDashboardSummary 
+import { downloadCsv } from "@/lib/csv";
+import {
+  followingsQueryOptions,
+  invalidateDashboardSummary
 } from "@/lib/queries";
+
+const RISK_ACK_KEY = "sc-toolkit-growth-risk-ack";
 
 interface Following {
   id: number;
@@ -111,12 +113,41 @@ interface DiscoveryStats {
   candidatesScanned: number;
   afterDedup: number;
   suggestionsReturned: number;
+  seedGenres?: string[];
+}
+
+interface GrowthBudget {
+  dailyCap: number;
+  used24h: number;
+  remaining: number;
+  cooldownRemainingMs: number;
+}
+
+interface EngageJob {
+  sessionId: string;
+  sessionLabel: string;
+  status: "running" | "complete" | "cancelled" | "error";
+  current: number;
+  total: number;
+  followed: number;
+  liked: number;
+  errorCount: number;
+  likeTracks: boolean;
+}
+
+interface SeedConversion {
+  seedId: string;
+  name: string;
+  follows: number;
+  followedBack: number;
+  checked: number;
+  rate: number | null;
 }
 
 export default function GrowthPage() {
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<"discover" | "history">("discover");
-  
+  const [activeTab, setActiveTab] = useState<"discover" | "history" | "analytics">("discover");
+
   // Tab 1: Discover state
   const [selectedInspirations, setSelectedInspirations] = useState<Set<number>>(new Set());
   const [strategy, setStrategy] = useState<'followers' | 'followings' | 'both'>('followers');
@@ -125,8 +156,14 @@ export default function GrowthPage() {
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [discoveryStats, setDiscoveryStats] = useState<DiscoveryStats | null>(null);
   const [selectedSuggestions, setSelectedSuggestions] = useState<Set<number>>(new Set());
-  const [engageProgress, setEngageProgress] = useState<{ current: number; total: number } | null>(null);
+  const [likeTracks, setLikeTracks] = useState(false); // auto-like is opt-in
   const [recentEngagedCount, setRecentEngagedCount] = useState({ followed: 0, liked: 0 });
+
+  // Engagement job (server-paced batch)
+  const [job, setJob] = useState<EngageJob | null>(null);
+
+  // Risk interstitial
+  const [showRiskModal, setShowRiskModal] = useState(false);
 
   // Tab 2: History state
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
@@ -165,7 +202,30 @@ export default function GrowthPage() {
         uncheckedFollows: number;
       }>;
     },
-    enabled: activeTab === 'history',
+    enabled: activeTab === 'history' || activeTab === 'analytics',
+  });
+
+  // Daily follow budget + cooldown
+  const { data: budget, refetch: refetchBudget } = useQuery({
+    queryKey: ['growth', 'limits'],
+    queryFn: async () => {
+      const res = await apiFetch("/api/growth/limits");
+      return res.json() as Promise<GrowthBudget>;
+    },
+  });
+
+  // Per-seed conversion analytics
+  const { data: analytics } = useQuery({
+    queryKey: ['growth', 'analytics'],
+    queryFn: async () => {
+      const res = await apiFetch("/api/growth/analytics");
+      return res.json() as Promise<{
+        perSeed: SeedConversion[];
+        followBackCurve: { bucket: string; followedBack: number; notFollowedBack: number }[];
+        totalFollows: number;
+      }>;
+    },
+    enabled: activeTab === 'analytics',
   });
 
   // Discovery Mutation
@@ -198,65 +258,128 @@ export default function GrowthPage() {
     }
   });
 
-  // Engage Mutation (Follow + Like)
-  const executeEngagement = async () => {
+  // Start a server-paced engagement batch. The server enforces the daily
+  // cap + cooldown and runs the follows in the background; we poll status.
+  const startEngagement = async () => {
     if (selectedSuggestions.size === 0) return;
-    
-    setEngageProgress({ current: 0, total: selectedSuggestions.size });
+    setShowRiskModal(false);
+
     const selectedList = suggestions.filter(s => selectedSuggestions.has(s.user.id));
-    
-    // Create a shared session ID and label
-    const sessionId = `sess_${Date.now()}`;
-    const inspirationNames = followings
-      .filter(f => selectedInspirations.has(f.id))
-      .map(f => f.username)
-      .slice(0, 3)
-      .join(", ");
-    const sessionLabel = `Seed: ${inspirationNames}${selectedInspirations.size > 3 ? "..." : ""} — ${new Date().toLocaleDateString()}`;
-    
-    let followedCount = 0;
-    let likedCount = 0;
+    const seedFollowings = followings.filter(f => selectedInspirations.has(f.id));
+    const inspirationNames = seedFollowings.map(f => f.username).join(",");
+    const shortNames = seedFollowings.map(f => f.username).slice(0, 3).join(", ");
+    const sessionLabel = `Seed: ${shortNames}${selectedInspirations.size > 3 ? "…" : ""} — ${new Date().toLocaleDateString()}`;
 
-    for (let i = 0; i < selectedList.length; i++) {
-      const sug = selectedList[i];
-      try {
-        const res = await apiFetch("/api/growth/follow-and-engage", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            userId: sug.user.id,
-            likeTrackId: sug.suggestedTrack?.id,
-            targetName: sug.user.username,
-            targetAvatar: sug.user.avatar_url,
-            targetFollowers: sug.user.followers_count,
-            targetFollowings: sug.user.followings_count,
-            sessionId,
-            sessionLabel,
-            inspirationIds: Array.from(selectedInspirations).join(","),
-          })
-        });
+    const targets = selectedList.map(s => ({
+      userId: s.user.id,
+      likeTrackId: likeTracks ? s.suggestedTrack?.id ?? null : null,
+      targetName: s.user.username,
+      targetAvatar: s.user.avatar_url,
+      targetFollowers: s.user.followers_count,
+      targetFollowings: s.user.followings_count,
+    }));
 
-        if (res.ok) {
-          const data = await res.json();
-          if (data.followed) followedCount++;
-          if (data.liked) likedCount++;
-        }
-      } catch (err) {
-        console.error(`Failed to engage with user ${sug.user.id}`, err);
+    try {
+      const res = await apiFetch("/api/growth/engage", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          targets,
+          likeTracks,
+          sessionLabel,
+          inspirationIds: Array.from(selectedInspirations).join(","),
+          inspirationNames,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        setNotice({ type: "error", text: data.error || "Failed to start engagement batch." });
+        if (data.budget) refetchBudget();
+        return;
       }
-
-      setEngageProgress({ current: i + 1, total: selectedList.length });
+      setJob(data.job);
+      setNotice({
+        type: "info",
+        text: `Engagement started — following ${targets.length} user${targets.length === 1 ? "" : "s"} at a safe pace. You can leave this page; it runs in the background.`,
+      });
+    } catch {
+      setNotice({ type: "error", text: "Failed to start engagement batch." });
     }
+  };
 
-    setRecentEngagedCount({ followed: followedCount, liked: likedCount });
-    setNotice({
-      type: "success",
-      text: `Successfully followed ${followedCount} users and liked ${likedCount} tracks!`
-    });
-    
-    setEngageProgress(null);
-    setDiscoveryStep(4);
-    await invalidateDashboardSummary(queryClient);
+  // Poll engagement job status while one is running
+  useEffect(() => {
+    if (!job || job.status !== "running") return;
+    const interval = setInterval(async () => {
+      try {
+        const res = await apiFetch("/api/growth/engage/status");
+        const data = await res.json();
+        if (data.job) {
+          setJob(data.job);
+          if (data.job.status !== "running") {
+            clearInterval(interval);
+            setRecentEngagedCount({ followed: data.job.followed, liked: data.job.liked });
+            setDiscoveryStep(4);
+            refetchBudget();
+            invalidateDashboardSummary(queryClient);
+          }
+        }
+      } catch {
+        /* keep polling */
+      }
+    }, 2000);
+    return () => clearInterval(interval);
+  }, [job, queryClient, refetchBudget]);
+
+  const cancelEngagement = async () => {
+    try {
+      await apiFetch("/api/growth/engage/cancel", { method: "POST" });
+      setNotice({ type: "info", text: "Cancelling after the current action…" });
+    } catch {
+      /* ignore */
+    }
+  };
+
+  // Confirm-or-run entry point for the engage banner
+  const handleEngageClick = () => {
+    if (selectedSuggestions.size === 0) return;
+    const acked = typeof window !== "undefined" && localStorage.getItem(RISK_ACK_KEY) === "true";
+    if (acked) {
+      startEngagement();
+    } else {
+      setShowRiskModal(true);
+    }
+  };
+
+  const acknowledgeRiskAndEngage = () => {
+    try {
+      localStorage.setItem(RISK_ACK_KEY, "true");
+    } catch {
+      /* ignore */
+    }
+    startEngagement();
+  };
+
+  // Track preview — the stream file is auth-gated, so open the track on
+  // SoundCloud in a new tab as the reliable preview.
+  const previewTrack = useCallback((track: NonNullable<Suggestion["suggestedTrack"]>) => {
+    window.open(track.permalink_url, "_blank", "noopener");
+  }, []);
+
+  const exportSessionCsv = (sessionLabel: string, actions: GrowthAction[]) => {
+    const rows: unknown[][] = [
+      ["Target", "Action", "Followed Back", "Reversed", "Date"],
+      ...actions.map((a) => [
+        a.targetName || "",
+        a.actionType,
+        a.followedBack === null ? "unchecked" : a.followedBack ? "yes" : "no",
+        a.reversed ? "yes" : "no",
+        new Date(a.createdAt).toISOString(),
+      ]),
+    ];
+    const safe = sessionLabel.replace(/[^a-z0-9]+/gi, "-").slice(0, 40);
+    downloadCsv(`growth-${safe || "session"}.csv`, rows);
   };
 
   // Followback Checker Mutation
@@ -438,7 +561,44 @@ export default function GrowthPage() {
             Campaign History
           </div>
         </button>
+        <button
+          onClick={() => {
+            setActiveTab("analytics");
+            setNotice(null);
+          }}
+          className={`px-4 py-1.5 rounded-md text-sm font-semibold transition-all ${
+            activeTab === "analytics"
+              ? "bg-card text-primary shadow-sm"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            <BarChart3 className="w-4 h-4" />
+            Analytics
+          </div>
+        </button>
       </div>
+
+      {/* Daily budget / cooldown banner */}
+      {budget && activeTab === "discover" && (
+        <div className="mb-6 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-xl border border-border/60 bg-secondary/20 px-4 py-2.5 text-xs">
+          <span className="inline-flex items-center gap-1.5 font-semibold text-foreground">
+            <ShieldAlert className="h-3.5 w-3.5 text-primary" />
+            Daily follow budget
+          </span>
+          <span className="text-muted-foreground">
+            <span className="font-semibold text-foreground">{budget.remaining}</span> of {budget.dailyCap} left
+          </span>
+          {budget.cooldownRemainingMs > 0 && (
+            <span className="text-amber-600 dark:text-amber-400">
+              Cooldown: {Math.ceil(budget.cooldownRemainingMs / 60000)} min until next batch
+            </span>
+          )}
+          <span className="ml-auto text-muted-foreground/80">
+            Caps protect your account from spam flags.
+          </span>
+        </div>
+      )}
 
       {/* Discover Tab */}
       {activeTab === "discover" && (
@@ -577,14 +737,24 @@ export default function GrowthPage() {
                   <div>
                     <h3 className="text-lg font-bold text-foreground">Discovery Results</h3>
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      Scanned {discoveryStats?.candidatesScanned} profiles → found {discoveryStats?.afterDedup} new candidates.
+                      Scanned {discoveryStats?.candidatesScanned} profiles → found {discoveryStats?.afterDedup} new candidates, scored by scene fit.
                     </p>
+                    {discoveryStats?.seedGenres && discoveryStats.seedGenres.length > 0 && (
+                      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                        <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Scene:</span>
+                        {discoveryStats.seedGenres.slice(0, 6).map((g) => (
+                          <span key={g} className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
+                            {g}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   <div className="flex items-center gap-3">
                     <Button variant="outline" size="sm" onClick={() => setDiscoveryStep(1)}>
                       Back / Adjust Seeds
                     </Button>
-                    <button 
+                    <button
                       onClick={toggleAllSuggestions}
                       className="text-sm text-primary font-medium hover:underline px-2"
                     >
@@ -592,6 +762,20 @@ export default function GrowthPage() {
                     </button>
                   </div>
                 </div>
+
+                {/* Opt-in auto-like (off by default — halves write volume) */}
+                <label className="mb-4 flex items-start gap-3 rounded-xl border border-border/60 bg-secondary/20 px-4 py-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={likeTracks}
+                    onChange={(e) => setLikeTracks(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 accent-primary"
+                  />
+                  <span className="text-xs leading-5 text-muted-foreground">
+                    <span className="font-semibold text-foreground">Also like each user&apos;s top track</span> when following.
+                    Off by default — following alone is a lighter footprint and less likely to trip spam filters.
+                  </span>
+                </label>
 
                 {suggestions.length === 0 ? (
                   <EmptyState
@@ -678,14 +862,17 @@ export default function GrowthPage() {
                                   <span>{formatNumber(sug.suggestedTrack.likes_count)} likes</span>
                                 </div>
                               </div>
-                              <a
-                                href={sug.suggestedTrack.permalink_url}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="text-primary hover:text-primary-hover shrink-0 p-1"
+                              <button
+                                type="button"
+                                aria-label={`Preview ${sug.suggestedTrack.title} on SoundCloud`}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  previewTrack(sug.suggestedTrack!);
+                                }}
+                                className="text-primary hover:opacity-80 shrink-0 p-1"
                               >
                                 <Play className="w-4 h-4 fill-primary text-primary" />
-                              </a>
+                              </button>
                             </div>
                           ) : (
                             <div className="text-xs text-muted-foreground italic mt-auto">No tracks uploaded</div>
@@ -697,15 +884,40 @@ export default function GrowthPage() {
                 )}
               </Card>
 
+              {/* Live batch progress */}
+              {job && job.status === "running" && (
+                <div className="fixed inset-x-0 bottom-0 z-40 border-t border-border/60 bg-card/95 backdrop-blur">
+                  <div className="mx-auto flex max-w-5xl flex-col gap-2 px-4 py-3 sm:px-6">
+                    <div className="flex items-center justify-between gap-4">
+                      <span className="inline-flex items-center gap-2 text-sm font-semibold text-foreground">
+                        <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                        Following {job.current} of {job.total}
+                        {job.likeTracks && ` · liked ${job.liked}`}
+                      </span>
+                      <Button variant="outline" size="sm" onClick={cancelEngagement}>
+                        Stop
+                      </Button>
+                    </div>
+                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-secondary">
+                      <div
+                        className="h-full rounded-full bg-primary transition-all duration-500"
+                        style={{ width: `${job.total ? (job.current / job.total) * 100 : 0}%` }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Bottom selection banner */}
-              <SelectionBanner
-                count={selectedSuggestions.size}
-                entityName="user"
-                actionLabel={engageProgress ? `Engaging ${engageProgress.current}/${engageProgress.total}...` : "Follow + Like Selected"}
-                onAction={executeEngagement}
-                disabled={!!engageProgress}
-                actionIcon={engageProgress ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />}
-              />
+              {(!job || job.status !== "running") && (
+                <SelectionBanner
+                  count={selectedSuggestions.size}
+                  entityName="user"
+                  actionLabel={likeTracks ? "Follow + like selected" : "Follow selected"}
+                  onAction={handleEngageClick}
+                  actionIcon={<UserPlus className="w-4 h-4" />}
+                />
+              )}
             </>
           )}
 
@@ -878,6 +1090,16 @@ export default function GrowthPage() {
                         <Button
                           variant="outline"
                           size="sm"
+                          onClick={() => exportSessionCsv(selectedSession?.label || "session", sessionActions)}
+                          disabled={sessionActions.length === 0}
+                          className="gap-1.5"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                          Export CSV
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
                           onClick={() => checkFollowbacksMutation.mutate(selectedSessionId)}
                           disabled={checkingFollowbacks}
                           className="gap-1.5"
@@ -1024,6 +1246,126 @@ export default function GrowthPage() {
           </ConfirmDialog>
         </>
       )}
+
+      {/* Analytics Tab */}
+      {activeTab === "analytics" && (
+        <>
+          {statsData && (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+              <Card className="p-4 flex flex-col justify-between">
+                <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Total Followed</span>
+                <span className="text-2xl font-bold mt-1 text-foreground">{statsData.totalFollowed}</span>
+              </Card>
+              <Card className="p-4 flex flex-col justify-between">
+                <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Followback Rate</span>
+                <span className="text-2xl font-bold mt-1 text-primary">{Math.round(statsData.followedBackRate * 100)}%</span>
+              </Card>
+              <Card className="p-4 flex flex-col justify-between">
+                <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Active Follows</span>
+                <span className="text-2xl font-bold mt-1 text-foreground">{statsData.activeFollows}</span>
+              </Card>
+              <Card className="p-4 flex flex-col justify-between">
+                <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Pending Check</span>
+                <span className="text-2xl font-bold mt-1 text-foreground">{statsData.uncheckedFollows}</span>
+              </Card>
+            </div>
+          )}
+
+          <div className="grid lg:grid-cols-2 gap-6">
+            {/* Per-seed conversion */}
+            <Card className="p-6">
+              <h4 className="text-sm font-bold text-foreground mb-1">Which seeds convert best</h4>
+              <p className="text-xs text-muted-foreground mb-4">
+                Follow-back rate of people discovered from each inspiration artist. Seed your next campaign from the winners.
+              </p>
+              {!analytics || analytics.perSeed.length === 0 ? (
+                <EmptyState
+                  icon={<BarChart3 className="w-10 h-10" />}
+                  title="Not enough data yet"
+                  description="Run a campaign and check follow-backs to see which seeds convert."
+                />
+              ) : (
+                <div className="space-y-3">
+                  {analytics.perSeed.slice(0, 12).map((seed) => (
+                    <div key={seed.seedId} className="flex items-center gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="text-xs font-semibold text-foreground truncate">{seed.name}</div>
+                        <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-secondary">
+                          <div
+                            className="h-full rounded-full bg-primary"
+                            style={{ width: `${seed.rate === null ? 0 : Math.round(seed.rate * 100)}%` }}
+                          />
+                        </div>
+                      </div>
+                      <div className="w-24 text-right text-[11px] text-muted-foreground shrink-0">
+                        {seed.rate === null ? (
+                          <span>{seed.follows} follows</span>
+                        ) : (
+                          <span className="font-semibold text-foreground">
+                            {Math.round(seed.rate * 100)}%
+                          </span>
+                        )}
+                        <span className="ml-1">({seed.checked}/{seed.follows})</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Card>
+
+            {/* Follow-back timing */}
+            <Card className="p-6">
+              <h4 className="text-sm font-bold text-foreground mb-1">When people follow back</h4>
+              <p className="text-xs text-muted-foreground mb-4">
+                How long after a follow reciprocation was confirmed — helps you time your follow-back checks.
+              </p>
+              {!analytics || analytics.followBackCurve.every((b) => b.followedBack + b.notFollowedBack === 0) ? (
+                <EmptyState
+                  icon={<Clock className="w-10 h-10" />}
+                  title="No confirmed follow-backs yet"
+                  description="Check follow-backs on a campaign to populate this."
+                />
+              ) : (
+                <div className="space-y-4">
+                  {analytics.followBackCurve.map((b) => {
+                    const total = b.followedBack + b.notFollowedBack;
+                    const pct = total > 0 ? Math.round((b.followedBack / total) * 100) : 0;
+                    return (
+                      <div key={b.bucket}>
+                        <div className="flex justify-between text-xs mb-1">
+                          <span className="text-foreground font-medium">{b.bucket}</span>
+                          <span className="text-muted-foreground">{b.followedBack} back / {total} checked</span>
+                        </div>
+                        <div className="h-2 w-full overflow-hidden rounded-full bg-secondary">
+                          <div className="h-full rounded-full bg-green-500" style={{ width: `${pct}%` }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </Card>
+          </div>
+        </>
+      )}
+
+      {/* Risk interstitial (shown once, before first engagement) */}
+      <ConfirmDialog
+        open={showRiskModal}
+        title="Before you follow in bulk"
+        description="Bulk following is against SoundCloud's terms if overdone, and aggressive activity can get accounts flagged or limited."
+        confirmLabel={`Follow ${selectedSuggestions.size} — I understand`}
+        cancelLabel="Not now"
+        variant="destructive"
+        onConfirm={acknowledgeRiskAndEngage}
+        onCancel={() => setShowRiskModal(false)}
+      >
+        <ul className="space-y-2 text-xs text-muted-foreground">
+          <li className="flex gap-2"><Check className="h-4 w-4 shrink-0 text-primary" />We cap follows at {budget?.dailyCap ?? 50} per day and pace them automatically.</li>
+          <li className="flex gap-2"><Check className="h-4 w-4 shrink-0 text-primary" />Everything is logged so you can undo any campaign from the History tab.</li>
+          <li className="flex gap-2"><Check className="h-4 w-4 shrink-0 text-primary" />Following real artists in your scene is fine; mass follow/unfollow churn is what gets flagged.</li>
+        </ul>
+      </ConfirmDialog>
     </PageContainer>
   );
 }

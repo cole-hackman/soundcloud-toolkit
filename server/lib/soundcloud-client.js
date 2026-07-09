@@ -648,7 +648,7 @@ class SoundCloudClient {
    * Like a track
    */
   async likeTrack(trackId, accessToken, refreshToken) {
-    return this.scRequest(`/likes/tracks/${trackId}`, accessToken, refreshToken, { method: 'PUT' });
+    return this.scRequest(`/likes/tracks/${trackId}`, accessToken, refreshToken, { method: 'POST' });
   }
 
   /**

@@ -597,41 +597,44 @@ export const validateGrowthDiscover = [
 ];
 
 /**
- * Validation rules for follow and engage (POST /api/growth/follow-and-engage)
+ * Validation rules for engagement batches (POST /api/growth/engage)
  */
-export const validateFollowAndEngage = [
-  body('userId')
+export const validateGrowthEngageBatch = [
+  body('targets')
+    .isArray({ min: 1, max: 50 })
+    .withMessage('targets must be an array of 1 to 50 items'),
+  body('targets.*.userId')
     .isInt({ min: 1 })
-    .withMessage('userId must be a positive integer')
+    .withMessage('Each target userId must be a positive integer')
     .toInt(),
-  body('likeTrackId')
+  body('targets.*.likeTrackId')
     .optional({ nullable: true })
     .isInt({ min: 1 })
     .withMessage('likeTrackId must be a positive integer')
     .toInt(),
-  body('targetName')
+  body('targets.*.targetName')
     .optional({ nullable: true })
     .trim()
     .isLength({ min: 1, max: 200 })
     .withMessage('targetName must be at most 200 characters'),
-  body('targetAvatar')
+  body('targets.*.targetAvatar')
     .optional({ nullable: true })
     .trim()
     .isLength({ min: 1, max: 2048 })
     .withMessage('targetAvatar must be a valid URL'),
-  body('targetFollowers')
+  body('targets.*.targetFollowers')
     .optional({ nullable: true })
     .isInt({ min: 0 })
     .toInt(),
-  body('targetFollowings')
+  body('targets.*.targetFollowings')
     .optional({ nullable: true })
     .isInt({ min: 0 })
     .toInt(),
-  body('sessionId')
-    .optional({ nullable: true })
-    .trim()
-    .isLength({ min: 1, max: 100 })
-    .withMessage('sessionId must be at most 100 characters'),
+  body('likeTracks')
+    .optional()
+    .isBoolean()
+    .withMessage('likeTracks must be a boolean')
+    .toBoolean(),
   body('sessionLabel')
     .optional({ nullable: true })
     .trim()
@@ -642,6 +645,11 @@ export const validateFollowAndEngage = [
     .trim()
     .isLength({ min: 1, max: 200 })
     .withMessage('inspirationIds must be at most 200 characters'),
+  body('inspirationNames')
+    .optional({ nullable: true })
+    .trim()
+    .isLength({ min: 1, max: 500 })
+    .withMessage('inspirationNames must be at most 500 characters'),
   handleValidationErrors
 ];
 

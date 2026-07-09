@@ -99,6 +99,7 @@ model GrowthAction {
   sessionId        String?
   sessionLabel     String?
   inspirationIds   String?   // comma-separated SC user IDs
+  inspirationNames String?   // comma-separated usernames, parallel to inspirationIds
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 

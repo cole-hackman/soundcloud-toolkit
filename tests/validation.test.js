@@ -4,7 +4,7 @@ import {
   validateFollowedUserLibraryPagination,
   validateFollowingUserId,
   validateGrowthDiscover,
-  validateFollowAndEngage,
+  validateGrowthEngageBatch,
   validateReverseGrowthActions,
 } from '../server/middleware/validation.js';
 
@@ -141,16 +141,31 @@ describe('growth discovery validators', () => {
     expect(result.statusCode).toBe(400);
   });
 
-  test('accepts follow and engage payload', async () => {
-    const result = await runValidation(validateFollowAndEngage, {
-      body: { userId: 42, likeTrackId: 101, targetName: 'DJ Cool' },
+  test('accepts a valid engagement batch payload', async () => {
+    const result = await runValidation(validateGrowthEngageBatch, {
+      body: {
+        targets: [
+          { userId: 42, likeTrackId: 101, targetName: 'DJ Cool' },
+          { userId: 43 },
+        ],
+        likeTracks: true,
+        sessionLabel: 'Seed: DJ Cool',
+      },
     });
     expect(result.statusCode).toBeNull();
   });
 
-  test('rejects invalid userId in follow and engage', async () => {
-    const result = await runValidation(validateFollowAndEngage, {
-      body: { userId: 'not_an_int' },
+  test('rejects an engagement batch with an invalid target userId', async () => {
+    const result = await runValidation(validateGrowthEngageBatch, {
+      body: { targets: [{ userId: 'not_an_int' }] },
+    });
+    expect(result.statusCode).toBe(400);
+  });
+
+  test('rejects an engagement batch over the 50-target cap', async () => {
+    const targets = Array.from({ length: 51 }, (_, i) => ({ userId: i + 1 }));
+    const result = await runValidation(validateGrowthEngageBatch, {
+      body: { targets },
     });
     expect(result.statusCode).toBe(400);
   });

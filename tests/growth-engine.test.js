@@ -10,6 +10,7 @@ describe('GrowthEngine', () => {
       getFollowings: jest.fn(),
       getFollowers: jest.fn(),
       getUserFollowers: jest.fn(),
+      getUserFollowings: jest.fn().mockResolvedValue([]),
       getRelatedArtists: jest.fn(),
       getUserTracks: jest.fn(),
     };
@@ -51,6 +52,23 @@ describe('GrowthEngine', () => {
 
       expect(result.score).toBeLessThan(40);
       expect(result.scoreLabel).toBe('low');
+    });
+
+    test('genre affinity raises the score and is surfaced as a signal', () => {
+      const user = {
+        id: 103,
+        username: 'scene-fit',
+        followers_count: 100,
+        followings_count: 100,
+        track_count: 4,
+      };
+
+      const noAffinity = growthEngine.scoreCandidate(user, 1, 2, false, 0);
+      const highAffinity = growthEngine.scoreCandidate(user, 1, 2, false, 1);
+
+      expect(highAffinity.score).toBeGreaterThan(noAffinity.score);
+      expect(highAffinity.signals.genreAffinity).toBe(1);
+      expect(noAffinity.signals.genreAffinity).toBe(0);
     });
   });
 

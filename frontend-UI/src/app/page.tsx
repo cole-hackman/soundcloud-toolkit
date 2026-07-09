@@ -133,6 +133,22 @@ const features = [
   }
 ];
 
+// Testimonials — real quotes only. Leave empty to hide the section entirely.
+// To enable: add objects { quote, name, role, avatar? } with genuine user
+// feedback. Never populate with invented quotes — it undermines the trust
+// signals this page is built around.
+interface Testimonial {
+  quote: string;
+  name: string;
+  role: string;
+  avatar?: string;
+}
+const testimonials: Testimonial[] = [];
+
+// Path to a real dashboard screenshot (put the file in /public). Null hides
+// the hero product shot until the asset exists. e.g. "/hero-dashboard.png"
+const HERO_SHOT: string | null = null;
+
 // Benefits data
 const benefits = [
   "Merge multiple playlists with automatic duplicate removal",
@@ -289,6 +305,30 @@ export default function Home() {
               </Button>
             </div>
           </div>
+
+          {/* Product shot — set HERO_SHOT to a real dashboard screenshot to
+              show the app above the fold. Null by default so no broken image
+              ships before the asset exists. */}
+          {HERO_SHOT && (
+            <div className="relative z-10 mx-auto mt-14 max-w-5xl [animation-delay:280ms] animate-fade-in-up">
+              <div className="overflow-hidden rounded-2xl border border-border/70 bg-surface shadow-elevation-2">
+                <div className="flex items-center gap-1.5 border-b border-border/60 bg-surface/80 px-4 py-2.5">
+                  <span className="h-2.5 w-2.5 rounded-full bg-destructive/60" />
+                  <span className="h-2.5 w-2.5 rounded-full bg-chart-4/70" />
+                  <span className="h-2.5 w-2.5 rounded-full bg-chart-3/70" />
+                  <span className="ml-3 text-[11px] text-muted-foreground">soundcloudtoolkit.com/dashboard</span>
+                </div>
+                <Image
+                  src={HERO_SHOT}
+                  alt="SC Toolkit dashboard showing playlist tools and library stats"
+                  width={1600}
+                  height={1000}
+                  className="h-auto w-full"
+                  unoptimized
+                />
+              </div>
+            </div>
+          )}
         </section>
 
         {/* Social proof / trust bar */}
@@ -403,6 +443,46 @@ export default function Home() {
             </div>
           </div>
         </section>
+
+        {/* Testimonials — only renders when real quotes are supplied */}
+        {testimonials.length > 0 && (
+          <section className="px-4 py-20 sm:px-6 sm:py-24">
+            <div className="mx-auto max-w-6xl">
+              <h2 className="text-center font-display text-3xl font-semibold tracking-tight sm:text-4xl md:text-5xl">
+                What users say
+              </h2>
+              <div className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {testimonials.map((t) => (
+                  <Card key={t.name} className="flex h-full flex-col p-6">
+                    <p className="flex-1 text-sm leading-relaxed text-foreground">
+                      &ldquo;{t.quote}&rdquo;
+                    </p>
+                    <div className="mt-5 flex items-center gap-3">
+                      {t.avatar ? (
+                        <Image
+                          src={t.avatar}
+                          alt={t.name}
+                          width={40}
+                          height={40}
+                          className="h-10 w-10 rounded-full object-cover"
+                          unoptimized
+                        />
+                      ) : (
+                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
+                          {t.name.charAt(0)}
+                        </div>
+                      )}
+                      <div className="min-w-0">
+                        <div className="text-sm font-semibold text-foreground">{t.name}</div>
+                        <div className="text-xs text-muted-foreground">{t.role}</div>
+                      </div>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            </div>
+          </section>
+        )}
 
         {/* How it works */}
         <section

@@ -316,7 +316,7 @@ export default function FollowingLibraryPage() {
   const actionDisabled = working || (activeTab === "likes" ? !canCreateFromTracks : selectedPlaylists.size === 0);
 
   return (
-    <PageContainer maxWidth="wide">
+    <PageContainer maxWidth="wide" className={activeSelectionCount > 0 ? "pb-28" : ""}>
       <PageHeader
         title="Following Library"
         description="Copy public tracks and playlists from people you follow into your library."

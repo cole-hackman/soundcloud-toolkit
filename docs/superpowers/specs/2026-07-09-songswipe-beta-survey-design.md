@@ -53,28 +53,49 @@ in-app, once testers are running the Electron build (out of scope here).
 | `validateSurveySubmit` | ⚠️ rewrite | New field validation incl. email |
 | Survey copy / pitch | ❌ replace | SongSwipe pitch, not "keep SC Toolkit sustainable" |
 
-## Question set
+## Product name (variable)
 
-Ordered for fast completion; only email + interest are required.
+Cole is exploring a rebrand (see Rebrand context). The Electron app's working
+name is **SongSwipe**; "TrackToolkit" is a candidate. To avoid rework, the app
+name in all survey copy comes from a single constant `SONGSWIPE_NAME` (client)
+so a rename is one line. The survey also *asks users* for name ideas (Q11).
 
-1. **Do you DJ with Rekordbox?** (required, radio)
-   `rekordbox_primary` · `rekordbox_sometimes` · `other_software` · `no`
-   — Qualifier. `no` short-circuits to a polite thanks (still recorded, no email required).
-2. **Platform** (radio) — `mac` · `windows` · `both`
-   — SongSwipe is Electron desktop; needed for build targeting.
-3. **How often do you cull / clean up your library?** (radio)
-   `weekly` · `monthly` · `rarely` · `never`
-   — Pain frequency.
-4. **Biggest pain managing your Rekordbox library today?** (multi-select + other)
-   duplicates · too many untried tracks · ratings/tags upkeep · playlist sprawl ·
-   finding tracks to drop · nothing really
-5. **Interest in a Tinder-style swipe tool to triage Rekordbox tracks fast?** (required, pill)
-   `very` · `somewhat` · `not`
-6. **Want early beta access?** (checkbox, default on when interest ≥ somewhat)
-   Drives whether email is a beta opt-in vs. contact-only.
-7. **Email** (required, validated) — capture for beta invite / follow-up.
-8. **Up for a 20-min call about your workflow?** (checkbox, optional)
-9. **Anything you'd want it to do?** (optional textarea, max 2000)
+## Question set (FINAL — chosen 2026-07-09)
+
+Single scrollable modal. Only **Rekordbox use** and **interest** are required;
+**email** becomes required only if the user checks "beta access." Everything
+else optional. Slightly longer than a cold-consumer survey is acceptable here —
+respondents are engaged DJs being invited to shape a tool, not strangers.
+
+1. **Do you DJ with Rekordbox?** (required, radio) — `rekordbox_primary` ·
+   `rekordbox_sometimes` · `other_software` · `no`
+   `no` collapses the rest to a short thanks (recorded; no further required fields).
+2. **Platform** (radio) — `mac` · `windows` · `both` (Electron build targeting).
+3. **How do you clean up your Rekordbox library today?** (radio) — `dont` (it
+   just grows) · `manual` (playlist by playlist) · `tedious` (have a system but
+   it's a chore) · `other_tool` (spreadsheet/something else).
+4. ★ **Which of these would actually change your workflow?** (multi-select) —
+   swipe_cull · waveform_cue · skip_presets · rate_tag · smart_rules ·
+   dupes · ab_compare · stats · none.
+5. ★ **Biggest hesitation about a tool that edits your Rekordbox library?**
+   (multi-select) — corrupt_db · lose_cues · delete_files · trust_thirdparty ·
+   none. (Validates whether the safety story needs to lead the marketing.)
+6. **Trust direct `master.db` writes if it auto-backs-up and never runs while
+   Rekordbox is open?** (radio) — `yes` · `maybe` · `xml_only`.
+7. **Interest in a swipe-to-cull Rekordbox tool?** (required, pill) — `very` ·
+   `somewhat` · `not`.
+8. **Want early beta access?** (checkbox; auto-checks when interest ≥ somewhat).
+9. **Email** (conditional — required iff Q8 checked; else optional).
+10. **Up for a 20-min call about your workflow?** (checkbox, optional).
+11. **Feature ideas for SC Toolkit *or* SongSwipe?** (optional textarea, 2000) —
+    the general open-suggestion box for both products.
+12. **Name ideas?** (optional text, 120) — "We're toying with *TrackToolkit* —
+    what would you call a swipe-to-cull Rekordbox app?" Captures naming signal
+    for the rebrand.
+
+The two ★ questions are the highest-value: one measures which features to lead
+the beta with, the other measures the trust barrier (a third-party tool writing
+to a DJ's library) that is this app's biggest adoption risk.
 
 **Email requirement (decided):** email is **required only when the user opts
 into the beta** (`wantsBeta = true`). Pure feedback/interest responses submit
@@ -97,15 +118,18 @@ model BetaSignup {
   user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   soundcloudId      Int
   campaignId        String
-  email             String                      // PII — required
+  email             String?                     // PII — required only if wantsBeta
   rekordboxUse      String                      // rekordbox_primary | rekordbox_sometimes | other_software | no
   platform          String?                     // mac | windows | both
-  cullFrequency     String?                     // weekly | monthly | rarely | never
-  painPoints        String?                     // comma-separated multi-select
+  cullMethod        String?                     // dont | manual | tedious | other_tool
+  featuresWanted    String?                     // comma-separated slugs (Q4)
+  editHesitations   String?                     // comma-separated slugs (Q5)
+  trustDirectWrite  String?                     // yes | maybe | xml_only (Q6)
   interest          String                      // very | somewhat | not
   wantsBeta         Boolean  @default(false)
   wantsCall         Boolean  @default(false)
-  comment           String?  @db.Text
+  suggestions       String?  @db.Text           // Q11 — ideas for SC Toolkit or SongSwipe
+  nameIdea          String?                      // Q12 — name suggestion
   context           String                      // dashboard | post-merge | post-from-likes
   createdAt         DateTime @default(now())
 
@@ -148,10 +172,11 @@ new PII, add a short line to the privacy policy (see Privacy).
   `wantsBeta` is true.)
 - `rekordboxUse` — required, `isIn([...])`.
 - `interest` — required, `isIn(['very','somewhat','not'])`.
-- `platform` / `cullFrequency` — optional `isIn`.
-- `painPoints` — optional string, max 300 (comma-joined slugs).
+- `platform` / `cullMethod` / `trustDirectWrite` — optional `isIn`.
+- `featuresWanted` / `editHesitations` — optional strings, max 300 (comma slugs).
 - `wantsBeta` / `wantsCall` — optional boolean.
-- `comment` — optional, max 2000.
+- `suggestions` — optional, max 2000.
+- `nameIdea` — optional, max 120.
 - `context` — `isIn(['dashboard','post-merge','post-from-likes'])`.
 
 ## Client changes
@@ -219,56 +244,36 @@ cooldown bypass; a DJ who just merged 800 tracks is a prime SongSwipe lead.
 Old monetization data and code path are retired but the `survey_responses` table
 is left intact for history.
 
-## Feature-reaction questions (optional module)
+## Rebrand context (direction, not commitment)
 
-Since respondents can't run SongSwipe yet, these surface the feature set from
-the README and measure *appeal and priority* — useful for beta cohort framing
-and roadmap ordering. **Keep the survey short:** pick at most 2–3 of these to
-run alongside the core questions; every added question costs completion.
-Recommended picks marked ★.
+Cole is considering a **"DJ Toolkit"** umbrella brand that would host both
+SC Toolkit (SoundCloud tools) and the new Rekordbox app, and possibly renaming
+SongSwipe → **TrackToolkit**. This is exploratory, so this feature does NOT
+hard-code any rename. Instead:
 
-**★ Which of these would actually change your workflow?** (multi-select)
-- Swipe/keyboard to keep-or-cull tracks fast
-- Waveform preview with jump-to-hot-cue
-- Skip presets — Intro / 32 bars / Drop / Outro
-- Rate & color-tag while triaging
-- Auto-suggest keep/cull by BPM, rating, or key
-- Duplicate detection
-- A/B compare two tracks
-- Stats (keep ratio, avg BPM, color spread)
-- _None of these grab me_
+- The app name is a single `SONGSWIPE_NAME` constant in the modal; the rebrand
+  is a one-line change when Cole decides.
+- Q12 asks users directly for name ideas (surfacing TrackToolkit as a candidate)
+  so the naming decision is data-informed.
+- Q11 explicitly invites suggestions for **both** SC Toolkit and SongSwipe,
+  which doubles as light validation of the umbrella-brand idea (do users think
+  of these as one product family?).
 
-**★ Biggest hesitation about a tool that edits your Rekordbox library?** (multi-select)
-_Validates whether the README's safety story lands._
-- Corrupting `master.db`
-- Losing hot cues / beatgrids
-- Deleting files by accident
-- Trusting a third-party tool
-- None — sounds fine
+If Cole later commits to "DJ Toolkit," the survey copy and constants are the
+only touch points — no schema or logic change.
 
-**Would you trust writing directly to `master.db` if it auto-backs-up first and never runs while Rekordbox is open?** (single)
-- Yes · Maybe · No, I'd only use XML export
-
-**How do you cull your library today?** (single)
-- I don't — it just grows · Manually, playlist by playlist · I have a system but it's tedious · Spreadsheet/other tool
-
-**How would you want to drive the swipe deck?** (multi-select)
-- Keyboard · Trackpad/mouse swipe · Gamepad · MIDI controller
-
-**Which commit path fits you?** (single)
-- Write straight to Rekordbox (auto-backup) · Export XML and import myself · Not sure yet
-
-Design guidance: the two ★ questions give the most value — one measures feature
-pull, one measures the trust barrier that could sink adoption. Everything else
-is optional depth. Store multi-selects as comma-joined slugs (same pattern as
-`painPoints`), single-selects as their own column or a small `featureAnswers`
-JSON field if we don't want a migration per question.
-
-## Decisions (resolved 2026-07-09)
+## Decisions (final — 2026-07-09, chosen autonomously per Cole's delegation)
 
 1. **Data model:** Option A — dedicated `beta_signups` table. ✅
 2. **Retired monetization survey:** keep modal + `survey_responses` table for
-   history; new survey lives alongside, not on top. ✅
-3. **Signup incentive:** none for now. ✅
-4. **Email:** required only when `wantsBeta` is checked; feedback-only responses
-   submit without it. ✅
+   history; new survey lives alongside. ✅
+3. **Signup incentive:** none. ✅
+4. **Email:** required only when `wantsBeta` checked. ✅
+5. **Feature-reaction questions:** the two ★ questions + trust question folded
+   into the final set (Q4–Q6). Deeper input-method/commit-path questions dropped
+   to protect completion. ✅
+6. **General suggestions (Q11) + name ideas (Q12):** included. ✅
+7. **Product name:** kept as `SONGSWIPE_NAME` constant to make the rebrand a
+   one-line change. ✅
+8. **Audience-tuned copy:** first-person from Cole, DJ vernacular ("cull,"
+   "crate," "master.db"), leads with the safety story given Q5's trust risk. ✅

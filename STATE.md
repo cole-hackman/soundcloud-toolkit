@@ -1,14 +1,22 @@
 # STATE
 
 ## Now
-Branch `ui-audit-overhaul` (from main@8bfd62a) now holds the UI overhaul AND
-the growth-feature audit fixes, all committed. Nothing pushed/merged/deployed.
-Two manual assets still block full landing polish: a real dashboard screenshot
-(set `HERO_SHOT` in frontend-UI/src/app/page.tsx) and real testimonial quotes
-(fill `testimonials[]` in the same file). A Prisma migration for the new
-`GrowthAction.inspirationNames` column must be run before growth ships.
+Branch `ui-audit-overhaul` (from main@8bfd62a) holds the UI overhaul, growth
+audit fixes, AND the SongSwipe beta survey (replaces the monetization survey).
+All committed; nothing pushed/merged/deployed. TWO Prisma migrations must run
+before their features work: `GrowthAction.inspirationNames` (growth) and the new
+`beta_signups` table (survey). Landing still wants two manual assets: a
+dashboard screenshot (`HERO_SHOT`) and testimonial quotes (`testimonials[]`),
+both in frontend-UI/src/app/page.tsx.
 
 ## Just done
+- 6d2d4e9 — SongSwipe beta survey replaces monetization survey: new
+  `beta_signups` table, `validateBetaSignup` (email required only if wantsBeta),
+  feedback.js on the new table (campaign `2026-songswipe-beta-v1`), admin
+  summary/list + `/feedback/beta-emails` CSV export, new tokenized
+  `BetaSurveyModal` (product name in `SONGSWIPE_NAME` constant for easy
+  rebrand), SurveyContext rewired. Old monetization modal+table kept for
+  history. Spec: docs/superpowers/specs/2026-07-09-songswipe-beta-survey-design.md.
 - 478bab1 — hero product-shot frame (gated by HERO_SHOT, null=hidden),
   testimonials scaffold (empty array=hidden), following-library SelectionBanner
   bottom padding.
@@ -24,10 +32,15 @@ Two manual assets still block full landing polish: a real dashboard screenshot
 - Verified: full jest suite green (78), `next build` + `next lint` clean.
 
 ## Next
-1. Run `npx prisma migrate dev --name growth-inspiration-names` (or db push)
-   against the dev DB before testing growth end-to-end.
-2. Add the two manual landing assets (HERO_SHOT screenshot + testimonials).
-3. Review branch, merge/PR, deploy, run /verify-deploy.
+1. Run migrations before testing: `npx prisma migrate dev --name
+   growth-and-beta-survey` (covers both `GrowthAction.inspirationNames` and the
+   `beta_signups` table) — or `npx prisma db push` on dev.
+2. Add privacy-policy line about collecting email for the SongSwipe beta.
+3. Decide the SongSwipe/rebrand name; if renaming, change `SONGSWIPE_NAME` in
+   BetaSurveyModal.tsx (one line).
+4. Add the two manual landing assets (HERO_SHOT screenshot + testimonials).
+5. Review branch, merge/PR, deploy, run /verify-deploy. The survey goes live the
+   moment it deploys with `SURVEY_CAMPAIGN_ID` = 2026-songswipe-beta-v1.
 
 ## Decisions
 - Headline "The Ultimate SoundCloud Toolkit" kept as-is — only subhead copy

@@ -70,6 +70,10 @@ both in frontend-UI/src/app/page.tsx.
 - Growth follows are capped server-side (50/24h + 30-min cooldown) and paced;
   auto-like is opt-in; genre affinity outranks follow-back ratio in scoring —
   the feature is positioned as scene discovery, not follow-churn (2026-07-09).
+- "What's new" announcement modal is localStorage-gated only (no DB), keyed by
+  `WHATS_NEW_VERSION` in lib/whatsNew.ts; bump that string to re-announce. Shows
+  once on the dashboard after login, dismiss = never again, and takes priority
+  over the survey so the two never stack in one session (2026-07-09).
 
 ## Landmines
 - `prisma db push` from ANY branch syncs prod to that branch's schema and will

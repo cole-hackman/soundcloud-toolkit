@@ -31,6 +31,12 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { useSurvey } from "@/contexts/SurveyContext";
 import { Card, EmptyState, Input, PageContainer, Skeleton, Button } from "@/components/ui";
+import { WhatsNewModal } from "@/components/WhatsNewModal";
+import {
+  dismissWhatsNew,
+  isWhatsNewDismissed,
+  markWhatsNewShownThisSession,
+} from "@/lib/whatsNew";
 import { dashboardSummaryQueryOptions, useDashboardSummaryQuery } from "@/lib/queries";
 
 const LAST_TOOLS_KEY = "sc-toolkit-last-tools";
@@ -321,12 +327,25 @@ export default function DashboardPage() {
   const [linkUrl, setLinkUrl] = useState("");
   const [recentTools, setRecentTools] = useState<string[]>([]);
   const [toolQuery, setToolQuery] = useState("");
+  const [showWhatsNew, setShowWhatsNew] = useState(false);
 
+  // Announce new features first; only fall through to the survey once the
+  // user has already seen (and dismissed) the announcement — so the two
+  // modals never stack in the same session.
   useEffect(() => {
-    if (!authLoading && isAuthenticated) {
+    if (authLoading || !isAuthenticated) return;
+    if (!isWhatsNewDismissed()) {
+      setShowWhatsNew(true);
+      markWhatsNewShownThisSession();
+    } else {
       survey.maybeShow({ context: "dashboard" });
     }
   }, [authLoading, isAuthenticated, survey]);
+
+  const handleCloseWhatsNew = () => {
+    dismissWhatsNew();
+    setShowWhatsNew(false);
+  };
 
   useEffect(() => {
     try {
@@ -355,6 +374,8 @@ export default function DashboardPage() {
 
   return (
     <PageContainer maxWidth="default">
+      <WhatsNewModal open={showWhatsNew} onClose={handleCloseWhatsNew} />
+
       {/* Welcome Section */}
       <div className="flex items-start justify-between gap-4 mb-5">
         <div className="min-w-0">

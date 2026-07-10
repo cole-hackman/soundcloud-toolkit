@@ -38,9 +38,12 @@ both in frontend-UI/src/app/page.tsx.
 - Verified: full jest suite green (78), `next build` + `next lint` clean.
 
 ## Next
-1. Run migrations before testing: `npx prisma migrate dev --name
-   growth-and-beta-survey` (covers both `GrowthAction.inspirationNames` and the
-   `beta_signups` table) — or `npx prisma db push` on dev.
+1. DONE (2026-07-09): production Neon migrated via `prisma db push` —
+   `beta_signups` + `growth_actions` + `GrowthAction.inspirationNames` created,
+   additive-only. Schema now also declares the cross-branch tables
+   (chat_conversations, chat_messages, indexed_likes, indexed_playlist_tracks,
+   library_snapshots) that live in prod but aren't owned by this branch, so
+   db push doesn't drop them. Neon has 11 tables.
 2. Add privacy-policy line about collecting email for the SongSwipe beta.
 3. Decide the SongSwipe/rebrand name; if renaming, change `SONGSWIPE_NAME` in
    BetaSurveyModal.tsx (one line).
@@ -69,9 +72,11 @@ both in frontend-UI/src/app/page.tsx.
   the feature is positioned as scene discovery, not follow-churn (2026-07-09).
 
 ## Landmines
-- Growth needs a DB migration (`GrowthAction.inspirationNames`) before it
-  runs; `npx prisma generate` already done, but the column won't exist until
-  a migrate/db-push runs.
+- `prisma db push` from ANY branch syncs prod to that branch's schema and will
+  DROP tables not present in it. Prod has cross-branch tables (AI chat +
+  library indexing); this branch's schema now declares them so push is safe.
+  Any other branch doing db push without those models would drop ~2,350 rows —
+  reconcile schemas before db push from other branches.
 - Growth engagement job registry is in-memory (one job/user, single-instance
   assumption, like the resolve cache). Multiple backend instances would each
   hold separate jobs — fine on the current single-instance deploy.

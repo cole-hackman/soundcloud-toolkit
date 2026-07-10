@@ -70,6 +70,22 @@ describe('GrowthEngine', () => {
       expect(highAffinity.signals.genreAffinity).toBe(1);
       expect(noAffinity.signals.genreAffinity).toBe(0);
     });
+
+    test('marks an otherwise mid-range score as limited when SoundCloud omits scene or activity data', () => {
+      const user = {
+        id: 104,
+        username: 'incomplete-profile',
+        followers_count: 100,
+        followings_count: 400,
+        track_count: 5,
+      };
+
+      const result = growthEngine.scoreCandidate(user, 2, 3, true);
+
+      expect(result.score).toBeGreaterThanOrEqual(40);
+      expect(result.scoreLabel).toBe('limited');
+      expect(result.signals.evidence).toEqual({ hasSceneEvidence: false, hasActivityEvidence: false });
+    });
   });
 
   describe('discoverSuggestions', () => {

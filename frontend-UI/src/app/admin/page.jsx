@@ -709,13 +709,18 @@ export default function AdminDashboard() {
           </SectionCard>
         </div>
 
-        {/* Feature Usage + Operations chart */}
+        {/* Feature reach + completed operations */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20 }}>
-          <SectionCard title={`Feature Usage — ${period} Period`} delay={0.35} palette={P}>
-            {loading ? <SkeletonBlock height={160} palette={P} /> : <HBar items={stats?.featureUsage ?? []} palette={P} />}
+          <SectionCard title={`Feature Reach — ${period} Period`} delay={0.35} palette={P}>
+            {loading ? <SkeletonBlock height={160} palette={P} /> : <HBar items={(stats?.featureReach ?? []).map((feature) => ({ ...feature, count: feature.users, color: CYAN }))} palette={P} />}
+            {!loading && (
+              <div style={{ fontSize: 10, color: P.textDim, fontFamily: "'JetBrains Mono', monospace", marginTop: 10 }}>
+                Distinct signed-in users who opened each feature. No SoundCloud content is logged.
+              </div>
+            )}
           </SectionCard>
 
-          <SectionCard title={`Operations — ${period} Trend`} delay={0.4} palette={P}>
+          <SectionCard title={`Completed Operations — ${period} Trend`} delay={0.4} palette={P}>
             {loading ? <SkeletonBlock height={200} palette={P} /> : <AreaChart data={daily} dataKey="operations" color={CYAN} width={500} height={200} palette={P} />}
           </SectionCard>
         </div>

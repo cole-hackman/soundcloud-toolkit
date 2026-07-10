@@ -569,6 +569,19 @@ export const validateSurveySubmit = [
 ];
 
 /**
+ * Validation for lightweight feature-usage events (POST /api/events).
+ * `feature` is a short slug; the route namespaces it as `view:<feature>`.
+ */
+export const validateEvent = [
+  body('feature')
+    .isString()
+    .trim()
+    .matches(/^[a-z0-9-]{2,40}$/)
+    .withMessage('feature must be a slug (a-z, 0-9, dashes; 2-40 chars)'),
+  handleValidationErrors
+];
+
+/**
  * Validation for the SongSwipe beta signup / feedback survey
  * (POST /api/feedback/survey). Email is required only when wantsBeta is true.
  */
@@ -760,5 +773,4 @@ export const validateReverseGrowthActions = [
   }),
   handleValidationErrors
 ];
-
 

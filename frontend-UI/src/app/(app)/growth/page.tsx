@@ -63,7 +63,7 @@ interface Suggestion {
     track_count: number;
   };
   score: number;
-  scoreLabel: 'high' | 'medium' | 'low';
+  scoreLabel: 'high' | 'medium' | 'low' | 'limited';
   signals: {
     followBackRatio: number;
     sharedInspirationCount: number;
@@ -114,6 +114,7 @@ interface DiscoveryStats {
   afterDedup: number;
   suggestionsReturned: number;
   seedGenres?: string[];
+  durationMs?: number;
 }
 
 interface GrowthBudget {
@@ -155,6 +156,8 @@ export default function GrowthPage() {
   const [searchInspirations, setSearchInspirations] = useState("");
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [discoveryStats, setDiscoveryStats] = useState<DiscoveryStats | null>(null);
+  const [discoveryStartedAt, setDiscoveryStartedAt] = useState<number | null>(null);
+  const [discoveryElapsedSeconds, setDiscoveryElapsedSeconds] = useState(0);
   const [selectedSuggestions, setSelectedSuggestions] = useState<Set<number>>(new Set());
   const [likeTracks, setLikeTracks] = useState(false); // auto-like is opt-in
   const [recentEngagedCount, setRecentEngagedCount] = useState({ followed: 0, liked: 0 });
@@ -231,6 +234,8 @@ export default function GrowthPage() {
   // Discovery Mutation
   const discoverMutation = useMutation({
     mutationFn: async (payload: { inspirationUserIds: number[]; strategy: string }) => {
+      setDiscoveryStartedAt(Date.now());
+      setDiscoveryElapsedSeconds(0);
       setDiscoveryStep(2);
       const res = await apiFetch("/api/growth/discover", {
         method: "POST",
@@ -241,22 +246,36 @@ export default function GrowthPage() {
       return res.json();
     },
     onSuccess: (data) => {
+      setDiscoveryStartedAt(null);
       setSuggestions(data.suggestions);
       setDiscoveryStats(data.stats);
       // Select all high and medium suggestions by default
       const autoSelected = new Set<number>(
         data.suggestions
-          .filter((s: Suggestion) => s.score >= 40)
+          .filter((s: Suggestion) => s.scoreLabel === "high" || s.scoreLabel === "medium")
           .map((s: Suggestion) => s.user.id)
       );
       setSelectedSuggestions(autoSelected);
       setDiscoveryStep(3);
     },
     onError: (err: Error) => {
+      setDiscoveryStartedAt(null);
       setNotice({ type: "error", text: err.message || "Failed to scan networks. SoundCloud might be rate limiting." });
       setDiscoveryStep(1);
     }
   });
+
+  // A discovery request is intentionally synchronous so results are complete
+  // when displayed. Keep the wait visible instead of leaving a static spinner.
+  useEffect(() => {
+    if (!discoveryStartedAt) return;
+    const updateElapsed = () => setDiscoveryElapsedSeconds(
+      Math.floor((Date.now() - discoveryStartedAt) / 1000)
+    );
+    updateElapsed();
+    const interval = setInterval(updateElapsed, 1000);
+    return () => clearInterval(interval);
+  }, [discoveryStartedAt]);
 
   // Start a server-paced engagement batch. The server enforces the daily
   // cap + cooldown and runs the follows in the background; we poll status.
@@ -450,6 +469,14 @@ export default function GrowthPage() {
     if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
     return n.toString();
   };
+
+  const formatDuration = (seconds: number) => {
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = seconds % 60;
+    return minutes > 0 ? `${minutes}:${remainingSeconds.toString().padStart(2, "0")}` : `${remainingSeconds}s`;
+  };
+
+  const estimatedDiscoverySeconds = 22 + selectedInspirations.size * (strategy === "both" ? 6 : 4);
 
   const handleInspirationClick = (id: number) => {
     setSelectedInspirations(prev => {
@@ -721,11 +748,15 @@ export default function GrowthPage() {
               </div>
               <h3 className="text-xl font-bold text-foreground">Scanning Networks</h3>
               <p className="text-sm text-muted-foreground mt-2 max-w-md">
-                Crawling followers and related artists for your selected seed users. We're filtering out accounts you already follow and scoring them based on engagement likelihood.
+                Crawling followers and related artists for your selected seed users. We filter out accounts you already follow, then compare scene and activity signals.
               </p>
-              <div className="mt-6 text-xs text-primary font-mono animate-pulse">
-                Connecting to SoundCloud API & scoring candidates...
+              <div className="mt-6 space-y-1 text-xs text-primary font-mono">
+                <div>Elapsed: {formatDuration(discoveryElapsedSeconds)} · usually about {formatDuration(estimatedDiscoverySeconds)}</div>
+                <div className="animate-pulse">Fetching profile signals in small, rate-limit-safe batches…</div>
               </div>
+              <p className="mt-3 max-w-md text-xs text-muted-foreground">
+                SoundCloud can occasionally take up to a minute to respond; this scan will finish automatically when every shown profile has been checked.
+              </p>
             </Card>
           )}
 
@@ -737,7 +768,8 @@ export default function GrowthPage() {
                   <div>
                     <h3 className="text-lg font-bold text-foreground">Discovery Results</h3>
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      Scanned {discoveryStats?.candidatesScanned} profiles → found {discoveryStats?.afterDedup} new candidates, scored by scene fit.
+                      Scanned {discoveryStats?.candidatesScanned} profiles → found {discoveryStats?.afterDedup} new candidates, scored by scene fit
+                      {discoveryStats?.durationMs ? ` in ${formatDuration(Math.round(discoveryStats.durationMs / 1000))}` : ""}.
                     </p>
                     {discoveryStats?.seedGenres && discoveryStats.seedGenres.length > 0 && (
                       <div className="mt-2 flex flex-wrap items-center gap-1.5">
@@ -817,9 +849,11 @@ export default function GrowthPage() {
                                     ? 'bg-orange-500 text-white' 
                                     : sug.scoreLabel === 'medium'
                                     ? 'bg-amber-400 text-black'
+                                    : sug.scoreLabel === 'limited'
+                                    ? 'bg-blue-100 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300'
                                     : 'bg-secondary text-muted-foreground'
                                 }`}>
-                                  {sug.scoreLabel === 'high' ? '🔥 High' : sug.scoreLabel === 'medium' ? '⚡ Med' : '🌱 Low'} ({sug.score}%)
+                                  {sug.scoreLabel === 'high' ? '🔥 High' : sug.scoreLabel === 'medium' ? '⚡ Med' : sug.scoreLabel === 'limited' ? 'ℹ Limited data' : '🌱 Low'} ({sug.score}%)
                                 </span>
                               </div>
                               <div className="text-[11px] text-muted-foreground flex gap-x-2 mt-0.5">

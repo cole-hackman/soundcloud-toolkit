@@ -5,8 +5,10 @@ import { usePathname } from "next/navigation";
 import { AppLayout } from "@/components/AppLayout";
 import { AppShell } from "@/components/AppShell";
 import { SurveyProvider } from "@/contexts/SurveyContext";
+import { apiFetch } from "@/lib/api";
 
 const TOOL_SLUGS: Record<string, string> = {
+  "/dashboard": "dashboard",
   "/combine": "combine",
   "/library-audit": "library-audit",
   "/downloads": "downloads",
@@ -28,6 +30,8 @@ const TOOL_SLUGS: Record<string, string> = {
   "/playlist-compare": "playlist-compare",
   "/genre-search": "genre-search",
   "/repost-manager": "repost-manager",
+  "/growth": "growth",
+  "/recently-played": "recently-played",
 };
 
 const LAST_TOOLS_KEY = "sc-toolkit-last-tools";
@@ -46,6 +50,20 @@ function updateRecentTools(pathname: string) {
   }
 }
 
+function logFeatureOpen(pathname: string) {
+  const feature = TOOL_SLUGS[pathname];
+  if (!feature) return;
+
+  // This intentionally contains no URL parameters, SoundCloud content, or
+  // device data. The server links it only to the signed-in account so the
+  // admin can measure distinct feature reach.
+  void apiFetch("/api/events", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ feature }),
+  }).catch(() => undefined);
+}
+
 export default function AppRouteLayout({
   children,
 }: {
@@ -54,7 +72,9 @@ export default function AppRouteLayout({
   const pathname = usePathname();
 
   useEffect(() => {
-    if (pathname) updateRecentTools(pathname);
+    if (!pathname) return;
+    updateRecentTools(pathname);
+    logFeatureOpen(pathname);
   }, [pathname]);
 
   return (

@@ -37,6 +37,7 @@ import {
   validateFollowingUserId,
   validateTrackSearch,
   validateDeletePlaylist,
+  validateEvent,
   validateGrowthDiscover,
   validateGrowthEngageBatch,
   validateReverseGrowthActions,
@@ -2349,10 +2350,32 @@ router.post('/growth/discover', authenticateUser, heavyOperationRateLimiter, val
       excludedTargetIds: priorTargets.map((t) => t.targetId),
     });
     res.json(result);
+    logOperation({
+      userId: req.user.id,
+      action: 'growth-discover',
+      itemCount: result?.suggestions?.length ?? 0,
+      status: 'success',
+    });
   } catch (error) {
     logger.error('Growth discover error:', safeError(error));
     res.status(500).json({ error: 'Failed to run growth discovery' });
   }
+});
+
+/**
+ * POST /api/events
+ * Lightweight feature-usage event. Records a "user opened feature X" signal
+ * into the operation log (namespaced `view:<feature>`) for internal product
+ * analytics. No SoundCloud content or request metadata is recorded.
+ */
+router.post('/events', authenticateUser, validateEvent, async (req, res) => {
+  // Fire-and-forget; never block or fail the client.
+  void logOperation({
+    userId: req.user.id,
+    action: `view:${req.body.feature}`,
+    status: 'success',
+  });
+  res.status(204).end();
 });
 
 /**
@@ -2663,6 +2686,12 @@ router.post('/growth/check-followbacks', authenticateUser, async (req, res) => {
       didNotFollowBack,
       alreadyChecked,
       results,
+    });
+    logOperation({
+      userId: req.user.id,
+      action: 'growth-check-followbacks',
+      itemCount: checked,
+      status: 'success',
     });
   } catch (error) {
     logger.error('Check followbacks error:', safeError(error));

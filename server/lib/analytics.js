@@ -7,8 +7,7 @@ import logger from './logger.js';
  *
  * @param {object} params
  * @param {string} params.userId       - Prisma User.id (cuid string)
- * @param {string} params.action       - 'merge' | 'from-likes' | 'playlist-transfer' | 'bulk-unlike' | 'bulk-unfollow' |
- *                                       'resolve' | 'batch-resolve' | 'proxy-download' | 'bulk-remove-reposts'
+ * @param {string} params.action       - An operation slug, or `view:<feature>` for a feature-open event.
  * @param {number} [params.trackCount] - Tracks processed (playlist/like ops)
  * @param {number} [params.itemCount]  - Items processed (unfollow, batch-resolve, etc.)
  * @param {string} [params.status]     - 'success' | 'split' | 'error'

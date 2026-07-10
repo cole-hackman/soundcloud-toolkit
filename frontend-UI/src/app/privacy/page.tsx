@@ -171,6 +171,33 @@ export default function PrivacyPage() {
 
             <section>
               <h2 className="text-2xl font-bold mb-4 text-foreground">
+                Product Usage Analytics
+              </h2>
+              <p>
+                To understand which tools are useful and to plan future product
+                improvements, we record lightweight usage events when a
+                signed-in user opens a feature or completes an operation.
+              </p>
+              <ul className="list-disc list-inside space-y-2 ml-4 mt-2">
+                <li>
+                  These events contain the feature or operation name, timestamp,
+                  and aggregate counts such as tracks or items processed.
+                </li>
+                <li>
+                  They are linked to your internal account ID so we can measure
+                  distinct users, but do not include SoundCloud track names,
+                  playlist content, messages, device identifiers, or IP
+                  addresses in the usage event.
+                </li>
+                <li>
+                  We use this information only for internal product analysis and
+                  planning. We do not sell it or use it for advertising.
+                </li>
+              </ul>
+            </section>
+
+            <section>
+              <h2 className="text-2xl font-bold mb-4 text-foreground">
                 Feedback Surveys &amp; Beta Program
               </h2>
               <p>
@@ -351,4 +378,3 @@ export default function PrivacyPage() {
     </div>
   );
 }
-

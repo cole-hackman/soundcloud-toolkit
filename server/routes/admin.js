@@ -19,6 +19,13 @@ const ACTION_NAMES = {
   'bulk-remove-reposts': 'Remove Reposts',
   'library-audit': 'Library Audit',
   'playlist-compare': 'Playlist Compare',
+  'clone': 'Playlist Clone',
+  'delete-playlist': 'Delete Playlist',
+  'genre-search': 'Genre Search',
+  'growth-discover': 'Growth: Discover',
+  'growth-engage-start': 'Growth: Engage',
+  'growth-reverse': 'Growth: Reverse',
+  'growth-check-followbacks': 'Growth: Check follow-backs',
 };
 
 const ACTION_COLORS = {
@@ -33,6 +40,36 @@ const ACTION_COLORS = {
   'bulk-remove-reposts': '#E74C3C',
   'library-audit': '#16A34A',
   'playlist-compare': '#7C3AED',
+  'clone': '#2563EB',
+  'delete-playlist': '#DC2626',
+  'genre-search': '#0EA5E9',
+  'growth-discover': '#A855F7',
+  'growth-engage-start': '#A855F7',
+  'growth-reverse': '#A855F7',
+  'growth-check-followbacks': '#A855F7',
+};
+
+const FEATURE_NAMES = {
+  dashboard: 'Dashboard',
+  downloads: 'Downloads',
+  export: 'Export',
+  'library-audit': 'Library Audit',
+  combine: 'Combine Playlists',
+  modifier: 'Playlist Modifier',
+  'playlist-cloner': 'Playlist Cloner',
+  'playlist-compare': 'Playlist Compare',
+  'health-check': 'Playlist Health Check',
+  likes: 'Likes to Playlist',
+  'like-manager': 'Like Manager',
+  'following-manager': 'Following Manager',
+  'following-library': 'Following Library',
+  'repost-manager': 'Repost Manager',
+  activity: 'Activity to Playlist',
+  growth: 'Grow Your Network',
+  'genre-search': 'Genre Search',
+  resolver: 'Link Resolver',
+  'batch-resolver': 'Batch Link Resolver',
+  'recently-played': 'Recently Played',
 };
 
 function periodToCutoff(period) {
@@ -68,43 +105,60 @@ router.get('/stats', authenticateUser, adminAuth, async (req, res) => {
     const monthCutoff = periodToCutoff('month');
     const rollingThirtyCutoff = periodToCutoff('30d');
 
-    const [totalUsers, newUsers, agg, byAction, byStatus, splitsCount, activeUsersPeriodRows, activeUsersMonthRows, activeUsers30dRows] = await Promise.all([
+    // Page-open signals (`view:*`) are intentionally excluded from operation
+    // metrics. They are reported separately below as feature reach.
+    const operationWhere = {
+      createdAt: { gte: cutoff },
+      action: { not: { startsWith: 'view:' } },
+    };
+
+    const [totalUsers, newUsers, agg, byAction, byStatus, splitsCount, activeUsersPeriodRows, activeUsersMonthRows, activeUsers30dRows, featureReachRows] = await Promise.all([
       prisma.user.count(),
       prisma.user.count({ where: { createdAt: { gte: cutoff } } }),
       prisma.operationLog.aggregate({
-        where: { createdAt: { gte: cutoff } },
+        where: operationWhere,
         _sum: { trackCount: true },
         _count: { id: true },
         _avg: { trackCount: true },
       }),
       prisma.operationLog.groupBy({
         by: ['action'],
-        where: { createdAt: { gte: cutoff } },
+        where: operationWhere,
         _count: { id: true },
         orderBy: { _count: { id: 'desc' } },
       }),
       prisma.operationLog.groupBy({
         by: ['status'],
-        where: { createdAt: { gte: cutoff } },
+        where: operationWhere,
         _count: { id: true },
       }),
       prisma.operationLog.count({
-        where: { createdAt: { gte: cutoff }, status: 'split' },
+        where: { ...operationWhere, status: 'split' },
       }),
       prisma.$queryRaw`
         SELECT COUNT(DISTINCT "userId")::int AS count
         FROM operation_logs
-        WHERE "createdAt" >= ${cutoff}
+        WHERE "createdAt" >= ${cutoff} AND action NOT LIKE 'view:%'
       `,
       prisma.$queryRaw`
         SELECT COUNT(DISTINCT "userId")::int AS count
         FROM operation_logs
-        WHERE "createdAt" >= ${monthCutoff}
+        WHERE "createdAt" >= ${monthCutoff} AND action NOT LIKE 'view:%'
       `,
       prisma.$queryRaw`
         SELECT COUNT(DISTINCT "userId")::int AS count
         FROM operation_logs
-        WHERE "createdAt" >= ${rollingThirtyCutoff}
+        WHERE "createdAt" >= ${rollingThirtyCutoff} AND action NOT LIKE 'view:%'
+      `,
+      prisma.$queryRaw`
+        SELECT
+          action,
+          COUNT(DISTINCT "userId")::int AS users,
+          COUNT(*)::int AS opens
+        FROM operation_logs
+        WHERE "createdAt" >= ${cutoff} AND action LIKE 'view:%'
+        GROUP BY action
+        ORDER BY users DESC, opens DESC, action ASC
       `,
     ]);
 
@@ -123,6 +177,15 @@ router.get('/stats', authenticateUser, adminAuth, async (req, res) => {
     }));
 
     const topFeature = featureUsage.length > 0 ? featureUsage[0] : null;
+    const featureReach = featureReachRows.map(row => {
+      const slug = row.action.slice('view:'.length);
+      return {
+        key: slug,
+        name: FEATURE_NAMES[slug] || slug,
+        users: Number(row.users),
+        opens: Number(row.opens),
+      };
+    });
 
     const statusMap = {};
     for (const row of byStatus) statusMap[row.status] = row._count.id;
@@ -137,6 +200,7 @@ router.get('/stats', authenticateUser, adminAuth, async (req, res) => {
       tracksProcessed,
       operationsCount,
       featureUsage,
+      featureReach,
       splitsCount,
       avgTracksPerOp,
       successRate,
@@ -172,7 +236,7 @@ router.get('/daily', authenticateUser, adminAuth, async (req, res) => {
           COUNT(*)::int                  AS operations,
           COALESCE(SUM("trackCount"), 0)::int AS tracks
         FROM operation_logs
-        WHERE "createdAt" >= ${cutoff}
+        WHERE "createdAt" >= ${cutoff} AND action NOT LIKE 'view:%'
         GROUP BY day
         ORDER BY day ASC
       `,
@@ -229,7 +293,7 @@ router.get('/operations', authenticateUser, adminAuth, async (req, res) => {
     const limit = Math.min(parseInt(req.query.limit) || 20, 100);
 
     const logs = await prisma.operationLog.findMany({
-      where: { createdAt: { gte: cutoff } },
+      where: { createdAt: { gte: cutoff }, action: { not: { startsWith: 'view:' } } },
       orderBy: { createdAt: 'desc' },
       take: limit,
       include: {

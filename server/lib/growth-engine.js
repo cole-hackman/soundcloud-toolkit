@@ -1,6 +1,22 @@
 import logger from './logger.js';
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const DISCOVERY_TRACK_CONCURRENCY = 5;
+
+async function mapWithConcurrency(items, concurrency, worker) {
+  const results = new Array(items.length);
+  let nextIndex = 0;
+
+  async function run() {
+    while (nextIndex < items.length) {
+      const index = nextIndex++;
+      results[index] = await worker(items[index], index);
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, run));
+  return results;
+}
 
 /* ── Safety limits ─────────────────────────────────────────────────────────
  * SoundCloud flags aggressive follow activity. These caps are enforced
@@ -92,26 +108,32 @@ export class GrowthEngine {
     limit = 50,
     excludedTargetIds = [],
   }) {
+    const startedAt = Date.now();
     logger.info(`[GrowthEngine] Starting discovery for user ${authUserId} (${authSoundCloudId}) with strategy=${strategy}, limit=${limit}`);
 
     // 1. Fetch authenticated user's followings and followers for filtering
     let authFollowingsSet = new Set();
     let authFollowersSet = new Set();
 
-    try {
-      const followings = await this.soundcloudClient.getFollowings(accessToken, refreshToken);
+    const [followingsResult, followersResult] = await Promise.allSettled([
+      this.soundcloudClient.getFollowings(accessToken, refreshToken),
+      this.soundcloudClient.getFollowers(accessToken, refreshToken),
+    ]);
+
+    if (followingsResult.status === 'fulfilled') {
+      const followings = followingsResult.value;
       followings.forEach(u => authFollowingsSet.add(u.id));
       logger.info(`[GrowthEngine] Found ${authFollowingsSet.size} existing followings`);
-    } catch (err) {
-      logger.error(`[GrowthEngine] Failed to fetch auth user's followings:`, err);
+    } else {
+      logger.error(`[GrowthEngine] Failed to fetch auth user's followings:`, followingsResult.reason);
     }
 
-    try {
-      const followers = await this.soundcloudClient.getFollowers(accessToken, refreshToken);
+    if (followersResult.status === 'fulfilled') {
+      const followers = followersResult.value;
       followers.forEach(u => authFollowersSet.add(u.id));
       logger.info(`[GrowthEngine] Found ${authFollowersSet.size} existing followers`);
-    } catch (err) {
-      logger.error(`[GrowthEngine] Failed to fetch auth user's followers:`, err);
+    } else {
+      logger.error(`[GrowthEngine] Failed to fetch auth user's followers:`, followersResult.reason);
     }
 
     const excludedSet = new Set(excludedTargetIds);
@@ -122,23 +144,34 @@ export class GrowthEngine {
     for (const inspId of inspirationUserIds) {
       logger.info(`[GrowthEngine] Crawling network for inspiration user: ${inspId}`);
 
-      // Seed genre profile from the inspiration's own tracks (used for
-      // genre-affinity scoring below).
-      try {
-        const seedTracks = await this.soundcloudClient.getUserTracks(inspId, accessToken, refreshToken, 10);
+      // These are independent read-only calls. Run them together for each seed,
+      // but keep seeds sequential so a five-seed scan stays gentle on the API.
+      const [seedTracksResult, followersResult, peersResult, relatedResult] = await Promise.allSettled([
+        this.soundcloudClient.getUserTracks(inspId, accessToken, refreshToken, 10),
+        (strategy === 'followers' || strategy === 'both')
+          ? this.soundcloudClient.getUserFollowers(inspId, accessToken, refreshToken, 200)
+          : Promise.resolve(null),
+        (strategy === 'followings' || strategy === 'both')
+          ? this.soundcloudClient.getUserFollowings(inspId, accessToken, refreshToken, 200)
+          : Promise.resolve(null),
+        this.soundcloudClient.getRelatedArtists(inspId, accessToken, refreshToken, 20),
+      ]);
+
+      if (seedTracksResult.status === 'fulfilled') {
+        const seedTracks = seedTracksResult.value;
         for (const t of seedTracks || []) {
           for (const g of extractGenres(t)) {
             seedGenres.set(g, (seedGenres.get(g) || 0) + 1);
           }
         }
-      } catch (err) {
-        logger.debug(`[GrowthEngine] Seed genre fetch failed for ${inspId}: ${err.message}`);
+      } else {
+        logger.debug(`[GrowthEngine] Seed genre fetch failed for ${inspId}: ${seedTracksResult.reason?.message}`);
       }
 
       // Path A: the inspiration's followers (their audience)
       if (strategy === 'followers' || strategy === 'both') {
-        try {
-          const followers = await this.soundcloudClient.getUserFollowers(inspId, accessToken, refreshToken, 200);
+        if (followersResult.status === 'fulfilled') {
+          const followers = followersResult.value || [];
           logger.info(`[GrowthEngine] Path A: Found ${followers.length} followers for inspiration ${inspId}`);
           for (const u of followers) {
             if (!candidateMap.has(u.id)) {
@@ -146,16 +179,15 @@ export class GrowthEngine {
             }
             candidateMap.get(u.id).appearances.add(inspId);
           }
-        } catch (err) {
-          logger.error(`[GrowthEngine] Path A crawl failed for user ${inspId}:`, err);
+        } else {
+          logger.error(`[GrowthEngine] Path A crawl failed for user ${inspId}:`, followersResult.reason);
         }
-        await sleep(300);
       }
 
       // Path A2: who the inspiration follows (their peers)
       if (strategy === 'followings' || strategy === 'both') {
-        try {
-          const peers = await this.soundcloudClient.getUserFollowings(inspId, accessToken, refreshToken, 200);
+        if (peersResult.status === 'fulfilled') {
+          const peers = peersResult.value || [];
           logger.info(`[GrowthEngine] Path A2: Found ${peers.length} followings for inspiration ${inspId}`);
           for (const u of peers) {
             if (!candidateMap.has(u.id)) {
@@ -163,15 +195,14 @@ export class GrowthEngine {
             }
             candidateMap.get(u.id).appearances.add(inspId);
           }
-        } catch (err) {
-          logger.error(`[GrowthEngine] Path A2 crawl failed for user ${inspId}:`, err);
+        } else {
+          logger.error(`[GrowthEngine] Path A2 crawl failed for user ${inspId}:`, peersResult.reason);
         }
-        await sleep(300);
       }
 
       // Path B: related artists
-      try {
-        const related = await this.soundcloudClient.getRelatedArtists(inspId, accessToken, refreshToken, 20);
+      if (relatedResult.status === 'fulfilled') {
+        const related = relatedResult.value || [];
         logger.info(`[GrowthEngine] Path B: Found ${related.length} related artists for inspiration ${inspId}`);
         for (const u of related) {
           if (!candidateMap.has(u.id)) {
@@ -181,10 +212,9 @@ export class GrowthEngine {
           }
           candidateMap.get(u.id).appearances.add(inspId);
         }
-      } catch (err) {
-        logger.error(`[GrowthEngine] Path B crawl failed for user ${inspId}:`, err);
+      } else {
+        logger.error(`[GrowthEngine] Path B crawl failed for user ${inspId}:`, relatedResult.reason);
       }
-      await sleep(300);
     }
 
     const candidates = Array.from(candidateMap.values());
@@ -234,8 +264,7 @@ export class GrowthEngine {
 
     // 6. Fetch best track for top suggestions and apply genre-affinity re-score
     logger.info(`[GrowthEngine] Fetching best tracks for top ${topSuggestions.length} candidates`);
-    const results = [];
-    for (const sug of topSuggestions) {
+    const results = await mapWithConcurrency(topSuggestions, DISCOVERY_TRACK_CONCURRENCY, async (sug) => {
       let suggestedTrack = null;
       let genreAffinity = null;
       try {
@@ -267,16 +296,14 @@ export class GrowthEngine {
         genreAffinity
       );
 
-      results.push({
+      return {
         user: sug.user,
         score: rescored.score,
         scoreLabel: rescored.scoreLabel,
         signals: rescored.signals,
         suggestedTrack,
-      });
-
-      await sleep(150);
-    }
+      };
+    });
 
     // Genre affinity can reorder the top set
     results.sort((a, b) => b.score - a.score);
@@ -289,6 +316,8 @@ export class GrowthEngine {
         afterDedup: filteredCandidates.length,
         suggestionsReturned: results.length,
         seedGenres: Array.from(seedGenres.keys()).slice(0, 10),
+        trackLookupConcurrency: DISCOVERY_TRACK_CONCURRENCY,
+        durationMs: Date.now() - startedAt,
       },
     };
   }
@@ -346,9 +375,16 @@ export class GrowthEngine {
 
     const score = Math.round(rawScore * 100);
 
-    let scoreLabel = 'low';
-    if (score >= 70) scoreLabel = 'high';
-    else if (score >= 40) scoreLabel = 'medium';
+    // SoundCloud frequently omits both genre metadata and last_modified. Do
+    // not present a neutral, partially inferred score as a confident match.
+    const hasSceneEvidence = genreAffinity !== null;
+    const hasActivityEvidence = Boolean(user.last_modified);
+    let scoreLabel = score < 40 ? 'low' : 'limited';
+    if (hasSceneEvidence && hasActivityEvidence) {
+      scoreLabel = 'low';
+      if (score >= 70) scoreLabel = 'high';
+      else if (score >= 40) scoreLabel = 'medium';
+    }
 
     return {
       score,
@@ -359,6 +395,10 @@ export class GrowthEngine {
         isRelatedArtist: isRelated,
         isCreator: tracks > 0,
         genreAffinity: genreAffinity === null ? null : Math.round(genreAffinity * 100) / 100,
+        evidence: {
+          hasSceneEvidence,
+          hasActivityEvidence,
+        },
       },
     };
   }

@@ -7,6 +7,7 @@ import {
   validateGrowthEngageBatch,
   validateReverseGrowthActions,
   validateBetaSignup,
+  validateEvent,
 } from '../server/middleware/validation.js';
 
 async function runValidation(middlewares, { params = {}, query = {}, body = {} } = {}) {
@@ -249,6 +250,24 @@ describe('beta signup validator', () => {
         context: 'dashboard',
       },
     });
+    expect(result.statusCode).toBe(400);
+  });
+});
+
+describe('feature usage event validator', () => {
+  test('accepts a short feature slug', async () => {
+    const result = await runValidation(validateEvent, {
+      body: { feature: 'playlist-cloner' },
+    });
+
+    expect(result.statusCode).toBeNull();
+  });
+
+  test('rejects arbitrary event names', async () => {
+    const result = await runValidation(validateEvent, {
+      body: { feature: 'playlist cloner?playlist=123' },
+    });
+
     expect(result.statusCode).toBe(400);
   });
 });

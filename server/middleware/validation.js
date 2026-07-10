@@ -683,6 +683,17 @@ export const validateGrowthDiscover = [
   handleValidationErrors
 ];
 
+/** Validation rules for a scoped or full follow-back check. */
+export const validateGrowthCheckFollowbacks = [
+  body('sessionId')
+    .optional({ nullable: true })
+    .isString()
+    .trim()
+    .isLength({ min: 1, max: 120 })
+    .withMessage('sessionId must be a string between 1 and 120 characters'),
+  handleValidationErrors
+];
+
 /**
  * Validation rules for engagement batches (POST /api/growth/engage)
  */
@@ -773,4 +784,3 @@ export const validateReverseGrowthActions = [
   }),
   handleValidationErrors
 ];
-

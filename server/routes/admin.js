@@ -428,16 +428,18 @@ router.get('/feedback', authenticateUser, adminAuth, async (req, res) => {
 });
 
 /**
- * GET /api/admin/feedback/beta-emails?campaignId=<id>
+ * GET /api/admin/feedback/beta-emails?period=30d&campaignId=<id>
  * CSV export of beta opt-ins — the invite list.
  */
 router.get('/feedback/beta-emails', authenticateUser, adminAuth, async (req, res) => {
   try {
+    const period = validPeriod(req.query.period);
+    const cutoff = periodToCutoff(period);
     const campaignId = typeof req.query.campaignId === 'string' && req.query.campaignId.trim()
       ? req.query.campaignId.trim()
       : null;
 
-    const where = { wantsBeta: true, email: { not: null } };
+    const where = { wantsBeta: true, email: { not: null }, createdAt: { gte: cutoff } };
     if (campaignId) where.campaignId = campaignId;
 
     const rows = await prisma.betaSignup.findMany({

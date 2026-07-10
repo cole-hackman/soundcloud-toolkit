@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Sparkles, X, Check } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 
@@ -123,6 +123,7 @@ export function BetaSurveyModal({
   const [wantsCall, setWantsCall] = useState(false);
   const [suggestions, setSuggestions] = useState("");
   const [nameIdea, setNameIdea] = useState("");
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (open) {
@@ -139,6 +140,10 @@ export function BetaSurveyModal({
       setSuggestions("");
       setNameIdea("");
     }
+  }, [open]);
+
+  useEffect(() => {
+    if (open) closeButtonRef.current?.focus();
   }, [open]);
 
   useEffect(() => {
@@ -245,6 +250,30 @@ export function BetaSurveyModal({
     );
   };
 
+  const pillRow = <T extends string>(
+    value: T,
+    current: T | null,
+    onSelect: (value: T | null) => void,
+    label: string,
+  ) => {
+    const selected = current === value;
+    return (
+      <button
+        type="button"
+        key={value}
+        aria-pressed={selected}
+        onClick={() => onSelect(selected ? null : value)}
+        className={`px-3.5 py-1.5 rounded-full text-sm font-medium border-2 transition-all ${
+          selected
+            ? "border-primary bg-primary text-primary-foreground"
+            : "border-border text-muted-foreground hover:border-primary/40"
+        }`}
+      >
+        {label}
+      </button>
+    );
+  };
+
   const label = (text: string, required?: boolean) => (
     <label className="text-sm font-semibold text-foreground">
       {text}
@@ -269,6 +298,7 @@ export function BetaSurveyModal({
         onClick={(e) => e.stopPropagation()}
       >
         <button
+          ref={closeButtonRef}
           type="button"
           onClick={onClose}
           disabled={submitting}
@@ -321,24 +351,7 @@ export function BetaSurveyModal({
               <div className="space-y-2">
                 {label("Which platform?")}
                 <div className="flex flex-wrap gap-2">
-                  {PLATFORM_OPTIONS.map((o) => {
-                    const selected = platform === o.value;
-                    return (
-                      <button
-                        type="button"
-                        key={o.value}
-                        aria-pressed={selected}
-                        onClick={() => setPlatform(selected ? null : o.value)}
-                        className={`px-3.5 py-1.5 rounded-full text-sm font-medium border-2 transition-all ${
-                          selected
-                            ? "border-primary bg-primary text-primary-foreground"
-                            : "border-border text-muted-foreground hover:border-primary/40"
-                        }`}
-                      >
-                        {o.label}
-                      </button>
-                    );
-                  })}
+                  {PLATFORM_OPTIONS.map((o) => pillRow(o.value, platform, setPlatform, o.label))}
                 </div>
               </div>
 
@@ -376,24 +389,7 @@ export function BetaSurveyModal({
               <div className="space-y-2">
                 {label("Trust writing straight to Rekordbox if it auto-backs-up first and never runs while Rekordbox is open?")}
                 <div className="flex flex-wrap gap-2">
-                  {TRUST_OPTIONS.map((o) => {
-                    const selected = trustDirectWrite === o.value;
-                    return (
-                      <button
-                        type="button"
-                        key={o.value}
-                        aria-pressed={selected}
-                        onClick={() => setTrustDirectWrite(selected ? null : o.value)}
-                        className={`px-3.5 py-1.5 rounded-full text-sm font-medium border-2 transition-all ${
-                          selected
-                            ? "border-primary bg-primary text-primary-foreground"
-                            : "border-border text-muted-foreground hover:border-primary/40"
-                        }`}
-                      >
-                        {o.label}
-                      </button>
-                    );
-                  })}
+                  {TRUST_OPTIONS.map((o) => pillRow(o.value, trustDirectWrite, setTrustDirectWrite, o.label))}
                 </div>
               </div>
 
@@ -401,24 +397,7 @@ export function BetaSurveyModal({
               <div className="space-y-2">
                 {label(`Interest in ${SONGSWIPE_NAME}?`, true)}
                 <div className="flex flex-wrap gap-2">
-                  {INTEREST_OPTIONS.map((o) => {
-                    const selected = interest === o.value;
-                    return (
-                      <button
-                        type="button"
-                        key={o.value}
-                        aria-pressed={selected}
-                        onClick={() => setInterest(o.value)}
-                        className={`px-3.5 py-1.5 rounded-full text-sm font-medium border-2 transition-all ${
-                          selected
-                            ? "border-primary bg-primary text-primary-foreground"
-                            : "border-border text-muted-foreground hover:border-primary/40"
-                        }`}
-                      >
-                        {o.label}
-                      </button>
-                    );
-                  })}
+                  {INTEREST_OPTIONS.map((o) => pillRow(o.value, interest, setInterest, o.label))}
                 </div>
               </div>
 

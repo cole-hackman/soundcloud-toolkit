@@ -7,6 +7,8 @@ const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000; // daily
 const INITIAL_DELAY_MS = 5 * 60 * 1000; // let the server settle first
 const MIN_FOLLOW_AGE_MS = 2 * 24 * 60 * 60 * 1000; // give people time to reciprocate
 const RECHECK_AFTER_MS = 24 * 60 * 60 * 1000;
+const USER_CHECK_DELAY_MS = 400;
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
  * Scheduled follow-back verification. Finds users with pending growth
@@ -41,6 +43,7 @@ export async function runScheduledFollowbackChecks(soundcloudClient) {
 
   let usersChecked = 0;
   let actionsChecked = 0;
+  let hasFetchedFollowers = false;
 
   for (const [userId, actions] of byUser) {
     try {
@@ -54,7 +57,9 @@ export async function runScheduledFollowbackChecks(soundcloudClient) {
       const accessToken = decrypt(token.encrypted, process.env.ENCRYPTION_KEY);
       const refreshToken = decrypt(token.refresh, process.env.ENCRYPTION_KEY);
 
+      if (hasFetchedFollowers) await sleep(USER_CHECK_DELAY_MS);
       const followers = await soundcloudClient.getFollowers(accessToken, refreshToken);
+      hasFetchedFollowers = true;
       const followerIds = new Set(followers.map((f) => f.id));
 
       for (const action of actions) {

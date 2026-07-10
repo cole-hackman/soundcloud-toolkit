@@ -282,7 +282,7 @@ export default function PlaylistHealthCheckPage() {
                     onClick={() => setFilter(key)}
                     className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-all ${
                       filter === key
-                        ? "bg-primary text-white"
+                        ? "bg-primary text-primary-foreground"
                         : "bg-gray-100 dark:bg-secondary/20 text-muted-foreground hover:bg-gray-200 dark:hover:bg-secondary/40"
                     }`}
                   >

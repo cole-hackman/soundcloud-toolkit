@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, type KeyboardEvent } from "react";
 import { useQuery, useMutation, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 import {
   Sparkles,
@@ -494,6 +494,12 @@ export default function GrowthPage() {
     });
   };
 
+  const handleCardKeyDown = (event: KeyboardEvent<HTMLElement>, action: () => void) => {
+    if (event.target !== event.currentTarget || (event.key !== "Enter" && event.key !== " ")) return;
+    event.preventDefault();
+    action();
+  };
+
   const toggleSuggestion = (id: number) => {
     setSelectedSuggestions(prev => {
       const next = new Set(prev);
@@ -691,6 +697,9 @@ export default function GrowthPage() {
                     <div
                       key={user.id}
                       onClick={() => handleInspirationClick(user.id)}
+                      onKeyDown={(event) => handleCardKeyDown(event, () => handleInspirationClick(user.id))}
+                      role="button"
+                      tabIndex={0}
                       className={`flex items-center gap-3 p-3 rounded-xl transition-all border-2 cursor-pointer ${
                         isSelected
                           ? "bg-primary/5 border-primary/30"
@@ -833,6 +842,8 @@ export default function GrowthPage() {
                           }`}
                           onClick={() => toggleSuggestion(sug.user.id)}
                           role="button"
+                          tabIndex={0}
+                          onKeyDown={(event) => handleCardKeyDown(event, () => toggleSuggestion(sug.user.id))}
                         >
                           {/* Upper user info */}
                           <div className="flex items-start gap-3 mb-3">
@@ -1072,6 +1083,12 @@ export default function GrowthPage() {
                             setSelectedSessionId(sess.sessionId);
                             setSelectedHistoryActions(new Set());
                           }}
+                          onKeyDown={(event) => handleCardKeyDown(event, () => {
+                            setSelectedSessionId(sess.sessionId);
+                            setSelectedHistoryActions(new Set());
+                          })}
+                          role="button"
+                          tabIndex={0}
                           className={`p-3 rounded-xl border-2 transition-all cursor-pointer text-left ${
                             isActive
                               ? "bg-primary/5 border-primary/30"
@@ -1191,6 +1208,9 @@ export default function GrowthPage() {
                           <div
                             key={act.id}
                             onClick={() => toggleHistoryAction(act.id)}
+                            onKeyDown={(event) => handleCardKeyDown(event, () => toggleHistoryAction(act.id))}
+                            role="button"
+                            tabIndex={0}
                             className={`flex items-center gap-3 p-3 rounded-xl border-2 cursor-pointer transition-all ${
                               isSelected
                                 ? "bg-primary/5 border-primary/30"

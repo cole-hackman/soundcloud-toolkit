@@ -318,7 +318,7 @@ export default function RepostManagerPage() {
                   </label>
                   <button
                     onClick={selectExceptKeepList}
-                    className="px-3 py-1.5 rounded-lg bg-primary hover:bg-primary/90 text-white text-sm font-medium"
+                    className="px-3 py-1.5 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-medium"
                   >
                     Select {Math.min(removableReposts.length, parsedLimit === Infinity ? removableReposts.length : parsedLimit)} to remove
                   </button>

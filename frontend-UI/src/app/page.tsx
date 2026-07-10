@@ -5,15 +5,8 @@ import Link from "next/link";
 import { StructuredData } from "@/components/StructuredData";
 import { Button, Card } from "@/components/ui";
 import { FlickeringGrid } from "@/components/ui/FlickeringGrid";
-import { Meteors } from "@/components/ui/Meteors";
 import { ShimmerButton } from "@/components/ui/ShimmerButton";
-import { TypingAnimation } from "@/components/ui/TypingAnimation";
 import { WordRotate } from "@/components/ui/WordRotate";
-import { AnimatedShinyText } from "@/components/ui/AnimatedShinyText";
-import { AnimatedGradientText } from "@/components/ui/AnimatedGradientText";
-import { ShineBorder } from "@/components/ui/ShineBorder";
-import { GlareHover } from "@/components/ui/GlareHover";
-import { TextAnimate } from "@/components/ui/TextAnimate";
 import {
   Layers,
   Heart,
@@ -73,54 +66,88 @@ const faqs = [
   }
 ];
 
-// Features data
+// Features data — rendered in the features grid and used for SEO copy
 const features = [
   {
     icon: Layers,
     title: "Combine Playlists",
-    description: "Merge multiple playlists into one unified collection. Automatically detect and remove duplicate tracks across all sources. Perfect for consolidating your music library."
+    href: "/combine",
+    badge: "Most Popular",
+    description: "Merge multiple playlists into one, remove duplicates automatically, and split past the 500-track limit without losing a song."
   },
   {
     icon: Heart,
     title: "Likes → Playlist",
-    description: "Transform your liked tracks into organized playlists. Select from thousands of favorites and batch-create playlists with custom names."
+    href: "/likes-to-playlist",
+    badge: undefined,
+    description: "Turn years of liked tracks into organized, export-ready playlists with custom names."
   },
   {
     icon: ArrowUpDown,
     title: "Playlist Modifier",
-    description: "Take full control of your playlists. Reorder tracks with drag-and-drop, remove unwanted songs, and apply smart sorting by title, artist, date, duration, or BPM."
+    href: "/playlist-modifier",
+    badge: undefined,
+    description: "Reorder tracks, remove unwanted songs, and sort by title, artist, date, duration, or BPM."
   },
   {
     icon: Download,
     title: "Downloads",
-    description: "Download tracks directly where the artist has enabled downloads or provided a purchase link. No third-party downloaders needed."
+    href: "/downloads",
+    badge: undefined,
+    description: "Find and download tracks where the artist enabled downloads or added a purchase link."
   },
   {
     icon: Radio,
     title: "Activity to Playlist",
-    description: "Turn your SoundCloud activity feed into a curated playlist. Capture recently posted tracks from artists you follow before they get buried."
+    href: "/activity-to-playlist",
+    badge: undefined,
+    description: "Save recently posted tracks from artists you follow before they get buried in your feed."
   },
   {
     icon: UserMinus,
     title: "Following Manager",
-    description: "See who doesn't follow you back, clean up your following list, and bulk unfollow accounts. Take control of your SoundCloud social graph."
+    href: "/following-manager",
+    badge: undefined,
+    description: "See who doesn't follow you back and bulk unfollow to clean up your social graph."
   },
   {
     icon: ThumbsDown,
     title: "Like Manager",
-    description: "Browse, search, and bulk unlike tracks to keep your liked collection focused. Clean up thousands of stale likes in seconds."
+    href: "/like-manager",
+    badge: undefined,
+    description: "Browse, search, and bulk unlike tracks. Clean up thousands of stale likes in minutes."
   },
   {
     icon: HeartPulse,
     title: "Playlist Health Check",
-    description: "Scan your playlists for blocked, deleted, or unstreamable tracks and clean them up. Keep your playlists in perfect shape."
+    href: "/playlist-health-check",
+    badge: undefined,
+    description: "Scan playlists for blocked, deleted, or unstreamable tracks — and remove them in one pass."
   },
   {
     icon: LinkIcon,
     title: "Link Resolver",
-    description: "Get instant metadata from any SoundCloud URL. Resolve tracks, playlists, and user profiles to extract detailed information."
+    href: "/link-resolver",
+    badge: undefined,
+    description: "Paste any SoundCloud URL and get instant structured metadata for tracks, playlists, and profiles."
   }
 ];
+
+// Testimonials — real quotes only. Leave empty to hide the section entirely.
+// To enable: add objects { quote, name, role, avatar? } with genuine user
+// feedback. Never populate with invented quotes — it undermines the trust
+// signals this page is built around.
+interface Testimonial {
+  quote: string;
+  name: string;
+  role: string;
+  avatar?: string;
+}
+const testimonials: Testimonial[] = [];
+
+// Path to a real dashboard screenshot (put the file in /public). Null hides
+// the hero product shot until the asset exists. e.g. "/hero-dashboard.png"
+const HERO_SHOT: string | null = null;
 
 // Benefits data
 const benefits = [
@@ -132,30 +159,6 @@ const benefits = [
   "Smart playlist health checks for blocked or deleted tracks",
   "Dark and light theme to match your preference",
   "100% free with secure OAuth — your password is never stored"
-];
-
-// User personas (kept from Next.js version as it's good content)
-const userTypes = [
-  {
-    title: "DJs & Producers",
-    description:
-      "Build perfect sets by merging genre-specific playlists. Organize tracks by BPM for seamless mixing. Keep your crate digging discoveries organized."
-  },
-  {
-    title: "Music Curators",
-    description:
-      "Manage large collections across multiple playlists. Remove duplicates that accumulate over time. Create themed compilations by combining your best discoveries."
-  },
-  {
-    title: "Collectors & Archivists",
-    description:
-      "Archive your liked tracks before they disappear. Organize years of music discovery into meaningful collections. Never lose a track to content changes."
-  },
-  {
-    title: "Power Listeners",
-    description:
-      "Tame playlist sprawl with smart organization tools. Create the perfect workout, study, or mood playlists. Enjoy your music without the clutter of duplicates."
-  }
 ];
 
 // Steps data from Home.tsx
@@ -229,13 +232,14 @@ export default function Home() {
                   href="/login"
                   className="inline-flex items-center justify-center rounded-lg bg-primary px-4 py-1.5 text-xs font-semibold text-primary-foreground shadow-elevation-1 transition-all hover:shadow-glow-sm hover:-translate-y-0.5 sm:px-6 sm:py-2 sm:text-sm"
                 >
-                  Login
+                  Get started
                 </Link>
               </div>
             </div>
           </div>
         </nav>
 
+        <main id="main-content" tabIndex={-1} className="focus:outline-none">
         {/* Hero Section */}
         <section className="relative overflow-hidden px-4 pb-20 pt-28 sm:px-6 sm:pt-32 md:pb-28 md:pt-40">
           {/* Flickering grid background */}
@@ -260,37 +264,38 @@ export default function Home() {
 
             <h1 className="mt-6 animate-fade-in-up text-balance font-display text-4xl font-semibold tracking-tight text-foreground sm:text-5xl md:text-6xl lg:text-7xl [animation-delay:80ms]">
               The Ultimate SoundCloud{" "}
-              <AnimatedGradientText
-                className="inline-flex font-semibold"
-                colorFrom="#ff5500"
-                colorTo="#ffc14a"
-              >
-                Toolkit
-              </AnimatedGradientText>
+              <span className="text-gradient font-semibold">Toolkit</span>
             </h1>
 
             {/* Word rotate — action verbs */}
             <div className="mt-4 flex animate-fade-in-up items-center justify-center gap-2 text-base font-semibold text-muted-foreground sm:text-lg md:text-xl [animation-delay:120ms]">
               <WordRotate
-                words={["Merge.", "Split.", "Clean.", "Organize."]}
+                words={["Merge", "Split", "Clean", "Organize"]}
                 className="text-primary"
                 duration={2200}
               />
-              <span className="text-muted-foreground/60">your music library.</span>
+              <span className="text-muted-foreground/80">your music library.</span>
             </div>
 
+            <p className="mt-5 max-w-2xl animate-fade-in-up text-balance text-sm leading-relaxed text-muted-foreground sm:text-base [animation-delay:160ms]">
+              Merge playlists past the 500-track limit, bulk-unlike stale
+              favorites, find who doesn&apos;t follow back, and clean out dead
+              tracks — all with the official SoundCloud login. No password, no
+              subscription.
+            </p>
+
             <div className="mt-8 flex flex-wrap items-center justify-center gap-4 [animation-delay:220ms]">
-              <Link href="/login">
-                <ShimmerButton
-                  shimmerColor="#ffb347"
-                  background="rgba(255, 85, 0, 1)"
-                  borderRadius="8px"
-                  shimmerDuration="2.5s"
-                  className="shadow-elevation-2 hover:shadow-glow-sm hover:-translate-y-0.5 transition-transform"
-                >
-                  Connect with SoundCloud
-                </ShimmerButton>
-              </Link>
+              <ShimmerButton
+                as="a"
+                href="/login"
+                shimmerColor="#ffb347"
+                background="rgba(255, 85, 0, 1)"
+                borderRadius="8px"
+                shimmerDuration="2.5s"
+                className="shadow-elevation-2 hover:shadow-glow-sm hover:-translate-y-0.5 transition-transform"
+              >
+                Connect with SoundCloud
+              </ShimmerButton>
               <Button
                 type="button"
                 variant="secondary"
@@ -301,6 +306,30 @@ export default function Home() {
               </Button>
             </div>
           </div>
+
+          {/* Product shot — set HERO_SHOT to a real dashboard screenshot to
+              show the app above the fold. Null by default so no broken image
+              ships before the asset exists. */}
+          {HERO_SHOT && (
+            <div className="relative z-10 mx-auto mt-14 max-w-5xl [animation-delay:280ms] animate-fade-in-up">
+              <div className="overflow-hidden rounded-2xl border border-border/70 bg-surface shadow-elevation-2">
+                <div className="flex items-center gap-1.5 border-b border-border/60 bg-surface/80 px-4 py-2.5">
+                  <span className="h-2.5 w-2.5 rounded-full bg-destructive/60" />
+                  <span className="h-2.5 w-2.5 rounded-full bg-chart-4/70" />
+                  <span className="h-2.5 w-2.5 rounded-full bg-chart-3/70" />
+                  <span className="ml-3 text-[11px] text-muted-foreground">soundcloudtoolkit.com/dashboard</span>
+                </div>
+                <Image
+                  src={HERO_SHOT}
+                  alt="SC Toolkit dashboard showing playlist tools and library stats"
+                  width={1600}
+                  height={1000}
+                  className="h-auto w-full"
+                  unoptimized
+                />
+              </div>
+            </div>
+          )}
         </section>
 
         {/* Social proof / trust bar */}
@@ -348,60 +377,39 @@ export default function Home() {
                 <span className="block">A console of tools for</span>
                 <span className="block text-gradient mt-2">total control</span>
               </h2>
-              <div className="mt-4 flex items-center justify-center text-base text-muted-foreground sm:text-lg">
-                Built for{" "}
-                <TypingAnimation
-                  words={["DJs & producers.", "music curators.", "power listeners.", "collectors."]}
-                  className="ml-1 font-semibold text-foreground"
-                  typeSpeed={70}
-                  deleteSpeed={35}
-                  pauseDelay={1800}
-                  loop
-                  showCursor
-                  blinkCursor
-                />
-              </div>
+              <p className="mt-4 text-base text-muted-foreground sm:text-lg">
+                Built for DJs, producers, curators, and power listeners.
+              </p>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2">
-              {[
-                { name: "Playlists, without the mess", description: "Combine playlists, remove duplicates, and keep everything in sync.", href: "/combine", Icon: Layers, badge: "Most Popular" },
-                { name: "Likes → playlists, automatically", description: "Turn years of likes into themed, export-ready playlists.", href: "/likes-to-playlist", Icon: Heart, badge: "New" },
-                { name: "Health checks for every set", description: "Find blocked, deleted, and unstreamable tracks before a show.", href: "/playlist-health-check", Icon: HeartPulse, badge: undefined },
-                { name: "Social graph control", description: "See who doesn't follow back, batch unfollow, and clean your feed.", href: "/following-manager", Icon: UserMinus, badge: undefined },
-              ].map((item) => (
-                <ShineBorder key={item.href} color="#FF5500" borderRadius={12}>
-                  <Link href={item.href} className="block h-full">
-                    <GlareHover className="rounded-xl h-full">
-                      <Card
-                        interactive
-                        className="h-full p-5 transition-all hover:border-primary/60"
-                      >
-                        <div className="flex items-start justify-between">
-                          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                            <item.Icon className="h-5 w-5" />
-                          </div>
-                          {item.badge && (
-                            <span className="inline-flex items-center rounded-full border border-primary/20 bg-primary/8 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider">
-                              <AnimatedShinyText className="text-primary">
-                                {item.badge}
-                              </AnimatedShinyText>
-                            </span>
-                          )}
-                        </div>
-                        <h3 className="mt-3 text-sm font-semibold text-foreground">
-                          {item.name}
-                        </h3>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          {item.description}
-                        </p>
-                        <span className="mt-3 inline-block text-[11px] font-medium text-primary">
-                          Open →
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {features.map((item) => (
+                <Link key={item.href} href={item.href} className="block h-full">
+                  <Card
+                    interactive
+                    className="h-full p-5 transition-all hover:border-primary/60"
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                        <item.icon className="h-5 w-5" />
+                      </div>
+                      {item.badge && (
+                        <span className="inline-flex items-center rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-primary">
+                          {item.badge}
                         </span>
-                      </Card>
-                    </GlareHover>
-                  </Link>
-                </ShineBorder>
+                      )}
+                    </div>
+                    <h3 className="mt-3 text-sm font-semibold text-foreground">
+                      {item.title}
+                    </h3>
+                    <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                      {item.description}
+                    </p>
+                    <span className="mt-3 inline-block text-[11px] font-medium text-primary">
+                      Open →
+                    </span>
+                  </Card>
+                </Link>
               ))}
             </div>
           </div>
@@ -414,9 +422,7 @@ export default function Home() {
         >
           <div className="mx-auto max-w-6xl">
             <h2 className="text-center font-display text-3xl font-semibold tracking-tight sm:text-4xl md:text-5xl">
-              <TextAnimate animation="slideLeft" by="character">
-                Built for the obsessed listeners.
-              </TextAnimate>
+              Built for the obsessed listeners.
             </h2>
             <p className="mx-auto mt-4 max-w-3xl text-center text-base text-muted-foreground sm:text-lg">
               Whether you&apos;re a DJ, curator, or collector, SC Toolkit
@@ -424,27 +430,60 @@ export default function Home() {
               show-ready.
             </p>
 
-            <div className="mt-12 grid gap-4 sm:grid-cols-2">
+            <div className="mx-auto mt-12 grid max-w-4xl gap-x-8 gap-y-4 sm:grid-cols-2">
               {benefits.map((benefit) => (
-                <ShineBorder key={benefit} color="#FF5500" borderRadius={12}>
-                  <GlareHover className="rounded-xl h-full">
-                    <Card
-                      interactive
-                      className="flex h-full items-start gap-4 p-5 transition-all hover:border-primary/60"
-                    >
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                        <Check className="h-5 w-5" />
-                      </div>
-                      <p className="min-w-0 text-sm leading-relaxed text-foreground">
-                        {benefit}
-                      </p>
-                    </Card>
-                  </GlareHover>
-                </ShineBorder>
+                <div key={benefit} className="flex items-start gap-3">
+                  <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                    <Check className="h-3.5 w-3.5" />
+                  </div>
+                  <p className="min-w-0 text-sm leading-relaxed text-foreground sm:text-base">
+                    {benefit}
+                  </p>
+                </div>
               ))}
             </div>
           </div>
         </section>
+
+        {/* Testimonials — only renders when real quotes are supplied */}
+        {testimonials.length > 0 && (
+          <section className="px-4 py-20 sm:px-6 sm:py-24">
+            <div className="mx-auto max-w-6xl">
+              <h2 className="text-center font-display text-3xl font-semibold tracking-tight sm:text-4xl md:text-5xl">
+                What users say
+              </h2>
+              <div className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {testimonials.map((t) => (
+                  <Card key={t.name} className="flex h-full flex-col p-6">
+                    <p className="flex-1 text-sm leading-relaxed text-foreground">
+                      &ldquo;{t.quote}&rdquo;
+                    </p>
+                    <div className="mt-5 flex items-center gap-3">
+                      {t.avatar ? (
+                        <Image
+                          src={t.avatar}
+                          alt={t.name}
+                          width={40}
+                          height={40}
+                          className="h-10 w-10 rounded-full object-cover"
+                          unoptimized
+                        />
+                      ) : (
+                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
+                          {t.name.charAt(0)}
+                        </div>
+                      )}
+                      <div className="min-w-0">
+                        <div className="text-sm font-semibold text-foreground">{t.name}</div>
+                        <div className="text-xs text-muted-foreground">{t.role}</div>
+                      </div>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            </div>
+          </section>
+        )}
 
         {/* How it works */}
         <section
@@ -487,8 +526,6 @@ export default function Home() {
 
         {/* CTA section */}
         <section className="relative border-y border-border/60 bg-surface px-4 py-20 sm:px-6 sm:py-24 overflow-hidden">
-          {/* Meteors background effect */}
-          <Meteors number={18} minDuration={4} maxDuration={12} angle={215} className="opacity-30" />
           <div className="relative z-10 mx-auto max-w-3xl text-center">
             <h2 className="font-display text-3xl font-semibold tracking-tight sm:text-4xl md:text-5xl">
               Ready to organize your SoundCloud like a studio session?
@@ -498,17 +535,17 @@ export default function Home() {
               tedious parts — so you can listen, sort, and play.
             </p>
             <div className="mt-8 flex flex-wrap items-center justify-center gap-4">
-              <Link href="/login">
-                <ShimmerButton
-                  shimmerColor="#ffb347"
-                  background="rgba(255, 85, 0, 1)"
-                  borderRadius="8px"
-                  shimmerDuration="2.5s"
-                  className="shadow-elevation-2 hover:shadow-glow-sm hover:-translate-y-0.5 transition-transform px-10 py-3 text-base"
-                >
-                  Connect with SoundCloud
-                </ShimmerButton>
-              </Link>
+              <ShimmerButton
+                as="a"
+                href="/login"
+                shimmerColor="#ffb347"
+                background="rgba(255, 85, 0, 1)"
+                borderRadius="8px"
+                shimmerDuration="2.5s"
+                className="shadow-elevation-2 hover:shadow-glow-sm hover:-translate-y-0.5 transition-transform px-10 py-3 text-base"
+              >
+                Connect with SoundCloud
+              </ShimmerButton>
             </div>
           </div>
         </section>
@@ -546,6 +583,7 @@ export default function Home() {
             </div>
           </div>
         </section>
+        </main>
 
         {/* Footer */}
         <footer className="border-t border-border/60 bg-background/90 px-4 py-10 sm:px-6">

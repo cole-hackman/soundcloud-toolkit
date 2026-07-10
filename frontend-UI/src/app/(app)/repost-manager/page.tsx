@@ -254,19 +254,19 @@ export default function RepostManagerPage() {
             {/* Controls */}
             <div className="flex items-center gap-3 mb-4 flex-wrap">
               <div className="relative flex-1 min-w-[200px]">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#999999] dark:text-muted-foreground" />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/70" />
                 <input
                   type="text"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder="Search reposts..."
-                  className="w-full pl-10 pr-3 py-2 border-2 border-gray-200 dark:border-border rounded-lg text-sm text-[#333333] dark:text-foreground bg-gray-50 dark:bg-secondary/20 focus:border-[#FF5500] focus:outline-none"
+                  className="w-full pl-10 pr-3 py-2 border-2 border-gray-200 dark:border-border rounded-lg text-sm text-foreground bg-gray-50 dark:bg-secondary/20 focus:border-primary focus:outline-none"
                 />
               </div>
               <select
                 value={sort}
                 onChange={(e) => setSort(e.target.value as SortOption)}
-                className="px-3 py-2 border-2 border-gray-200 dark:border-border rounded-lg text-sm text-[#333333] dark:text-foreground bg-gray-50 dark:bg-secondary/20 focus:border-[#FF5500] focus:outline-none"
+                className="px-3 py-2 border-2 border-gray-200 dark:border-border rounded-lg text-sm text-foreground bg-gray-50 dark:bg-secondary/20 focus:border-primary focus:outline-none"
               >
                 <option value="recent">Most Recent</option>
                 <option value="oldest">Oldest First</option>
@@ -274,13 +274,13 @@ export default function RepostManagerPage() {
               </select>
               <button
                 onClick={selectAll}
-                className="text-sm text-[#FF5500] hover:text-[#E64D00] font-medium whitespace-nowrap"
+                className="text-sm text-primary hover:text-primary font-medium whitespace-nowrap"
               >
                 {selected.size === filteredReposts.length ? "Deselect All" : "Select All"}
               </button>
               <button
                 onClick={() => setShowAutoSelect((v) => !v)}
-                className="text-sm text-[#666666] dark:text-muted-foreground hover:text-[#333333] dark:hover:text-foreground font-medium whitespace-nowrap"
+                className="text-sm text-muted-foreground hover:text-foreground dark:hover:text-foreground font-medium whitespace-nowrap"
               >
                 {showAutoSelect ? "Hide auto-select" : "Auto-select…"}
               </button>
@@ -289,10 +289,10 @@ export default function RepostManagerPage() {
             {/* Auto-select with a keep-list (everything except matches gets selected) */}
             {showAutoSelect && (
               <div className="mb-4 p-4 rounded-xl bg-gray-50 dark:bg-secondary/20 border-2 border-gray-200 dark:border-border">
-                <div className="text-sm font-semibold text-[#333333] dark:text-foreground mb-1">
+                <div className="text-sm font-semibold text-foreground mb-1">
                   Auto-select everything except your keep-list
                 </div>
-                <p className="text-xs text-[#666666] dark:text-muted-foreground mb-3">
+                <p className="text-xs text-muted-foreground mb-3">
                   One artist or title per line (or comma-separated). Matches are kept; everything
                   else in the current view is selected. Wrap a line in <code>/slashes/</code> for regex.
                   Nothing is removed until you confirm.
@@ -302,10 +302,10 @@ export default function RepostManagerPage() {
                   onChange={(e) => setKeepList(e.target.value)}
                   placeholder={"Phibes\nMyFavoriteArtist\n/remix$/"}
                   rows={3}
-                  className="w-full px-3 py-2 mb-3 border-2 border-gray-200 dark:border-border rounded-lg text-sm font-mono text-[#333333] dark:text-foreground bg-white dark:bg-secondary/20 focus:border-[#FF5500] focus:outline-none resize-y"
+                  className="w-full px-3 py-2 mb-3 border-2 border-gray-200 dark:border-border rounded-lg text-sm font-mono text-foreground bg-white dark:bg-secondary/20 focus:border-primary focus:outline-none resize-y"
                 />
                 <div className="flex items-center gap-3 flex-wrap">
-                  <label className="text-xs text-[#666666] dark:text-muted-foreground flex items-center gap-2">
+                  <label className="text-xs text-muted-foreground flex items-center gap-2">
                     Limit
                     <input
                       type="number"
@@ -313,23 +313,23 @@ export default function RepostManagerPage() {
                       value={limitInput}
                       onChange={(e) => setLimitInput(e.target.value)}
                       placeholder="all"
-                      className="w-20 px-2 py-1 border-2 border-gray-200 dark:border-border rounded-lg text-sm text-[#333333] dark:text-foreground bg-white dark:bg-secondary/20 focus:border-[#FF5500] focus:outline-none"
+                      className="w-20 px-2 py-1 border-2 border-gray-200 dark:border-border rounded-lg text-sm text-foreground bg-white dark:bg-secondary/20 focus:border-primary focus:outline-none"
                     />
                   </label>
                   <button
                     onClick={selectExceptKeepList}
-                    className="px-3 py-1.5 rounded-lg bg-[#FF5500] hover:bg-[#E64D00] text-white text-sm font-medium"
+                    className="px-3 py-1.5 rounded-lg bg-primary hover:bg-primary/90 text-white text-sm font-medium"
                   >
                     Select {Math.min(removableReposts.length, parsedLimit === Infinity ? removableReposts.length : parsedLimit)} to remove
                   </button>
-                  <span className="text-xs text-[#999999] dark:text-muted-foreground">
+                  <span className="text-xs text-muted-foreground/70">
                     {keptCount} kept · {removableReposts.length} removable in view
                   </span>
                 </div>
               </div>
             )}
 
-            <div className="text-sm text-[#999999] dark:text-muted-foreground mb-2">
+            <div className="text-sm text-muted-foreground/70 mb-2">
               {filteredReposts.length} of {reposts.length} reposts
             </div>
 
@@ -367,19 +367,19 @@ export default function RepostManagerPage() {
                     ) : (
                       <div className="w-10 h-10 rounded-lg bg-gray-200 dark:bg-secondary flex items-center justify-center flex-shrink-0">
                         {repost.resourceType === "playlist" ? (
-                          <ListMusic className="w-5 h-5 text-[#999999] dark:text-muted-foreground" />
+                          <ListMusic className="w-5 h-5 text-muted-foreground/70" />
                         ) : (
-                          <Music className="w-5 h-5 text-[#999999] dark:text-muted-foreground" />
+                          <Music className="w-5 h-5 text-muted-foreground/70" />
                         )}
                       </div>
                     )}
 
                     {/* Info */}
                     <div className="flex-1 min-w-0">
-                      <div className="font-semibold text-[#333333] dark:text-foreground text-sm truncate">
+                      <div className="font-semibold text-foreground text-sm truncate">
                         {repost.title}
                       </div>
-                      <div className="text-xs text-[#666666] dark:text-muted-foreground truncate">
+                      <div className="text-xs text-muted-foreground truncate">
                         {repost.user?.username}
                       </div>
                     </div>
@@ -389,7 +389,7 @@ export default function RepostManagerPage() {
                       className={`text-xs font-semibold uppercase tracking-wide px-2 py-1 rounded-full shrink-0 ${
                         repost.resourceType === "playlist"
                           ? "bg-purple-100 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400"
-                          : "bg-orange-100 dark:bg-orange-900/20 text-[#FF5500]"
+                          : "bg-orange-100 dark:bg-orange-900/20 text-primary"
                       }`}
                     >
                       {repost.resourceType}

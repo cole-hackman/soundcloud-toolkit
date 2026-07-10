@@ -39,29 +39,29 @@ export function BulkReviewDetails({
 
   return (
     <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-border dark:bg-secondary/20">
-      <div className="mb-2 text-sm font-semibold text-[#333333] dark:text-foreground">
+      <div className="mb-2 text-sm font-semibold text-foreground">
         Review before {action}
       </div>
       {warning && (
-        <p className="mb-3 text-sm text-[#666666] dark:text-muted-foreground">
+        <p className="mb-3 text-sm text-muted-foreground">
           {warning}
         </p>
       )}
       <div className="max-h-44 space-y-1 overflow-y-auto">
         {previewItems.map((item) => (
           <div key={item.id} className="text-sm">
-            <div className="truncate font-medium text-[#333333] dark:text-foreground">
+            <div className="truncate font-medium text-foreground">
               {item.label}
             </div>
             {item.meta && (
-              <div className="truncate text-xs text-[#777777] dark:text-muted-foreground">
+              <div className="truncate text-xs text-muted-foreground dark:text-muted-foreground">
                 {item.meta}
               </div>
             )}
           </div>
         ))}
         {remainingCount > 0 && (
-          <div className="text-xs text-[#777777] dark:text-muted-foreground">
+          <div className="text-xs text-muted-foreground dark:text-muted-foreground">
             + {remainingCount} more item{remainingCount === 1 ? "" : "s"}
           </div>
         )}

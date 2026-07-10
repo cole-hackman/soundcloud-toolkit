@@ -66,7 +66,7 @@ export default function LoginPage() {
         aria-hidden
       />
 
-      <div className="relative z-10 mx-auto flex min-h-screen w-full max-w-6xl flex-col justify-center px-4 py-4 sm:px-6 sm:py-8 lg:px-8 lg:py-10">
+      <main id="main-content" tabIndex={-1} className="relative z-10 mx-auto flex min-h-screen w-full max-w-6xl flex-col justify-center px-4 py-4 focus:outline-none sm:px-6 sm:py-8 lg:px-8 lg:py-10">
         <div className="grid items-center gap-10 lg:grid-cols-[minmax(0,1.1fr)_minmax(380px,440px)] lg:gap-16">
           <section className="order-2 flex flex-col items-start lg:order-1 lg:pr-8">
             <Image
@@ -229,7 +229,7 @@ export default function LoginPage() {
             </div>
           </section>
         </div>
-      </div>
+      </main>
     </div>
   );
 }

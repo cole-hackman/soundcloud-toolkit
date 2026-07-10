@@ -122,7 +122,7 @@ export default function BatchLinkResolverPage() {
 
         {/* Input area */}
         <div className="bg-white dark:bg-card rounded-2xl p-6 border-2 border-gray-200 dark:border-border mb-6">
-          <label className="block text-sm font-medium text-[#333333] dark:text-foreground mb-2">
+          <label className="block text-sm font-medium text-foreground mb-2">
             SoundCloud URLs (one per line)
           </label>
           <textarea
@@ -130,10 +130,10 @@ export default function BatchLinkResolverPage() {
             onChange={(e) => setInput(e.target.value)}
             placeholder={"https://soundcloud.com/artist/track-name\nhttps://soundcloud.com/artist\nhttps://soundcloud.com/artist/sets/playlist-name"}
             rows={8}
-            className="w-full px-4 py-3 border-2 border-gray-200 dark:border-border rounded-xl text-[#333333] dark:text-foreground bg-gray-50 dark:bg-secondary/20 focus:border-[#FF5500] focus:outline-none focus:ring-1 focus:ring-[#FF5500]/30 resize-y font-mono text-sm"
+            className="w-full px-4 py-3 border-2 border-gray-200 dark:border-border rounded-xl text-foreground bg-gray-50 dark:bg-secondary/20 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/30 resize-y font-mono text-sm"
           />
           <div className="flex items-center justify-between mt-4">
-            <span className="text-sm text-[#999999] dark:text-muted-foreground">
+            <span className="text-sm text-muted-foreground/70">
               {input.split("\n").filter((l) => l.trim()).length} URLs entered
             </span>
             <Button
@@ -165,7 +165,7 @@ export default function BatchLinkResolverPage() {
         {results.length > 0 && (
           <ResultPanel>
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold text-[#333333] dark:text-foreground">Results</h2>
+              <h2 className="text-xl font-bold text-foreground">Results</h2>
               <div className="flex items-center gap-3 text-sm">
                 <span className="text-green-600 dark:text-green-400 font-medium">✓ {summary?.ok ?? 0}</span>
                 <span className="text-red-600 dark:text-red-400 font-medium">✗ {summary?.error ?? 0}</span>
@@ -190,16 +190,16 @@ export default function BatchLinkResolverPage() {
                 <option value="title">Sort: Title</option>
               </select>
               <div className="relative">
-                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#999999]" />
+                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/70" />
                 <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search..." className="w-full pl-9 pr-3 py-2 rounded-lg border-2 border-gray-200 dark:border-border bg-white dark:bg-secondary/20 text-sm" />
               </div>
             </div>
 
             <div className="flex flex-wrap gap-2 mb-4">
-              <button onClick={() => exportResults("csv")} className="px-3 py-1.5 rounded-lg bg-gray-100 dark:bg-secondary/20 text-sm inline-flex items-center gap-2 hover:text-[#FF5500]"><Download className="w-4 h-4" />Export CSV</button>
-              <button onClick={() => exportResults("json")} className="px-3 py-1.5 rounded-lg bg-gray-100 dark:bg-secondary/20 text-sm inline-flex items-center gap-2 hover:text-[#FF5500]"><Download className="w-4 h-4" />Export JSON</button>
-              <button onClick={copyFailedUrls} className="px-3 py-1.5 rounded-lg bg-gray-100 dark:bg-secondary/20 text-sm inline-flex items-center gap-2 hover:text-[#FF5500]"><Copy className="w-4 h-4" />Copy Failed URLs</button>
-              <button onClick={retryFailed} className="px-3 py-1.5 rounded-lg bg-gray-100 dark:bg-secondary/20 text-sm inline-flex items-center gap-2 hover:text-[#FF5500]"><RotateCcw className="w-4 h-4" />Retry Failed</button>
+              <button onClick={() => exportResults("csv")} className="px-3 py-1.5 rounded-lg bg-gray-100 dark:bg-secondary/20 text-sm inline-flex items-center gap-2 hover:text-primary"><Download className="w-4 h-4" />Export CSV</button>
+              <button onClick={() => exportResults("json")} className="px-3 py-1.5 rounded-lg bg-gray-100 dark:bg-secondary/20 text-sm inline-flex items-center gap-2 hover:text-primary"><Download className="w-4 h-4" />Export JSON</button>
+              <button onClick={copyFailedUrls} className="px-3 py-1.5 rounded-lg bg-gray-100 dark:bg-secondary/20 text-sm inline-flex items-center gap-2 hover:text-primary"><Copy className="w-4 h-4" />Copy Failed URLs</button>
+              <button onClick={retryFailed} className="px-3 py-1.5 rounded-lg bg-gray-100 dark:bg-secondary/20 text-sm inline-flex items-center gap-2 hover:text-primary"><RotateCcw className="w-4 h-4" />Retry Failed</button>
             </div>
 
             <div className="space-y-2">
@@ -243,7 +243,7 @@ function ResultRow({
       }`}
     >
       <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-        result.status === "error" ? "bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400" : "bg-[#FF5500]/10 text-[#FF5500]"
+        result.status === "error" ? "bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400" : "bg-primary/10 text-primary"
       }`}>
         {result.status === "error" ? <X className="w-4 h-4" /> : iconForType(result.data?.type)}
       </div>
@@ -251,10 +251,10 @@ function ResultRow({
       <div className="flex-1 min-w-0">
         {result.status === "ok" && result.data ? (
           <>
-            <div className="font-semibold text-[#333333] dark:text-foreground truncate">
+            <div className="font-semibold text-foreground truncate">
               {result.data.type === "user" ? result.data.username : result.data.title}
             </div>
-            <div className="text-sm text-[#666666] dark:text-muted-foreground truncate">
+            <div className="text-sm text-muted-foreground truncate">
               {result.data.type === "track" && (
                 <>{result.data.user?.username} • {formatDuration(result.data.duration_ms || result.data.duration)}</>
               )}
@@ -268,7 +268,7 @@ function ResultRow({
           </>
         ) : (
           <>
-            <div className="text-sm text-[#333333] dark:text-foreground truncate font-mono">
+            <div className="text-sm text-foreground truncate font-mono">
               {result.url}
             </div>
             <div className="text-sm text-red-600 dark:text-red-400">{result.error}</div>
@@ -281,7 +281,7 @@ function ResultRow({
           href={result.data.permalink_url}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-[#FF5500] hover:text-[#E64D00] flex-shrink-0"
+          className="text-primary hover:text-primary flex-shrink-0"
         >
           <ExternalLink className="w-4 h-4" />
         </a>
@@ -290,7 +290,7 @@ function ResultRow({
       {result.status === "ok" && result.data?.type === "playlist" && result.data.permalink_url && (
         <NextLink
           href={`/playlist-cloner?url=${encodeURIComponent(result.data.permalink_url)}`}
-          className="text-xs font-medium text-[#666666] hover:text-[#FF5500] dark:text-muted-foreground"
+          className="text-xs font-medium text-muted-foreground hover:text-primary dark:text-muted-foreground"
         >
           Clone
         </NextLink>
@@ -299,7 +299,7 @@ function ResultRow({
       {result.status === "ok" && result.data?.type === "track" && (
         <NextLink
           href="/downloads"
-          className="text-xs font-medium text-[#666666] hover:text-[#FF5500] dark:text-muted-foreground"
+          className="text-xs font-medium text-muted-foreground hover:text-primary dark:text-muted-foreground"
         >
           Downloads
         </NextLink>
@@ -308,7 +308,7 @@ function ResultRow({
       <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${
         result.status === "error"
           ? "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400"
-          : "bg-[#FF5500]/10 text-[#FF5500]"
+          : "bg-primary/10 text-primary"
       }`}>
         {result.data?.type || "error"}
       </span>

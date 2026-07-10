@@ -124,6 +124,54 @@ body::before {
   z-index: 60 !important;
 }
 
+/* ─── Accessibility ──────────────────────────────────────── */
+
+/* Skip-to-content link — visible only when focused */
+.skip-link {
+  position: absolute;
+  left: 1rem;
+  top: -3rem;
+  z-index: 100;
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  background-color: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  font-size: 0.875rem;
+  font-weight: 600;
+  transition: top 150ms ease;
+}
+.skip-link:focus {
+  top: 1rem;
+  outline: 2px solid hsl(var(--foreground));
+  outline-offset: 2px;
+}
+
+/* Global visible focus fallback for any interactive element that doesn't
+   define its own focus-visible ring (many raw <button>s in tool pages). */
+a:focus-visible,
+button:focus-visible,
+[role="button"]:focus-visible,
+summary:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+}
+
+/* Respect users who ask for reduced motion (WCAG 2.3.3). Neutralizes the
+   landing's shimmer/meteor/gradient/typing animations and all transitions. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 /* Midnight Studio utilities */
 
 .glass-card {
@@ -132,21 +180,24 @@ body::before {
   backdrop-filter: blur(28px) saturate(130%);
   -webkit-backdrop-filter: blur(28px) saturate(130%);
   box-shadow:
-    0 18px 45px rgba(15, 23, 42, 0.65),
-    0 0 0 1px rgba(148, 163, 184, 0.35);
+    0 10px 30px rgba(15, 23, 42, 0.10),
+    0 0 0 1px rgba(148, 163, 184, 0.18);
 }
 
 .dark .glass-card {
   background-color: hsl(var(--glass) / 0.88);
   border-color: hsl(var(--border) / 0.9);
+  box-shadow:
+    0 18px 45px rgba(2, 6, 23, 0.55),
+    0 0 0 1px rgba(148, 163, 184, 0.20);
 }
 
 .text-gradient {
   background-image: linear-gradient(
     120deg,
     #ff5500,
-    #ffb347,
-    #ffd28f
+    #ff7a26,
+    #ff8a3d
   );
   -webkit-background-clip: text;
   background-clip: text;

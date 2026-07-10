@@ -197,7 +197,7 @@ export default function ActivityToPlaylistPage() {
             <div className="lg:col-span-2 bg-white dark:bg-card rounded-2xl p-6 border-2 border-gray-200 dark:border-border">
               <div className="flex items-center gap-3 mb-4">
                 <div className="relative flex-1">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#999999] dark:text-muted-foreground" />
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/70" />
                   <Input
                     type="text"
                     value={search}
@@ -208,7 +208,7 @@ export default function ActivityToPlaylistPage() {
                 </div>
                 <button
                   onClick={selectAll}
-                  className="text-sm text-[#FF5500] hover:text-[#E64D00] font-medium whitespace-nowrap"
+                  className="text-sm text-primary hover:text-primary font-medium whitespace-nowrap"
                 >
                   {selected.size === filteredActivities.length ? "Deselect All" : "Select All"}
                 </button>
@@ -247,10 +247,10 @@ export default function ActivityToPlaylistPage() {
 
             {/* Save panel */}
             <div className="bg-white dark:bg-card rounded-2xl p-6 border-2 border-gray-200 dark:border-border h-fit sticky top-24">
-              <h2 className="text-lg font-bold text-[#333333] dark:text-foreground mb-4">
+              <h2 className="text-lg font-bold text-foreground mb-4">
                 Save to Playlist
               </h2>
-              <p className="text-sm text-[#666666] dark:text-muted-foreground mb-4">
+              <p className="text-sm text-muted-foreground mb-4">
                 {selected.size} track{selected.size !== 1 ? "s" : ""} selected
               </p>
 
@@ -258,7 +258,7 @@ export default function ActivityToPlaylistPage() {
                 <button
                   onClick={() => setMode("new")}
                   className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition ${
-                    mode === "new" ? "bg-[#FF5500] text-white" : "bg-gray-100 dark:bg-secondary/50 text-[#666666] dark:text-muted-foreground"
+                    mode === "new" ? "bg-primary text-white" : "bg-gray-100 dark:bg-secondary/50 text-muted-foreground"
                   }`}
                 >
                   New Playlist
@@ -266,7 +266,7 @@ export default function ActivityToPlaylistPage() {
                 <button
                   onClick={() => setMode("existing")}
                   className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition ${
-                    mode === "existing" ? "bg-[#FF5500] text-white" : "bg-gray-100 dark:bg-secondary/50 text-[#666666] dark:text-muted-foreground"
+                    mode === "existing" ? "bg-primary text-white" : "bg-gray-100 dark:bg-secondary/50 text-muted-foreground"
                   }`}
                 >
                   Existing
@@ -279,13 +279,13 @@ export default function ActivityToPlaylistPage() {
                   value={newPlaylistName}
                   onChange={(e) => setNewPlaylistName(e.target.value)}
                   placeholder="Playlist name (optional)"
-                  className="w-full px-3 py-2 border-2 border-gray-200 dark:border-border rounded-lg text-sm text-[#333333] dark:text-foreground bg-gray-50 dark:bg-secondary/20 focus:border-[#FF5500] focus:outline-none mb-4"
+                  className="w-full px-3 py-2 border-2 border-gray-200 dark:border-border rounded-lg text-sm text-foreground bg-gray-50 dark:bg-secondary/20 focus:border-primary focus:outline-none mb-4"
                 />
               ) : (
                 <select
                   value={selectedPlaylistId || ""}
                   onChange={(e) => setSelectedPlaylistId(Number(e.target.value))}
-                  className="w-full px-3 py-2 border-2 border-gray-200 dark:border-border rounded-lg text-sm text-[#333333] dark:text-foreground bg-gray-50 dark:bg-secondary/20 focus:border-[#FF5500] focus:outline-none mb-4"
+                  className="w-full px-3 py-2 border-2 border-gray-200 dark:border-border rounded-lg text-sm text-foreground bg-gray-50 dark:bg-secondary/20 focus:border-primary focus:outline-none mb-4"
                 >
                   <option value="">Choose a playlist...</option>
                   {playlists.map((pl) => (

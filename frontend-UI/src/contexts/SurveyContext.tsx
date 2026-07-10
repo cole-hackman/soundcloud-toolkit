@@ -12,9 +12,9 @@ import {
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import {
-  MonetizationSurveyModal,
-  type SurveySubmission,
-} from "@/components/MonetizationSurveyModal";
+  BetaSurveyModal,
+  type BetaSubmission,
+} from "@/components/BetaSurveyModal";
 import {
   dashboardShownThisSession,
   isDontShowAgain,
@@ -58,7 +58,6 @@ export function SurveyProvider({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<ServerStatus | null>(null);
   const [open, setOpen] = useState(false);
   const [activeContext, setActiveContext] = useState<SurveyContext>("dashboard");
-  const [activeTrackCount, setActiveTrackCount] = useState<number | undefined>();
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -131,7 +130,6 @@ export function SurveyProvider({ children }: { children: React.ReactNode }) {
       if (!canShow(opts)) return;
       promptedThisRenderRef.current = true;
       setActiveContext(opts.context);
-      setActiveTrackCount(opts.trackCount);
       setErrorMessage(null);
       setOpen(true);
       if (status) markPromptedNow(status.campaignId);
@@ -156,7 +154,7 @@ export function SurveyProvider({ children }: { children: React.ReactNode }) {
   }, [status]);
 
   const handleSubmit = useCallback(
-    async (data: SurveySubmission) => {
+    async (data: BetaSubmission) => {
       if (!status) return;
       setSubmitting(true);
       setErrorMessage(null);
@@ -165,12 +163,23 @@ export function SurveyProvider({ children }: { children: React.ReactNode }) {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            preference: data.preference,
-            lifetimeInterest: data.lifetimeInterest ?? undefined,
-            comment: data.comment || undefined,
+            rekordboxUse: data.rekordboxUse,
+            platform: data.platform ?? undefined,
+            cullMethod: data.cullMethod ?? undefined,
+            featuresWanted: data.featuresWanted.length
+              ? data.featuresWanted.join(",")
+              : undefined,
+            editHesitations: data.editHesitations.length
+              ? data.editHesitations.join(",")
+              : undefined,
+            trustDirectWrite: data.trustDirectWrite ?? undefined,
+            interest: data.interest,
+            wantsBeta: data.wantsBeta,
+            email: data.email || undefined,
+            wantsCall: data.wantsCall,
+            suggestions: data.suggestions || undefined,
+            nameIdea: data.nameIdea || undefined,
             context: activeContext,
-            trackCount:
-              typeof activeTrackCount === "number" ? activeTrackCount : undefined,
           }),
         });
 
@@ -194,7 +203,7 @@ export function SurveyProvider({ children }: { children: React.ReactNode }) {
         setSubmitting(false);
       }
     },
-    [activeContext, activeTrackCount, status],
+    [activeContext, status],
   );
 
   const api = useMemo<SurveyApi>(() => ({ maybeShow }), [maybeShow]);
@@ -202,10 +211,8 @@ export function SurveyProvider({ children }: { children: React.ReactNode }) {
   return (
     <SurveyContextObj.Provider value={api}>
       {children}
-      <MonetizationSurveyModal
+      <BetaSurveyModal
         open={open}
-        context={activeContext}
-        trackCount={activeTrackCount}
         submitting={submitting}
         errorMessage={errorMessage}
         onSubmit={handleSubmit}

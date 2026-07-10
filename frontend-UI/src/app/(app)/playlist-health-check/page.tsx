@@ -168,7 +168,7 @@ export default function PlaylistHealthCheckPage() {
         {!selectedPlaylist ? (
           /* Playlist Selection */
           <div className="bg-white dark:bg-card rounded-2xl p-6 border-2 border-gray-200 dark:border-border">
-            <h2 className="text-xl font-bold mb-4 text-[#333333] dark:text-foreground">
+            <h2 className="text-xl font-bold mb-4 text-foreground">
               Select a Playlist to Scan
             </h2>
             {loading ? (
@@ -191,7 +191,7 @@ export default function PlaylistHealthCheckPage() {
                   <button
                     key={playlist.id}
                     onClick={() => selectPlaylist(playlist)}
-                    className="flex items-center gap-4 p-4 rounded-xl bg-gray-50 dark:bg-secondary/20 border-2 border-transparent hover:border-[#FF5500] transition-all text-left"
+                    className="flex items-center gap-4 p-4 rounded-xl bg-gray-50 dark:bg-secondary/20 border-2 border-transparent hover:border-primary transition-all text-left"
                   >
                     <img
                       src={playlist.artwork_url || "/SC Toolkit Icon.png"}
@@ -199,10 +199,10 @@ export default function PlaylistHealthCheckPage() {
                       className="w-16 h-16 rounded-lg object-cover"
                     />
                     <div>
-                      <div className="font-semibold text-[#333333] dark:text-foreground">
+                      <div className="font-semibold text-foreground">
                         {playlist.title}
                       </div>
-                      <div className="text-sm text-[#666666] dark:text-muted-foreground">
+                      <div className="text-sm text-muted-foreground">
                         {playlist.track_count} tracks
                       </div>
                     </div>
@@ -226,7 +226,7 @@ export default function PlaylistHealthCheckPage() {
                   <ArrowLeft className="h-4 w-4" />
                   Back to playlists
                 </button>
-                <h2 className="text-2xl font-bold text-[#333333] dark:text-foreground">
+                <h2 className="text-2xl font-bold text-foreground">
                   {selectedPlaylist.title}
                 </h2>
               </div>
@@ -251,8 +251,8 @@ export default function PlaylistHealthCheckPage() {
               <div className="bg-white dark:bg-card rounded-2xl p-6 border-2 border-gray-200 dark:border-border mb-6">
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-3">
-                    <Stethoscope className="w-5 h-5 text-[#666666] dark:text-muted-foreground" />
-                    <span className="font-semibold text-[#333333] dark:text-foreground">
+                    <Stethoscope className="w-5 h-5 text-muted-foreground" />
+                    <span className="font-semibold text-foreground">
                       {healthyCount} of {tracks.length} tracks healthy
                     </span>
                   </div>
@@ -282,8 +282,8 @@ export default function PlaylistHealthCheckPage() {
                     onClick={() => setFilter(key)}
                     className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-all ${
                       filter === key
-                        ? "bg-[#FF5500] text-white"
-                        : "bg-gray-100 dark:bg-secondary/20 text-[#666666] dark:text-muted-foreground hover:bg-gray-200 dark:hover:bg-secondary/40"
+                        ? "bg-primary text-white"
+                        : "bg-gray-100 dark:bg-secondary/20 text-muted-foreground hover:bg-gray-200 dark:hover:bg-secondary/40"
                     }`}
                   >
                     {Icon ? <Icon className="h-3.5 w-3.5" /> : null}
@@ -323,7 +323,7 @@ export default function PlaylistHealthCheckPage() {
                         key={track.id}
                         className={`flex items-center gap-4 p-3 rounded-xl ${status.icon === "bad" ? "bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-900/30" : status.icon === "warn" ? "bg-yellow-50 dark:bg-yellow-900/10 border border-yellow-200 dark:border-yellow-900/30" : "bg-gray-50 dark:bg-secondary/20 border border-transparent dark:border-border"}`}
                       >
-                        <span className="w-8 text-center text-sm text-[#999999] dark:text-muted-foreground">
+                        <span className="w-8 text-center text-sm text-muted-foreground/70">
                           {index + 1}
                         </span>
                         <img
@@ -332,10 +332,10 @@ export default function PlaylistHealthCheckPage() {
                           className="w-12 h-12 rounded-lg object-cover"
                         />
                         <div className="flex-1 min-w-0">
-                          <div className="font-semibold text-[#333333] dark:text-foreground truncate">
+                          <div className="font-semibold text-foreground truncate">
                             {track.title}
                           </div>
-                          <div className="text-sm text-[#666666] dark:text-muted-foreground truncate">
+                          <div className="text-sm text-muted-foreground truncate">
                             {track.user?.username} • {formatDuration(track.duration)}
                           </div>
                         </div>

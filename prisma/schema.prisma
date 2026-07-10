@@ -22,6 +22,15 @@ model User {
   tokens           Token[]
   operationLogs    OperationLog[]
   surveyResponses  SurveyResponse[]
+  growthActions    GrowthAction[]
+  betaSignups      BetaSignup[]
+  // Tables owned by other feature branches (AI library chat, library indexing).
+  // Declared here so `prisma db push` from this branch does not drop live
+  // production data. Keep in sync when those branches change their schema.
+  chatConversations       chat_conversations[]
+  indexedLikes            indexed_likes[]
+  indexedPlaylistTracks   indexed_playlist_tracks[]
+  librarySnapshot         library_snapshots?
 
   @@map("users")
 }
@@ -46,6 +55,35 @@ model SurveyResponse {
   @@index([lifetimeInterest])
   @@index([soundcloudId])
   @@map("survey_responses")
+}
+
+model BetaSignup {
+  id               String   @id @default(cuid())
+  userId           String
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  soundcloudId     Int
+  campaignId       String
+  email            String?  // PII — required only when wantsBeta is true
+  rekordboxUse     String   // rekordbox_primary | rekordbox_sometimes | other_software | no
+  platform         String?  // mac | windows | both
+  cullMethod       String?  // dont | manual | tedious | other_tool
+  featuresWanted   String?  // comma-separated slugs
+  editHesitations  String?  // comma-separated slugs
+  trustDirectWrite String?  // yes | maybe | xml_only
+  interest         String   // very | somewhat | not
+  wantsBeta        Boolean  @default(false)
+  wantsCall        Boolean  @default(false)
+  suggestions      String?  @db.Text // ideas for SC Toolkit or SongSwipe
+  nameIdea         String?  // product name suggestion
+  context          String   // dashboard | post-merge | post-from-likes
+  createdAt        DateTime @default(now())
+
+  @@unique([userId, campaignId])
+  @@index([campaignId, createdAt])
+  @@index([interest])
+  @@index([wantsBeta])
+  @@index([soundcloudId])
+  @@map("beta_signups")
 }
 
 model Token {
@@ -79,4 +117,110 @@ model OperationLog {
   @@index([userId, createdAt])
   @@index([action, createdAt])
   @@map("operation_logs")
+}
+
+model GrowthAction {
+  id               String    @id @default(cuid())
+  userId           String
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  actionType       String    // 'follow' | 'like'
+  targetId         Int       // SC user ID or track ID
+  targetName       String?
+  targetAvatar     String?
+  targetFollowers  Int?
+  targetFollowings Int?
+  followedBack     Boolean?  // null = unchecked, true = yes, false = no
+  checkedAt        DateTime?
+  reversed         Boolean   @default(false)
+  reversedAt       DateTime?
+  sessionId        String?
+  sessionLabel     String?
+  inspirationIds   String?   // comma-separated SC user IDs
+  inspirationNames String?   // comma-separated usernames, parallel to inspirationIds
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([userId, actionType])
+  @@index([userId, reversed])
+  @@index([userId, sessionId])
+  @@index([userId, followedBack])
+  @@index([createdAt])
+  @@map("growth_actions")
+}
+
+
+// ── Tables owned by other feature branches ──────────────────────────────────
+// Reconstructed via `prisma db pull` from production Neon so that db push /
+// migrations from this branch do not drop live data. If you merge the AI-chat
+// or library-indexing branches, reconcile these with those branches' models.
+
+model chat_conversations {
+  id            String          @id
+  userId        String
+  title         String?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime
+  users         User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  chat_messages chat_messages[]
+
+  @@index([userId, updatedAt])
+}
+
+model chat_messages {
+  id                 String             @id
+  conversationId     String
+  role               String
+  content            String?
+  toolName           String?
+  toolArgs           Json?
+  toolResult         Json?
+  createdAt          DateTime           @default(now())
+  chat_conversations chat_conversations @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+}
+
+model indexed_likes {
+  id              String    @id
+  userId          String
+  trackId         BigInt
+  title           String?
+  artistName      String?
+  artistId        BigInt?
+  genre           String?
+  genreNormalized String?
+  tagList         String?
+  durationMs      Int?
+  likedAt         DateTime?
+  access          String?
+  users           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, trackId])
+  @@index([userId, artistName])
+  @@index([userId, genreNormalized])
+}
+
+model indexed_playlist_tracks {
+  id            String  @id
+  userId        String
+  playlistId    BigInt
+  playlistTitle String?
+  trackId       BigInt
+  users         User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, playlistId, trackId])
+  @@index([userId, playlistId])
+}
+
+model library_snapshots {
+  id                String    @id
+  userId            String    @unique
+  status            String    @default("stale")
+  likeCount         Int       @default(0)
+  playlistCount     Int       @default(0)
+  likesSyncedAt     DateTime?
+  playlistsSyncedAt DateTime?
+  error             String?
+  updatedAt         DateTime
+  users             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

@@ -98,6 +98,8 @@ app.use(cookieParser());
 
 // Import routes
 import authRoutes from './routes/auth.js';
+import { soundcloudClient } from './lib/soundcloud-client.js';
+import { startGrowthScheduler } from './lib/growth-scheduler.js';
 import apiRoutes from './routes/api.js';
 import adminRoutes from './routes/admin.js';
 import feedbackRoutes from './routes/feedback.js';
@@ -215,4 +217,5 @@ app.use('/api/*', (req, res) => {
 app.listen(PORT, () => {
   logger.info(`Server running on port ${PORT}`);
   logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`);
+  startGrowthScheduler(soundcloudClient);
 });

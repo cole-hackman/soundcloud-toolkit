@@ -39,7 +39,7 @@ export function SelectionBanner({
           <PulsatingButton
             onClick={onAction}
             disabled={disabled}
-            pulseColor="#FF5500"
+            pulseColor="#ef4444"
             className="h-10 gap-2"
           >
             {actionIcon}

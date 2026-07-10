@@ -3,6 +3,10 @@ import {
   validateCreateFromFollowedLikes,
   validateFollowedUserLibraryPagination,
   validateFollowingUserId,
+  validateGrowthDiscover,
+  validateGrowthEngageBatch,
+  validateReverseGrowthActions,
+  validateBetaSignup,
 } from '../server/middleware/validation.js';
 
 async function runValidation(middlewares, { params = {}, query = {}, body = {} } = {}) {
@@ -112,6 +116,139 @@ describe('followed user library validators', () => {
       body: { playlistIds: Array.from({ length: 21 }, (_, index) => index + 1) },
     });
 
+    expect(result.statusCode).toBe(400);
+  });
+});
+
+describe('growth discovery validators', () => {
+  test('accepts valid growth discovery payload', async () => {
+    const result = await runValidation(validateGrowthDiscover, {
+      body: { inspirationUserIds: [1, 2], limit: 25, strategy: 'followers' },
+    });
+    expect(result.statusCode).toBeNull();
+  });
+
+  test('rejects empty inspirationUserIds list', async () => {
+    const result = await runValidation(validateGrowthDiscover, {
+      body: { inspirationUserIds: [], limit: 25 },
+    });
+    expect(result.statusCode).toBe(400);
+  });
+
+  test('rejects strategy not in list', async () => {
+    const result = await runValidation(validateGrowthDiscover, {
+      body: { inspirationUserIds: [1], strategy: 'invalid_strategy' },
+    });
+    expect(result.statusCode).toBe(400);
+  });
+
+  test('accepts a valid engagement batch payload', async () => {
+    const result = await runValidation(validateGrowthEngageBatch, {
+      body: {
+        targets: [
+          { userId: 42, likeTrackId: 101, targetName: 'DJ Cool' },
+          { userId: 43 },
+        ],
+        likeTracks: true,
+        sessionLabel: 'Seed: DJ Cool',
+      },
+    });
+    expect(result.statusCode).toBeNull();
+  });
+
+  test('rejects an engagement batch with an invalid target userId', async () => {
+    const result = await runValidation(validateGrowthEngageBatch, {
+      body: { targets: [{ userId: 'not_an_int' }] },
+    });
+    expect(result.statusCode).toBe(400);
+  });
+
+  test('rejects an engagement batch over the 50-target cap', async () => {
+    const targets = Array.from({ length: 51 }, (_, i) => ({ userId: i + 1 }));
+    const result = await runValidation(validateGrowthEngageBatch, {
+      body: { targets },
+    });
+    expect(result.statusCode).toBe(400);
+  });
+
+  test('accepts valid reverse filter', async () => {
+    const result = await runValidation(validateReverseGrowthActions, {
+      body: { filter: { sessionId: 'sess123', actionType: 'follow' } },
+    });
+    expect(result.statusCode).toBeNull();
+  });
+
+  test('rejects reverse request when both actionIds and filter are absent', async () => {
+    const result = await runValidation(validateReverseGrowthActions, {
+      body: {},
+    });
+    expect(result.statusCode).toBe(400);
+  });
+});
+
+describe('beta signup validator', () => {
+  test('accepts a feedback-only response without email', async () => {
+    const result = await runValidation(validateBetaSignup, {
+      body: {
+        rekordboxUse: 'rekordbox_primary',
+        interest: 'somewhat',
+        wantsBeta: false,
+        context: 'dashboard',
+      },
+    });
+    expect(result.statusCode).toBeNull();
+  });
+
+  test('requires email when wantsBeta is true', async () => {
+    const result = await runValidation(validateBetaSignup, {
+      body: {
+        rekordboxUse: 'rekordbox_primary',
+        interest: 'very',
+        wantsBeta: true,
+        context: 'post-merge',
+      },
+    });
+    expect(result.statusCode).toBe(400);
+  });
+
+  test('accepts a full beta signup with valid email', async () => {
+    const result = await runValidation(validateBetaSignup, {
+      body: {
+        rekordboxUse: 'rekordbox_primary',
+        platform: 'mac',
+        cullMethod: 'tedious',
+        featuresWanted: 'swipe_cull,waveform_cue',
+        editHesitations: 'corrupt_db',
+        trustDirectWrite: 'yes',
+        interest: 'very',
+        wantsBeta: true,
+        email: 'dj@example.com',
+        wantsCall: true,
+        suggestions: 'BPM sorting please',
+        nameIdea: 'CrateCull',
+        context: 'dashboard',
+      },
+    });
+    expect(result.statusCode).toBeNull();
+  });
+
+  test('rejects an invalid rekordboxUse value', async () => {
+    const result = await runValidation(validateBetaSignup, {
+      body: { rekordboxUse: 'serato', interest: 'very', context: 'dashboard' },
+    });
+    expect(result.statusCode).toBe(400);
+  });
+
+  test('rejects a malformed email even when provided', async () => {
+    const result = await runValidation(validateBetaSignup, {
+      body: {
+        rekordboxUse: 'rekordbox_primary',
+        interest: 'very',
+        wantsBeta: true,
+        email: 'not-an-email',
+        context: 'dashboard',
+      },
+    });
     expect(result.statusCode).toBe(400);
   });
 });

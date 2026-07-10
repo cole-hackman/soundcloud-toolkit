@@ -34,7 +34,7 @@ export function PlaylistSelectGrid({
 }: PlaylistSelectGridProps) {
   return (
     <div className="rounded-2xl border-2 border-gray-200 bg-white p-6 dark:border-border dark:bg-card">
-      <h2 className="mb-4 text-xl font-bold text-[#333333] dark:text-foreground">{title}</h2>
+      <h2 className="mb-4 text-xl font-bold text-foreground">{title}</h2>
       {loading ? (
         <div className="space-y-3">
           {Array.from({ length: 5 }).map((_, i) => (
@@ -74,8 +74,8 @@ export function PlaylistSelectGrid({
                 onClick={() => onSelect(playlist)}
                 className={`flex items-center gap-4 rounded-xl border-2 p-4 text-left transition-all ${
                   isSelected
-                    ? "border-[#FF5500] bg-[#FF5500]/10"
-                    : "border-transparent bg-gray-50 hover:border-[#FF5500] dark:bg-secondary/20"
+                    ? "border-primary bg-primary/10"
+                    : "border-transparent bg-gray-50 hover:border-primary dark:bg-secondary/20"
                 }`}
               >
                 <img
@@ -84,8 +84,8 @@ export function PlaylistSelectGrid({
                   className="h-16 w-16 shrink-0 rounded-lg object-cover"
                 />
                 <div>
-                  <div className="font-semibold text-[#333333] dark:text-foreground">{playlist.title}</div>
-                  <div className="text-sm text-[#666666] dark:text-muted-foreground">
+                  <div className="font-semibold text-foreground">{playlist.title}</div>
+                  <div className="text-sm text-muted-foreground">
                     {playlist.track_count} tracks
                   </div>
                 </div>

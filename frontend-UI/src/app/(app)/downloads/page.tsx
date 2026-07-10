@@ -334,7 +334,7 @@ export default function DownloadsPage() {
   const getDownloadTone = (track: Track) => {
     if (track.download_url) return "bg-green-500 hover:bg-green-600";
     if (isHypedditUrl(track.purchase_url)) return "bg-purple-600 hover:bg-purple-700";
-    return "bg-[#FF5500] hover:bg-[#E64D00]";
+    return "bg-primary hover:bg-primary/90";
   };
 
   const handleDownload = async (track: Track) => {
@@ -385,7 +385,7 @@ export default function DownloadsPage() {
         {!selectedSource ? (
           /* Source Selection */
           <div className="bg-white dark:bg-card rounded-2xl p-6 border-2 border-gray-200 dark:border-border">
-            <h2 className="text-xl font-bold mb-4 text-[#333333] dark:text-foreground">
+            <h2 className="text-xl font-bold mb-4 text-foreground">
               Select Source
             </h2>
             {loading ? (
@@ -399,7 +399,7 @@ export default function DownloadsPage() {
                 {/* Search filter */}
                 {playlists.length > 5 && (
                   <div className="relative mb-4">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#999999] dark:text-muted-foreground" />
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/70" />
                     <Input
                       type="text"
                       value={sourceSearch}
@@ -422,16 +422,16 @@ export default function DownloadsPage() {
                         kind: "playlist",
                       })
                     }
-                    className="flex items-center gap-4 p-4 rounded-xl bg-gray-50 dark:bg-secondary/20 border-2 border-transparent hover:border-[#FF5500] transition-all text-left"
+                    className="flex items-center gap-4 p-4 rounded-xl bg-gray-50 dark:bg-secondary/20 border-2 border-transparent hover:border-primary transition-all text-left"
                   >
                     <div className="w-16 h-16 rounded-lg bg-gradient-to-br from-orange-400 to-red-500 flex items-center justify-center text-white shrink-0">
                       <Heart className="w-8 h-8" fill="currentColor" />
                     </div>
                     <div>
-                      <div className="font-semibold text-[#333333] dark:text-foreground">
+                      <div className="font-semibold text-foreground">
                         Liked Tracks
                       </div>
-                      <div className="text-sm text-[#666666] dark:text-muted-foreground">
+                      <div className="text-sm text-muted-foreground">
                         {likesCount !== null
                           ? `${likesCount.toLocaleString()} liked tracks`
                           : "All your likes"}
@@ -443,7 +443,7 @@ export default function DownloadsPage() {
                     <button
                       key={playlist.id}
                       onClick={() => handleSelectSource(playlist)}
-                      className="flex items-center gap-4 p-4 rounded-xl bg-gray-50 dark:bg-secondary/20 border-2 border-transparent hover:border-[#FF5500] transition-all text-left"
+                      className="flex items-center gap-4 p-4 rounded-xl bg-gray-50 dark:bg-secondary/20 border-2 border-transparent hover:border-primary transition-all text-left"
                     >
                       <img
                         src={playlist.coverUrl || playlist.artwork_url || "/SC Toolkit Icon.png"}
@@ -451,10 +451,10 @@ export default function DownloadsPage() {
                         className="w-16 h-16 rounded-lg object-cover shrink-0"
                       />
                       <div>
-                        <div className="font-semibold text-[#333333] dark:text-foreground">
+                        <div className="font-semibold text-foreground">
                           {playlist.title}
                         </div>
-                        <div className="text-sm text-[#666666] dark:text-muted-foreground">
+                        <div className="text-sm text-muted-foreground">
                           {playlist.track_count} tracks
                         </div>
                       </div>
@@ -484,20 +484,20 @@ export default function DownloadsPage() {
                 setHypedditMode(false);
                 setSelectionMode(false);
               }}
-              className="text-[#666666] dark:text-muted-foreground hover:text-[#FF5500] transition mb-4 flex items-center gap-2"
+              className="text-muted-foreground hover:text-primary transition mb-4 flex items-center gap-2"
             >
               <ArrowLeft className="w-4 h-4" />
               Back to sources
             </button>
 
-            <h2 className="text-2xl font-bold text-[#333333] dark:text-foreground mb-6 flex items-center gap-3">
+            <h2 className="text-2xl font-bold text-foreground mb-6 flex items-center gap-3">
               {selectedSource.id === LIKED_TRACKS_ID ? (
-                <Heart className="w-6 h-6 text-[#FF5500]" fill="currentColor" />
+                <Heart className="w-6 h-6 text-primary" fill="currentColor" />
               ) : (
                 <ListMusic className="w-6 h-6" />
               )}
               {selectedSource.title}
-              <span className="text-lg font-normal text-[#666666] dark:text-muted-foreground ml-2">
+              <span className="text-lg font-normal text-muted-foreground ml-2">
                 ({downloadableTracks.length} downloadable)
               </span>
             </h2>
@@ -568,7 +568,7 @@ export default function DownloadsPage() {
                     <Button
                       onClick={toggleSelectionMode}
                       variant="secondary"
-                      className="h-10 px-4 text-[#666666] dark:text-muted-foreground"
+                      className="h-10 px-4 text-muted-foreground"
                     >
                       <CheckSquare className="w-4 h-4" />
                       Select to Remove
@@ -578,7 +578,7 @@ export default function DownloadsPage() {
                       <Button
                         onClick={toggleSelectionMode}
                         variant="secondary"
-                        className="h-10 px-4 text-[#666666] dark:text-muted-foreground"
+                        className="h-10 px-4 text-muted-foreground"
                       >
                         <X className="w-4 h-4" />
                         Cancel
@@ -616,7 +616,7 @@ export default function DownloadsPage() {
                       <Button
                         onClick={toggleHypedditMode}
                         variant="secondary"
-                        className="h-10 px-4 text-[#666666] dark:text-muted-foreground"
+                        className="h-10 px-4 text-muted-foreground"
                       >
                         <X className="w-4 h-4" />
                         Cancel
@@ -626,7 +626,7 @@ export default function DownloadsPage() {
                           setSelectedHypedditIds(new Set(hypedditTracks.map((t) => t.id)))
                         }
                         variant="secondary"
-                        className="h-10 px-4 text-[#666666] dark:text-muted-foreground"
+                        className="h-10 px-4 text-muted-foreground"
                       >
                         Select All ({hypedditTracks.length})
                       </Button>
@@ -634,7 +634,7 @@ export default function DownloadsPage() {
                         <Button
                           onClick={() => setSelectedHypedditIds(new Set())}
                           variant="secondary"
-                          className="h-10 px-4 text-[#666666] dark:text-muted-foreground"
+                          className="h-10 px-4 text-muted-foreground"
                         >
                           Deselect All
                         </Button>
@@ -650,13 +650,13 @@ export default function DownloadsPage() {
                       <Button
                         onClick={exportQueue}
                         variant="secondary"
-                        className="h-10 px-4 text-[#666666] dark:text-muted-foreground"
+                        className="h-10 px-4 text-muted-foreground"
                         title="Download a JSON queue for the headless localhost downloader"
                       >
                         Export queue (JSON)
                       </Button>
                       {!extInstalled && (
-                        <span className="text-xs text-[#999999] dark:text-muted-foreground self-center">
+                        <span className="text-xs text-muted-foreground/70 self-center">
                           SC Toolkit extension required
                         </span>
                       )}
@@ -693,7 +693,7 @@ export default function DownloadsPage() {
                           onToggle={() => toggleTrackSelection(track.id)}
                           rightSlot={
                             <div className="flex items-center gap-2">
-                              <span className="text-xs text-[#666666] dark:text-muted-foreground">
+                              <span className="text-xs text-muted-foreground">
                                 {formatDuration(track.duration)}
                               </span>
                               <button
@@ -727,7 +727,7 @@ export default function DownloadsPage() {
                           onToggle={() => toggleHypedditSelection(track.id)}
                           rightSlot={
                             <div className="flex items-center gap-2">
-                              <span className="text-xs text-[#666666] dark:text-muted-foreground">
+                              <span className="text-xs text-muted-foreground">
                                 {formatDuration(track.duration)}
                               </span>
                               {isHypeddit && (
@@ -746,7 +746,7 @@ export default function DownloadsPage() {
                         key={track.id}
                         className={`group flex items-center gap-4 rounded-xl bg-gray-50 p-3 transition-colors dark:bg-secondary/20 ${hypedditMode ? "opacity-40" : "hover:bg-gray-100 dark:hover:bg-secondary/40"}`}
                       >
-                        <span className="w-8 text-center text-sm text-[#999999] dark:text-muted-foreground">
+                        <span className="w-8 text-center text-sm text-muted-foreground/70">
                           {index + 1}
                         </span>
                         <img
@@ -755,10 +755,10 @@ export default function DownloadsPage() {
                           className="h-10 w-10 rounded-lg object-cover"
                         />
                         <div className="min-w-0 flex-1">
-                          <div className="truncate font-semibold text-[#333333] dark:text-foreground">
+                          <div className="truncate font-semibold text-foreground">
                             {track.title}
                           </div>
-                          <div className="truncate text-sm text-[#666666] dark:text-muted-foreground">
+                          <div className="truncate text-sm text-muted-foreground">
                             {track.user?.username} • {formatDuration(track.duration)}
                           </div>
                         </div>

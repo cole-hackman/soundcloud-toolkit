@@ -536,8 +536,14 @@ export default function CombinePlaylistsPage() {
       {/* ── PLAYLIST PICKER MODAL ──────────────────────────────────────────── */}
       {showPlaylistPicker && (
         <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Choose a target playlist"
           className="fixed inset-0 z-50 flex items-center justify-center p-4"
           onClick={() => setShowPlaylistPicker(false)}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") setShowPlaylistPicker(false);
+          }}
         >
           {/* Backdrop */}
           <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
@@ -553,6 +559,8 @@ export default function CombinePlaylistsPage() {
                 Target Playlist
               </h3>
               <button
+                autoFocus
+                aria-label="Close"
                 onClick={() => setShowPlaylistPicker(false)}
                 className="p-1.5 rounded-lg hover:bg-secondary/40 transition"
               >

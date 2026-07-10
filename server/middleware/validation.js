@@ -568,3 +568,197 @@ export const validateSurveySubmit = [
   handleValidationErrors
 ];
 
+/**
+ * Validation for the SongSwipe beta signup / feedback survey
+ * (POST /api/feedback/survey). Email is required only when wantsBeta is true.
+ */
+export const validateBetaSignup = [
+  body('rekordboxUse')
+    .isIn(['rekordbox_primary', 'rekordbox_sometimes', 'other_software', 'no'])
+    .withMessage('rekordboxUse is invalid'),
+  body('interest')
+    .isIn(['very', 'somewhat', 'not'])
+    .withMessage('interest must be very, somewhat, or not'),
+  body('wantsBeta')
+    .optional()
+    .isBoolean()
+    .withMessage('wantsBeta must be a boolean')
+    .toBoolean(),
+  body('wantsCall')
+    .optional()
+    .isBoolean()
+    .withMessage('wantsCall must be a boolean')
+    .toBoolean(),
+  body('email')
+    .optional({ nullable: true, checkFalsy: true })
+    .isEmail()
+    .withMessage('email must be a valid email address')
+    .isLength({ max: 254 })
+    .normalizeEmail(),
+  // Email is required when the user opts into the beta.
+  body().custom((value) => {
+    if (value.wantsBeta === true || value.wantsBeta === 'true') {
+      if (!value.email || !String(value.email).trim()) {
+        throw new Error('email is required to join the beta');
+      }
+    }
+    return true;
+  }),
+  body('platform')
+    .optional({ nullable: true })
+    .isIn(['mac', 'windows', 'both'])
+    .withMessage('platform must be mac, windows, or both'),
+  body('cullMethod')
+    .optional({ nullable: true })
+    .isIn(['dont', 'manual', 'tedious', 'other_tool'])
+    .withMessage('cullMethod is invalid'),
+  body('trustDirectWrite')
+    .optional({ nullable: true })
+    .isIn(['yes', 'maybe', 'xml_only'])
+    .withMessage('trustDirectWrite must be yes, maybe, or xml_only'),
+  body('featuresWanted')
+    .optional({ nullable: true })
+    .isString()
+    .isLength({ max: 300 })
+    .withMessage('featuresWanted must be at most 300 characters'),
+  body('editHesitations')
+    .optional({ nullable: true })
+    .isString()
+    .isLength({ max: 300 })
+    .withMessage('editHesitations must be at most 300 characters'),
+  body('suggestions')
+    .optional({ nullable: true })
+    .isString()
+    .isLength({ max: 2000 })
+    .withMessage('suggestions must be at most 2000 characters'),
+  body('nameIdea')
+    .optional({ nullable: true })
+    .isString()
+    .isLength({ max: 120 })
+    .withMessage('nameIdea must be at most 120 characters'),
+  body('context')
+    .isIn(['dashboard', 'post-merge', 'post-from-likes'])
+    .withMessage('context must be dashboard, post-merge, or post-from-likes'),
+  handleValidationErrors
+];
+
+/**
+ * Validation rules for discover suggested follows (POST /api/growth/discover)
+ */
+export const validateGrowthDiscover = [
+  body('inspirationUserIds')
+    .isArray({ min: 1, max: 5 })
+    .withMessage('inspirationUserIds must be an array of 1 to 5 items')
+    .custom((value) => {
+      for (const id of value) {
+        const numId = typeof id === 'string' ? parseInt(id, 10) : id;
+        if (!Number.isInteger(numId) || numId < 1) {
+          throw new Error('All inspiration user IDs must be positive integers');
+        }
+      }
+      return true;
+    }),
+  body('limit')
+    .optional()
+    .isInt({ min: 1, max: 100 })
+    .withMessage('limit must be an integer between 1 and 100')
+    .toInt(),
+  body('strategy')
+    .optional()
+    .isIn(['followers', 'followings', 'both'])
+    .withMessage('strategy must be one of: followers, followings, both'),
+  handleValidationErrors
+];
+
+/**
+ * Validation rules for engagement batches (POST /api/growth/engage)
+ */
+export const validateGrowthEngageBatch = [
+  body('targets')
+    .isArray({ min: 1, max: 50 })
+    .withMessage('targets must be an array of 1 to 50 items'),
+  body('targets.*.userId')
+    .isInt({ min: 1 })
+    .withMessage('Each target userId must be a positive integer')
+    .toInt(),
+  body('targets.*.likeTrackId')
+    .optional({ nullable: true })
+    .isInt({ min: 1 })
+    .withMessage('likeTrackId must be a positive integer')
+    .toInt(),
+  body('targets.*.targetName')
+    .optional({ nullable: true })
+    .trim()
+    .isLength({ min: 1, max: 200 })
+    .withMessage('targetName must be at most 200 characters'),
+  body('targets.*.targetAvatar')
+    .optional({ nullable: true })
+    .trim()
+    .isLength({ min: 1, max: 2048 })
+    .withMessage('targetAvatar must be a valid URL'),
+  body('targets.*.targetFollowers')
+    .optional({ nullable: true })
+    .isInt({ min: 0 })
+    .toInt(),
+  body('targets.*.targetFollowings')
+    .optional({ nullable: true })
+    .isInt({ min: 0 })
+    .toInt(),
+  body('likeTracks')
+    .optional()
+    .isBoolean()
+    .withMessage('likeTracks must be a boolean')
+    .toBoolean(),
+  body('sessionLabel')
+    .optional({ nullable: true })
+    .trim()
+    .isLength({ min: 1, max: 200 })
+    .withMessage('sessionLabel must be at most 200 characters'),
+  body('inspirationIds')
+    .optional({ nullable: true })
+    .trim()
+    .isLength({ min: 1, max: 200 })
+    .withMessage('inspirationIds must be at most 200 characters'),
+  body('inspirationNames')
+    .optional({ nullable: true })
+    .trim()
+    .isLength({ min: 1, max: 500 })
+    .withMessage('inspirationNames must be at most 500 characters'),
+  handleValidationErrors
+];
+
+/**
+ * Validation rules for reversing growth actions (POST /api/growth/reverse)
+ */
+export const validateReverseGrowthActions = [
+  body('actionIds')
+    .optional()
+    .isArray()
+    .withMessage('actionIds must be an array'),
+  body('filter')
+    .optional()
+    .isObject()
+    .withMessage('filter must be an object'),
+  body('filter.sessionId')
+    .optional()
+    .isString()
+    .withMessage('filter.sessionId must be a string'),
+  body('filter.followedBack')
+    .optional()
+    .isBoolean()
+    .withMessage('filter.followedBack must be a boolean'),
+  body('filter.actionType')
+    .optional()
+    .isIn(['follow', 'like'])
+    .withMessage('filter.actionType must be follow or like'),
+  // Custom check: require either actionIds or filter
+  body().custom((value) => {
+    if (!value.actionIds && !value.filter) {
+      throw new Error('Either actionIds or filter must be provided');
+    }
+    return true;
+  }),
+  handleValidationErrors
+];
+
+

@@ -3,23 +3,24 @@ import prisma from '../lib/prisma.js';
 import logger from '../lib/logger.js';
 import { safeError } from '../lib/safe-error.js';
 import { authenticateUser } from '../middleware/auth.js';
-import { validateSurveySubmit } from '../middleware/validation.js';
+import { validateBetaSignup } from '../middleware/validation.js';
 
 const router = express.Router();
 
 function getCampaignId() {
-  return process.env.SURVEY_CAMPAIGN_ID || '2026-sustainability-v1';
+  return process.env.SURVEY_CAMPAIGN_ID || '2026-songswipe-beta-v1';
 }
 
 function isSurveyEnabled() {
   return String(process.env.SURVEY_ENABLED ?? 'true').toLowerCase() !== 'false';
 }
 
-const CONTEXT_TO_ACTION = {
-  'post-merge': 'merge',
-  'post-from-likes': 'from-likes',
-  'dashboard': null,
-};
+function cleanStr(value, max) {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  return max ? trimmed.slice(0, max) : trimmed;
+}
 
 /**
  * GET /api/feedback/survey/status
@@ -31,7 +32,7 @@ router.get('/survey/status', authenticateUser, async (req, res) => {
     const campaignId = getCampaignId();
     const enabled = isSurveyEnabled();
 
-    const existing = await prisma.surveyResponse.findUnique({
+    const existing = await prisma.betaSignup.findUnique({
       where: { userId_campaignId: { userId: req.user.id, campaignId } },
       select: { id: true, createdAt: true },
     });
@@ -50,31 +51,50 @@ router.get('/survey/status', authenticateUser, async (req, res) => {
 
 /**
  * POST /api/feedback/survey
- * Records a single survey response for the current campaign.
+ * Records a single SongSwipe beta-signup / feedback response per campaign.
  */
-router.post('/survey', authenticateUser, validateSurveySubmit, async (req, res) => {
+router.post('/survey', authenticateUser, validateBetaSignup, async (req, res) => {
   try {
     if (!isSurveyEnabled()) {
       return res.status(403).json({ error: 'Survey is currently disabled' });
     }
 
     const campaignId = getCampaignId();
-    const { preference, lifetimeInterest, comment, context, trackCount } = req.body;
-
-    const operationAction = CONTEXT_TO_ACTION[context] ?? null;
+    const {
+      email,
+      rekordboxUse,
+      platform,
+      cullMethod,
+      featuresWanted,
+      editHesitations,
+      trustDirectWrite,
+      interest,
+      wantsBeta,
+      wantsCall,
+      suggestions,
+      nameIdea,
+      context,
+    } = req.body;
 
     try {
-      const created = await prisma.surveyResponse.create({
+      const created = await prisma.betaSignup.create({
         data: {
           userId: req.user.id,
           soundcloudId: req.user.soundcloudId,
           campaignId,
-          preference,
-          lifetimeInterest: lifetimeInterest ?? null,
-          comment: comment?.trim() ? comment.trim() : null,
+          email: cleanStr(email, 254)?.toLowerCase() ?? null,
+          rekordboxUse,
+          platform: platform ?? null,
+          cullMethod: cullMethod ?? null,
+          featuresWanted: cleanStr(featuresWanted, 300),
+          editHesitations: cleanStr(editHesitations, 300),
+          trustDirectWrite: trustDirectWrite ?? null,
+          interest,
+          wantsBeta: wantsBeta === true,
+          wantsCall: wantsCall === true,
+          suggestions: cleanStr(suggestions, 2000),
+          nameIdea: cleanStr(nameIdea, 120),
           context,
-          operationAction,
-          trackCount: typeof trackCount === 'number' ? trackCount : null,
         },
         select: { id: true, createdAt: true },
       });
@@ -82,10 +102,11 @@ router.post('/survey', authenticateUser, validateSurveySubmit, async (req, res) 
       logger.info({
         userId: req.user.id,
         campaignId,
-        preference,
-        lifetimeInterest,
+        rekordboxUse,
+        interest,
+        wantsBeta: wantsBeta === true,
         context,
-      }, 'survey response recorded');
+      }, 'beta signup recorded');
 
       return res.status(201).json({ success: true, id: created.id, campaignId });
     } catch (err) {

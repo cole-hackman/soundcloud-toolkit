@@ -45,7 +45,7 @@ export function TrackRow({
         "flex h-16 items-center gap-3 rounded-xl border border-transparent bg-gray-50 px-3 text-left transition-all",
         "dark:bg-secondary/20 dark:hover:border-border",
         isSelected
-          ? "border-orange-200 bg-orange-50 border-l-2 border-l-[#FF5500] dark:border-orange-900/40 dark:bg-orange-950/20"
+          ? "border-orange-200 bg-orange-50 border-l-2 border-l-primary dark:border-orange-900/40 dark:bg-orange-950/20"
           : "hover:border-gray-200",
         className,
       )}
@@ -55,7 +55,7 @@ export function TrackRow({
         className={cn(
           "flex h-6 w-6 shrink-0 items-center justify-center rounded-full border transition-colors",
           isSelected
-            ? "border-[#FF5500] bg-[#FF5500] text-white"
+            ? "border-primary bg-primary text-white"
             : "border-gray-300 bg-white text-transparent dark:border-border dark:bg-secondary",
         )}
       >
@@ -69,11 +69,11 @@ export function TrackRow({
       />
 
       <div className="min-w-0 flex-1">
-        <div className="truncate text-sm font-semibold text-[#333333] dark:text-foreground">
+        <div className="truncate text-sm font-semibold text-foreground">
           {track.title}
         </div>
         {subtitle ? (
-          <div className="truncate text-xs text-[#666666] dark:text-muted-foreground">
+          <div className="truncate text-xs text-muted-foreground">
             {subtitle}
           </div>
         ) : null}

@@ -73,8 +73,8 @@ export default function PlaylistClonerPage() {
 
       <Card className="mb-8">
         <CardHeader>
-          <div className="flex items-center gap-2 text-base font-semibold text-[#333] dark:text-foreground">
-            <Link2 className="h-4 w-4 text-[#FF5500]" />
+          <div className="flex items-center gap-2 text-base font-semibold text-foreground">
+            <Link2 className="h-4 w-4 text-primary" />
             Clone a public playlist
           </div>
         </CardHeader>
@@ -149,7 +149,7 @@ export default function PlaylistClonerPage() {
                 </div>
                 <div>
                   <p className="text-sm font-medium text-muted-foreground">Tracks Cloned</p>
-                  <h3 className="text-2xl font-bold text-[#333] dark:text-foreground">{stats?.totalTracks?.toString() || "0"}</h3>
+                  <h3 className="text-2xl font-bold text-foreground">{stats?.totalTracks?.toString() || "0"}</h3>
                 </div>
               </Card>
               {Number(stats?.numPlaylistsCreated) > 1 && (
@@ -159,7 +159,7 @@ export default function PlaylistClonerPage() {
                   </div>
                   <div>
                     <p className="text-sm font-medium text-muted-foreground">Parts Created</p>
-                    <h3 className="text-2xl font-bold text-[#333] dark:text-foreground">{stats?.numPlaylistsCreated?.toString() || "0"}</h3>
+                    <h3 className="text-2xl font-bold text-foreground">{stats?.numPlaylistsCreated?.toString() || "0"}</h3>
                   </div>
                 </Card>
               )}
@@ -170,7 +170,7 @@ export default function PlaylistClonerPage() {
                 <Card key={pl.id ?? i} className="p-4">
                   <div className="flex items-center justify-between gap-4">
                     <div>
-                      <div className="font-semibold text-[#333] dark:text-foreground">
+                      <div className="font-semibold text-foreground">
                         {pl.title}
                       </div>
                       <div className="text-sm text-muted-foreground">

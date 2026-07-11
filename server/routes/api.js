@@ -80,6 +80,23 @@ function invalidateUserNamespaces(userId, namespaces) {
   });
 }
 
+/* Shared cached loaders for the auth user's social lists. The GET routes and
+ * growth discovery use the same namespace/key/payload shape, so whichever
+ * runs first warms the cache for the other. */
+function loadCachedFollowings(req) {
+  return getCachedUserPayload('followings', req.user.id, 'default', async () => {
+    const followings = await soundcloudClient.getFollowings(req.accessToken, req.refreshToken);
+    return { collection: followings, total: followings.length };
+  }, CACHE_TTL.followings);
+}
+
+function loadCachedFollowers(req) {
+  return getCachedUserPayload('followers', req.user.id, 'default', async () => {
+    const followers = await soundcloudClient.getFollowers(req.accessToken, req.refreshToken);
+    return { collection: followers, total: followers.length };
+  }, CACHE_TTL.followers);
+}
+
 function invalidatePlaylistState(userId) {
   invalidateUserNamespaces(userId, ['playlists']);
 }
@@ -2112,16 +2129,7 @@ router.post('/likes/tracks/bulk-unlike', authenticateUser, heavyOperationRateLim
  */
 router.get('/followers', authenticateUser, async (req, res) => {
   try {
-    const payload = await getCachedUserPayload(
-      'followers',
-      req.user.id,
-      'default',
-      async () => {
-        const followers = await soundcloudClient.getFollowers(req.accessToken, req.refreshToken);
-        return { collection: followers, total: followers.length };
-      },
-      CACHE_TTL.followers,
-    );
+    const payload = await loadCachedFollowers(req);
     res.json(payload);
   } catch (error) {
     logger.error('Get followers error:', safeError(error));
@@ -2135,16 +2143,7 @@ router.get('/followers', authenticateUser, async (req, res) => {
  */
 router.get('/followings', authenticateUser, async (req, res) => {
   try {
-    const payload = await getCachedUserPayload(
-      'followings',
-      req.user.id,
-      'default',
-      async () => {
-        const followings = await soundcloudClient.getFollowings(req.accessToken, req.refreshToken);
-        return { collection: followings, total: followings.length };
-      },
-      CACHE_TTL.followings,
-    );
+    const payload = await loadCachedFollowings(req);
     res.json(payload);
   } catch (error) {
     logger.error('Get followings error:', safeError(error));
@@ -2333,11 +2332,17 @@ router.post('/growth/discover', authenticateUser, heavyOperationRateLimiter, val
     const { inspirationUserIds, limit, strategy } = req.body;
 
     // Never resurface anyone previously targeted (including reversed follows)
-    const priorTargets = await prisma.growthAction.findMany({
-      where: { userId: req.user.id, actionType: 'follow' },
-      select: { targetId: true },
-      distinct: ['targetId'],
-    });
+    // and preload the auth user's own lists through the shared request cache
+    // (a page load of the growth tool has usually warmed the followings entry).
+    const [priorTargets, followingsPayload, followersPayload] = await Promise.all([
+      prisma.growthAction.findMany({
+        where: { userId: req.user.id, actionType: 'follow' },
+        select: { targetId: true },
+        distinct: ['targetId'],
+      }),
+      loadCachedFollowings(req).catch(() => null),
+      loadCachedFollowers(req).catch(() => null),
+    ]);
 
     const result = await growthEngine.discoverSuggestions({
       inspirationUserIds,
@@ -2348,6 +2353,9 @@ router.post('/growth/discover', authenticateUser, heavyOperationRateLimiter, val
       strategy,
       limit,
       excludedTargetIds: priorTargets.map((t) => t.targetId),
+      // On a preload failure the engine falls back to fetching these itself
+      authFollowingIds: followingsPayload ? followingsPayload.collection.map((u) => u.id) : null,
+      authFollowerIds: followersPayload ? followersPayload.collection.map((u) => u.id) : null,
     });
     res.json(result);
     logOperation({

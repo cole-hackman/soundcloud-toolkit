@@ -115,6 +115,16 @@ interface DiscoveryStats {
   suggestionsReturned: number;
   seedGenres?: string[];
   durationMs?: number;
+  sampleCapPerSeed?: number;
+  sampledFollowers?: boolean;
+  partial?: boolean;
+  perSeed?: {
+    id: number;
+    followersFetched: number;
+    followingsFetched: number;
+    sampled: boolean;
+    skipped: boolean;
+  }[];
 }
 
 interface GrowthBudget {
@@ -476,7 +486,25 @@ export default function GrowthPage() {
     return minutes > 0 ? `${minutes}:${remainingSeconds.toString().padStart(2, "0")}` : `${remainingSeconds}s`;
   };
 
-  const estimatedDiscoverySeconds = 22 + selectedInspirations.size * (strategy === "both" ? 6 : 4);
+  // The server samples each seed's most recent SEED_SAMPLE_CAP followers
+  // (recent followers are the most active), crawling 2 seeds at a time in
+  // pages of 200. Estimate from the selected seeds' actual follower counts.
+  const SEED_SAMPLE_CAP = 1000;
+  const CRAWL_PAGE_SIZE = 200;
+  const selectedSeeds = followings.filter((f) => selectedInspirations.has(f.id));
+  const anySeedSampled = selectedSeeds.some((f) => (f.followers_count ?? 0) > SEED_SAMPLE_CAP);
+  const estimatedDiscoverySeconds = (() => {
+    const pagesForSeed = (f: Following) => {
+      const followerPages = Math.min(
+        Math.ceil(Math.max(f.followers_count ?? CRAWL_PAGE_SIZE, 1) / CRAWL_PAGE_SIZE),
+        SEED_SAMPLE_CAP / CRAWL_PAGE_SIZE
+      );
+      return followerPages * (strategy === "both" ? 2 : 1);
+    };
+    const totalPages = selectedSeeds.reduce((sum, f) => sum + pagesForSeed(f), 0);
+    const crawlSeconds = (totalPages * 1.2) / 2; // ~1.2s per page, 2 seeds crawled concurrently
+    return Math.min(60, Math.round(10 + crawlSeconds + 8)); // + auth lists / related artists + track lookups
+  })();
 
   const handleInspirationClick = (id: number) => {
     setSelectedInspirations(prev => {
@@ -749,6 +777,9 @@ export default function GrowthPage() {
               <h3 className="text-xl font-bold text-foreground">Scanning Networks</h3>
               <p className="text-sm text-muted-foreground mt-2 max-w-md">
                 Crawling followers and related artists for your selected seed users. We filter out accounts you already follow, then compare scene and activity signals.
+                {anySeedSampled && (
+                  <> For large seeds we sample their ~{SEED_SAMPLE_CAP.toLocaleString()} most recent followers — recent followers are the most active.</>
+                )}
               </p>
               <div className="mt-6 space-y-1 text-xs text-primary font-mono">
                 <div>Elapsed: {formatDuration(discoveryElapsedSeconds)} · usually about {formatDuration(estimatedDiscoverySeconds)}</div>
@@ -771,6 +802,16 @@ export default function GrowthPage() {
                       Scanned {discoveryStats?.candidatesScanned} profiles → found {discoveryStats?.afterDedup} new candidates, scored by scene fit
                       {discoveryStats?.durationMs ? ` in ${formatDuration(Math.round(discoveryStats.durationMs / 1000))}` : ""}.
                     </p>
+                    {discoveryStats?.sampledFollowers && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Large seeds were sampled: most recent {(discoveryStats.sampleCapPerSeed ?? 1000).toLocaleString()} followers per seed — the slice most likely to still be active.
+                      </p>
+                    )}
+                    {discoveryStats?.partial && (
+                      <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                        The scan hit its time budget, so results come from a partial crawl. Everything shown is fully scored and ready to use.
+                      </p>
+                    )}
                     {discoveryStats?.seedGenres && discoveryStats.seedGenres.length > 0 && (
                       <div className="mt-2 flex flex-wrap items-center gap-1.5">
                         <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Scene:</span>

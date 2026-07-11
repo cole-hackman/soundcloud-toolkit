@@ -245,9 +245,16 @@ class SoundCloudClient {
   }
 
   /**
-   * Get all items from a paginated endpoint
+   * Get all items from a paginated endpoint.
+   *
+   * `limit` is the page size. By default every page is fetched until
+   * next_href is exhausted; pass `options` to bound the crawl:
+   *   maxItems      stop once this many items are collected (result is sliced)
+   *   deadlineAt    epoch ms; stop and return what's collected once reached
+   *   max429Retries bounded Retry-After retries per page (resets each page)
    */
-  async paginate(endpoint, accessToken, refreshToken, limit = 50) {
+  async paginate(endpoint, accessToken, refreshToken, limit = 50, options = {}) {
+    const { maxItems = Infinity, deadlineAt = null, max429Retries = 3 } = options;
     const allItems = [];
     // Prefer cursor-based pagination via next_href to avoid deprecated offset limits
     let nextUrl = `${this.baseUrl}${endpoint}?${new URLSearchParams({
@@ -256,8 +263,9 @@ class SoundCloudClient {
     }).toString()}`;
 
     let currentAccessToken = accessToken;
+    let retries429 = 0;
 
-    while (nextUrl) {
+    while (nextUrl && allItems.length < maxItems && (deadlineAt === null || Date.now() < deadlineAt)) {
       const res = await fetch(nextUrl, {
         headers: {
           'Authorization': `OAuth ${currentAccessToken}`,
@@ -273,11 +281,27 @@ class SoundCloudClient {
         continue; // retry loop with same nextUrl
       }
 
+      if (res.status === 429) {
+        if (retries429 >= max429Retries) {
+          throw new Error(`API request failed: 429`);
+        }
+        const retryAfter = res.headers.get('Retry-After');
+        const delay = retryAfter ? parseInt(retryAfter) * 1000 : 1000;
+        // Sleeping past the deadline is worse than a partial crawl
+        if (deadlineAt !== null && Date.now() + delay >= deadlineAt) {
+          break;
+        }
+        await new Promise(resolve => setTimeout(resolve, delay));
+        retries429++;
+        continue; // retry loop with same nextUrl
+      }
+
       if (!res.ok) {
         // Don't include response body in error message
         throw new Error(`API request failed: ${res.status}`);
       }
 
+      retries429 = 0;
       const data = (await parseScJson(res, { context: endpoint })) || {};
       if (Array.isArray(data.collection)) {
         allItems.push(...data.collection);
@@ -285,7 +309,7 @@ class SoundCloudClient {
       nextUrl = data.next_href || null;
     }
 
-    return allItems;
+    return maxItems === Infinity ? allItems : allItems.slice(0, maxItems);
   }
 
   /**
@@ -480,14 +504,14 @@ class SoundCloudClient {
   /**
    * Get the user's followings list
    */
-  async getFollowings(accessToken, refreshToken, limit = 50) {
+  async getFollowings(accessToken, refreshToken, limit = 200) {
     return this.paginate('/me/followings', accessToken, refreshToken, limit);
   }
 
   /**
    * Get the user's followers list
    */
-  async getFollowers(accessToken, refreshToken, limit = 50) {
+  async getFollowers(accessToken, refreshToken, limit = 200) {
     return this.paginate('/me/followers', accessToken, refreshToken, limit);
   }
 
@@ -612,17 +636,17 @@ class SoundCloudClient {
   }
 
   /**
-   * Get any user's followers (paginated)
+   * Get any user's followers (paginated; see paginate() for crawl options)
    */
-  async getUserFollowers(userId, accessToken, refreshToken, limit = 200) {
-    return this.paginate(`/users/${userId}/followers`, accessToken, refreshToken, limit);
+  async getUserFollowers(userId, accessToken, refreshToken, limit = 200, options = {}) {
+    return this.paginate(`/users/${userId}/followers`, accessToken, refreshToken, limit, options);
   }
 
   /**
-   * Get any user's followings (paginated)
+   * Get any user's followings (paginated; see paginate() for crawl options)
    */
-  async getUserFollowings(userId, accessToken, refreshToken, limit = 200) {
-    return this.paginate(`/users/${userId}/followings`, accessToken, refreshToken, limit);
+  async getUserFollowings(userId, accessToken, refreshToken, limit = 200, options = {}) {
+    return this.paginate(`/users/${userId}/followings`, accessToken, refreshToken, limit, options);
   }
 
   /**

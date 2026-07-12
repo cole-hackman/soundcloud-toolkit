@@ -495,7 +495,8 @@ class SoundCloudClient {
   }
 
   /**
-   * Unlike a track by its ID
+   * Unlike a track by its ID.
+   * Tokens come first here, but the inverse (likeTrack) takes the ID first.
    */
   async unlikeTrack(accessToken, refreshToken, trackId) {
     return this.scRequest(`/likes/tracks/${trackId}`, accessToken, refreshToken, { method: 'DELETE' });
@@ -516,7 +517,8 @@ class SoundCloudClient {
   }
 
   /**
-   * Unfollow a user by their ID
+   * Unfollow a user by their ID.
+   * Tokens come first here, but the inverse (followUser) takes the ID first.
    */
   async unfollowUser(accessToken, refreshToken, userId) {
     return this.scRequest(`/me/followings/${userId}`, accessToken, refreshToken, { method: 'DELETE' });

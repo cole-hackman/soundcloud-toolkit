@@ -112,6 +112,33 @@ describe('soundcloud client behaviors', () => {
     expect(url).toBe('https://api.soundcloud.com/users/42/playlists?limit=50&linked_partitioning=1&show_tracks=false');
   });
 
+  // Regression guard: unfollowUser/unlikeTrack take tokens FIRST (unlike their
+  // id-first inverses followUser/likeTrack). A swapped call sends the target id
+  // as the OAuth token — the growth-reversal bug fixed in July 2026.
+  describe('unfollow / unlike argument order', () => {
+    test('unfollowUser targets the user id and authenticates with the access token', async () => {
+      fetch.mockReturnValueOnce(Promise.resolve(new Response(JSON.stringify(okJson), { status: 200 })));
+
+      await soundcloudClient.unfollowUser('tok', 'ref', 42);
+
+      const [url, options] = fetch.mock.calls[0];
+      expect(url).toBe('https://api.soundcloud.com/me/followings/42');
+      expect(options.method).toBe('DELETE');
+      expect(options.headers.Authorization).toBe('OAuth tok');
+    });
+
+    test('unlikeTrack targets the track id and authenticates with the access token', async () => {
+      fetch.mockReturnValueOnce(Promise.resolve(new Response(JSON.stringify(okJson), { status: 200 })));
+
+      await soundcloudClient.unlikeTrack('tok', 'ref', 77);
+
+      const [url, options] = fetch.mock.calls[0];
+      expect(url).toBe('https://api.soundcloud.com/likes/tracks/77');
+      expect(options.method).toBe('DELETE');
+      expect(options.headers.Authorization).toBe('OAuth tok');
+    });
+  });
+
   describe('paginate crawl bounds', () => {
     const page = (start, count, nextHref) => Promise.resolve(new Response(JSON.stringify({
       collection: Array.from({ length: count }, (_, i) => ({ id: start + i })),

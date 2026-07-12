@@ -2750,9 +2750,9 @@ router.post('/growth/reverse', authenticateUser, validateReverseGrowthActions, a
     for (const action of targets) {
       try {
         if (action.actionType === 'follow') {
-          await soundcloudClient.unfollowUser(action.targetId, req.accessToken, req.refreshToken);
+          await soundcloudClient.unfollowUser(req.accessToken, req.refreshToken, action.targetId);
         } else if (action.actionType === 'like') {
-          await soundcloudClient.unlikeTrack(action.targetId, req.accessToken, req.refreshToken);
+          await soundcloudClient.unlikeTrack(req.accessToken, req.refreshToken, action.targetId);
         }
 
         await prisma.growthAction.update({

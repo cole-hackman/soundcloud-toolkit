@@ -34,6 +34,7 @@ import {
   ArrowRightLeft,
   FileUp,
   Sparkles,
+  ListPlus,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/contexts/ThemeContext";
@@ -77,6 +78,7 @@ const NAV: NavEntry[] = [
     label: "Social & Activity",
     items: [
       { href: "/likes-to-playlist", label: "Likes → Playlist", icon: Heart },
+      { href: "/playlist-to-likes", label: "Playlist → Likes", icon: ListPlus },
       { href: "/like-manager", label: "Like Manager", icon: ThumbsUp },
       { href: "/following-manager", label: "Following Manager", icon: Users },
       { href: "/following-library", label: "Following Library", icon: ListMusic },

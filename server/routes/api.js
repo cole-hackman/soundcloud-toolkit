@@ -28,6 +28,7 @@ import {
   validateBatchResolve,
   validateActivities,
   validateBulkUnlike,
+  validateBulkLike,
   validateBulkUnfollow,
   validateBulkUnrepost,
   validateClonePlaylist,
@@ -78,6 +79,23 @@ function invalidateUserNamespaces(userId, namespaces) {
   namespaces.forEach((namespace) => {
     requestCache.invalidateNamespaceForUser(namespace, userId);
   });
+}
+
+/* Shared cached loaders for the auth user's social lists. The GET routes and
+ * growth discovery use the same namespace/key/payload shape, so whichever
+ * runs first warms the cache for the other. */
+function loadCachedFollowings(req) {
+  return getCachedUserPayload('followings', req.user.id, 'default', async () => {
+    const followings = await soundcloudClient.getFollowings(req.accessToken, req.refreshToken);
+    return { collection: followings, total: followings.length };
+  }, CACHE_TTL.followings);
+}
+
+function loadCachedFollowers(req) {
+  return getCachedUserPayload('followers', req.user.id, 'default', async () => {
+    const followers = await soundcloudClient.getFollowers(req.accessToken, req.refreshToken);
+    return { collection: followers, total: followers.length };
+  }, CACHE_TTL.followers);
 }
 
 function invalidatePlaylistState(userId) {
@@ -2107,21 +2125,46 @@ router.post('/likes/tracks/bulk-unlike', authenticateUser, heavyOperationRateLim
 });
 
 /**
+ * POST /api/likes/tracks/bulk-like
+ * Like multiple tracks at once (e.g. "like every track in a playlist").
+ * Capped at 100 per request; clients chunk larger sets.
+ */
+router.post('/likes/tracks/bulk-like', authenticateUser, heavyOperationRateLimiter, validateBulkLike, async (req, res) => {
+  // Gentle pacing between writes — liking a full playlist is many rapid POSTs.
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  try {
+    const { trackIds } = req.body;
+    const results = [];
+
+    // Process sequentially to avoid SoundCloud rate limits.
+    // NOTE: likeTrack is id-first (accessToken/refreshToken follow) — the
+    // opposite of unlikeTrack. Getting this order wrong silently no-ops.
+    for (const trackId of trackIds) {
+      try {
+        await soundcloudClient.likeTrack(trackId, req.accessToken, req.refreshToken);
+        results.push({ trackId, status: 'ok' });
+      } catch (err) {
+        results.push({ trackId, status: 'error', error: err.message || 'Like failed' });
+      }
+      await sleep(150);
+    }
+
+    invalidateUserNamespaces(req.user.id, ['likes']);
+    res.json({ results });
+    logOperation({ userId: req.user.id, action: 'bulk-like', trackCount: results.filter(r => r.status === 'ok').length, itemCount: results.length, status: 'success' });
+  } catch (error) {
+    logger.error('Bulk like error:', safeError(error));
+    res.status(500).json({ error: 'Bulk like failed' });
+  }
+});
+
+/**
  * GET /api/followers
  * Get the user's followers list
  */
 router.get('/followers', authenticateUser, async (req, res) => {
   try {
-    const payload = await getCachedUserPayload(
-      'followers',
-      req.user.id,
-      'default',
-      async () => {
-        const followers = await soundcloudClient.getFollowers(req.accessToken, req.refreshToken);
-        return { collection: followers, total: followers.length };
-      },
-      CACHE_TTL.followers,
-    );
+    const payload = await loadCachedFollowers(req);
     res.json(payload);
   } catch (error) {
     logger.error('Get followers error:', safeError(error));
@@ -2135,16 +2178,7 @@ router.get('/followers', authenticateUser, async (req, res) => {
  */
 router.get('/followings', authenticateUser, async (req, res) => {
   try {
-    const payload = await getCachedUserPayload(
-      'followings',
-      req.user.id,
-      'default',
-      async () => {
-        const followings = await soundcloudClient.getFollowings(req.accessToken, req.refreshToken);
-        return { collection: followings, total: followings.length };
-      },
-      CACHE_TTL.followings,
-    );
+    const payload = await loadCachedFollowings(req);
     res.json(payload);
   } catch (error) {
     logger.error('Get followings error:', safeError(error));
@@ -2333,11 +2367,17 @@ router.post('/growth/discover', authenticateUser, heavyOperationRateLimiter, val
     const { inspirationUserIds, limit, strategy } = req.body;
 
     // Never resurface anyone previously targeted (including reversed follows)
-    const priorTargets = await prisma.growthAction.findMany({
-      where: { userId: req.user.id, actionType: 'follow' },
-      select: { targetId: true },
-      distinct: ['targetId'],
-    });
+    // and preload the auth user's own lists through the shared request cache
+    // (a page load of the growth tool has usually warmed the followings entry).
+    const [priorTargets, followingsPayload, followersPayload] = await Promise.all([
+      prisma.growthAction.findMany({
+        where: { userId: req.user.id, actionType: 'follow' },
+        select: { targetId: true },
+        distinct: ['targetId'],
+      }),
+      loadCachedFollowings(req).catch(() => null),
+      loadCachedFollowers(req).catch(() => null),
+    ]);
 
     const result = await growthEngine.discoverSuggestions({
       inspirationUserIds,
@@ -2348,6 +2388,9 @@ router.post('/growth/discover', authenticateUser, heavyOperationRateLimiter, val
       strategy,
       limit,
       excludedTargetIds: priorTargets.map((t) => t.targetId),
+      // On a preload failure the engine falls back to fetching these itself
+      authFollowingIds: followingsPayload ? followingsPayload.collection.map((u) => u.id) : null,
+      authFollowerIds: followersPayload ? followersPayload.collection.map((u) => u.id) : null,
     });
     res.json(result);
     logOperation({
@@ -2742,9 +2785,9 @@ router.post('/growth/reverse', authenticateUser, validateReverseGrowthActions, a
     for (const action of targets) {
       try {
         if (action.actionType === 'follow') {
-          await soundcloudClient.unfollowUser(action.targetId, req.accessToken, req.refreshToken);
+          await soundcloudClient.unfollowUser(req.accessToken, req.refreshToken, action.targetId);
         } else if (action.actionType === 'like') {
-          await soundcloudClient.unlikeTrack(action.targetId, req.accessToken, req.refreshToken);
+          await soundcloudClient.unlikeTrack(req.accessToken, req.refreshToken, action.targetId);
         }
 
         await prisma.growthAction.update({

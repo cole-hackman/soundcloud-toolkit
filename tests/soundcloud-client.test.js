@@ -111,6 +111,113 @@ describe('soundcloud client behaviors', () => {
     const [url] = fetch.mock.calls[0];
     expect(url).toBe('https://api.soundcloud.com/users/42/playlists?limit=50&linked_partitioning=1&show_tracks=false');
   });
+
+  // Regression guard: unfollowUser/unlikeTrack take tokens FIRST (unlike their
+  // id-first inverses followUser/likeTrack). A swapped call sends the target id
+  // as the OAuth token — the growth-reversal bug fixed in July 2026.
+  describe('unfollow / unlike argument order', () => {
+    test('unfollowUser targets the user id and authenticates with the access token', async () => {
+      fetch.mockReturnValueOnce(Promise.resolve(new Response(JSON.stringify(okJson), { status: 200 })));
+
+      await soundcloudClient.unfollowUser('tok', 'ref', 42);
+
+      const [url, options] = fetch.mock.calls[0];
+      expect(url).toBe('https://api.soundcloud.com/me/followings/42');
+      expect(options.method).toBe('DELETE');
+      expect(options.headers.Authorization).toBe('OAuth tok');
+    });
+
+    test('unlikeTrack targets the track id and authenticates with the access token', async () => {
+      fetch.mockReturnValueOnce(Promise.resolve(new Response(JSON.stringify(okJson), { status: 200 })));
+
+      await soundcloudClient.unlikeTrack('tok', 'ref', 77);
+
+      const [url, options] = fetch.mock.calls[0];
+      expect(url).toBe('https://api.soundcloud.com/likes/tracks/77');
+      expect(options.method).toBe('DELETE');
+      expect(options.headers.Authorization).toBe('OAuth tok');
+    });
+
+    test('likeTrack is id-first: track id in the path, access token in the header', async () => {
+      fetch.mockReturnValueOnce(Promise.resolve(new Response(JSON.stringify(okJson), { status: 200 })));
+
+      await soundcloudClient.likeTrack(77, 'tok', 'ref');
+
+      const [url, options] = fetch.mock.calls[0];
+      expect(url).toBe('https://api.soundcloud.com/likes/tracks/77');
+      expect(options.method).toBe('POST');
+      expect(options.headers.Authorization).toBe('OAuth tok');
+    });
+  });
+
+  describe('paginate crawl bounds', () => {
+    const page = (start, count, nextHref) => Promise.resolve(new Response(JSON.stringify({
+      collection: Array.from({ length: count }, (_, i) => ({ id: start + i })),
+      next_href: nextHref,
+    }), { status: 200 }));
+
+    test('follows next_href to exhaustion when no options are passed', async () => {
+      fetch
+        .mockReturnValueOnce(page(0, 2, 'https://api.soundcloud.com/x?cursor=2'))
+        .mockReturnValueOnce(page(2, 1, null));
+
+      const items = await soundcloudClient.paginate('/x', 'a', 'r', 2);
+
+      expect(items).toHaveLength(3);
+      expect(fetch).toHaveBeenCalledTimes(2);
+    });
+
+    test('stops at maxItems and slices an overshooting page', async () => {
+      fetch.mockReturnValueOnce(page(0, 200, 'https://api.soundcloud.com/x?cursor=2'));
+
+      const items = await soundcloudClient.paginate('/x', 'a', 'r', 200, { maxItems: 150 });
+
+      expect(items).toHaveLength(150);
+      expect(fetch).toHaveBeenCalledTimes(1);
+    });
+
+    test('retries a 429 page honoring Retry-After and continues crawling', async () => {
+      jest.useFakeTimers();
+      fetch
+        .mockReturnValueOnce(Promise.resolve(new Response('', { status: 429, headers: { 'Retry-After': '1' } })))
+        .mockReturnValueOnce(page(0, 1, null));
+
+      const p = soundcloudClient.paginate('/x', 'a', 'r', 50);
+      await Promise.resolve();
+      jest.advanceTimersByTime(1000);
+      const items = await p;
+
+      expect(items).toHaveLength(1);
+      expect(fetch).toHaveBeenCalledTimes(2);
+    });
+
+    test('throws after exhausting 429 retries', async () => {
+      jest.useFakeTimers();
+      fetch
+        .mockReturnValueOnce(Promise.resolve(new Response('', { status: 429 })))
+        .mockReturnValueOnce(Promise.resolve(new Response('', { status: 429 })));
+
+      const request = soundcloudClient.paginate('/x', 'a', 'r', 50, { max429Retries: 1 });
+      await Promise.resolve();
+      jest.advanceTimersByTime(1000);
+
+      await expect(request).rejects.toThrow('API request failed: 429');
+      expect(fetch).toHaveBeenCalledTimes(2);
+    });
+
+    test('stops at the deadline and returns the partial crawl', async () => {
+      const t0 = Date.now();
+      jest.spyOn(Date, 'now')
+        .mockReturnValueOnce(t0)          // loop check before page 1: within budget
+        .mockReturnValue(t0 + 100);       // every later check: past the deadline
+      fetch.mockReturnValueOnce(page(0, 2, 'https://api.soundcloud.com/x?cursor=2'));
+
+      const items = await soundcloudClient.paginate('/x', 'a', 'r', 2, { deadlineAt: t0 + 50 });
+
+      expect(items).toHaveLength(2);
+      expect(fetch).toHaveBeenCalledTimes(1);
+    });
+  });
 });
 
 

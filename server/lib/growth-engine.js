@@ -2,6 +2,15 @@ import logger from './logger.js';
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const DISCOVERY_TRACK_CONCURRENCY = 5;
+// Per seed and per direction (followers/followings), sample only the most
+// recent slice of a large network. SoundCloud returns newest first, so this
+// keeps the crawl bounded on 20k+ follower artists while biasing toward
+// recently active accounts.
+export const SEED_SAMPLE_MAX = 1000;
+const SEED_CRAWL_CONCURRENCY = 2;
+// Discovery runs inside a synchronous HTTP request; stay well under the
+// platform gateway timeout and return partial results instead of failing.
+export const DISCOVERY_TIME_BUDGET_MS = 45_000;
 
 async function mapWithConcurrency(items, concurrency, worker) {
   const results = new Array(items.length);
@@ -97,6 +106,8 @@ export class GrowthEngine {
    * Run the discovery algorithm to find suggested follow candidates.
    * excludedTargetIds: SoundCloud user IDs previously targeted by growth
    * actions (including reversed ones) so they never resurface.
+   * authFollowingIds / authFollowerIds: preloaded (e.g. cached) SoundCloud
+   * user ids for the auth user's own lists; null means fetch them here.
    */
   async discoverSuggestions({
     inspirationUserIds,
@@ -107,31 +118,38 @@ export class GrowthEngine {
     strategy = 'followers',
     limit = 50,
     excludedTargetIds = [],
+    authFollowingIds = null,
+    authFollowerIds = null,
+    timeBudgetMs = DISCOVERY_TIME_BUDGET_MS,
   }) {
     const startedAt = Date.now();
-    logger.info(`[GrowthEngine] Starting discovery for user ${authUserId} (${authSoundCloudId}) with strategy=${strategy}, limit=${limit}`);
+    const deadlineAt = startedAt + timeBudgetMs;
+    logger.info(`[GrowthEngine] Starting discovery for user ${authUserId} (${authSoundCloudId}) with strategy=${strategy}, limit=${limit}, timeBudgetMs=${timeBudgetMs}`);
 
-    // 1. Fetch authenticated user's followings and followers for filtering
-    let authFollowingsSet = new Set();
-    let authFollowersSet = new Set();
+    // 1. Auth user's followings and followers for filtering — use preloaded
+    // ids when the caller has them cached; fetch only what's missing.
+    let authFollowingsSet = new Set(authFollowingIds ?? []);
+    let authFollowersSet = new Set(authFollowerIds ?? []);
 
     const [followingsResult, followersResult] = await Promise.allSettled([
-      this.soundcloudClient.getFollowings(accessToken, refreshToken),
-      this.soundcloudClient.getFollowers(accessToken, refreshToken),
+      authFollowingIds === null
+        ? this.soundcloudClient.getFollowings(accessToken, refreshToken)
+        : Promise.resolve(null),
+      authFollowerIds === null
+        ? this.soundcloudClient.getFollowers(accessToken, refreshToken)
+        : Promise.resolve(null),
     ]);
 
     if (followingsResult.status === 'fulfilled') {
-      const followings = followingsResult.value;
-      followings.forEach(u => authFollowingsSet.add(u.id));
-      logger.info(`[GrowthEngine] Found ${authFollowingsSet.size} existing followings`);
+      (followingsResult.value || []).forEach(u => authFollowingsSet.add(u.id));
+      logger.info(`[GrowthEngine] Found ${authFollowingsSet.size} existing followings${authFollowingIds !== null ? ' (preloaded)' : ''}`);
     } else {
       logger.error(`[GrowthEngine] Failed to fetch auth user's followings:`, followingsResult.reason);
     }
 
     if (followersResult.status === 'fulfilled') {
-      const followers = followersResult.value;
-      followers.forEach(u => authFollowersSet.add(u.id));
-      logger.info(`[GrowthEngine] Found ${authFollowersSet.size} existing followers`);
+      (followersResult.value || []).forEach(u => authFollowersSet.add(u.id));
+      logger.info(`[GrowthEngine] Found ${authFollowersSet.size} existing followers${authFollowerIds !== null ? ' (preloaded)' : ''}`);
     } else {
       logger.error(`[GrowthEngine] Failed to fetch auth user's followers:`, followersResult.reason);
     }
@@ -140,22 +158,36 @@ export class GrowthEngine {
     const candidateMap = new Map(); // id -> { user, appearances: Set, isRelated: boolean }
     const seedGenres = new Map(); // genre -> weight
 
-    // 2. Fetch candidates from inspiration users
-    for (const inspId of inspirationUserIds) {
+    // 2. Fetch candidates from inspiration users. Follower/following crawls
+    // are capped at the most recent SEED_SAMPLE_MAX per seed, so running a
+    // couple of seeds concurrently stays bounded even for huge artists.
+    const seedCrawls = await mapWithConcurrency(inspirationUserIds, SEED_CRAWL_CONCURRENCY, async (inspId) => {
+      if (Date.now() >= deadlineAt) {
+        logger.warn(`[GrowthEngine] Time budget exhausted before crawling inspiration ${inspId}; skipping`);
+        return { inspId, skipped: true };
+      }
       logger.info(`[GrowthEngine] Crawling network for inspiration user: ${inspId}`);
 
-      // These are independent read-only calls. Run them together for each seed,
-      // but keep seeds sequential so a five-seed scan stays gentle on the API.
+      const crawlOptions = { maxItems: SEED_SAMPLE_MAX, deadlineAt };
       const [seedTracksResult, followersResult, peersResult, relatedResult] = await Promise.allSettled([
         this.soundcloudClient.getUserTracks(inspId, accessToken, refreshToken, 10),
         (strategy === 'followers' || strategy === 'both')
-          ? this.soundcloudClient.getUserFollowers(inspId, accessToken, refreshToken, 200)
+          ? this.soundcloudClient.getUserFollowers(inspId, accessToken, refreshToken, 200, crawlOptions)
           : Promise.resolve(null),
         (strategy === 'followings' || strategy === 'both')
-          ? this.soundcloudClient.getUserFollowings(inspId, accessToken, refreshToken, 200)
+          ? this.soundcloudClient.getUserFollowings(inspId, accessToken, refreshToken, 200, crawlOptions)
           : Promise.resolve(null),
         this.soundcloudClient.getRelatedArtists(inspId, accessToken, refreshToken, 20),
       ]);
+
+      return { inspId, skipped: false, seedTracksResult, followersResult, peersResult, relatedResult };
+    });
+
+    // Merge crawl results sequentially in seed order so appearance counts and
+    // isRelated flags come out identical to the old sequential crawl.
+    for (const crawl of seedCrawls) {
+      if (crawl.skipped) continue;
+      const { inspId, seedTracksResult, followersResult, peersResult, relatedResult } = crawl;
 
       if (seedTracksResult.status === 'fulfilled') {
         const seedTracks = seedTracksResult.value;
@@ -217,6 +249,18 @@ export class GrowthEngine {
       }
     }
 
+    const perSeed = seedCrawls.map((crawl) => {
+      const followersFetched = crawl.followersResult?.status === 'fulfilled' ? (crawl.followersResult.value?.length ?? 0) : 0;
+      const followingsFetched = crawl.peersResult?.status === 'fulfilled' ? (crawl.peersResult.value?.length ?? 0) : 0;
+      return {
+        id: crawl.inspId,
+        followersFetched,
+        followingsFetched,
+        sampled: followersFetched >= SEED_SAMPLE_MAX || followingsFetched >= SEED_SAMPLE_MAX,
+        skipped: Boolean(crawl.skipped),
+      };
+    });
+
     const candidates = Array.from(candidateMap.values());
     logger.info(`[GrowthEngine] Total unique candidates found across all paths: ${candidates.length}`);
 
@@ -267,8 +311,12 @@ export class GrowthEngine {
     const results = await mapWithConcurrency(topSuggestions, DISCOVERY_TRACK_CONCURRENCY, async (sug) => {
       let suggestedTrack = null;
       let genreAffinity = null;
+      // Past the time budget, skip the lookup: null affinity keeps the score
+      // neutral, exactly like the failed-fetch path below.
       try {
-        const tracks = await this.soundcloudClient.getUserTracks(sug.user.id, accessToken, refreshToken, 5);
+        const tracks = Date.now() >= deadlineAt
+          ? null
+          : await this.soundcloudClient.getUserTracks(sug.user.id, accessToken, refreshToken, 5);
         if (tracks && tracks.length > 0) {
           genreAffinity = computeGenreAffinity(tracks, seedGenres);
           const sortedTracks = [...tracks].sort((a, b) => (b.likes_count || 0) - (a.likes_count || 0));
@@ -318,6 +366,11 @@ export class GrowthEngine {
         seedGenres: Array.from(seedGenres.keys()).slice(0, 10),
         trackLookupConcurrency: DISCOVERY_TRACK_CONCURRENCY,
         durationMs: Date.now() - startedAt,
+        sampleCapPerSeed: SEED_SAMPLE_MAX,
+        sampledFollowers: perSeed.some((s) => s.sampled),
+        partial: Date.now() >= deadlineAt || perSeed.some((s) => s.skipped),
+        perSeed,
+        timeBudgetMs,
       },
     };
   }

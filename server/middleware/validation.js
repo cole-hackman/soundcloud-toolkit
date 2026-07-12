@@ -421,6 +421,19 @@ export const validateBulkUnlike = [
 ];
 
 /**
+ * Validate bulk like request
+ */
+export const validateBulkLike = [
+  body('trackIds')
+    .isArray({ min: 1, max: 100 })
+    .withMessage('trackIds must be an array with 1-100 items'),
+  body('trackIds.*')
+    .isInt({ min: 1 })
+    .withMessage('Each trackId must be a positive integer'),
+  handleValidationErrors
+];
+
+/**
  * Validate bulk unfollow request
  */
 export const validateBulkUnfollow = [

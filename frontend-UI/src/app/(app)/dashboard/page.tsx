@@ -99,6 +99,14 @@ const FEATURES: FeatureCard[] = [
     category: "Likes & Social",
   },
   {
+    id: "playlist-to-likes",
+    title: "Playlist → Likes",
+    description: "Like every track in a playlist at once",
+    icon: Heart,
+    path: "/playlist-to-likes",
+    category: "Likes & Social",
+  },
+  {
     id: "modifier",
     title: "Playlist Modifier",
     description: "Reorder and remove tracks in your playlists",

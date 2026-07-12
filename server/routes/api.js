@@ -28,6 +28,7 @@ import {
   validateBatchResolve,
   validateActivities,
   validateBulkUnlike,
+  validateBulkLike,
   validateBulkUnfollow,
   validateBulkUnrepost,
   validateClonePlaylist,
@@ -2120,6 +2121,40 @@ router.post('/likes/tracks/bulk-unlike', authenticateUser, heavyOperationRateLim
   } catch (error) {
     logger.error('Bulk unlike error:', safeError(error));
     res.status(500).json({ error: 'Bulk unlike failed' });
+  }
+});
+
+/**
+ * POST /api/likes/tracks/bulk-like
+ * Like multiple tracks at once (e.g. "like every track in a playlist").
+ * Capped at 100 per request; clients chunk larger sets.
+ */
+router.post('/likes/tracks/bulk-like', authenticateUser, heavyOperationRateLimiter, validateBulkLike, async (req, res) => {
+  // Gentle pacing between writes — liking a full playlist is many rapid POSTs.
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  try {
+    const { trackIds } = req.body;
+    const results = [];
+
+    // Process sequentially to avoid SoundCloud rate limits.
+    // NOTE: likeTrack is id-first (accessToken/refreshToken follow) — the
+    // opposite of unlikeTrack. Getting this order wrong silently no-ops.
+    for (const trackId of trackIds) {
+      try {
+        await soundcloudClient.likeTrack(trackId, req.accessToken, req.refreshToken);
+        results.push({ trackId, status: 'ok' });
+      } catch (err) {
+        results.push({ trackId, status: 'error', error: err.message || 'Like failed' });
+      }
+      await sleep(150);
+    }
+
+    invalidateUserNamespaces(req.user.id, ['likes']);
+    res.json({ results });
+    logOperation({ userId: req.user.id, action: 'bulk-like', trackCount: results.filter(r => r.status === 'ok').length, itemCount: results.length, status: 'success' });
+  } catch (error) {
+    logger.error('Bulk like error:', safeError(error));
+    res.status(500).json({ error: 'Bulk like failed' });
   }
 });
 

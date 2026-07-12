@@ -8,6 +8,7 @@ import {
   validateReverseGrowthActions,
   validateBetaSignup,
   validateEvent,
+  validateBulkLike,
 } from '../server/middleware/validation.js';
 
 async function runValidation(middlewares, { params = {}, query = {}, body = {} } = {}) {
@@ -266,6 +267,40 @@ describe('feature usage event validator', () => {
   test('rejects arbitrary event names', async () => {
     const result = await runValidation(validateEvent, {
       body: { feature: 'playlist cloner?playlist=123' },
+    });
+
+    expect(result.statusCode).toBe(400);
+  });
+});
+
+describe('bulk like validator', () => {
+  test('accepts 1-100 positive integer track ids', async () => {
+    const result = await runValidation(validateBulkLike, {
+      body: { trackIds: [1, 2, 3] },
+    });
+
+    expect(result.statusCode).toBeNull();
+  });
+
+  test('rejects an empty track id array', async () => {
+    const result = await runValidation(validateBulkLike, {
+      body: { trackIds: [] },
+    });
+
+    expect(result.statusCode).toBe(400);
+  });
+
+  test('rejects more than 100 track ids', async () => {
+    const result = await runValidation(validateBulkLike, {
+      body: { trackIds: Array.from({ length: 101 }, (_, i) => i + 1) },
+    });
+
+    expect(result.statusCode).toBe(400);
+  });
+
+  test('rejects non-positive track ids', async () => {
+    const result = await runValidation(validateBulkLike, {
+      body: { trackIds: [0] },
     });
 
     expect(result.statusCode).toBe(400);

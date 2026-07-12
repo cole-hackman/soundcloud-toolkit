@@ -137,6 +137,17 @@ describe('soundcloud client behaviors', () => {
       expect(options.method).toBe('DELETE');
       expect(options.headers.Authorization).toBe('OAuth tok');
     });
+
+    test('likeTrack is id-first: track id in the path, access token in the header', async () => {
+      fetch.mockReturnValueOnce(Promise.resolve(new Response(JSON.stringify(okJson), { status: 200 })));
+
+      await soundcloudClient.likeTrack(77, 'tok', 'ref');
+
+      const [url, options] = fetch.mock.calls[0];
+      expect(url).toBe('https://api.soundcloud.com/likes/tracks/77');
+      expect(options.method).toBe('POST');
+      expect(options.headers.Authorization).toBe('OAuth tok');
+    });
   });
 
   describe('paginate crawl bounds', () => {

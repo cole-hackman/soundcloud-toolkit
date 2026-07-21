@@ -192,6 +192,13 @@ export const validatePlaylistTrackTransfer = [
     .withMessage('trackId must be a positive integer')
     .toInt(),
   body('sourcePlaylistId')
+    .if(body('action').equals('move'))
+    .isInt({ min: 1 })
+    .withMessage('sourcePlaylistId is required for move action and must be a positive integer')
+    .toInt(),
+  body('sourcePlaylistId')
+    .if(body('action').not().equals('move'))
+    .optional()
     .isInt({ min: 1 })
     .withMessage('sourcePlaylistId must be a positive integer')
     .toInt(),

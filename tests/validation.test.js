@@ -4,6 +4,7 @@ import {
   validateFollowedUserLibraryPagination,
   validateFollowingUserId,
   validateGrowthDiscover,
+  validateGrowthCheckFollowbacks,
   validateGrowthEngageBatch,
   validateReverseGrowthActions,
   validateBetaSignup,
@@ -185,6 +186,18 @@ describe('growth discovery validators', () => {
       body: {},
     });
     expect(result.statusCode).toBe(400);
+  });
+
+  test('accepts an optional follow-back session id and rejects an invalid one', async () => {
+    const valid = await runValidation(validateGrowthCheckFollowbacks, {
+      body: { sessionId: 'sess_123' },
+    });
+    const invalid = await runValidation(validateGrowthCheckFollowbacks, {
+      body: { sessionId: 123 },
+    });
+
+    expect(valid.statusCode).toBeNull();
+    expect(invalid.statusCode).toBe(400);
   });
 });
 

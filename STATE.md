@@ -3,9 +3,9 @@
 ## Now
 Branch `ui-audit-overhaul` (from main@8bfd62a) holds the UI overhaul, growth
 audit fixes, AND the SongSwipe beta survey (replaces the monetization survey).
-All committed; nothing pushed/merged/deployed. TWO Prisma migrations must run
-before their features work: `GrowthAction.inspirationNames` (growth) and the new
-`beta_signups` table (survey). Landing still wants two manual assets: a
+The branch is pushed but not merged or deployed. Production Neon migrations
+completed July 9, 2026: `GrowthAction.inspirationNames` and `beta_signups` are
+live. Landing still wants two manual assets: a
 dashboard screenshot (`HERO_SHOT`) and testimonial quotes (`testimonials[]`),
 both in frontend-UI/src/app/page.tsx.
 
@@ -35,7 +35,8 @@ both in frontend-UI/src/app/page.tsx.
 - 7edeadb — committed the pre-existing growth WIP as a clean base.
 - 1b4edd1 — UI overhaul all 4 phases (animation diet, token sweep, a11y,
   dashboard grouping). Report: docs/ui-audit-2026-07-08.md.
-- Verified: full jest suite green (78), `next build` + `next lint` clean.
+- Verified: full Jest suite green (87), frontend production build and TypeScript
+  check clean. The configured frontend lint command still requires `bunx`.
 
 ## Next
 1. DONE (2026-07-09): production Neon migrated via `prisma db push` —
@@ -44,7 +45,8 @@ both in frontend-UI/src/app/page.tsx.
    (chat_conversations, chat_messages, indexed_likes, indexed_playlist_tracks,
    library_snapshots) that live in prod but aren't owned by this branch, so
    db push doesn't drop them. Neon has 11 tables.
-2. Add privacy-policy line about collecting email for the SongSwipe beta.
+2. DONE (2026-07-09): privacy policy now discloses SongSwipe beta email
+   collection and lightweight product-usage analytics.
 3. Decide the SongSwipe/rebrand name; if renaming, change `SONGSWIPE_NAME` in
    BetaSurveyModal.tsx (one line).
 4. Add the two manual landing assets (HERO_SHOT screenshot + testimonials).

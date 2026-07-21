@@ -40,6 +40,7 @@ import {
   validateDeletePlaylist,
   validateEvent,
   validateGrowthDiscover,
+  validateGrowthCheckFollowbacks,
   validateGrowthEngageBatch,
   validateReverseGrowthActions,
 } from '../middleware/validation.js';
@@ -2662,7 +2663,7 @@ router.get('/growth/history', authenticateUser, async (req, res) => {
  * POST /api/growth/check-followbacks
  * Check reciprocation rate against the current followers list
  */
-router.post('/growth/check-followbacks', authenticateUser, async (req, res) => {
+router.post('/growth/check-followbacks', authenticateUser, heavyOperationRateLimiter, validateGrowthCheckFollowbacks, async (req, res) => {
   try {
     const { sessionId } = req.body;
 

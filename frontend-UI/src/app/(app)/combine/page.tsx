@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { ArrowLeft, X, Combine, Check, Music, Trash2, AlertTriangle } from "lucide-react";
@@ -33,6 +33,8 @@ export default function CombinePlaylistsPage() {
   const [showPlaylistPicker, setShowPlaylistPicker] = useState(false);
   const [deleteAfterMerge, setDeleteAfterMerge] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const pickerDialogRef = useRef<HTMLDivElement>(null);
+  const pickerTriggerRef = useRef<HTMLButtonElement | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isComplete, setIsComplete] = useState(false);
   const [mergeError, setMergeError] = useState<string | null>(null);
@@ -62,6 +64,47 @@ export default function CombinePlaylistsPage() {
       0;
     survey.maybeShow({ context: "post-merge", trackCount });
   }, [isComplete, result, survey]);
+
+  const openPlaylistPicker = (event: React.MouseEvent<HTMLButtonElement>) => {
+    pickerTriggerRef.current = event.currentTarget;
+    setShowPlaylistPicker(true);
+  };
+
+  const closePlaylistPicker = () => setShowPlaylistPicker(false);
+
+  useEffect(() => {
+    if (!showPlaylistPicker) return;
+    const dialog = pickerDialogRef.current;
+    const focusable = () => Array.from(dialog?.querySelectorAll<HTMLElement>(
+      'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    ) || []);
+
+    focusable()[0]?.focus();
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closePlaylistPicker();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const items = focusable();
+      if (items.length === 0) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      pickerTriggerRef.current?.focus();
+    };
+  }, [showPlaylistPicker]);
 
   const handlePlaylistToggle = (playlist: Playlist, index?: number, event?: React.MouseEvent | React.KeyboardEvent) => {
     const idNum = Number(playlist.id);
@@ -437,7 +480,7 @@ export default function CombinePlaylistsPage() {
                     </p>
                   ) : targetPlaylist ? (
                     <button
-                      onClick={() => setShowPlaylistPicker(true)}
+                      onClick={openPlaylistPicker}
                       className="w-full flex items-center gap-3 p-3 rounded-xl bg-primary/10 border-2 border-primary transition-all hover:bg-primary/15 text-left"
                     >
                       <img
@@ -457,7 +500,7 @@ export default function CombinePlaylistsPage() {
                     </button>
                   ) : (
                     <button
-                      onClick={() => setShowPlaylistPicker(true)}
+                      onClick={openPlaylistPicker}
                       className="w-full px-4 py-3 rounded-lg border-2 border-dashed border-border text-sm text-muted-foreground hover:border-primary hover:text-primary transition-all text-center"
                     >
                       Choose a target playlist…
@@ -535,21 +578,17 @@ export default function CombinePlaylistsPage() {
 
       {/* ── PLAYLIST PICKER MODAL ──────────────────────────────────────────── */}
       {showPlaylistPicker && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label="Choose a target playlist"
-          className="fixed inset-0 z-50 flex items-center justify-center p-4"
-          onClick={() => setShowPlaylistPicker(false)}
-          onKeyDown={(e) => {
-            if (e.key === "Escape") setShowPlaylistPicker(false);
-          }}
-        >
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           {/* Backdrop */}
-          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={closePlaylistPicker} />
 
           {/* Modal */}
           <Card
+            ref={pickerDialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Choose a target playlist"
+            tabIndex={-1}
             className="relative w-full max-w-lg rounded-2xl shadow-2xl border-2 border-border overflow-hidden animate-in fade-in zoom-in-95 duration-200"
             onClick={(e) => e.stopPropagation()}
           >
@@ -559,9 +598,8 @@ export default function CombinePlaylistsPage() {
                 Target Playlist
               </h3>
               <button
-                autoFocus
                 aria-label="Close"
-                onClick={() => setShowPlaylistPicker(false)}
+                onClick={closePlaylistPicker}
                 className="p-1.5 rounded-lg hover:bg-secondary/40 transition"
               >
                 <X className="w-5 h-5 text-muted-foreground" />
@@ -582,7 +620,7 @@ export default function CombinePlaylistsPage() {
                       key={playlist.id}
                       onClick={() => {
                         setTargetPlaylist(playlist);
-                        setShowPlaylistPicker(false);
+                        closePlaylistPicker();
                       }}
                       className={`w-full flex items-center gap-4 p-4 rounded-xl transition-all ${
                         isSelected

@@ -187,7 +187,7 @@ export default function RecentlyPlayedPage() {
                 </div>
                 <button
                   onClick={selectAll}
-                  className="text-sm text-primary hover:text-primary font-medium whitespace-nowrap"
+                  className="text-sm text-primary hover:text-primary/80 font-medium whitespace-nowrap"
                 >
                   {selected.size === filteredTracks.length ? "Deselect All" : "Select All"}
                 </button>

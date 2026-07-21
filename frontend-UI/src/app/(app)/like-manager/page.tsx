@@ -50,6 +50,12 @@ export default function LikeManagerPage() {
   const [durationFilter, setDurationFilter] = useState("All");
   const [showUnlikeConfirm, setShowUnlikeConfirm] = useState(false);
   const [notice, setNotice] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [unlikeProgress, setUnlikeProgress] = useState<{
+    completed: number;
+    total: number;
+    currentBatch: number;
+    totalBatches: number;
+  } | null>(null);
   
   const { data } = useSuspenseQuery(likesQueryOptions());
 
@@ -119,29 +125,55 @@ export default function LikeManagerPage() {
     setNotice(null);
     try {
       const trackIds = Array.from(selected);
-      const response = await apiFetch("/api/likes/tracks/bulk-unlike", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ trackIds }),
-      });
-      if (response.ok) {
-        const data = await response.json();
-        const removedIds = new Set<number>(
-          data.results
-            .filter((r: { status: string }) => r.status === "ok")
-            .map((r: { trackId: number }) => r.trackId),
-        );
+      const BATCH_SIZE = 100;
+      const totalBatches = Math.ceil(trackIds.length / BATCH_SIZE);
+      const allResults: Array<{ trackId: number; status: string; error?: string }> = [];
+      let completed = 0;
+
+      for (let i = 0; i < totalBatches; i++) {
+        const batchIds = trackIds.slice(i * BATCH_SIZE, (i + 1) * BATCH_SIZE);
+        
+        setUnlikeProgress({
+          completed,
+          total: trackIds.length,
+          currentBatch: i + 1,
+          totalBatches,
+        });
+
+        const response = await apiFetch("/api/likes/tracks/bulk-unlike", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ trackIds: batchIds }),
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          allResults.push(...data.results);
+          completed += batchIds.length;
+        } else {
+          console.error(`Batch ${i + 1} failed`);
+        }
+      }
+
+      const removedIds = new Set<number>(
+        allResults
+          .filter((r: { status: string }) => r.status === "ok")
+          .map((r: { trackId: number }) => r.trackId),
+      );
+      
+      if (removedIds.size > 0) {
         removeTracksFromLikesCache(queryClient, removedIds);
         await invalidateDashboardSummary(queryClient);
-        setSelected(new Set());
-        if (removedIds.size === trackIds.length) {
-          setNotice({ type: "success", text: `Unliked ${removedIds.size} track${removedIds.size === 1 ? "" : "s"}.` });
-        } else {
-          setNotice({
-            type: "error",
-            text: `Unliked ${removedIds.size} of ${trackIds.length} tracks. Some tracks could not be removed.`,
-          });
-        }
+      }
+      
+      setSelected(new Set());
+      if (removedIds.size === trackIds.length && trackIds.length > 0) {
+        setNotice({ type: "success", text: `Unliked ${removedIds.size} track${removedIds.size === 1 ? "" : "s"}.` });
+      } else if (removedIds.size > 0) {
+        setNotice({
+          type: "error",
+          text: `Unliked ${removedIds.size} of ${trackIds.length} tracks. Some tracks could not be removed.`,
+        });
       } else {
         setNotice({ type: "error", text: "Bulk unlike failed. Please try again." });
       }
@@ -150,6 +182,7 @@ export default function LikeManagerPage() {
       setNotice({ type: "error", text: "An error occurred while unliking tracks." });
     } finally {
       setRemoving(false);
+      setUnlikeProgress(null);
     }
   };
 
@@ -205,6 +238,20 @@ export default function LikeManagerPage() {
           >
             {notice.text}
           </InlineAlert>
+        )}
+
+        {removing && unlikeProgress && (
+          <div className="mb-6 p-4 rounded-lg border-2 border-border bg-secondary/10">
+            <div className="text-sm font-medium text-foreground mb-2">
+              Unliking tracks… {unlikeProgress.completed}/{unlikeProgress.total} (batch {unlikeProgress.currentBatch} of {unlikeProgress.totalBatches})
+            </div>
+            <div className="w-full h-1.5 rounded bg-secondary/30 overflow-hidden">
+              <div 
+                className="h-full bg-primary transition-all duration-300"
+                style={{ width: `${(unlikeProgress.completed / unlikeProgress.total) * 100}%` }}
+              />
+            </div>
+          </div>
         )}
 
         {likes.length === 0 ? (
@@ -305,7 +352,7 @@ export default function LikeManagerPage() {
       <SelectionBanner
         count={selected.size}
         entityName="track"
-        actionLabel="Unlike Selected"
+        actionLabel={removing && unlikeProgress ? `Unliking ${unlikeProgress.completed}/${unlikeProgress.total}…` : "Unlike Selected"}
         actionVariant="destructive"
         onAction={handleBulkUnlike}
         disabled={removing}

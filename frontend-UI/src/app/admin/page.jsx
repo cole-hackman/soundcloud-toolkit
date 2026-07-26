@@ -37,7 +37,7 @@ const RED = "#E74C3C";
 const YELLOW = "#F1C40F";
 const CYAN = "#00D4AA";
 
-// --- SVG Chart Components (unchanged from original) ---
+// --- SVG Chart Components ---
 
 function SparklineChart({ data, color = ORANGE, width = 200, height = 48, filled = false }) {
   if (!data || data.length < 2) return null;
@@ -150,9 +150,16 @@ function HBar({ items, palette }) {
               }}
             />
           </div>
-          <span style={{ width: 52, fontSize: 13, color: P.text, fontFamily: "'JetBrains Mono', monospace", fontWeight: 600, textAlign: "right", flexShrink: 0 }}>
-            {item.count.toLocaleString()}
-          </span>
+          <div style={{ width: 90, display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0 }}>
+            <span style={{ fontSize: 13, color: P.text, fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }}>
+              {item.count.toLocaleString()}
+            </span>
+            {item.avgDurationMs ? (
+              <span style={{ fontSize: 10, color: P.textDim, fontFamily: "'JetBrains Mono', monospace" }}>
+                {item.avgDurationMs}ms
+              </span>
+            ) : null}
+          </div>
         </div>
       ))}
     </div>
@@ -361,10 +368,14 @@ function timeAgo(iso) {
   return `${Math.floor(h / 24)}d ago`;
 }
 
-// --- Main Dashboard ---
+// --- Main Dashboard Component ---
 export default function AdminDashboard() {
   const router = useRouter();
   const [period, setPeriod] = useState("30d");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedOp, setSelectedOp] = useState(null);
+
   const [theme, setTheme] = useState("dark");
   const [time, setTime] = useState(new Date());
 
@@ -410,15 +421,19 @@ export default function AdminDashboard() {
       .catch(() => router.replace("/dashboard"));
   }, [router]);
 
-  // Fetch all 3 admin endpoints
+  // Fetch admin endpoints
   const fetchData = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
+      const opsUrl = `${API_BASE}/api/admin/operations?period=${period}&limit=50${
+        statusFilter !== 'all' ? `&status=${statusFilter}` : ''
+      }${searchQuery.trim() ? `&search=${encodeURIComponent(searchQuery.trim())}` : ''}`;
+
       const [statsRes, dailyRes, opsRes, fbSummaryRes, fbListRes] = await Promise.all([
         fetch(`${API_BASE}/api/admin/stats?period=${period}`, { credentials: "include" }),
         fetch(`${API_BASE}/api/admin/daily?period=${period}`, { credentials: "include" }),
-        fetch(`${API_BASE}/api/admin/operations?period=${period}&limit=20`, { credentials: "include" }),
+        fetch(opsUrl, { credentials: "include" }),
         fetch(`${API_BASE}/api/admin/feedback/summary?period=${period}`, { credentials: "include" }),
         fetch(`${API_BASE}/api/admin/feedback?period=${period}&limit=50`, { credentials: "include" }),
       ]);
@@ -445,9 +460,9 @@ export default function AdminDashboard() {
     } finally {
       setLoading(false);
     }
-  }, [period]);
+  }, [period, statusFilter, searchQuery]);
 
-  // Fetch on mount and period change
+  // Fetch on mount and period / filter change
   useEffect(() => {
     fetchData();
   }, [fetchData]);
@@ -519,7 +534,7 @@ export default function AdminDashboard() {
                 textTransform: "uppercase",
               }}
             >
-              Admin
+              Admin Analytics
             </span>
           </div>
         </div>
@@ -611,7 +626,7 @@ export default function AdminDashboard() {
       <div style={{ padding: "24px 32px", maxWidth: 1320, margin: "0 auto" }}>
 
         {/* Top Stats Row */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16, marginBottom: 20 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 20 }}>
           <StatCard
             label="Registered Users"
             value={loading ? "—" : (stats?.totalUsers ?? 0).toLocaleString()}
@@ -629,39 +644,20 @@ export default function AdminDashboard() {
             palette={P}
           />
           <StatCard
-            label="New Users"
-            value={loading ? "—" : (stats?.newUsers ?? 0).toLocaleString()}
-            sub={`${period} period`}
-            spark={daily.map(d => d.newUsers)}
-            sparkColor={GREEN}
-            delay={0.15}
-            palette={P}
-          />
-          <StatCard
-            label="Active Users"
-            value={loading ? "—" : (stats?.activeUsersPeriod ?? 0).toLocaleString()}
-            sub={`${period} active`}
-            trend="By operation logs"
-            trendDir="flat"
-            delay={0.175}
-            palette={P}
-          />
-          <StatCard
             label="Total Operations"
             value={loading ? "—" : (stats?.operationsCount ?? 0).toLocaleString()}
             sub={`${period} period`}
             spark={opsSparkline}
             sparkColor={YELLOW}
-            delay={0.2}
+            delay={0.15}
             palette={P}
           />
           <StatCard
-            label="Active Users (Month)"
-            value={loading ? "—" : (stats?.activeUsersMonth ?? 0).toLocaleString()}
-            sub={`Rolling 30d: ${(stats?.activeUsers30d ?? 0).toLocaleString()}`}
-            trend="Month-to-date"
-            trendDir="flat"
-            delay={0.225}
+            label="Average Latency"
+            value={loading ? "—" : stats?.avgDurationMs ? `${stats.avgDurationMs}ms` : "—"}
+            sub={stats?.p95DurationMs ? `P95: ${stats.p95DurationMs}ms` : "Server execution"}
+            sparkColor={CYAN}
+            delay={0.2}
             palette={P}
           />
         </div>
@@ -711,13 +707,8 @@ export default function AdminDashboard() {
 
         {/* Feature reach + completed operations */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20 }}>
-          <SectionCard title={`Feature Reach — ${period} Period`} delay={0.35} palette={P}>
-            {loading ? <SkeletonBlock height={160} palette={P} /> : <HBar items={(stats?.featureReach ?? []).map((feature) => ({ ...feature, count: feature.users, color: CYAN }))} palette={P} />}
-            {!loading && (
-              <div style={{ fontSize: 10, color: P.textDim, fontFamily: "'JetBrains Mono', monospace", marginTop: 10 }}>
-                Distinct signed-in users who opened each feature. No SoundCloud content is logged.
-              </div>
-            )}
+          <SectionCard title={`Feature Reach & Avg Latency — ${period}`} delay={0.35} palette={P}>
+            {loading ? <SkeletonBlock height={160} palette={P} /> : <HBar items={(stats?.featureUsage ?? []).map((feature) => ({ ...feature, count: feature.count, avgDurationMs: feature.avgDurationMs, color: CYAN }))} palette={P} />}
           </SectionCard>
 
           <SectionCard title={`Completed Operations — ${period} Trend`} delay={0.4} palette={P}>
@@ -725,32 +716,79 @@ export default function AdminDashboard() {
           </SectionCard>
         </div>
 
-        {/* Bottom Row: Recent Ops + Quick Stats */}
+        {/* Recent Ops with Search & Filters + Sidebar */}
         <div style={{ display: "grid", gridTemplateColumns: "3fr 1fr", gap: 16 }}>
-          <SectionCard title="Recent Operations" delay={0.45} palette={P}>
+          <SectionCard
+            title="Operation Logs & Inspector"
+            delay={0.45}
+            palette={P}
+            action={
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                {/* Search input */}
+                <input
+                  type="text"
+                  placeholder="Filter by user or error..."
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  style={{
+                    background: P.bg,
+                    border: `1px solid ${P.cardBorder}`,
+                    color: P.text,
+                    fontSize: 11,
+                    fontFamily: "'JetBrains Mono', monospace",
+                    padding: "4px 8px",
+                    borderRadius: 6,
+                    outline: "none",
+                    width: 180,
+                  }}
+                />
+                {/* Status filter */}
+                <div style={{ display: "flex", gap: 2, background: P.segmentBg, borderRadius: 6, padding: 2 }}>
+                  {["all", "success", "split", "error"].map(s => (
+                    <button
+                      key={s}
+                      onClick={() => setStatusFilter(s)}
+                      style={{
+                        fontSize: 10,
+                        fontFamily: "'JetBrains Mono', monospace",
+                        color: statusFilter === s ? P.text : P.textDim,
+                        background: statusFilter === s ? P.card : "transparent",
+                        border: "none",
+                        padding: "3px 8px",
+                        borderRadius: 4,
+                        cursor: "pointer",
+                        textTransform: "uppercase",
+                        fontWeight: statusFilter === s ? 600 : 400,
+                      }}
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            }
+          >
             {loading ? (
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {Array.from({ length: 6 }).map((_, i) => <SkeletonBlock key={i} height={36} palette={P} />)}
               </div>
             ) : operations.length === 0 ? (
               <div style={{ textAlign: "center", padding: "32px 0", color: P.textDim, fontFamily: "'JetBrains Mono', monospace", fontSize: 12 }}>
-                No operations logged yet in this period.
-                <br />
-                <span style={{ fontSize: 10, marginTop: 4, display: "block" }}>Operations will appear here after users perform actions.</span>
+                No operations match your current filters.
               </div>
             ) : (
               <div style={{ display: "flex", flexDirection: "column" }}>
                 <div
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "1fr 1.5fr 0.7fr 0.7fr 0.5fr",
+                    gridTemplateColumns: "1.2fr 1.5fr 0.6fr 0.7fr 0.6fr 0.5fr",
                     gap: 8,
                     padding: "0 0 8px",
                     borderBottom: `1px solid ${P.cardBorder}`,
                     marginBottom: 4,
                   }}
                 >
-                  {["User", "Action", "Count", "Time", "Status"].map((h) => (
+                  {["User", "Action", "Items", "Latency", "Time", "Status"].map((h) => (
                     <span key={h} style={{ fontSize: 9, color: P.textDim, fontFamily: "'JetBrains Mono', monospace", textTransform: "uppercase", letterSpacing: 0.8 }}>
                       {h}
                     </span>
@@ -759,15 +797,21 @@ export default function AdminDashboard() {
                 {operations.map((op, i) => (
                   <div
                     key={op.id}
+                    onClick={() => setSelectedOp(op)}
+                    title="Click to view detailed metadata JSON"
                     style={{
                       display: "grid",
-                      gridTemplateColumns: "1fr 1.5fr 0.7fr 0.7fr 0.5fr",
+                      gridTemplateColumns: "1.2fr 1.5fr 0.6fr 0.7fr 0.6fr 0.5fr",
                       gap: 8,
-                      padding: "9px 0",
+                      padding: "9px 8px",
+                      borderRadius: 6,
                       borderBottom: i < operations.length - 1 ? `1px solid ${P.cardBorder}33` : "none",
                       alignItems: "center",
-                      animation: `fadeSlideUp 0.4s ${0.5 + i * 0.03}s both cubic-bezier(0.22,1,0.36,1)`,
+                      cursor: "pointer",
+                      transition: "background 0.15s",
                     }}
+                    onMouseEnter={e => e.currentTarget.style.background = `${ORANGE}0D`}
+                    onMouseLeave={e => e.currentTarget.style.background = "transparent"}
                   >
                     <span style={{ fontSize: 12, color: ORANGE, fontFamily: "'JetBrains Mono', monospace", fontWeight: 500 }}>
                       @{op.user.username}
@@ -775,6 +819,9 @@ export default function AdminDashboard() {
                     <span style={{ fontSize: 12, color: P.textMid, fontFamily: "'JetBrains Mono', monospace" }}>{op.actionName}</span>
                     <span style={{ fontSize: 12, color: P.text, fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }}>
                       {(op.trackCount || op.itemCount || 0).toLocaleString()}
+                    </span>
+                    <span style={{ fontSize: 11, color: P.textDim, fontFamily: "'JetBrains Mono', monospace" }}>
+                      {op.durationMs ? `${op.durationMs}ms` : "—"}
                     </span>
                     <span style={{ fontSize: 11, color: P.textDim, fontFamily: "'JetBrains Mono', monospace" }}>{timeAgo(op.createdAt)}</span>
                     <StatusPill status={op.status} />
@@ -784,34 +831,24 @@ export default function AdminDashboard() {
             )}
           </SectionCard>
 
-          {/* Sidebar Quick Stats */}
+          {/* Sidebar Stats & Error Diagnostics */}
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            <SectionCard title="Top Feature" delay={0.5} palette={P}>
-              {loading ? (
-                <SkeletonBlock height={60} palette={P} />
-              ) : stats?.topFeature ? (
-                <>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: P.text, fontFamily: "'JetBrains Mono', monospace" }}>
-                    {stats.topFeature.name}
-                  </div>
-                  <div style={{ fontSize: 11, color: P.textDim, fontFamily: "'JetBrains Mono', monospace", marginTop: 4 }}>
-                    {stats.topFeature.count.toLocaleString()} operations
-                  </div>
-                  <div style={{ marginTop: 10, height: 4, background: P.cardBorder, borderRadius: 2, overflow: "hidden" }}>
-                    <div
-                      style={{
-                        height: "100%",
-                        width: `${Math.round((stats.topFeature.count / Math.max(stats.operationsCount, 1)) * 100)}%`,
-                        background: ORANGE,
-                        borderRadius: 2,
-                      }}
-                    />
-                  </div>
-                </>
-              ) : (
-                <div style={{ fontSize: 12, color: P.textDim, fontFamily: "'JetBrains Mono', monospace" }}>No data yet</div>
-              )}
-            </SectionCard>
+            {stats?.errorBreakdown && stats.errorBreakdown.length > 0 && (
+              <SectionCard title="Top Error Diagnostics" delay={0.5} palette={P}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {stats.errorBreakdown.map(err => (
+                    <div key={err.errorCode} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span style={{ fontSize: 11, color: RED, fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }}>
+                        {err.errorCode}
+                      </span>
+                      <span style={{ fontSize: 11, color: P.textDim, fontFamily: "'JetBrains Mono', monospace" }}>
+                        {err.count} count
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </SectionCard>
+            )}
 
             <SectionCard title="Playlist Splits" delay={0.55} palette={P}>
               <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
@@ -985,6 +1022,169 @@ export default function AdminDashboard() {
           </span>
         </div>
       </div>
+
+      {/* Operation Details Modal */}
+      {selectedOp && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: "rgba(0,0,0,0.75)",
+            backdropFilter: "blur(4px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 9999,
+            padding: 20,
+          }}
+          onClick={() => setSelectedOp(null)}
+        >
+          <div
+            style={{
+              background: P.card,
+              border: `1px solid ${P.cardBorder}`,
+              borderRadius: 12,
+              maxWidth: 640,
+              width: "100%",
+              maxHeight: "85vh",
+              overflowY: "auto",
+              padding: 24,
+              boxShadow: "0 20px 40px rgba(0,0,0,0.5)",
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
+              <div>
+                <div style={{ fontSize: 11, color: P.textDim, fontFamily: "'JetBrains Mono', monospace", textTransform: "uppercase", letterSpacing: 1.2 }}>
+                  Operation Inspector
+                </div>
+                <div style={{ fontSize: 20, fontWeight: 700, color: P.text, marginTop: 4 }}>
+                  {selectedOp.actionName} <span style={{ fontSize: 13, color: P.textDim, fontWeight: 400 }}>({selectedOp.action})</span>
+                </div>
+              </div>
+              <button
+                onClick={() => setSelectedOp(null)}
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: P.textDim,
+                  fontSize: 20,
+                  cursor: "pointer",
+                  padding: 4,
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16, background: P.segmentBg, padding: 12, borderRadius: 8 }}>
+              <div>
+                <div style={{ fontSize: 10, color: P.textDim, fontFamily: "'JetBrains Mono', monospace" }}>USER</div>
+                <div style={{ fontSize: 13, color: ORANGE, fontWeight: 600, fontFamily: "'JetBrains Mono', monospace" }}>@{selectedOp.user.username}</div>
+              </div>
+              <div>
+                <div style={{ fontSize: 10, color: P.textDim, fontFamily: "'JetBrains Mono', monospace" }}>SOUNDCLOUD ID</div>
+                <div style={{ fontSize: 13, color: YELLOW, fontWeight: 600, fontFamily: "'JetBrains Mono', monospace" }}>
+                  {selectedOp.soundcloudId || selectedOp.user?.soundcloudId ? `SC: ${selectedOp.soundcloudId || selectedOp.user?.soundcloudId}` : "—"}
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: 10, color: P.textDim, fontFamily: "'JetBrains Mono', monospace" }}>STATUS</div>
+                <div style={{ marginTop: 2 }}><StatusPill status={selectedOp.status} /></div>
+              </div>
+              <div>
+                <div style={{ fontSize: 10, color: P.textDim, fontFamily: "'JetBrains Mono', monospace" }}>DURATION</div>
+                <div style={{ fontSize: 13, color: CYAN, fontWeight: 600, fontFamily: "'JetBrains Mono', monospace" }}>
+                  {selectedOp.durationMs ? `${selectedOp.durationMs} ms` : "—"}
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: 10, color: P.textDim, fontFamily: "'JetBrains Mono', monospace" }}>TIME</div>
+                <div style={{ fontSize: 12, color: P.textMid, fontFamily: "'JetBrains Mono', monospace" }}>
+                  {new Date(selectedOp.createdAt).toLocaleString()}
+                </div>
+              </div>
+              {selectedOp.clientInfo && (
+                <div>
+                  <div style={{ fontSize: 10, color: P.textDim, fontFamily: "'JetBrains Mono', monospace" }}>CLIENT ENVIRONMENT</div>
+                  <div style={{ fontSize: 12, color: P.textMid, fontFamily: "'JetBrains Mono', monospace" }}>
+                    {selectedOp.clientInfo.device} · {selectedOp.clientInfo.browser} · {selectedOp.clientInfo.platform}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Explicit Resource Summaries */}
+            {selectedOp.metadata?.trackIds && Array.isArray(selectedOp.metadata.trackIds) && (
+              <div style={{ background: `${CYAN}10`, border: `1px solid ${CYAN}33`, padding: 12, borderRadius: 8, marginBottom: 14 }}>
+                <div style={{ fontSize: 10, color: CYAN, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", marginBottom: 4 }}>
+                  OPERATED TRACK IDS ({selectedOp.metadata.trackIds.length} tracks)
+                </div>
+                <div style={{ fontSize: 11, color: P.text, fontFamily: "'JetBrains Mono', monospace", wordBreak: "break-all" }}>
+                  {selectedOp.metadata.trackIds.join(", ")}
+                </div>
+              </div>
+            )}
+
+            {selectedOp.metadata?.playlistIds && Array.isArray(selectedOp.metadata.playlistIds) && (
+              <div style={{ background: `${ORANGE}10`, border: `1px solid ${ORANGE}33`, padding: 12, borderRadius: 8, marginBottom: 14 }}>
+                <div style={{ fontSize: 10, color: ORANGE, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", marginBottom: 4 }}>
+                  AFFECTED PLAYLIST IDS ({selectedOp.metadata.playlistIds.length} playlists)
+                </div>
+                <div style={{ fontSize: 11, color: P.text, fontFamily: "'JetBrains Mono', monospace", wordBreak: "break-all" }}>
+                  {selectedOp.metadata.playlistIds.join(", ")}
+                </div>
+              </div>
+            )}
+
+            {selectedOp.metadata?.targetUserIds && Array.isArray(selectedOp.metadata.targetUserIds) && (
+              <div style={{ background: `${YELLOW}10`, border: `1px solid ${YELLOW}33`, padding: 12, borderRadius: 8, marginBottom: 14 }}>
+                <div style={{ fontSize: 10, color: YELLOW, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", marginBottom: 4 }}>
+                  TARGET USER IDS ({selectedOp.metadata.targetUserIds.length} users)
+                </div>
+                <div style={{ fontSize: 11, color: P.text, fontFamily: "'JetBrains Mono', monospace", wordBreak: "break-all" }}>
+                  {selectedOp.metadata.targetUserIds.join(", ")}
+                </div>
+              </div>
+            )}
+
+            {(selectedOp.errorCode || selectedOp.errorMessage) && (
+              <div style={{ background: `${RED}15`, border: `1px solid ${RED}33`, padding: 12, borderRadius: 8, marginBottom: 16 }}>
+                <div style={{ fontSize: 10, color: RED, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace" }}>
+                  ERROR DIAGNOSTIC: {selectedOp.errorCode || "ERROR"}
+                </div>
+                <div style={{ fontSize: 12, color: P.text, marginTop: 4, fontFamily: "'JetBrains Mono', monospace" }}>
+                  {selectedOp.errorMessage || "No message provided"}
+                </div>
+              </div>
+            )}
+
+            <div>
+              <div style={{ fontSize: 10, color: P.textDim, fontFamily: "'JetBrains Mono', monospace", marginBottom: 6 }}>
+                METADATA JSON
+              </div>
+              <pre
+                style={{
+                  background: P.bg,
+                  border: `1px solid ${P.cardBorder}`,
+                  padding: 12,
+                  borderRadius: 8,
+                  fontSize: 11,
+                  color: GREEN,
+                  fontFamily: "'JetBrains Mono', monospace",
+                  overflowX: "auto",
+                  maxHeight: 240,
+                }}
+              >
+                {JSON.stringify(selectedOp.metadata || {}, null, 2)}
+              </pre>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

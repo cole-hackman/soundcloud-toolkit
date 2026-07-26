@@ -3,7 +3,7 @@ import { soundcloudClient } from '../lib/soundcloud-client.js';
 import prisma from '../lib/prisma.js';
 import { heavyOperationRateLimiter } from '../middleware/rateLimiter.js';
 import { authenticateUser } from '../middleware/auth.js';
-import { logOperation } from '../lib/analytics.js';
+import { logOperation, startOperationTimer, extractClientInfo } from '../lib/analytics.js';
 import logger from '../lib/logger.js';
 import { safeError } from '../lib/safe-error.js';
 import { isAllowedDownloadRedirectTarget, isAllowedDownloadUrl } from '../lib/download-utils.js';
@@ -442,7 +442,7 @@ router.get('/library/audit', authenticateUser, heavyOperationRateLimiter, async 
 
     const audit = summarizeLibraryAudit(fullPlaylists);
     logOperation({
-      userId: req.user.id,
+      req,
       action: 'library-audit',
       itemCount: audit.summary.playlists,
       trackCount: audit.summary.tracks,
@@ -473,11 +473,18 @@ router.post('/playlists/compare', authenticateUser, heavyOperationRateLimiter, a
 
     const comparison = comparePlaylists(playlistA, playlistB);
     logOperation({
-      userId: req.user.id,
+      req,
       action: 'playlist-compare',
+      playlistIds: [playlistAId, playlistBId],
       itemCount: 2,
       trackCount: comparison.summary.playlistA.trackCount + comparison.summary.playlistB.trackCount,
       status: 'success',
+      metadata: {
+        commonTrackCount: comparison.summary.commonTrackCount,
+        uniqueA: comparison.summary.playlistA.uniqueCount,
+        uniqueB: comparison.summary.playlistB.uniqueCount,
+      },
+    });
     });
     res.json(comparison);
   } catch (error) {
@@ -624,7 +631,15 @@ router.post('/playlists/clone', authenticateUser, heavyOperationRateLimiter, val
         }
       }
 
-      logOperation({ userId: req.user.id, action: 'clone', trackCount: trackIdsArray.length, status: 'split' });
+      logOperation({
+        req,
+        action: 'clone',
+        playlistIds: [source.id],
+        trackIds: trackIdsArray,
+        trackCount: trackIdsArray.length,
+        status: 'split',
+        metadata: { sourcePlaylistId: source.id, numPlaylistsCreated: numPlaylists },
+      });
       invalidatePlaylistState(req.user.id);
       res.json({
         playlists: createdPlaylists.map(p => p.playlist),
@@ -659,7 +674,15 @@ router.post('/playlists/clone', authenticateUser, heavyOperationRateLimiter, val
         addIndex += mergeBatchSize;
       }
 
-      logOperation({ userId: req.user.id, action: 'clone', trackCount: trackIdsArray.length, status: 'success' });
+      logOperation({
+        req,
+        action: 'clone',
+        playlistIds: [source.id, newPlaylist.id],
+        trackIds: trackIdsArray,
+        trackCount: trackIdsArray.length,
+        status: 'success',
+        metadata: { sourcePlaylistId: source.id, createdPlaylistId: newPlaylist.id },
+      });
       invalidatePlaylistState(req.user.id);
       res.json({
         playlist: newPlaylist,
@@ -1026,6 +1049,7 @@ router.get('/proxy-download', authenticateUser, async (req, res) => {
  * Merge multiple playlists (into new or existing playlist)
  */
 router.post('/playlists/merge', authenticateUser, heavyOperationRateLimiter, validateMergePlaylists, async (req, res) => {
+  const elapsed = startOperationTimer();
   try {
     const { sourcePlaylistIds, title, targetPlaylistId, deleteAfterMerge } = req.body;
     // Validation middleware already checked the input
@@ -1078,18 +1102,21 @@ router.post('/playlists/merge', authenticateUser, heavyOperationRateLimiter, val
 
       // Update target playlist in 100-track batches
       const mergeBatchSize = 100;
-      for (let i = mergeBatchSize; i <= targetChunk.length; i += mergeBatchSize) {
+      let updateIndex = mergeBatchSize;
+      while (updateIndex < targetChunk.length) {
         await sleep(300);
+        const batch = targetChunk.slice(0, updateIndex + mergeBatchSize);
         await soundcloudClient.addTracksToPlaylist(
           req.accessToken,
           req.refreshToken,
           targetPlaylistId,
-          targetChunk.slice(0, i)
+          batch
         );
+        updateIndex += mergeBatchSize;
       }
-      // Final batch if not a clean multiple
-      if (targetChunk.length % mergeBatchSize !== 0) {
-        await sleep(300);
+
+      // If target chunk has <= 100 tracks (or remaining after batches), update directly if needed
+      if (targetChunk.length <= 100) {
         await soundcloudClient.addTracksToPlaylist(
           req.accessToken,
           req.refreshToken,
@@ -1098,20 +1125,41 @@ router.post('/playlists/merge', authenticateUser, heavyOperationRateLimiter, val
         );
       }
 
-      // Create overflow playlists for tracks beyond 500
+      // Create new playlists for overflow chunks (>500 tracks)
+      const baseTitle = (title && title.trim()) || targetPlaylist.title || 'Merged Playlist';
       const overflowPlaylists = [];
-      const baseTitle = targetPlaylist.title || `Merged Playlist`;
       for (let i = 0; i < overflowChunks.length; i++) {
-        await sleep(500);
-        const overflowTitle = `${baseTitle} (overflow ${i + 1})`;
-        const overflowPlaylist = await createPlaylistFromTrackIds(
+        await sleep(300);
+        const chunk = overflowChunks[i];
+        const partNumber = i + 2; // Part 1 is targetPlaylist
+        const partTitle = `${baseTitle} (Part ${partNumber})`;
+        const newPl = await soundcloudClient.createPlaylist(
           req.accessToken,
           req.refreshToken,
-          overflowChunks[i],
-          overflowTitle,
-          `Overflow from merge into "${baseTitle}"`
+          partTitle,
+          playlistDescriptionWithToolkit(`Merged overflow part ${partNumber}`),
+          chunk.slice(0, mergeBatchSize)
         );
-        overflowPlaylists.push(overflowPlaylist);
+
+        let addIndex = mergeBatchSize;
+        while (addIndex < chunk.length) {
+          await sleep(300);
+          const batch = chunk.slice(0, addIndex + mergeBatchSize);
+          await soundcloudClient.addTracksToPlaylist(
+            req.accessToken,
+            req.refreshToken,
+            newPl.id,
+            batch
+          );
+          addIndex += mergeBatchSize;
+        }
+
+        overflowPlaylists.push({
+          id: newPl.id,
+          title: partTitle,
+          trackCount: chunk.length,
+          partNumber,
+        });
       }
 
       // Optionally delete source playlists (never delete the target)
@@ -1140,7 +1188,23 @@ router.post('/playlists/merge', authenticateUser, heavyOperationRateLimiter, val
         deletedCount: deletedPlaylistIds.length,
       });
 
-      logOperation({ userId: req.user.id, action: 'merge', trackCount: addedCount, status: 'success' });
+      logOperation({
+        userId: req.user.id,
+        action: 'merge',
+        trackCount: addedCount,
+        status: 'success',
+        durationMs: elapsed(),
+        clientInfo: extractClientInfo(req),
+        metadata: {
+          sourceCount: sourcePlaylistIds.length,
+          targetPlaylistId,
+          existingTrackCount,
+          addedCount,
+          finalCount,
+          overflowCount: overflowPlaylists.length,
+          deletedCount: deletedPlaylistIds.length,
+        },
+      });
       invalidatePlaylistState(req.user.id);
 
       return res.json({
@@ -1153,55 +1217,50 @@ router.post('/playlists/merge', authenticateUser, heavyOperationRateLimiter, val
           perPlaylistCounts,
           fetchedTotal,
           acceptedTotal,
-          uniqueBeforeCap: trackIdSet.size,
           existingTrackCount,
           addedCount,
-          finalCount,
-          numOverflowPlaylists: overflowPlaylists.length,
+          totalTracks: finalCount,
+          overflowCount: overflowPlaylists.length,
         },
       });
     }
     // ── END MERGE INTO EXISTING ───────────────────────────────────────────────
 
-    const uniqueBeforeCap = trackIdSet.size;
     const trackIdsArray = Array.from(trackIdSet);
-    const baseTitle = title || `Merged Playlist - ${new Date().toLocaleDateString()}`;
+    const uniqueBeforeCap = trackIdsArray.length;
+    const baseTitle = (title && title.trim()) || 'Merged Playlist';
 
     // If tracks exceed 500, split into multiple playlists
     if (trackIdsArray.length > 500) {
-      const numPlaylists = Math.ceil(trackIdsArray.length / 500);
+      const chunks = [];
+      for (let i = 0; i < trackIdsArray.length; i += 500) {
+        chunks.push(trackIdsArray.slice(i, i + 500));
+      }
+
+      const numPlaylists = chunks.length;
       const createdPlaylists = [];
 
-      for (let i = 0; i < numPlaylists; i++) {
-        const startIdx = i * 500;
-        const endIdx = Math.min(startIdx + 500, trackIdsArray.length);
-        const batch = trackIdsArray.slice(startIdx, endIdx);
-        
-        const playlistTitle = numPlaylists > 1 
-          ? `${baseTitle} (${i + 1}/${numPlaylists})`
-          : baseTitle;
-
-        // Create playlist with 100-track batches (SoundCloud API limit)
+      for (let i = 0; i < chunks.length; i++) {
+        const chunk = chunks[i];
+        const partTitle = `${baseTitle} (${i + 1}/${numPlaylists})`;
         const mergeBatchSize = 100;
-        const initialBatch = batch.slice(0, mergeBatchSize);
+        const initialBatch = chunk.slice(0, mergeBatchSize);
+
         const newPlaylist = await soundcloudClient.createPlaylist(
           req.accessToken,
           req.refreshToken,
-          playlistTitle,
-          playlistDescriptionWithToolkit(
-            `Merged from ${sourcePlaylistIds.length} playlists${numPlaylists > 1 ? ` - Part ${i + 1} of ${numPlaylists}` : ''}`
-          ),
+          partTitle,
+          playlistDescriptionWithToolkit(`Part ${i + 1} of ${numPlaylists} merged from ${sourcePlaylistIds.length} playlists`),
           initialBatch
         );
 
-        logger.info(`[merge] created playlist ${i + 1}/${numPlaylists}`, { id: newPlaylist.id, initialCount: initialBatch.length });
         await sleep(500);
 
         let finalCount = initialBatch.length;
         let addIndex = mergeBatchSize;
-        while (addIndex < batch.length) {
+        while (addIndex < chunk.length) {
           await sleep(300);
-          const addBatch = batch.slice(0, addIndex + mergeBatchSize);
+          const addBatch = chunk.slice(0, addIndex + mergeBatchSize);
           await soundcloudClient.addTracksToPlaylist(
             req.accessToken,
             req.refreshToken,
@@ -1212,41 +1271,33 @@ router.post('/playlists/merge', authenticateUser, heavyOperationRateLimiter, val
           addIndex += mergeBatchSize;
         }
 
-        // Verify current count if possible
-        let verifiedCount = finalCount;
-        try {
-          const verified = await soundcloudClient.getPlaylistWithTracks(
-            req.accessToken,
-            req.refreshToken,
-            newPlaylist.id
-          );
-          verifiedCount = Array.isArray(verified.tracks) ? verified.tracks.length : (verified.track_count || verifiedCount);
-        } catch {}
-
         createdPlaylists.push({
           playlist: newPlaylist,
-          trackCount: verifiedCount,
+          trackCount: chunk.length,
           partNumber: i + 1
         });
 
-        // Small delay between creating multiple playlists
-        if (i < numPlaylists - 1) {
-          await sleep(500);
+        if (i < chunks.length - 1) {
+          await sleep(300);
         }
       }
 
-      logger.info('[merge] summary (multiple playlists)', {
+      logger.info('[merge] split completed', {
         sourceCount: sourcePlaylistIds.length,
         fetchedTotal,
         acceptedTotal,
         uniqueBeforeCap,
         totalTracks: trackIdsArray.length,
-        numPlaylistsCreated: numPlaylists,
-        playlists: createdPlaylists.map(p => ({ id: p.playlist.id, count: p.trackCount }))
+        numPlaylistsCreated: numPlaylists
       });
 
       res.json({
-        playlists: createdPlaylists.map(p => p.playlist),
+        playlists: createdPlaylists.map(p => ({
+          ...p.playlist,
+          track_count: p.trackCount,
+          part_number: p.partNumber,
+          total_parts: numPlaylists
+        })),
         stats: {
           sourcePlaylists: sourcePlaylistIds.length,
           perPlaylistCounts,
@@ -1263,7 +1314,22 @@ router.post('/playlists/merge', authenticateUser, heavyOperationRateLimiter, val
           }))
         }
       });
-      logOperation({ userId: req.user.id, action: 'merge', trackCount: trackIdsArray.length, status: 'split' });
+      logOperation({
+        userId: req.user.id,
+        action: 'merge',
+        trackCount: trackIdsArray.length,
+        status: 'split',
+        durationMs: elapsed(),
+        clientInfo: extractClientInfo(req),
+        metadata: {
+          sourceCount: sourcePlaylistIds.length,
+          fetchedTotal,
+          acceptedTotal,
+          uniqueBeforeCap,
+          totalTracks: trackIdsArray.length,
+          playlistsCreated: numPlaylists,
+        },
+      });
       invalidatePlaylistState(req.user.id);
     } else {
       // Single playlist (<= 500 tracks) with 100-track batches
@@ -1329,11 +1395,35 @@ router.post('/playlists/merge', authenticateUser, heavyOperationRateLimiter, val
           finalCount: verifiedCount
         }
       });
-      logOperation({ userId: req.user.id, action: 'merge', trackCount: trackIdsArray.length, status: 'success' });
+      logOperation({
+        userId: req.user.id,
+        action: 'merge',
+        trackCount: trackIdsArray.length,
+        status: 'success',
+        durationMs: elapsed(),
+        clientInfo: extractClientInfo(req),
+        metadata: {
+          sourceCount: sourcePlaylistIds.length,
+          fetchedTotal,
+          acceptedTotal,
+          uniqueBeforeCap,
+          totalTracks: trackIdsArray.length,
+          finalCount: verifiedCount,
+        },
+      });
       invalidatePlaylistState(req.user.id);
     }
   } catch (error) {
     logger.error('Merge playlists error:', safeError(error));
+    logOperation({
+      userId: req.user.id,
+      action: 'merge',
+      status: 'error',
+      durationMs: elapsed(),
+      clientInfo: extractClientInfo(req),
+      errorCode: error.name || 'MERGE_FAILED',
+      errorMessage: safeError(error).message,
+    });
     res.status(500).json({ error: 'Failed to merge playlists' });
   }
 });
@@ -2084,6 +2174,7 @@ router.get('/activities', authenticateUser, validateActivities, async (req, res)
  * Unlike multiple tracks at once
  */
 router.post('/likes/tracks/bulk-unlike', authenticateUser, heavyOperationRateLimiter, validateBulkUnlike, async (req, res) => {
+  const elapsed = startOperationTimer();
   try {
     const { trackIds } = req.body;
     const results = [];
@@ -2100,9 +2191,29 @@ router.post('/likes/tracks/bulk-unlike', authenticateUser, heavyOperationRateLim
 
     invalidateUserNamespaces(req.user.id, ['likes']);
     res.json({ results });
-    logOperation({ userId: req.user.id, action: 'bulk-unlike', trackCount: results.filter(r => r.status === 'ok').length, itemCount: results.length, status: 'success' });
+    const succeeded = results.filter(r => r.status === 'ok').length;
+    const failed = results.filter(r => r.status !== 'ok').length;
+    logOperation({
+      userId: req.user.id,
+      action: 'bulk-unlike',
+      trackCount: succeeded,
+      itemCount: results.length,
+      status: failed > 0 && succeeded === 0 ? 'error' : 'success',
+      durationMs: elapsed(),
+      clientInfo: extractClientInfo(req),
+      metadata: { total: results.length, succeeded, failed },
+    });
   } catch (error) {
     logger.error('Bulk unlike error:', safeError(error));
+    logOperation({
+      userId: req.user.id,
+      action: 'bulk-unlike',
+      status: 'error',
+      durationMs: elapsed(),
+      clientInfo: extractClientInfo(req),
+      errorCode: error.name || 'BULK_UNLIKE_FAILED',
+      errorMessage: safeError(error).message,
+    });
     res.status(500).json({ error: 'Bulk unlike failed' });
   }
 });
@@ -2158,6 +2269,7 @@ router.get('/followings', authenticateUser, async (req, res) => {
  * Unfollow multiple users at once
  */
 router.post('/followings/bulk-unfollow', authenticateUser, heavyOperationRateLimiter, validateBulkUnfollow, async (req, res) => {
+  const elapsed = startOperationTimer();
   try {
     const { userIds } = req.body;
     const results = [];
@@ -2174,9 +2286,28 @@ router.post('/followings/bulk-unfollow', authenticateUser, heavyOperationRateLim
 
     invalidateUserNamespaces(req.user.id, ['followings']);
     res.json({ results });
-    logOperation({ userId: req.user.id, action: 'bulk-unfollow', itemCount: results.filter(r => r.status === 'ok').length, status: 'success' });
+    const succeeded = results.filter(r => r.status === 'ok').length;
+    const failed = results.filter(r => r.status !== 'ok').length;
+    logOperation({
+      userId: req.user.id,
+      action: 'bulk-unfollow',
+      itemCount: succeeded,
+      status: failed > 0 && succeeded === 0 ? 'error' : 'success',
+      durationMs: elapsed(),
+      clientInfo: extractClientInfo(req),
+      metadata: { total: results.length, succeeded, failed },
+    });
   } catch (error) {
     logger.error('Bulk unfollow error:', safeError(error));
+    logOperation({
+      userId: req.user.id,
+      action: 'bulk-unfollow',
+      status: 'error',
+      durationMs: elapsed(),
+      clientInfo: extractClientInfo(req),
+      errorCode: error.name || 'BULK_UNFOLLOW_FAILED',
+      errorMessage: safeError(error).message,
+    });
     res.status(500).json({ error: 'Bulk unfollow failed' });
   }
 });

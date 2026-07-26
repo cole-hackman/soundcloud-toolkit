@@ -112,19 +112,33 @@ router.get('/stats', authenticateUser, adminAuth, async (req, res) => {
       action: { not: { startsWith: 'view:' } },
     };
 
-    const [totalUsers, newUsers, agg, byAction, byStatus, splitsCount, activeUsersPeriodRows, activeUsersMonthRows, activeUsers30dRows, featureReachRows] = await Promise.all([
+    const [
+      totalUsers,
+      newUsers,
+      agg,
+      byAction,
+      byStatus,
+      splitsCount,
+      activeUsersPeriodRows,
+      activeUsersMonthRows,
+      activeUsers30dRows,
+      featureReachRows,
+      topErrors,
+      avgLatencyRows,
+    ] = await Promise.all([
       prisma.user.count(),
       prisma.user.count({ where: { createdAt: { gte: cutoff } } }),
       prisma.operationLog.aggregate({
         where: operationWhere,
         _sum: { trackCount: true },
         _count: { id: true },
-        _avg: { trackCount: true },
+        _avg: { trackCount: true, durationMs: true },
       }),
       prisma.operationLog.groupBy({
         by: ['action'],
         where: operationWhere,
         _count: { id: true },
+        _avg: { durationMs: true },
         orderBy: { _count: { id: 'desc' } },
       }),
       prisma.operationLog.groupBy({
@@ -160,11 +174,27 @@ router.get('/stats', authenticateUser, adminAuth, async (req, res) => {
         GROUP BY action
         ORDER BY users DESC, opens DESC, action ASC
       `,
+      prisma.operationLog.groupBy({
+        by: ['errorCode'],
+        where: { ...operationWhere, status: 'error', errorCode: { not: null } },
+        _count: { id: true },
+        orderBy: { _count: { id: 'desc' } },
+        take: 5,
+      }),
+      prisma.$queryRaw`
+        SELECT
+          PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY "durationMs")::int AS p95,
+          AVG("durationMs")::int AS avg
+        FROM operation_logs
+        WHERE "createdAt" >= ${cutoff} AND action NOT LIKE 'view:%' AND "durationMs" IS NOT NULL
+      `,
     ]);
 
     const operationsCount = agg._count.id ?? 0;
     const tracksProcessed = agg._sum.trackCount ?? 0;
     const avgTracksPerOp = agg._avg.trackCount ? Math.round(agg._avg.trackCount) : 0;
+    const avgDurationMs = agg._avg.durationMs ? Math.round(agg._avg.durationMs) : 0;
+    const p95DurationMs = Number(avgLatencyRows?.[0]?.p95 ?? 0);
     const activeUsersPeriod = Number(activeUsersPeriodRows?.[0]?.count ?? 0);
     const activeUsersMonth = Number(activeUsersMonthRows?.[0]?.count ?? 0);
     const activeUsers30d = Number(activeUsers30dRows?.[0]?.count ?? 0);
@@ -173,7 +203,13 @@ router.get('/stats', authenticateUser, adminAuth, async (req, res) => {
       key: row.action,
       name: ACTION_NAMES[row.action] || row.action,
       count: row._count.id,
+      avgDurationMs: row._avg.durationMs ? Math.round(row._avg.durationMs) : 0,
       color: ACTION_COLORS[row.action] || '#888888',
+    }));
+
+    const errorBreakdown = topErrors.map(e => ({
+      errorCode: e.errorCode,
+      count: e._count.id,
     }));
 
     const topFeature = featureUsage.length > 0 ? featureUsage[0] : null;
@@ -201,8 +237,11 @@ router.get('/stats', authenticateUser, adminAuth, async (req, res) => {
       operationsCount,
       featureUsage,
       featureReach,
+      errorBreakdown,
       splitsCount,
       avgTracksPerOp,
+      avgDurationMs,
+      p95DurationMs,
       successRate,
       splitRate,
       errorRate,
@@ -282,23 +321,47 @@ router.get('/daily', authenticateUser, adminAuth, async (req, res) => {
 });
 
 /**
- * GET /api/admin/operations?period=1d|7d|30d|90d|month&limit=20
+ * GET /api/admin/operations?period=1d|7d|30d|90d|month&limit=20&action=<action>&status=<status>&search=<query>
  *
- * Returns recent operation logs with user info for the recent operations table.
+ * Returns recent operation logs with user info and detailed metadata.
  */
 router.get('/operations', authenticateUser, adminAuth, async (req, res) => {
   try {
     const period = validPeriod(req.query.period);
     const cutoff = periodToCutoff(period);
     const limit = Math.min(parseInt(req.query.limit) || 20, 100);
+    const actionFilter = typeof req.query.action === 'string' && req.query.action.trim() ? req.query.action.trim() : null;
+    const statusFilter = typeof req.query.status === 'string' && req.query.status.trim() ? req.query.status.trim() : null;
+    const searchFilter = typeof req.query.search === 'string' && req.query.search.trim() ? req.query.search.trim() : null;
+
+    const where = {
+      createdAt: { gte: cutoff },
+      action: actionFilter ? actionFilter : { not: { startsWith: 'view:' } },
+    };
+    if (statusFilter && ['success', 'split', 'error'].includes(statusFilter)) {
+      where.status = statusFilter;
+    }
+    if (searchFilter) {
+      const searchNum = Number(searchFilter);
+      const isNum = !isNaN(searchNum) && searchNum > 0;
+      where.OR = [
+        { user: { username: { contains: searchFilter, mode: 'insensitive' } } },
+        { user: { displayName: { contains: searchFilter, mode: 'insensitive' } } },
+        { errorCode: { contains: searchFilter, mode: 'insensitive' } },
+        { errorMessage: { contains: searchFilter, mode: 'insensitive' } },
+      ];
+      if (isNum) {
+        where.OR.push({ soundcloudId: searchNum });
+      }
+    }
 
     const logs = await prisma.operationLog.findMany({
-      where: { createdAt: { gte: cutoff }, action: { not: { startsWith: 'view:' } } },
+      where,
       orderBy: { createdAt: 'desc' },
       take: limit,
       include: {
         user: {
-          select: { username: true, displayName: true, avatarUrl: true },
+          select: { username: true, displayName: true, avatarUrl: true, soundcloudId: true },
         },
       },
     });
@@ -309,12 +372,18 @@ router.get('/operations', authenticateUser, adminAuth, async (req, res) => {
         username: log.user.username,
         displayName: log.user.displayName,
         avatarUrl: log.user.avatarUrl,
+        soundcloudId: log.user.soundcloudId,
       },
+      soundcloudId: log.soundcloudId || log.user?.soundcloudId,
       action: log.action,
       actionName: ACTION_NAMES[log.action] || log.action,
       trackCount: log.trackCount,
       itemCount: log.itemCount,
       status: log.status,
+      durationMs: log.durationMs,
+      errorCode: log.errorCode,
+      errorMessage: log.errorMessage,
+      clientInfo: log.clientInfo,
       createdAt: log.createdAt.toISOString(),
       metadata: log.metadata,
     }));

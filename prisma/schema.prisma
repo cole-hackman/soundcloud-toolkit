@@ -101,20 +101,28 @@ model Token {
 }
 
 model OperationLog {
-  id         String   @id @default(cuid())
-  userId     String
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  action     String   // 'merge' | 'from-likes' | 'bulk-unlike' | 'bulk-unfollow' | 'resolve' | 'batch-resolve' | 'proxy-download' | 'bulk-remove-reposts'
-  status     String   @default("success")  // 'success' | 'split' | 'error'
-  trackCount Int      @default(0)
-  itemCount  Int      @default(0)
-  metadata   Json?
-  createdAt  DateTime @default(now())
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  soundcloudId Int?
+  action       String   // 'merge' | 'from-likes' | 'bulk-unlike' | 'bulk-unfollow' | 'resolve' | 'batch-resolve' | 'proxy-download' | 'bulk-remove-reposts'
+  status       String   @default("success")  // 'success' | 'split' | 'error'
+  trackCount   Int      @default(0)
+  itemCount    Int      @default(0)
+  durationMs   Int?
+  errorCode    String?
+  errorMessage String?
+  metadata     Json?
+  clientInfo   Json?
+  createdAt    DateTime @default(now())
 
   @@index([userId])
+  @@index([soundcloudId])
   @@index([action])
+  @@index([status])
   @@index([createdAt])
   @@index([userId, createdAt])
+  @@index([soundcloudId, createdAt])
   @@index([action, createdAt])
   @@map("operation_logs")
 }

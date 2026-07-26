@@ -5,7 +5,7 @@ import { encrypt } from '../lib/crypto.js';
 import { soundcloudClient } from '../lib/soundcloud-client.js';
 import prisma from '../lib/prisma.js';
 import logger from '../lib/logger.js';
-import { safeError } from '../lib/safe-error.js';
+import { logOperation } from '../lib/analytics.js';
 
 const router = express.Router();
 
@@ -170,6 +170,15 @@ router.get('/callback', async (req, res) => {
     const sessionValue = signSession(JSON.stringify(sessionData), process.env.SESSION_SECRET);
     res.cookie('session', sessionValue, createSessionCookieOptions());
 
+    // Log OAuth login success
+    logOperation({
+      userId: user.id,
+      soundcloudId: user.soundcloudId,
+      action: 'auth-login',
+      status: 'success',
+      metadata: { username: user.username },
+    });
+
     // Clear PKCE verifier and app origin cookies
     res.clearCookie('pkce_verifier');
     res.clearCookie('app_url');
@@ -197,6 +206,22 @@ router.get('/callback', async (req, res) => {
  */
 router.post('/logout', async (req, res) => {
   try {
+    const sessionCookie = req.cookies.session;
+    if (sessionCookie) {
+      const sessionValue = unsignSession(sessionCookie, process.env.SESSION_SECRET);
+      if (sessionValue) {
+        const sessionData = parseSessionData(sessionValue);
+        if (sessionData?.userId) {
+          logOperation({
+            userId: sessionData.userId,
+            soundcloudId: sessionData.soundcloudId,
+            action: 'auth-logout',
+            status: 'success',
+          });
+        }
+      }
+    }
+
     // Clear session cookie
     res.clearCookie('session');
     

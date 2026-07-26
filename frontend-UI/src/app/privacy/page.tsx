@@ -122,7 +122,7 @@ export default function PrivacyPage() {
               </h2>
               <p>
                 When you authenticate with SC Toolkit, we store the following
-                information in our database:
+                information in our secure database:
               </p>
               <ul className="list-disc list-inside space-y-2 ml-4 mt-2">
                 <li>Your SoundCloud user ID (numeric identifier)</li>
@@ -132,12 +132,56 @@ export default function PrivacyPage() {
                   Encrypted access and refresh tokens (AES-256-GCM encryption)
                 </li>
                 <li>Token expiration timestamps</li>
+                <li>
+                  Operation logs recording feature actions, execution duration, status, and operated resource identifiers (e.g. track IDs or playlist IDs)
+                </li>
               </ul>
               <p className="mt-4">
                 All sensitive data (access tokens) is encrypted at rest using
                 industry-standard AES-256-GCM encryption with a 32-character
                 encryption key. Session cookies are HMAC-signed and marked as
                 HttpOnly and Secure in production.
+              </p>
+            </section>
+
+            <section>
+              <h2 className="text-2xl font-bold mb-4 text-foreground">
+                Product Usage & Interaction Analytics
+              </h2>
+              <p>
+                To maintain application health, diagnose API issues, and plan
+                product improvements, we log technical details when a
+                signed-in user interacts with a feature or executes an operation:
+              </p>
+              <ul className="list-disc list-inside space-y-2 ml-4 mt-2">
+                <li>
+                  <strong className="text-foreground">User Identification:</strong>{" "}
+                  Logs record your account ID and numeric SoundCloud ID (`soundcloudId`)
+                  associated with each action.
+                </li>
+                <li>
+                  <strong className="text-foreground">Operated Resources:</strong>{" "}
+                  Actions log the specific resource identifiers operated on (such as
+                  track IDs, playlist IDs, target user IDs, or resolved URLs) to ensure
+                  batch operations can be verified and audited.
+                </li>
+                <li>
+                  <strong className="text-foreground">Performance &amp; Diagnostics:</strong>{" "}
+                  We record server execution latency (in milliseconds), operation status
+                  (success, split, error), and error diagnostic codes to monitor system performance.
+                </li>
+                <li>
+                  <strong className="text-foreground">Client Environment:</strong>{" "}
+                  We capture lightweight, non-sensitive environment metadata (device type,
+                  browser name, and OS platform) from request user-agent headers.
+                </li>
+              </ul>
+              <p className="mt-4">
+                We <strong className="text-foreground">never</strong> collect or store your
+                SoundCloud password, IP addresses, audio file bytes, private messages, track
+                comments, or financial data. Analytics data is strictly used for internal
+                product reliability, performance monitoring, and debugging. We never sell,
+                rent, or share this data with third parties.
               </p>
             </section>
 

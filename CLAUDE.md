@@ -217,7 +217,7 @@ Rate limited: `authRateLimiter` (5 requests / 15 min)
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET` | `/api/me` | Full SoundCloud `/me` response (followers_count, likes_count, etc.) |
-| `GET` | `/api/playlists` | User's playlists; query: `limit` (default 50), `offset` (default 0) |
+| `GET` | `/api/playlists` | All of the user's playlists (fully paginated internally via `next_href`); returns `{ collection, total }` |
 | `GET` | `/api/playlists/:id` | Single playlist with full `tracks[]` array |
 | `GET` | `/api/followers` | All followers (fully paginated); returns `{ collection, total }` |
 | `GET` | `/api/followings` | All followings (fully paginated); returns `{ collection, total }` |

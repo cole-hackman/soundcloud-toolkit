@@ -670,15 +670,6 @@ export default function AdminDashboard() {
             delay={0.2}
             palette={P}
           />
-          <StatCard
-            label="Active Users (Month)"
-            value={loading ? "—" : (stats?.activeUsersMonth ?? 0).toLocaleString()}
-            sub={`Rolling 30d: ${(stats?.activeUsers30d ?? 0).toLocaleString()}`}
-            trend="Month-to-date"
-            trendDir="flat"
-            delay={0.225}
-            palette={P}
-          />
         </div>
 
         {/* Main Grid */}

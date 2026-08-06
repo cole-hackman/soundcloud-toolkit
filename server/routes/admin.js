@@ -104,9 +104,6 @@ router.get('/stats', authenticateUser, adminAuth, async (req, res) => {
     const period = validPeriod(req.query.period);
     const cutoff = periodToCutoff(period);
 
-    const monthCutoff = periodToCutoff('month');
-    const rollingThirtyCutoff = periodToCutoff('30d');
-
     // Page-open signals (`view:*`) are intentionally excluded from operation
     // metrics. They are reported separately below as feature reach.
     const operationWhere = {
@@ -122,8 +119,6 @@ router.get('/stats', authenticateUser, adminAuth, async (req, res) => {
       byStatus,
       splitsCount,
       activeUsersPeriodRows,
-      activeUsersMonthRows,
-      activeUsers30dRows,
       featureReachRows,
       topErrors,
       avgLatencyRows,
@@ -157,16 +152,6 @@ router.get('/stats', authenticateUser, adminAuth, async (req, res) => {
         WHERE "createdAt" >= ${cutoff} AND action NOT LIKE 'view:%'
       `,
       prisma.$queryRaw`
-        SELECT COUNT(DISTINCT "userId")::int AS count
-        FROM operation_logs
-        WHERE "createdAt" >= ${monthCutoff} AND action NOT LIKE 'view:%'
-      `,
-      prisma.$queryRaw`
-        SELECT COUNT(DISTINCT "userId")::int AS count
-        FROM operation_logs
-        WHERE "createdAt" >= ${rollingThirtyCutoff} AND action NOT LIKE 'view:%'
-      `,
-      prisma.$queryRaw`
         SELECT
           action,
           COUNT(DISTINCT "userId")::int AS users,
@@ -198,8 +183,6 @@ router.get('/stats', authenticateUser, adminAuth, async (req, res) => {
     const avgDurationMs = agg._avg.durationMs ? Math.round(agg._avg.durationMs) : 0;
     const p95DurationMs = Number(avgLatencyRows?.[0]?.p95 ?? 0);
     const activeUsersPeriod = Number(activeUsersPeriodRows?.[0]?.count ?? 0);
-    const activeUsersMonth = Number(activeUsersMonthRows?.[0]?.count ?? 0);
-    const activeUsers30d = Number(activeUsers30dRows?.[0]?.count ?? 0);
 
     const featureUsage = byAction.map(row => ({
       key: row.action,
@@ -249,8 +232,6 @@ router.get('/stats', authenticateUser, adminAuth, async (req, res) => {
       errorRate,
       topFeature,
       activeUsersPeriod,
-      activeUsersMonth,
-      activeUsers30d,
     });
   } catch (err) {
     logger.error('[admin/stats] Error:', safeError(err));

@@ -220,6 +220,16 @@ class SoundCloudClient {
   }
 
   /**
+   * Get every one of the user's playlists (fully paginated via next_href).
+   * `/me/playlists` returns oldest-created playlists first, so a single
+   * page (see getPlaylists) silently drops newer playlists once a user
+   * has more than `limit` of them.
+   */
+  async getAllPlaylists(accessToken, refreshToken, limit = 200) {
+    return this.paginate('/me/playlists', accessToken, refreshToken, limit);
+  }
+
+  /**
    * Get a playlist with tracks included
    */
   async getPlaylistWithTracks(accessToken, refreshToken, playlistId) {

@@ -18,7 +18,6 @@ import { requestCache } from '../lib/request-cache.js';
 import { mergeIntoExisting, splitIntoChunks } from '../lib/merge-utils.js';
 import {
   validatePlaylistId,
-  validatePagination,
   validateResolve,
   validateMergePlaylists,
   validateUpdatePlaylist,
@@ -513,25 +512,17 @@ router.post('/playlists/compare', authenticateUser, heavyOperationRateLimiter, a
 
 /**
  * GET /api/playlists
- * Get user's playlists
+ * Get all of the user's playlists (fully paginated — see getAllPlaylists)
  */
-router.get('/playlists', authenticateUser, validatePagination, async (req, res) => {
+router.get('/playlists', authenticateUser, async (req, res) => {
   try {
-    const { limit = 50, offset = 0 } = req.query;
-    const cacheKey = `limit=${parseInt(limit)}&offset=${parseInt(offset)}`;
     const withCovers = await getCachedUserPayload(
       'playlists',
       req.user.id,
-      cacheKey,
+      'default',
       async () => {
-        const playlists = await soundcloudClient.getPlaylists(
-          req.accessToken,
-          req.refreshToken,
-          parseInt(limit),
-          parseInt(offset)
-        );
-        const payload = { ...playlists };
-        payload.collection = await Promise.all((playlists.collection || []).map(async (p) => {
+        const playlists = await soundcloudClient.getAllPlaylists(req.accessToken, req.refreshToken);
+        const collection = await Promise.all(playlists.map(async (p) => {
           const idNum = typeof p.id === 'string' ? parseInt(p.id, 10) : p.id;
           let coverUrl = p.artwork_url || '';
           if (!coverUrl) {
@@ -544,7 +535,7 @@ router.get('/playlists', authenticateUser, validatePagination, async (req, res) 
           if (!coverUrl) coverUrl = p.user?.avatar_url || '';
           return { ...p, id: idNum, coverUrl };
         }));
-        return payload;
+        return { collection, total: collection.length };
       },
       CACHE_TTL.playlists,
     );

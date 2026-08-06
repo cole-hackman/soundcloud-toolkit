@@ -502,7 +502,6 @@ router.post('/playlists/compare', authenticateUser, heavyOperationRateLimiter, a
         uniqueB: comparison.summary.playlistB.uniqueCount,
       },
     });
-    });
     res.json(comparison);
   } catch (error) {
     logger.error('Playlist compare error:', safeError(error));
@@ -739,6 +738,8 @@ router.post(
             action: 'playlist-transfer',
             trackCount: result.noop ? 0 : 1,
             status: 'success',
+            trackIds: [trackId],
+            playlistIds: [targetPlaylistId],
             metadata: { kind: 'duplicate', noop: !!result.noop },
           });
           invalidatePlaylistState(req.user.id);
@@ -764,6 +765,8 @@ router.post(
             action: 'playlist-transfer',
             trackCount: 1,
             status: 'success',
+            trackIds: [trackId],
+            playlistIds: [sourcePlaylistId, targetPlaylistId],
             metadata: { kind: 'move' },
           });
           invalidatePlaylistState(req.user.id);
@@ -776,6 +779,8 @@ router.post(
             action: 'playlist-transfer',
             trackCount: 1,
             status: 'error',
+            trackIds: [trackId],
+            playlistIds: [sourcePlaylistId, targetPlaylistId],
             metadata: { kind: 'move', partial: true, stage: result.stage },
           });
           return res.json(result);
@@ -1204,6 +1209,8 @@ router.post('/playlists/merge', authenticateUser, heavyOperationRateLimiter, val
         status: 'success',
         durationMs: elapsed(),
         clientInfo: extractClientInfo(req),
+        playlistIds: [...sourcePlaylistIds, targetPlaylistId, ...overflowPlaylists.map(p => p.id)],
+        trackIds: Array.from(trackIdSet),
         metadata: {
           sourceCount: sourcePlaylistIds.length,
           targetPlaylistId,
@@ -1330,6 +1337,8 @@ router.post('/playlists/merge', authenticateUser, heavyOperationRateLimiter, val
         status: 'split',
         durationMs: elapsed(),
         clientInfo: extractClientInfo(req),
+        playlistIds: [...sourcePlaylistIds, ...createdPlaylists.map(p => p.playlist.id)],
+        trackIds: trackIdsArray,
         metadata: {
           sourceCount: sourcePlaylistIds.length,
           fetchedTotal,
@@ -1411,6 +1420,8 @@ router.post('/playlists/merge', authenticateUser, heavyOperationRateLimiter, val
         status: 'success',
         durationMs: elapsed(),
         clientInfo: extractClientInfo(req),
+        playlistIds: [...sourcePlaylistIds, newPlaylist.id],
+        trackIds: trackIdsArray,
         metadata: {
           sourceCount: sourcePlaylistIds.length,
           fetchedTotal,
@@ -1727,6 +1738,11 @@ router.post(
         action: 'followed-likes-to-playlist',
         trackCount: trackIds.length,
         status: result.numPlaylistsCreated && result.numPlaylistsCreated > 1 ? 'split' : 'success',
+        trackIds,
+        playlistIds: result.playlists
+          ? result.playlists.map(p => p.id)
+          : [result.playlist?.id, ...(result.overflowPlaylists || []).map(p => p.id)].filter(Boolean),
+        targetUserIds: [Number(req.params.userId)],
       });
 
       invalidatePlaylistState(req.user.id);
@@ -1821,6 +1837,8 @@ router.post(
         itemCount: playlistIds.length,
         trackCount: acceptedTotal,
         status: errors.length > 0 ? 'partial' : 'success',
+        playlistIds: [...playlistIds, ...playlists.map(p => p.id)],
+        targetUserIds: [Number(req.params.userId)],
       });
 
       invalidatePlaylistState(req.user.id);
@@ -1916,7 +1934,14 @@ router.post('/playlists/from-likes', authenticateUser, heavyOperationRateLimiter
         overflowPlaylists.push({ id: overflowPlaylist.id, title: overflowTitle, permalink_url: overflowPlaylist.permalink_url, trackCount: overflowChunks[j].length });
       }
 
-      logOperation({ userId: req.user.id, action: 'from-likes', trackCount: addedCount, status: 'success' });
+      logOperation({
+        userId: req.user.id,
+        action: 'from-likes',
+        trackCount: addedCount,
+        status: 'success',
+        playlistIds: [targetPlaylistId, ...overflowPlaylists.map(p => p.id)],
+        trackIds,
+      });
       invalidatePlaylistState(req.user.id);
 
       return res.json({
@@ -1945,7 +1970,14 @@ router.post('/playlists/from-likes', authenticateUser, heavyOperationRateLimiter
         playlist: { id: newPlaylist.id, title: baseTitle, permalink_url: newPlaylist.permalink_url },
         totalTracks: trackIds.length
       });
-      logOperation({ userId: req.user.id, action: 'from-likes', trackCount: trackIds.length, status: 'success' });
+      logOperation({
+        userId: req.user.id,
+        action: 'from-likes',
+        trackCount: trackIds.length,
+        status: 'success',
+        playlistIds: [newPlaylist.id],
+        trackIds,
+      });
       invalidatePlaylistState(req.user.id);
       return;
     }
@@ -1985,7 +2017,14 @@ router.post('/playlists/from-likes', authenticateUser, heavyOperationRateLimiter
       totalTracks: trackIds.length,
       numPlaylistsCreated: numPlaylists
     });
-    logOperation({ userId: req.user.id, action: 'from-likes', trackCount: trackIds.length, status: 'split' });
+    logOperation({
+      userId: req.user.id,
+      action: 'from-likes',
+      trackCount: trackIds.length,
+      status: 'split',
+      playlistIds: createdPlaylists.map(p => p.id),
+      trackIds,
+    });
     invalidatePlaylistState(req.user.id);
     return;
   } catch (error) {
@@ -2002,7 +2041,7 @@ router.delete('/playlists/:id', authenticateUser, validateDeletePlaylist, async 
   try {
     const playlistId = req.params.id;
     await soundcloudClient.deletePlaylist(req.accessToken, req.refreshToken, playlistId);
-    logOperation({ userId: req.user.id, action: 'delete-playlist', itemCount: 1, status: 'success' });
+    logOperation({ userId: req.user.id, action: 'delete-playlist', itemCount: 1, status: 'success', playlistIds: [playlistId] });
     invalidatePlaylistState(req.user.id);
     res.json({ ok: true });
   } catch (error) {
@@ -2210,6 +2249,7 @@ router.post('/likes/tracks/bulk-unlike', authenticateUser, heavyOperationRateLim
       status: failed > 0 && succeeded === 0 ? 'error' : 'success',
       durationMs: elapsed(),
       clientInfo: extractClientInfo(req),
+      trackIds: results.filter(r => r.status === 'ok').map(r => r.trackId),
       metadata: { total: results.length, succeeded, failed },
     });
   } catch (error) {
@@ -2254,7 +2294,14 @@ router.post('/likes/tracks/bulk-like', authenticateUser, heavyOperationRateLimit
 
     invalidateUserNamespaces(req.user.id, ['likes']);
     res.json({ results });
-    logOperation({ userId: req.user.id, action: 'bulk-like', trackCount: results.filter(r => r.status === 'ok').length, itemCount: results.length, status: 'success' });
+    logOperation({
+      userId: req.user.id,
+      action: 'bulk-like',
+      trackCount: results.filter(r => r.status === 'ok').length,
+      itemCount: results.length,
+      status: 'success',
+      trackIds: results.filter(r => r.status === 'ok').map(r => r.trackId),
+    });
   } catch (error) {
     logger.error('Bulk like error:', safeError(error));
     res.status(500).json({ error: 'Bulk like failed' });
@@ -2320,6 +2367,7 @@ router.post('/followings/bulk-unfollow', authenticateUser, heavyOperationRateLim
       status: failed > 0 && succeeded === 0 ? 'error' : 'success',
       durationMs: elapsed(),
       clientInfo: extractClientInfo(req),
+      targetUserIds: results.filter(r => r.status === 'ok').map(r => r.userId),
       metadata: { total: results.length, succeeded, failed },
     });
   } catch (error) {
@@ -2436,7 +2484,14 @@ router.post('/reposts/bulk-remove', authenticateUser, heavyOperationRateLimiter,
 
     invalidateUserNamespaces(req.user.id, ['reposts']);
     res.json({ results });
-    logOperation({ userId: req.user.id, action: 'bulk-remove-reposts', itemCount: items.length, status: 'success' });
+    logOperation({
+      userId: req.user.id,
+      action: 'bulk-remove-reposts',
+      itemCount: items.length,
+      status: 'success',
+      trackIds: results.filter(r => r.status === 'ok' && r.resourceType === 'track').map(r => r.id),
+      playlistIds: results.filter(r => r.status === 'ok' && r.resourceType === 'playlist').map(r => r.id),
+    });
   } catch (error) {
     logger.error('Bulk unrepost error:', safeError(error));
     res.status(500).json({ error: 'Bulk unrepost failed' });
@@ -2607,6 +2662,8 @@ router.post('/growth/engage', authenticateUser, heavyOperationRateLimiter, valid
       action: 'growth-engage-start',
       itemCount: targets.length,
       status: 'success',
+      targetUserIds: targets.map(t => t.userId),
+      trackIds: targets.filter(t => t.likeTrackId).map(t => t.likeTrackId),
     });
   } catch (error) {
     if (error.code === 'JOB_RUNNING') {
@@ -2944,6 +3001,8 @@ router.post('/growth/reverse', authenticateUser, validateReverseGrowthActions, a
       action: 'growth-reverse',
       itemCount: targets.length,
       status: failed === 0 ? 'success' : (reversed > 0 ? 'split' : 'error'),
+      targetUserIds: targets.filter(t => t.actionType === 'follow').map(t => t.targetId),
+      trackIds: targets.filter(t => t.actionType === 'like').map(t => t.targetId),
     });
   } catch (error) {
     logger.error('Reverse growth actions error:', safeError(error));

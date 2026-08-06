@@ -626,7 +626,7 @@ export default function AdminDashboard() {
       <div style={{ padding: "24px 32px", maxWidth: 1320, margin: "0 auto" }}>
 
         {/* Top Stats Row */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 20 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16, marginBottom: 20 }}>
           <StatCard
             label="Registered Users"
             value={loading ? "—" : (stats?.totalUsers ?? 0).toLocaleString()}
@@ -644,20 +644,39 @@ export default function AdminDashboard() {
             palette={P}
           />
           <StatCard
+            label="New Users"
+            value={loading ? "—" : (stats?.newUsers ?? 0).toLocaleString()}
+            sub={`${period} period`}
+            spark={daily.map(d => d.newUsers)}
+            sparkColor={GREEN}
+            delay={0.15}
+            palette={P}
+          />
+          <StatCard
+            label="Active Users"
+            value={loading ? "—" : (stats?.activeUsersPeriod ?? 0).toLocaleString()}
+            sub={`${period} active`}
+            trend="By operation logs"
+            trendDir="flat"
+            delay={0.175}
+            palette={P}
+          />
+          <StatCard
             label="Total Operations"
             value={loading ? "—" : (stats?.operationsCount ?? 0).toLocaleString()}
             sub={`${period} period`}
             spark={opsSparkline}
             sparkColor={YELLOW}
-            delay={0.15}
+            delay={0.2}
             palette={P}
           />
           <StatCard
-            label="Average Latency"
-            value={loading ? "—" : stats?.avgDurationMs ? `${stats.avgDurationMs}ms` : "—"}
-            sub={stats?.p95DurationMs ? `P95: ${stats.p95DurationMs}ms` : "Server execution"}
-            sparkColor={CYAN}
-            delay={0.2}
+            label="Active Users (Month)"
+            value={loading ? "—" : (stats?.activeUsersMonth ?? 0).toLocaleString()}
+            sub={`Rolling 30d: ${(stats?.activeUsers30d ?? 0).toLocaleString()}`}
+            trend="Month-to-date"
+            trendDir="flat"
+            delay={0.225}
             palette={P}
           />
         </div>
@@ -707,8 +726,13 @@ export default function AdminDashboard() {
 
         {/* Feature reach + completed operations */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20 }}>
-          <SectionCard title={`Feature Reach & Avg Latency — ${period}`} delay={0.35} palette={P}>
-            {loading ? <SkeletonBlock height={160} palette={P} /> : <HBar items={(stats?.featureUsage ?? []).map((feature) => ({ ...feature, count: feature.count, avgDurationMs: feature.avgDurationMs, color: CYAN }))} palette={P} />}
+          <SectionCard title={`Feature Reach — ${period} Period`} delay={0.35} palette={P}>
+            {loading ? <SkeletonBlock height={160} palette={P} /> : <HBar items={(stats?.featureReach ?? []).map((feature) => ({ ...feature, count: feature.users, color: CYAN }))} palette={P} />}
+            {!loading && (
+              <div style={{ fontSize: 10, color: P.textDim, fontFamily: "'JetBrains Mono', monospace", marginTop: 10 }}>
+                Distinct signed-in users who opened each feature. No SoundCloud content is logged.
+              </div>
+            )}
           </SectionCard>
 
           <SectionCard title={`Completed Operations — ${period} Trend`} delay={0.4} palette={P}>
@@ -833,6 +857,50 @@ export default function AdminDashboard() {
 
           {/* Sidebar Stats & Error Diagnostics */}
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <SectionCard title="Top Feature" delay={0.475} palette={P}>
+              {loading ? (
+                <SkeletonBlock height={60} palette={P} />
+              ) : stats?.topFeature ? (
+                <>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: P.text, fontFamily: "'JetBrains Mono', monospace" }}>
+                    {stats.topFeature.name}
+                  </div>
+                  <div style={{ fontSize: 11, color: P.textDim, fontFamily: "'JetBrains Mono', monospace", marginTop: 4 }}>
+                    {stats.topFeature.count.toLocaleString()} operations
+                  </div>
+                  <div style={{ marginTop: 10, height: 4, background: P.cardBorder, borderRadius: 2, overflow: "hidden" }}>
+                    <div
+                      style={{
+                        height: "100%",
+                        width: `${Math.round((stats.topFeature.count / Math.max(stats.operationsCount, 1)) * 100)}%`,
+                        background: ORANGE,
+                        borderRadius: 2,
+                      }}
+                    />
+                  </div>
+                </>
+              ) : (
+                <div style={{ fontSize: 12, color: P.textDim, fontFamily: "'JetBrains Mono', monospace" }}>No data yet</div>
+              )}
+            </SectionCard>
+
+            <SectionCard title="Average Latency" delay={0.49} palette={P}>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
+                <span style={{ fontSize: 28, fontWeight: 700, color: CYAN }}>
+                  {loading ? "—" : stats?.avgDurationMs ? `${stats.avgDurationMs}` : "—"}
+                </span>
+                <span style={{ fontSize: 11, color: P.textDim, fontFamily: "'JetBrains Mono', monospace" }}>ms/op</span>
+              </div>
+              <div style={{ fontSize: 11, color: P.textDim, fontFamily: "'JetBrains Mono', monospace", marginTop: 6 }}>
+                {stats?.p95DurationMs ? `P95: ${stats.p95DurationMs}ms` : "Server execution time"}
+              </div>
+              {!loading && (stats?.featureUsage ?? []).some(f => f.avgDurationMs) && (
+                <div style={{ marginTop: 10 }}>
+                  <HBar items={(stats?.featureUsage ?? []).filter(f => f.avgDurationMs).map((feature) => ({ ...feature, count: feature.count, avgDurationMs: feature.avgDurationMs, color: CYAN }))} palette={P} />
+                </div>
+              )}
+            </SectionCard>
+
             {stats?.errorBreakdown && stats.errorBreakdown.length > 0 && (
               <SectionCard title="Top Error Diagnostics" delay={0.5} palette={P}>
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>

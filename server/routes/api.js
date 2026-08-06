@@ -502,7 +502,6 @@ router.post('/playlists/compare', authenticateUser, heavyOperationRateLimiter, a
         uniqueB: comparison.summary.playlistB.uniqueCount,
       },
     });
-    });
     res.json(comparison);
   } catch (error) {
     logger.error('Playlist compare error:', safeError(error));

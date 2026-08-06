@@ -670,15 +670,6 @@ export default function AdminDashboard() {
             delay={0.2}
             palette={P}
           />
-          <StatCard
-            label="Active Users (Month)"
-            value={loading ? "—" : (stats?.activeUsersMonth ?? 0).toLocaleString()}
-            sub={`Rolling 30d: ${(stats?.activeUsers30d ?? 0).toLocaleString()}`}
-            trend="Month-to-date"
-            trendDir="flat"
-            delay={0.225}
-            palette={P}
-          />
         </div>
 
         {/* Main Grid */}
@@ -911,6 +902,23 @@ export default function AdminDashboard() {
                       </span>
                       <span style={{ fontSize: 11, color: P.textDim, fontFamily: "'JetBrains Mono', monospace" }}>
                         {err.count} count
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </SectionCard>
+            )}
+
+            {stats?.errorRateByAction && stats.errorRateByAction.length > 0 && (
+              <SectionCard title="Error Rate by Action" delay={0.51} palette={P}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {stats.errorRateByAction.map(action => (
+                    <div key={action.key} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span style={{ fontSize: 11, color: P.textMid, fontFamily: "'JetBrains Mono', monospace" }}>
+                        {action.name}
+                      </span>
+                      <span style={{ fontSize: 11, color: action.errorRate >= 20 ? RED : P.textDim, fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }}>
+                        {action.errorRate}% ({action.errorCount}/{action.count})
                       </span>
                     </div>
                   ))}

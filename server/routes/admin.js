@@ -104,9 +104,6 @@ router.get('/stats', authenticateUser, adminAuth, async (req, res) => {
     const period = validPeriod(req.query.period);
     const cutoff = periodToCutoff(period);
 
-    const monthCutoff = periodToCutoff('month');
-    const rollingThirtyCutoff = periodToCutoff('30d');
-
     // Page-open signals (`view:*`) are intentionally excluded from operation
     // metrics. They are reported separately below as feature reach.
     const operationWhere = {
@@ -119,11 +116,10 @@ router.get('/stats', authenticateUser, adminAuth, async (req, res) => {
       newUsers,
       agg,
       byAction,
+      byActionErrors,
       byStatus,
       splitsCount,
       activeUsersPeriodRows,
-      activeUsersMonthRows,
-      activeUsers30dRows,
       featureReachRows,
       topErrors,
       avgLatencyRows,
@@ -144,6 +140,11 @@ router.get('/stats', authenticateUser, adminAuth, async (req, res) => {
         orderBy: { _count: { id: 'desc' } },
       }),
       prisma.operationLog.groupBy({
+        by: ['action'],
+        where: { ...operationWhere, status: 'error' },
+        _count: { id: true },
+      }),
+      prisma.operationLog.groupBy({
         by: ['status'],
         where: operationWhere,
         _count: { id: true },
@@ -155,16 +156,6 @@ router.get('/stats', authenticateUser, adminAuth, async (req, res) => {
         SELECT COUNT(DISTINCT "userId")::int AS count
         FROM operation_logs
         WHERE "createdAt" >= ${cutoff} AND action NOT LIKE 'view:%'
-      `,
-      prisma.$queryRaw`
-        SELECT COUNT(DISTINCT "userId")::int AS count
-        FROM operation_logs
-        WHERE "createdAt" >= ${monthCutoff} AND action NOT LIKE 'view:%'
-      `,
-      prisma.$queryRaw`
-        SELECT COUNT(DISTINCT "userId")::int AS count
-        FROM operation_logs
-        WHERE "createdAt" >= ${rollingThirtyCutoff} AND action NOT LIKE 'view:%'
       `,
       prisma.$queryRaw`
         SELECT
@@ -198,16 +189,24 @@ router.get('/stats', authenticateUser, adminAuth, async (req, res) => {
     const avgDurationMs = agg._avg.durationMs ? Math.round(agg._avg.durationMs) : 0;
     const p95DurationMs = Number(avgLatencyRows?.[0]?.p95 ?? 0);
     const activeUsersPeriod = Number(activeUsersPeriodRows?.[0]?.count ?? 0);
-    const activeUsersMonth = Number(activeUsersMonthRows?.[0]?.count ?? 0);
-    const activeUsers30d = Number(activeUsers30dRows?.[0]?.count ?? 0);
+
+    const errorCountByAction = {};
+    for (const row of byActionErrors) errorCountByAction[row.action] = row._count.id;
 
     const featureUsage = byAction.map(row => ({
       key: row.action,
       name: ACTION_NAMES[row.action] || row.action,
       count: row._count.id,
       avgDurationMs: row._avg.durationMs ? Math.round(row._avg.durationMs) : 0,
+      errorCount: errorCountByAction[row.action] ?? 0,
+      errorRate: row._count.id > 0 ? Math.round(((errorCountByAction[row.action] ?? 0) / row._count.id) * 100) : 0,
       color: ACTION_COLORS[row.action] || '#888888',
     }));
+
+    const errorRateByAction = featureUsage
+      .filter(f => f.errorCount > 0)
+      .sort((a, b) => b.errorRate - a.errorRate || b.errorCount - a.errorCount)
+      .slice(0, 8);
 
     const errorBreakdown = topErrors.map(e => ({
       errorCode: e.errorCode,
@@ -240,6 +239,7 @@ router.get('/stats', authenticateUser, adminAuth, async (req, res) => {
       featureUsage,
       featureReach,
       errorBreakdown,
+      errorRateByAction,
       splitsCount,
       avgTracksPerOp,
       avgDurationMs,
@@ -249,8 +249,6 @@ router.get('/stats', authenticateUser, adminAuth, async (req, res) => {
       errorRate,
       topFeature,
       activeUsersPeriod,
-      activeUsersMonth,
-      activeUsers30d,
     });
   } catch (err) {
     logger.error('[admin/stats] Error:', safeError(err));

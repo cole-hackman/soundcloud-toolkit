@@ -909,6 +909,23 @@ export default function AdminDashboard() {
               </SectionCard>
             )}
 
+            {stats?.errorRateByAction && stats.errorRateByAction.length > 0 && (
+              <SectionCard title="Error Rate by Action" delay={0.51} palette={P}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {stats.errorRateByAction.map(action => (
+                    <div key={action.key} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span style={{ fontSize: 11, color: P.textMid, fontFamily: "'JetBrains Mono', monospace" }}>
+                        {action.name}
+                      </span>
+                      <span style={{ fontSize: 11, color: action.errorRate >= 20 ? RED : P.textDim, fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }}>
+                        {action.errorRate}% ({action.errorCount}/{action.count})
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </SectionCard>
+            )}
+
             <SectionCard title="Playlist Splits" delay={0.55} palette={P}>
               <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
                 <span style={{ fontSize: 28, fontWeight: 700, color: YELLOW }}>

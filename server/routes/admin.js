@@ -116,6 +116,7 @@ router.get('/stats', authenticateUser, adminAuth, async (req, res) => {
       newUsers,
       agg,
       byAction,
+      byActionErrors,
       byStatus,
       splitsCount,
       activeUsersPeriodRows,
@@ -137,6 +138,11 @@ router.get('/stats', authenticateUser, adminAuth, async (req, res) => {
         _count: { id: true },
         _avg: { durationMs: true },
         orderBy: { _count: { id: 'desc' } },
+      }),
+      prisma.operationLog.groupBy({
+        by: ['action'],
+        where: { ...operationWhere, status: 'error' },
+        _count: { id: true },
       }),
       prisma.operationLog.groupBy({
         by: ['status'],
@@ -184,13 +190,23 @@ router.get('/stats', authenticateUser, adminAuth, async (req, res) => {
     const p95DurationMs = Number(avgLatencyRows?.[0]?.p95 ?? 0);
     const activeUsersPeriod = Number(activeUsersPeriodRows?.[0]?.count ?? 0);
 
+    const errorCountByAction = {};
+    for (const row of byActionErrors) errorCountByAction[row.action] = row._count.id;
+
     const featureUsage = byAction.map(row => ({
       key: row.action,
       name: ACTION_NAMES[row.action] || row.action,
       count: row._count.id,
       avgDurationMs: row._avg.durationMs ? Math.round(row._avg.durationMs) : 0,
+      errorCount: errorCountByAction[row.action] ?? 0,
+      errorRate: row._count.id > 0 ? Math.round(((errorCountByAction[row.action] ?? 0) / row._count.id) * 100) : 0,
       color: ACTION_COLORS[row.action] || '#888888',
     }));
+
+    const errorRateByAction = featureUsage
+      .filter(f => f.errorCount > 0)
+      .sort((a, b) => b.errorRate - a.errorRate || b.errorCount - a.errorCount)
+      .slice(0, 8);
 
     const errorBreakdown = topErrors.map(e => ({
       errorCode: e.errorCode,
@@ -223,6 +239,7 @@ router.get('/stats', authenticateUser, adminAuth, async (req, res) => {
       featureUsage,
       featureReach,
       errorBreakdown,
+      errorRateByAction,
       splitsCount,
       avgTracksPerOp,
       avgDurationMs,

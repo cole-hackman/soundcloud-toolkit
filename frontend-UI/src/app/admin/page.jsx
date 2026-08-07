@@ -368,6 +368,16 @@ function timeAgo(iso) {
   return `${Math.floor(h / 24)}d ago`;
 }
 
+// Card subs read "{period} period" / "{period} active" for relative windows,
+// but "all period" / "all active" don't parse as English — special-case it.
+function periodSub(period, word = "period") {
+  return period === "all" ? "All time" : `${period} ${word}`;
+}
+
+function periodTitleLabel(period) {
+  return period === "all" ? "All Time" : period;
+}
+
 // --- Main Dashboard Component ---
 export default function AdminDashboard() {
   const router = useRouter();
@@ -560,7 +570,7 @@ export default function AdminDashboard() {
           </button>
           {/* Period selector */}
           <div style={{ display: "flex", gap: 2, background: P.segmentBg, borderRadius: 6, padding: 2 }}>
-            {["1d", "7d", "30d", "90d", "month"].map((p) => (
+            {["1d", "7d", "30d", "90d", "month", "all"].map((p) => (
               <button
                 key={p}
                 onClick={() => setPeriod(p)}
@@ -577,7 +587,7 @@ export default function AdminDashboard() {
                   transition: "all 0.2s",
                 }}
               >
-                {p}
+                {p === "all" ? "All" : p}
               </button>
             ))}
           </div>
@@ -637,7 +647,7 @@ export default function AdminDashboard() {
           <StatCard
             label="Tracks Processed"
             value={loading ? "—" : (stats?.tracksProcessed ?? 0).toLocaleString()}
-            sub={`${period} period`}
+            sub={periodSub(period)}
             spark={trackSparkline}
             sparkColor={ORANGE}
             delay={0.1}
@@ -646,7 +656,7 @@ export default function AdminDashboard() {
           <StatCard
             label="New Users"
             value={loading ? "—" : (stats?.newUsers ?? 0).toLocaleString()}
-            sub={`${period} period`}
+            sub={periodSub(period)}
             spark={daily.map(d => d.newUsers)}
             sparkColor={GREEN}
             delay={0.15}
@@ -655,7 +665,7 @@ export default function AdminDashboard() {
           <StatCard
             label="Active Users"
             value={loading ? "—" : (stats?.activeUsersPeriod ?? 0).toLocaleString()}
-            sub={`${period} active`}
+            sub={periodSub(period, "active")}
             trend="By operation logs"
             trendDir="flat"
             delay={0.175}
@@ -664,7 +674,7 @@ export default function AdminDashboard() {
           <StatCard
             label="Total Operations"
             value={loading ? "—" : (stats?.operationsCount ?? 0).toLocaleString()}
-            sub={`${period} period`}
+            sub={periodSub(period)}
             spark={opsSparkline}
             sparkColor={YELLOW}
             delay={0.2}
@@ -674,7 +684,7 @@ export default function AdminDashboard() {
 
         {/* Main Grid */}
         <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 16, marginBottom: 20 }}>
-          <SectionCard title={`Tracks Processed — ${period} Trend`} delay={0.25} palette={P}>
+          <SectionCard title={`Tracks Processed — ${periodTitleLabel(period)} Trend`} delay={0.25} palette={P}>
             {loading ? <SkeletonBlock height={200} palette={P} /> : <AreaChart data={daily} dataKey="tracks" color={ORANGE} width={700} height={200} palette={P} />}
           </SectionCard>
 
@@ -717,7 +727,7 @@ export default function AdminDashboard() {
 
         {/* Feature reach + completed operations */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20 }}>
-          <SectionCard title={`Feature Reach — ${period} Period`} delay={0.35} palette={P}>
+          <SectionCard title={`Feature Reach — ${periodTitleLabel(period)} Period`} delay={0.35} palette={P}>
             {loading ? <SkeletonBlock height={160} palette={P} /> : <HBar items={(stats?.featureReach ?? []).map((feature) => ({ ...feature, count: feature.users, color: CYAN }))} palette={P} />}
             {!loading && (
               <div style={{ fontSize: 10, color: P.textDim, fontFamily: "'JetBrains Mono', monospace", marginTop: 10 }}>
@@ -726,7 +736,7 @@ export default function AdminDashboard() {
             )}
           </SectionCard>
 
-          <SectionCard title={`Completed Operations — ${period} Trend`} delay={0.4} palette={P}>
+          <SectionCard title={`Completed Operations — ${periodTitleLabel(period)} Trend`} delay={0.4} palette={P}>
             {loading ? <SkeletonBlock height={200} palette={P} /> : <AreaChart data={daily} dataKey="operations" color={CYAN} width={500} height={200} palette={P} />}
           </SectionCard>
         </div>
@@ -955,7 +965,7 @@ export default function AdminDashboard() {
         {/* SongSwipe Beta Survey */}
         <div style={{ marginTop: 20 }}>
           <SectionCard
-            title={`SongSwipe Beta Survey — ${period} Period`}
+            title={`SongSwipe Beta Survey — ${periodTitleLabel(period)} Period`}
             delay={0.55}
             palette={P}
             action={

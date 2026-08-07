@@ -75,6 +75,10 @@ const FEATURE_NAMES = {
 };
 
 function periodToCutoff(period) {
+  if (period === 'all') {
+    return new Date(0);
+  }
+
   if (period === 'month') {
     const start = new Date();
     start.setDate(1);
@@ -90,11 +94,11 @@ function periodToCutoff(period) {
 }
 
 function validPeriod(p) {
-  return ['1d', '7d', '30d', '90d', 'month'].includes(p) ? p : '30d';
+  return ['1d', '7d', '30d', '90d', 'month', 'all'].includes(p) ? p : '30d';
 }
 
 /**
- * GET /api/admin/stats?period=1d|7d|30d|90d|month
+ * GET /api/admin/stats?period=1d|7d|30d|90d|month|all
  *
  * Returns aggregated stats for the dashboard top cards, feature usage,
  * sidebar quick stats, and health/rate metrics.
@@ -257,7 +261,7 @@ router.get('/stats', authenticateUser, adminAuth, async (req, res) => {
 });
 
 /**
- * GET /api/admin/daily?period=1d|7d|30d|90d|month
+ * GET /api/admin/daily?period=1d|7d|30d|90d|month|all
  *
  * Returns daily time-series data for chart rendering.
  * Uses raw SQL DATE_TRUNC since Prisma groupBy doesn't support it.
@@ -290,9 +294,24 @@ router.get('/daily', authenticateUser, adminAuth, async (req, res) => {
       `,
     ]);
 
-    const days = period === '1d' ? 1 : period === '7d' ? 7 : period === '90d' ? 90 : period === 'month'
-      ? Math.max(Math.ceil((Date.now() - cutoff.getTime()) / 86_400_000), 1)
-      : 30;
+    let days;
+    if (period === '1d') days = 1;
+    else if (period === '7d') days = 7;
+    else if (period === '90d') days = 90;
+    else if (period === 'month') {
+      days = Math.max(Math.ceil((Date.now() - cutoff.getTime()) / 86_400_000), 1);
+    } else if (period === 'all') {
+      // Derive the day count from the earliest activity actually returned above,
+      // rather than the epoch cutoff, and cap it — otherwise a long-lived account
+      // would ask for a multi-decade day-by-day series. The top stat cards (which
+      // hit /stats, not /daily) still aggregate over full history regardless of
+      // this cap; it only bounds the trend chart's resolution.
+      const earliestDates = [...opsRows, ...userRows].map(r => new Date(r.day).getTime());
+      const earliest = earliestDates.length > 0 ? Math.min(...earliestDates) : Date.now();
+      days = Math.min(Math.max(Math.ceil((Date.now() - earliest) / 86_400_000) + 1, 1), 365);
+    } else {
+      days = 30;
+    }
     const result = [];
 
     for (let i = 0; i < days; i++) {
@@ -321,7 +340,7 @@ router.get('/daily', authenticateUser, adminAuth, async (req, res) => {
 });
 
 /**
- * GET /api/admin/operations?period=1d|7d|30d|90d|month&limit=20&action=<action>&status=<status>&search=<query>
+ * GET /api/admin/operations?period=1d|7d|30d|90d|month|all&limit=20&action=<action>&status=<status>&search=<query>
  *
  * Returns recent operation logs with user info and detailed metadata.
  */

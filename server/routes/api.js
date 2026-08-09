@@ -2639,7 +2639,11 @@ router.post('/reposts/bulk-remove', authenticateUser, heavyOperationRateLimiter,
     const cachedReposts = requestCache.get('reposts', req.user.id, 'default');
     if (Array.isArray(cachedReposts?.collection)) {
       const processedIds = new Set(items.map(i => i.id));
-      const touched = cachedReposts.collection.filter(r => r && processedIds.has(r.id));
+      // getReposts coerces missing titles to 'Unknown' — strip that so the
+      // catalog row stays pending and enrichment fetches the real title
+      const touched = cachedReposts.collection
+        .filter(r => r && processedIds.has(r.id))
+        .map(r => (r.title === 'Unknown' ? { ...r, title: null } : r));
       harvestTracks(touched.filter(r => r.resourceType === 'track'));
       harvestPlaylists(touched.filter(r => r.resourceType === 'playlist'));
     }

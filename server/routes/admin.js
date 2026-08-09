@@ -519,7 +519,8 @@ router.get('/catalog/tracks', authenticateUser, adminAuth, async (req, res) => {
     const cutoff = periodToCutoff(period);
     const page = Math.max(parseInt(req.query.page) || 1, 1);
     const pageSize = Math.min(Math.max(parseInt(req.query.pageSize) || 25, 1), 100);
-    const sortKey = CATALOG_SORTS[req.query.sort] ? req.query.sort : 'touches';
+    // Object.hasOwn, not truthiness: '?sort=constructor' must not reach Prisma.raw
+    const sortKey = Object.hasOwn(CATALOG_SORTS, req.query.sort) ? req.query.sort : 'touches';
     const order = req.query.order === 'asc' ? 'ASC' : 'DESC';
     const genre = typeof req.query.genre === 'string' && req.query.genre.trim() ? req.query.genre.trim() : null;
     const artist = typeof req.query.artist === 'string' && req.query.artist.trim() ? req.query.artist.trim() : null;

@@ -429,6 +429,7 @@ function MusicCatalogSection({ period, palette: P }) {
   }, [artistInput]);
 
   useEffect(() => {
+    setPage(1); // a new period changes totals; never strand the user past the last page
     fetch(`${API_BASE}/api/admin/catalog/summary?period=${period}`, { credentials: "include" })
       .then(r => (r.ok ? r.json() : null))
       .then(setSummary)

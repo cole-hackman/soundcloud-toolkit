@@ -4,6 +4,7 @@ import logger from '../lib/logger.js';
 import { safeError } from '../lib/safe-error.js';
 import { authenticateUser } from '../middleware/auth.js';
 import { adminAuth } from '../middleware/adminAuth.js';
+import { getAnalyticsWriteHealth } from '../lib/analytics.js';
 
 const router = express.Router();
 
@@ -27,6 +28,10 @@ const ACTION_NAMES = {
   'growth-engage-start': 'Growth: Engage',
   'growth-reverse': 'Growth: Reverse',
   'growth-check-followbacks': 'Growth: Check follow-backs',
+  'auth-login': 'Login',
+  'auth-logout': 'Logout',
+  'followed-likes-to-playlist': "Followed User's Likes → Playlist",
+  'followed-playlist-clone': "Followed User's Playlist Clone",
 };
 
 const ACTION_COLORS = {
@@ -49,6 +54,10 @@ const ACTION_COLORS = {
   'growth-engage-start': '#A855F7',
   'growth-reverse': '#A855F7',
   'growth-check-followbacks': '#A855F7',
+  'auth-login': '#64748B',
+  'auth-logout': '#64748B',
+  'followed-likes-to-playlist': '#0D9488',
+  'followed-playlist-clone': '#0D9488',
 };
 
 const FEATURE_NAMES = {
@@ -173,7 +182,7 @@ router.get('/stats', authenticateUser, adminAuth, async (req, res) => {
       `,
       prisma.operationLog.groupBy({
         by: ['errorCode'],
-        where: { ...operationWhere, status: 'error', errorCode: { not: null } },
+        where: { ...operationWhere, status: 'error' },
         _count: { id: true },
         orderBy: { _count: { id: 'desc' } },
         take: 5,
@@ -212,8 +221,10 @@ router.get('/stats', authenticateUser, adminAuth, async (req, res) => {
       .sort((a, b) => b.errorRate - a.errorRate || b.errorCount - a.errorCount)
       .slice(0, 8);
 
+    // null errorCode buckets are real errors from paths that predate (or still
+    // lack) error capture — label them rather than filtering them out.
     const errorBreakdown = topErrors.map(e => ({
-      errorCode: e.errorCode,
+      errorCode: e.errorCode ?? 'UNSPECIFIED',
       count: e._count.id,
     }));
 
@@ -231,9 +242,12 @@ router.get('/stats', authenticateUser, adminAuth, async (req, res) => {
     const statusMap = {};
     for (const row of byStatus) statusMap[row.status] = row._count.id;
     const total = operationsCount || 1;
-    const successRate = Math.round(((statusMap['success'] ?? 0) / total) * 100);
+    // Auto-splits are successful outcomes (the output just exceeded SoundCloud's
+    // 500-track cap), so they count toward the headline success rate.
+    const successRate = Math.round((((statusMap['success'] ?? 0) + (statusMap['split'] ?? 0)) / total) * 100);
     const splitRate = Math.round(((statusMap['split'] ?? 0) / total) * 100);
     const errorRate = Math.round(((statusMap['error'] ?? 0) / total) * 100);
+    const partialRate = Math.round(((statusMap['partial'] ?? 0) / total) * 100);
 
     res.json({
       totalUsers,
@@ -251,8 +265,11 @@ router.get('/stats', authenticateUser, adminAuth, async (req, res) => {
       successRate,
       splitRate,
       errorRate,
+      partialRate,
+      partialCount: statusMap['partial'] ?? 0,
       topFeature,
       activeUsersPeriod,
+      analyticsWriteHealth: getAnalyticsWriteHealth(),
     });
   } catch (err) {
     logger.error('[admin/stats] Error:', safeError(err));
@@ -357,7 +374,7 @@ router.get('/operations', authenticateUser, adminAuth, async (req, res) => {
       createdAt: { gte: cutoff },
       action: actionFilter ? actionFilter : { not: { startsWith: 'view:' } },
     };
-    if (statusFilter && ['success', 'split', 'error'].includes(statusFilter)) {
+    if (statusFilter && ['success', 'split', 'error', 'partial'].includes(statusFilter)) {
       where.status = statusFilter;
     }
     if (searchFilter) {

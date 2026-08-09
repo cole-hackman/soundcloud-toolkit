@@ -39,7 +39,7 @@ model SurveyResponse {
   id               String   @id @default(cuid())
   userId           String
   user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  soundcloudId     Int
+  soundcloudId     BigInt
   campaignId       String
   preference       String // 'ads' | 'pro' | 'donation' | 'none' | 'other'
   lifetimeInterest String? // 'interested' | 'not_interested' | 'maybe'
@@ -61,7 +61,7 @@ model BetaSignup {
   id               String   @id @default(cuid())
   userId           String
   user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  soundcloudId     Int
+  soundcloudId     BigInt
   campaignId       String
   email            String?  // PII — required only when wantsBeta is true
   rekordboxUse     String   // rekordbox_primary | rekordbox_sometimes | other_software | no
@@ -132,7 +132,7 @@ model GrowthAction {
   userId           String
   user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   actionType       String    // 'follow' | 'like'
-  targetId         Int       // SC user ID or track ID
+  targetId         BigInt    // SC user ID or track ID — track IDs already exceed int32
   targetName       String?
   targetAvatar     String?
   targetFollowers  Int?

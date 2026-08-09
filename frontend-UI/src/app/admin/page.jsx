@@ -259,8 +259,10 @@ function StatusPill({ status }) {
     success: { bg: `${GREEN}18`, color: GREEN, label: "OK" },
     split: { bg: `${YELLOW}18`, color: YELLOW, label: "SPLIT" },
     error: { bg: `${RED}18`, color: RED, label: "ERR" },
+    partial: { bg: `${ORANGE}18`, color: ORANGE, label: "PARTIAL" },
   };
-  const c = config[status] || config.success;
+  // Unknown statuses render as themselves in gray — never as a false "OK".
+  const c = config[status] || { bg: "#94A3B818", color: "#94A3B8", label: String(status || "?").toUpperCase().slice(0, 8) };
   return (
     <span
       style={{
@@ -711,6 +713,7 @@ export default function AdminDashboard() {
                     { label: "Operations", value: (stats?.operationsCount ?? 0).toLocaleString(), color: P.text },
                     { label: "Tracks/Op Avg", value: (stats?.avgTracksPerOp ?? 0).toLocaleString(), color: CYAN },
                     { label: "Auto-Splits", value: (stats?.splitsCount ?? 0).toLocaleString(), color: YELLOW },
+                    { label: "Partial", value: (stats?.partialCount ?? 0).toLocaleString(), color: ORANGE },
                   ].map((m) => (
                     <div key={m.label} style={{ textAlign: "center" }}>
                       <div style={{ fontSize: 18, fontWeight: 700, color: m.color, fontFamily: "'Outfit', sans-serif" }}>{m.value}</div>
@@ -720,6 +723,22 @@ export default function AdminDashboard() {
                     </div>
                   ))}
                 </div>
+                {(stats?.analyticsWriteHealth?.failures ?? 0) > 0 && (
+                  <div
+                    style={{
+                      marginTop: 12,
+                      padding: "8px 10px",
+                      borderRadius: 6,
+                      background: `${RED}14`,
+                      color: RED,
+                      fontSize: 10,
+                      fontFamily: "'JetBrains Mono', monospace",
+                    }}
+                  >
+                    ⚠ {stats.analyticsWriteHealth.failures} operation-log write failure{stats.analyticsWriteHealth.failures === 1 ? "" : "s"} since server start — analytics rows are being dropped.
+                    {stats.analyticsWriteHealth.lastFailureMessage ? ` Last: ${stats.analyticsWriteHealth.lastFailureMessage}` : ""}
+                  </div>
+                )}
               </>
             )}
           </SectionCard>
@@ -769,7 +788,7 @@ export default function AdminDashboard() {
                 />
                 {/* Status filter */}
                 <div style={{ display: "flex", gap: 2, background: P.segmentBg, borderRadius: 6, padding: 2 }}>
-                  {["all", "success", "split", "error"].map(s => (
+                  {["all", "success", "split", "error", "partial"].map(s => (
                     <button
                       key={s}
                       onClick={() => setStatusFilter(s)}

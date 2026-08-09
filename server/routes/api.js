@@ -464,6 +464,13 @@ router.get('/library/audit', authenticateUser, heavyOperationRateLimiter, async 
       itemCount: audit.summary.playlists,
       trackCount: audit.summary.tracks,
       status: 'success',
+      playlistIds: audit.playlists.map(p => p.id).filter(id => id != null),
+      // Flagged tracks only — the full library would blow the row cap
+      trackIds: audit.playlists.flatMap(p => p.issues.map(i => i.trackId)).filter(id => id != null),
+      metadata: {
+        duplicates: audit.summary.duplicates,
+        unavailable: audit.summary.unavailable,
+      },
     });
     res.json(audit);
   } catch (error) {
@@ -497,9 +504,9 @@ router.post('/playlists/compare', authenticateUser, heavyOperationRateLimiter, a
       trackCount: comparison.summary.playlistA.trackCount + comparison.summary.playlistB.trackCount,
       status: 'success',
       metadata: {
-        commonTrackCount: comparison.summary.commonTrackCount,
-        uniqueA: comparison.summary.playlistA.uniqueCount,
-        uniqueB: comparison.summary.playlistB.uniqueCount,
+        commonTrackCount: comparison.summary.overlapCount,
+        uniqueA: comparison.summary.uniqueToACount,
+        uniqueB: comparison.summary.uniqueToBCount,
       },
     });
     res.json(comparison);
@@ -642,11 +649,11 @@ router.post('/playlists/clone', authenticateUser, heavyOperationRateLimiter, val
       logOperation({
         req,
         action: 'clone',
-        playlistIds: [source.id],
+        playlistIds: [sourceId, ...createdPlaylists.map((p) => p.playlist.id)],
         trackIds: trackIdsArray,
         trackCount: trackIdsArray.length,
         status: 'split',
-        metadata: { sourcePlaylistId: source.id, numPlaylistsCreated: numPlaylists },
+        metadata: { sourcePlaylistId: sourceId, numPlaylistsCreated: numPlaylists },
       });
       invalidatePlaylistState(req.user.id);
       res.json({
@@ -685,11 +692,11 @@ router.post('/playlists/clone', authenticateUser, heavyOperationRateLimiter, val
       logOperation({
         req,
         action: 'clone',
-        playlistIds: [source.id, newPlaylist.id],
+        playlistIds: [sourceId, newPlaylist.id],
         trackIds: trackIdsArray,
         trackCount: trackIdsArray.length,
         status: 'success',
-        metadata: { sourcePlaylistId: source.id, createdPlaylistId: newPlaylist.id },
+        metadata: { sourcePlaylistId: sourceId, createdPlaylistId: newPlaylist.id },
       });
       invalidatePlaylistState(req.user.id);
       res.json({
@@ -939,7 +946,14 @@ async function handleResolve(req, res) {
     const now = Date.now();
     const cached = resolveCache.get(cleaned);
     if (cached && cached.expiresAt > now) {
-      logOperation({ userId: req.user.id, action: 'resolve', status: 'success' });
+      logOperation({
+        userId: req.user.id,
+        action: 'resolve',
+        status: 'success',
+        trackIds: cached.data?.type === 'track' && cached.data.id != null ? [cached.data.id] : undefined,
+        playlistIds: cached.data?.type === 'playlist' && cached.data.id != null ? [cached.data.id] : undefined,
+        metadata: { resolvedType: cached.data?.type ?? 'unknown', cached: true },
+      });
       if (!useV2) return res.json(cached.data);
       return res.json({
         data: normalizeResourceV2(cached.data) || cached.data,
@@ -1003,7 +1017,14 @@ async function handleResolve(req, res) {
         }
       });
     }
-    logOperation({ userId: req.user.id, action: 'resolve', status: 'success' });
+    logOperation({
+      userId: req.user.id,
+      action: 'resolve',
+      status: 'success',
+      trackIds: normalized.type === 'track' && normalized.id != null ? [normalized.id] : undefined,
+      playlistIds: normalized.type === 'playlist' && normalized.id != null ? [normalized.id] : undefined,
+      metadata: { resolvedType: normalized.type ?? 'unknown', cached: false },
+    });
   } catch (error) {
     logger.error('Resolve error:', safeError(error));
     const msg = String(error?.message || '').toLowerCase();
@@ -1031,12 +1052,19 @@ router.get('/proxy-download', authenticateUser, async (req, res) => {
       return res.status(400).json({ error: 'Invalid download URL' });
     }
 
+    // The URL already passed isAllowedDownloadUrl, so the track ID is extractable
+    const downloadTrackId = Number(url.match(/\/tracks\/(\d+)\/download/)?.[1]) || null;
     const result = await soundcloudClient.getDownloadLink(req.accessToken, req.refreshToken, url);
-    
+
     if (result && result.redirect) {
       const loc = result.redirect;
       if (isAllowedDownloadRedirectTarget(loc)) {
-        logOperation({ userId: req.user.id, action: 'proxy-download', status: 'success' });
+        logOperation({
+          userId: req.user.id,
+          action: 'proxy-download',
+          status: 'success',
+          trackIds: downloadTrackId ? [downloadTrackId] : undefined,
+        });
         if (req.query.format === 'json') {
           return res.json({ url: loc });
         }
@@ -1046,6 +1074,7 @@ router.get('/proxy-download', authenticateUser, async (req, res) => {
         userId: req.user.id,
         action: 'proxy-download',
         status: 'error',
+        trackIds: downloadTrackId ? [downloadTrackId] : undefined,
         metadata: { reason: 'invalid_redirect_target' },
       });
       return res.status(502).json({ error: 'Invalid download redirect target' });
@@ -1212,12 +1241,14 @@ router.post('/playlists/merge', authenticateUser, heavyOperationRateLimiter, val
         playlistIds: [...sourcePlaylistIds, targetPlaylistId, ...overflowPlaylists.map(p => p.id)],
         trackIds: Array.from(trackIdSet),
         metadata: {
+          mode: 'into-existing',
           sourceCount: sourcePlaylistIds.length,
+          totalTracks: finalCount,
+          playlistsCreated: overflowPlaylists.length,
+          finalCount,
           targetPlaylistId,
           existingTrackCount,
           addedCount,
-          finalCount,
-          overflowCount: overflowPlaylists.length,
           deletedCount: deletedPlaylistIds.length,
         },
       });
@@ -1340,12 +1371,13 @@ router.post('/playlists/merge', authenticateUser, heavyOperationRateLimiter, val
         playlistIds: [...sourcePlaylistIds, ...createdPlaylists.map(p => p.playlist.id)],
         trackIds: trackIdsArray,
         metadata: {
+          mode: 'split',
           sourceCount: sourcePlaylistIds.length,
+          totalTracks: trackIdsArray.length,
+          playlistsCreated: numPlaylists,
           fetchedTotal,
           acceptedTotal,
           uniqueBeforeCap,
-          totalTracks: trackIdsArray.length,
-          playlistsCreated: numPlaylists,
         },
       });
       invalidatePlaylistState(req.user.id);
@@ -1423,12 +1455,14 @@ router.post('/playlists/merge', authenticateUser, heavyOperationRateLimiter, val
         playlistIds: [...sourcePlaylistIds, newPlaylist.id],
         trackIds: trackIdsArray,
         metadata: {
+          mode: 'new',
           sourceCount: sourcePlaylistIds.length,
+          totalTracks: trackIdsArray.length,
+          playlistsCreated: 1,
+          finalCount: verifiedCount,
           fetchedTotal,
           acceptedTotal,
           uniqueBeforeCap,
-          totalTracks: trackIdsArray.length,
-          finalCount: verifiedCount,
         },
       });
       invalidatePlaylistState(req.user.id);
@@ -1441,6 +1475,8 @@ router.post('/playlists/merge', authenticateUser, heavyOperationRateLimiter, val
       status: 'error',
       durationMs: elapsed(),
       clientInfo: extractClientInfo(req),
+      // try-scoped arrays aren't visible here; fall back to the validated body
+      playlistIds: Array.isArray(req.body?.sourcePlaylistIds) ? req.body.sourcePlaylistIds : undefined,
       errorCode: error.name || 'MERGE_FAILED',
       errorMessage: safeError(error).message,
     });
@@ -2075,7 +2111,21 @@ router.get('/tracks/search', authenticateUser, validateTrackSearch, async (req, 
       .map(normalizeResource)
       .filter(Boolean);
 
-    logOperation({ userId: req.user.id, action: 'genre-search', itemCount: collection.length, status: 'success' });
+    logOperation({
+      userId: req.user.id,
+      action: 'genre-search',
+      itemCount: collection.length,
+      status: 'success',
+      trackIds: collection.map(t => t.id).filter(id => id != null),
+      // The search intent itself is signal: what users look for, not just what they got
+      metadata: {
+        ...(genres ? { genres } : {}),
+        ...(tags ? { tags } : {}),
+        ...(q ? { q } : {}),
+        ...(bpm_from ? { bpmFrom: Number(bpm_from) } : {}),
+        ...(bpm_to ? { bpmTo: Number(bpm_to) } : {}),
+      },
+    });
 
     res.json({
       collection,
@@ -2147,6 +2197,15 @@ router.post('/resolve/batch', authenticateUser, heavyOperationRateLimiter, valid
     }
 
     const failures = results.filter(r => r.status === 'error').length;
+    const resolvedTrackIds = [];
+    const resolvedPlaylistIds = [];
+    for (const r of results) {
+      if (r.status !== 'ok') continue;
+      // Cache hits store the v1-normalized shape; fresh resolves were normalized above.
+      const ref = r.data && typeof r.data === 'object' ? r.data : null;
+      if (ref?.type === 'track' && ref.id != null) resolvedTrackIds.push(ref.id);
+      else if (ref?.type === 'playlist' && ref.id != null) resolvedPlaylistIds.push(ref.id);
+    }
     if (!useV2) {
       res.json({ results });
     } else {
@@ -2163,7 +2222,17 @@ router.post('/resolve/batch', authenticateUser, heavyOperationRateLimiter, valid
         }
       });
     }
-    logOperation({ userId: req.user.id, action: 'batch-resolve', itemCount: urls.length, status: 'success', metadata: { failures } });
+    logOperation({
+      userId: req.user.id,
+      action: 'batch-resolve',
+      itemCount: urls.length,
+      status: failures > 0 && failures === results.length ? 'error' : 'success',
+      trackIds: resolvedTrackIds,
+      playlistIds: resolvedPlaylistIds,
+      errorCode: failures > 0 && failures === results.length ? 'ALL_ITEMS_FAILED' : undefined,
+      errorMessage: failures > 0 && failures === results.length ? results.find(r => r.status === 'error')?.error : undefined,
+      metadata: { total: results.length, succeeded: results.length - failures, failed: failures },
+    });
   } catch (error) {
     logger.error('Batch resolve error:', safeError(error));
     res.status(500).json({ error: 'Batch resolve failed' });
@@ -2237,7 +2306,6 @@ router.post('/likes/tracks/bulk-unlike', authenticateUser, heavyOperationRateLim
       }
     }
 
-    invalidateUserNamespaces(req.user.id, ['likes']);
     res.json({ results });
     const succeeded = results.filter(r => r.status === 'ok').length;
     const failed = results.filter(r => r.status !== 'ok').length;
@@ -2250,8 +2318,13 @@ router.post('/likes/tracks/bulk-unlike', authenticateUser, heavyOperationRateLim
       durationMs: elapsed(),
       clientInfo: extractClientInfo(req),
       trackIds: results.filter(r => r.status === 'ok').map(r => r.trackId),
+      errorCode: failed > 0 && succeeded === 0 ? 'ALL_ITEMS_FAILED' : undefined,
+      errorMessage: failed > 0 && succeeded === 0 ? results.find(r => r.status === 'error')?.error : undefined,
       metadata: { total: results.length, succeeded, failed },
     });
+    // Invalidate AFTER identity is captured — the likes cache holds the full
+    // track objects harvesting needs. Same tick as res.json, so no stale reads.
+    invalidateUserNamespaces(req.user.id, ['likes']);
   } catch (error) {
     logger.error('Bulk unlike error:', safeError(error));
     logOperation({
@@ -2260,6 +2333,7 @@ router.post('/likes/tracks/bulk-unlike', authenticateUser, heavyOperationRateLim
       status: 'error',
       durationMs: elapsed(),
       clientInfo: extractClientInfo(req),
+      trackIds: Array.isArray(req.body?.trackIds) ? req.body.trackIds : undefined,
       errorCode: error.name || 'BULK_UNLIKE_FAILED',
       errorMessage: safeError(error).message,
     });
@@ -2275,6 +2349,7 @@ router.post('/likes/tracks/bulk-unlike', authenticateUser, heavyOperationRateLim
 router.post('/likes/tracks/bulk-like', authenticateUser, heavyOperationRateLimiter, validateBulkLike, async (req, res) => {
   // Gentle pacing between writes — liking a full playlist is many rapid POSTs.
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const elapsed = startOperationTimer();
   try {
     const { trackIds } = req.body;
     const results = [];
@@ -2292,18 +2367,35 @@ router.post('/likes/tracks/bulk-like', authenticateUser, heavyOperationRateLimit
       await sleep(150);
     }
 
-    invalidateUserNamespaces(req.user.id, ['likes']);
     res.json({ results });
+    const succeeded = results.filter(r => r.status === 'ok').length;
+    const failed = results.length - succeeded;
     logOperation({
       userId: req.user.id,
       action: 'bulk-like',
-      trackCount: results.filter(r => r.status === 'ok').length,
+      trackCount: succeeded,
       itemCount: results.length,
-      status: 'success',
+      status: failed > 0 && succeeded === 0 ? 'error' : 'success',
+      durationMs: elapsed(),
+      clientInfo: extractClientInfo(req),
       trackIds: results.filter(r => r.status === 'ok').map(r => r.trackId),
+      errorCode: failed > 0 && succeeded === 0 ? 'ALL_ITEMS_FAILED' : undefined,
+      errorMessage: failed > 0 && succeeded === 0 ? results.find(r => r.status === 'error')?.error : undefined,
+      metadata: { total: results.length, succeeded, failed },
     });
+    invalidateUserNamespaces(req.user.id, ['likes']);
   } catch (error) {
     logger.error('Bulk like error:', safeError(error));
+    logOperation({
+      userId: req.user.id,
+      action: 'bulk-like',
+      status: 'error',
+      durationMs: elapsed(),
+      clientInfo: extractClientInfo(req),
+      trackIds: Array.isArray(req.body?.trackIds) ? req.body.trackIds : undefined,
+      errorCode: error.name || 'BULK_LIKE_FAILED',
+      errorMessage: safeError(error).message,
+    });
     res.status(500).json({ error: 'Bulk like failed' });
   }
 });
@@ -2356,7 +2448,6 @@ router.post('/followings/bulk-unfollow', authenticateUser, heavyOperationRateLim
       }
     }
 
-    invalidateUserNamespaces(req.user.id, ['followings']);
     res.json({ results });
     const succeeded = results.filter(r => r.status === 'ok').length;
     const failed = results.filter(r => r.status !== 'ok').length;
@@ -2368,8 +2459,11 @@ router.post('/followings/bulk-unfollow', authenticateUser, heavyOperationRateLim
       durationMs: elapsed(),
       clientInfo: extractClientInfo(req),
       targetUserIds: results.filter(r => r.status === 'ok').map(r => r.userId),
+      errorCode: failed > 0 && succeeded === 0 ? 'ALL_ITEMS_FAILED' : undefined,
+      errorMessage: failed > 0 && succeeded === 0 ? results.find(r => r.status === 'error')?.error : undefined,
       metadata: { total: results.length, succeeded, failed },
     });
+    invalidateUserNamespaces(req.user.id, ['followings']);
   } catch (error) {
     logger.error('Bulk unfollow error:', safeError(error));
     logOperation({
@@ -2378,6 +2472,7 @@ router.post('/followings/bulk-unfollow', authenticateUser, heavyOperationRateLim
       status: 'error',
       durationMs: elapsed(),
       clientInfo: extractClientInfo(req),
+      targetUserIds: Array.isArray(req.body?.userIds) ? req.body.userIds : undefined,
       errorCode: error.name || 'BULK_UNFOLLOW_FAILED',
       errorMessage: safeError(error).message,
     });
@@ -2482,16 +2577,21 @@ router.post('/reposts/bulk-remove', authenticateUser, heavyOperationRateLimiter,
       }
     }
 
-    invalidateUserNamespaces(req.user.id, ['reposts']);
     res.json({ results });
+    const succeeded = results.filter(r => r.status === 'ok').length;
+    const failed = results.length - succeeded;
     logOperation({
       userId: req.user.id,
       action: 'bulk-remove-reposts',
       itemCount: items.length,
-      status: 'success',
+      status: failed > 0 && succeeded === 0 ? 'error' : 'success',
       trackIds: results.filter(r => r.status === 'ok' && r.resourceType === 'track').map(r => r.id),
       playlistIds: results.filter(r => r.status === 'ok' && r.resourceType === 'playlist').map(r => r.id),
+      errorCode: failed > 0 && succeeded === 0 ? 'ALL_ITEMS_FAILED' : undefined,
+      errorMessage: failed > 0 && succeeded === 0 ? results.find(r => r.status === 'error')?.error : undefined,
+      metadata: { total: results.length, succeeded, failed },
     });
+    invalidateUserNamespaces(req.user.id, ['reposts']);
   } catch (error) {
     logger.error('Bulk unrepost error:', safeError(error));
     res.status(500).json({ error: 'Bulk unrepost failed' });
@@ -2565,7 +2665,7 @@ router.post('/growth/discover', authenticateUser, heavyOperationRateLimiter, val
       refreshToken: req.refreshToken,
       strategy,
       limit,
-      excludedTargetIds: priorTargets.map((t) => t.targetId),
+      excludedTargetIds: priorTargets.map((t) => Number(t.targetId)),
       // On a preload failure the engine falls back to fetching these itself
       authFollowingIds: followingsPayload ? followingsPayload.collection.map((u) => u.id) : null,
       authFollowerIds: followersPayload ? followersPayload.collection.map((u) => u.id) : null,
@@ -2576,6 +2676,9 @@ router.post('/growth/discover', authenticateUser, heavyOperationRateLimiter, val
       action: 'growth-discover',
       itemCount: result?.suggestions?.length ?? 0,
       status: 'success',
+      targetUserIds: (result?.suggestions ?? []).map(s => s.user?.id).filter(id => id != null),
+      trackIds: (result?.suggestions ?? []).map(s => s.suggestedTrack?.id).filter(id => id != null),
+      metadata: { inspirationUserIds },
     });
   } catch (error) {
     logger.error('Growth discover error:', safeError(error));
@@ -2879,7 +2982,7 @@ router.post('/growth/check-followbacks', authenticateUser, heavyOperationRateLim
         continue;
       }
 
-      const isFollowingBack = followerIds.has(action.targetId);
+      const isFollowingBack = followerIds.has(Number(action.targetId));
       
       await prisma.growthAction.update({
         where: { id: action.id },
@@ -2891,7 +2994,7 @@ router.post('/growth/check-followbacks', authenticateUser, heavyOperationRateLim
 
       results.push({
         actionId: action.id,
-        targetId: action.targetId,
+        targetId: Number(action.targetId),
         targetName: action.targetName,
         followedBack: isFollowingBack,
       });
@@ -2915,6 +3018,8 @@ router.post('/growth/check-followbacks', authenticateUser, heavyOperationRateLim
       action: 'growth-check-followbacks',
       itemCount: checked,
       status: 'success',
+      targetUserIds: results.map(r => Number(r.targetId)).filter(n => !isNaN(n)),
+      metadata: { followedBack, didNotFollowBack, alreadyChecked },
     });
   } catch (error) {
     logger.error('Check followbacks error:', safeError(error));
@@ -2996,13 +3101,16 @@ router.post('/growth/reverse', authenticateUser, validateReverseGrowthActions, a
       failed,
       results,
     });
+    // 'partial' (not 'split') for partial failures — 'split' means playlist auto-splitting.
     logOperation({
       userId: req.user.id,
       action: 'growth-reverse',
       itemCount: targets.length,
-      status: failed === 0 ? 'success' : (reversed > 0 ? 'split' : 'error'),
-      targetUserIds: targets.filter(t => t.actionType === 'follow').map(t => t.targetId),
-      trackIds: targets.filter(t => t.actionType === 'like').map(t => t.targetId),
+      status: failed === 0 ? 'success' : (reversed > 0 ? 'partial' : 'error'),
+      targetUserIds: targets.filter(t => t.actionType === 'follow' && results.some(r => r.actionId === t.id && r.status === 'reversed')).map(t => t.targetId),
+      trackIds: targets.filter(t => t.actionType === 'like' && results.some(r => r.actionId === t.id && r.status === 'reversed')).map(t => t.targetId),
+      errorCode: failed > 0 && reversed === 0 ? 'ALL_ITEMS_FAILED' : undefined,
+      metadata: { total: targets.length, succeeded: reversed, failed },
     });
   } catch (error) {
     logger.error('Reverse growth actions error:', safeError(error));

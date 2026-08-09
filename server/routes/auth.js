@@ -5,6 +5,7 @@ import { encrypt } from '../lib/crypto.js';
 import { soundcloudClient } from '../lib/soundcloud-client.js';
 import prisma from '../lib/prisma.js';
 import logger from '../lib/logger.js';
+import { safeError } from '../lib/safe-error.js';
 import { logOperation } from '../lib/analytics.js';
 
 const router = express.Router();

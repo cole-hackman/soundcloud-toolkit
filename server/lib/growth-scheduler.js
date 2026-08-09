@@ -66,7 +66,7 @@ export async function runScheduledFollowbackChecks(soundcloudClient) {
         await prisma.growthAction.update({
           where: { id: action.id },
           data: {
-            followedBack: followerIds.has(action.targetId),
+            followedBack: followerIds.has(Number(action.targetId)),
             checkedAt: new Date(),
           },
         });

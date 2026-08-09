@@ -259,8 +259,10 @@ function StatusPill({ status }) {
     success: { bg: `${GREEN}18`, color: GREEN, label: "OK" },
     split: { bg: `${YELLOW}18`, color: YELLOW, label: "SPLIT" },
     error: { bg: `${RED}18`, color: RED, label: "ERR" },
+    partial: { bg: `${ORANGE}18`, color: ORANGE, label: "PARTIAL" },
   };
-  const c = config[status] || config.success;
+  // Unknown statuses render as themselves in gray — never as a false "OK".
+  const c = config[status] || { bg: "#94A3B818", color: "#94A3B8", label: String(status || "?").toUpperCase().slice(0, 8) };
   return (
     <span
       style={{
@@ -376,6 +378,340 @@ function periodSub(period, word = "period") {
 
 function periodTitleLabel(period) {
   return period === "all" ? "All Time" : period;
+}
+
+// --- Music Catalog Section ---
+const CATALOG_TRACK_ACTIONS = [
+  "merge", "from-likes", "bulk-unlike", "bulk-like", "clone", "genre-search",
+  "library-audit", "playlist-compare", "resolve", "batch-resolve",
+  "bulk-remove-reposts", "proxy-download",
+];
+
+const CATALOG_SORTABLE = new Set(["title", "artist", "touches", "users", "lastTouched"]);
+
+function catalogSelectStyle(P) {
+  return {
+    fontSize: 10,
+    fontFamily: "'JetBrains Mono', monospace",
+    color: P.text,
+    background: P.card,
+    border: `1px solid ${P.cardBorder}`,
+    borderRadius: 6,
+    padding: "4px 6px",
+  };
+}
+
+function MusicCatalogSection({ period, palette: P }) {
+  const [summary, setSummary] = useState(null);
+  const [tracks, setTracks] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [sort, setSort] = useState("touches");
+  const [order, setOrder] = useState("desc");
+  const [genre, setGenre] = useState("");
+  const [artistInput, setArtistInput] = useState("");
+  const [artist, setArtist] = useState("");
+  const [access, setAccess] = useState("");
+  const [resolveStatus, setResolveStatus] = useState("");
+  const [action, setAction] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [expandedTrack, setExpandedTrack] = useState(null);
+  const [trackOps, setTrackOps] = useState({});
+  const pageSize = 25;
+
+  // Debounce the artist text filter
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setArtist(artistInput.trim());
+      setPage(1);
+    }, 400);
+    return () => clearTimeout(t);
+  }, [artistInput]);
+
+  useEffect(() => {
+    setPage(1); // a new period changes totals; never strand the user past the last page
+    fetch(`${API_BASE}/api/admin/catalog/summary?period=${period}`, { credentials: "include" })
+      .then(r => (r.ok ? r.json() : null))
+      .then(setSummary)
+      .catch(() => setSummary(null));
+  }, [period]);
+
+  useEffect(() => {
+    setLoading(true);
+    const params = new URLSearchParams({ period, page: String(page), pageSize: String(pageSize), sort, order });
+    if (genre) params.set("genre", genre);
+    if (artist) params.set("artist", artist);
+    if (access) params.set("access", access);
+    if (resolveStatus) params.set("resolveStatus", resolveStatus);
+    if (action) params.set("action", action);
+    fetch(`${API_BASE}/api/admin/catalog/tracks?${params}`, { credentials: "include" })
+      .then(r => (r.ok ? r.json() : { tracks: [], total: 0 }))
+      .then(data => {
+        setTracks(data.tracks || []);
+        setTotal(data.total || 0);
+      })
+      .catch(() => {
+        setTracks([]);
+        setTotal(0);
+      })
+      .finally(() => setLoading(false));
+  }, [period, page, sort, order, genre, artist, access, resolveStatus, action]);
+
+  const toggleSort = (key) => {
+    if (!CATALOG_SORTABLE.has(key)) return;
+    if (sort === key) setOrder(order === "desc" ? "asc" : "desc");
+    else {
+      setSort(key);
+      setOrder(key === "title" || key === "artist" ? "asc" : "desc");
+    }
+    setPage(1);
+  };
+
+  const toggleDrilldown = (trackId) => {
+    if (expandedTrack === trackId) {
+      setExpandedTrack(null);
+      return;
+    }
+    setExpandedTrack(trackId);
+    if (!trackOps[trackId]) {
+      fetch(`${API_BASE}/api/admin/catalog/tracks/${trackId}/operations`, { credentials: "include" })
+        .then(r => (r.ok ? r.json() : { operations: [] }))
+        .then(data => setTrackOps(prev => ({ ...prev, [trackId]: data.operations || [] })))
+        .catch(() => setTrackOps(prev => ({ ...prev, [trackId]: [] })));
+    }
+  };
+
+  const totalPages = Math.max(Math.ceil(total / pageSize), 1);
+  const accessCounts = summary?.accessBreakdown ?? {};
+  const unresolved = Object.entries(summary?.resolveBreakdown ?? {})
+    .filter(([k]) => k !== "resolved")
+    .reduce((acc, [, v]) => acc + v, 0);
+  const notPlayable = (accessCounts.blocked ?? 0) + (accessCounts.preview ?? 0) + (accessCounts.gone ?? 0);
+  const mono = { fontFamily: "'JetBrains Mono', monospace" };
+
+  return (
+    <div style={{ marginTop: 20 }}>
+      <SectionCard title={`Music Catalog — ${periodTitleLabel(period)} Touches`} delay={0.5} palette={P}>
+        {/* Aggregate summary tiles — the default view; user identity only via drill-down */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 12, marginBottom: 14 }}>
+          {[
+            { label: "Tracks", value: summary?.totalTracks, color: P.text },
+            { label: "Artists", value: summary?.totalArtists, color: CYAN },
+            { label: "Playlists", value: summary?.totalPlaylists, color: P.text },
+            { label: "Touches (period)", value: summary?.periodTouchEvents, color: ORANGE },
+            { label: "Unresolved", value: unresolved, color: YELLOW },
+            { label: "Blocked / preview / gone", value: notPlayable, color: RED },
+          ].map(m => (
+            <div key={m.label} style={{ textAlign: "center" }}>
+              <div style={{ fontSize: 20, fontWeight: 700, color: m.color, fontFamily: "'Outfit', sans-serif" }}>
+                {m.value == null ? "—" : Number(m.value).toLocaleString()}
+              </div>
+              <div style={{ ...mono, fontSize: 9, color: P.textDim, marginTop: 2, textTransform: "uppercase", letterSpacing: 0.6 }}>
+                {m.label}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Genre + access breakdowns, gaps included */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 14 }}>
+          <div>
+            <div style={{ ...mono, fontSize: 9, color: P.textDim, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 6 }}>
+              Genres (top 12, incl. missing)
+            </div>
+            <HBar
+              items={(summary?.genreBreakdown ?? []).map(g => ({
+                key: g.genre,
+                name: g.genre,
+                count: g.count,
+                color: g.genre === "(none)" ? YELLOW : CYAN,
+              }))}
+              palette={P}
+            />
+          </div>
+          <div>
+            <div style={{ ...mono, fontSize: 9, color: P.textDim, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 6 }}>
+              Access status
+            </div>
+            <HBar
+              items={Object.entries(accessCounts).map(([k, v]) => ({
+                key: k,
+                name: k,
+                count: v,
+                color: k === "playable" ? GREEN : k === "unknown" ? P.textDim : RED,
+              }))}
+              palette={P}
+            />
+          </div>
+        </div>
+
+        {/* Filters */}
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 10 }}>
+          <select value={genre} onChange={e => { setGenre(e.target.value); setPage(1); }} style={catalogSelectStyle(P)}>
+            <option value="">All genres</option>
+            {(summary?.genreBreakdown ?? []).map(g => (
+              <option key={g.genre} value={g.genre}>{g.genre}</option>
+            ))}
+          </select>
+          <select value={access} onChange={e => { setAccess(e.target.value); setPage(1); }} style={catalogSelectStyle(P)}>
+            <option value="">All access</option>
+            {["playable", "preview", "blocked", "gone", "unknown"].map(a => (
+              <option key={a} value={a}>{a}</option>
+            ))}
+          </select>
+          <select value={resolveStatus} onChange={e => { setResolveStatus(e.target.value); setPage(1); }} style={catalogSelectStyle(P)}>
+            <option value="">All resolve states</option>
+            {["resolved", "pending", "not_found", "gone"].map(s => (
+              <option key={s} value={s}>{s}</option>
+            ))}
+          </select>
+          <select value={action} onChange={e => { setAction(e.target.value); setPage(1); }} style={catalogSelectStyle(P)}>
+            <option value="">Any action</option>
+            {CATALOG_TRACK_ACTIONS.map(a => (
+              <option key={a} value={a}>{a}</option>
+            ))}
+          </select>
+          <input
+            value={artistInput}
+            onChange={e => setArtistInput(e.target.value)}
+            placeholder="Filter by artist…"
+            style={{ ...catalogSelectStyle(P), width: 150 }}
+          />
+        </div>
+
+        {/* Track table */}
+        {loading ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {Array.from({ length: 6 }).map((_, i) => <SkeletonBlock key={i} height={32} palette={P} />)}
+          </div>
+        ) : tracks.length === 0 ? (
+          <div style={{ ...mono, textAlign: "center", padding: "28px 0", color: P.textDim, fontSize: 12 }}>
+            No catalog tracks match these filters yet. The catalog fills as operations run.
+          </div>
+        ) : (
+          <div>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "2fr 1.3fr 1fr 0.8fr 0.6fr 0.5fr 0.8fr 0.8fr",
+                gap: 8,
+                padding: "0 8px 8px",
+                borderBottom: `1px solid ${P.cardBorder}`,
+                marginBottom: 4,
+              }}
+            >
+              {[
+                ["title", "Track"], ["artist", "Artist"], ["genre", "Genre"], ["access", "Access"],
+                ["touches", "Touches"], ["users", "Users"], ["lastTouched", "Last touched"], ["resolve", "Resolve"],
+              ].map(([key, label]) => (
+                <span
+                  key={key}
+                  onClick={() => toggleSort(key)}
+                  style={{
+                    ...mono,
+                    fontSize: 9,
+                    color: sort === key ? ORANGE : P.textDim,
+                    textTransform: "uppercase",
+                    letterSpacing: 0.8,
+                    cursor: CATALOG_SORTABLE.has(key) ? "pointer" : "default",
+                    userSelect: "none",
+                  }}
+                >
+                  {label}{sort === key ? (order === "desc" ? " ↓" : " ↑") : ""}
+                </span>
+              ))}
+            </div>
+            {tracks.map((t, i) => (
+              <div key={String(t.id)}>
+                <div
+                  onClick={() => toggleDrilldown(t.id)}
+                  title="Click for the operations that touched this track"
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "2fr 1.3fr 1fr 0.8fr 0.6fr 0.5fr 0.8fr 0.8fr",
+                    gap: 8,
+                    padding: "8px",
+                    borderRadius: 6,
+                    borderBottom: i < tracks.length - 1 ? `1px solid ${P.cardBorder}33` : "none",
+                    alignItems: "center",
+                    cursor: "pointer",
+                    background: expandedTrack === t.id ? `${ORANGE}0D` : "transparent",
+                    transition: "background 0.15s",
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.background = `${ORANGE}0D`}
+                  onMouseLeave={e => e.currentTarget.style.background = expandedTrack === t.id ? `${ORANGE}0D` : "transparent"}
+                >
+                  <span style={{ ...mono, fontSize: 11, color: P.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {t.title || <span style={{ color: YELLOW }}>#{String(t.id)} (unresolved)</span>}
+                  </span>
+                  <span style={{ ...mono, fontSize: 11, color: P.textMid, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {t.artistName || "—"}
+                  </span>
+                  <span style={{ ...mono, fontSize: 10, color: t.genreNormalized ? P.textDim : YELLOW }}>
+                    {t.genreNormalized || "(none)"}
+                  </span>
+                  <span style={{ ...mono, fontSize: 10, color: !t.access ? P.textDim : t.access === "playable" ? GREEN : RED }}>
+                    {t.access || "unknown"}
+                  </span>
+                  <span style={{ ...mono, fontSize: 11, color: ORANGE, fontWeight: 600 }}>{t.touches}</span>
+                  <span style={{ ...mono, fontSize: 11, color: P.textMid }}>{t.users}</span>
+                  <span style={{ ...mono, fontSize: 10, color: P.textDim }}>
+                    {t.last_touched ? timeAgo(t.last_touched) : "—"}
+                  </span>
+                  <span style={{ ...mono, fontSize: 10, color: t.resolveStatus === "resolved" ? P.textDim : YELLOW }}>
+                    {t.resolveStatus}
+                  </span>
+                </div>
+                {expandedTrack === t.id && (
+                  <div style={{ padding: "6px 8px 12px 24px", borderBottom: `1px solid ${P.cardBorder}33` }}>
+                    <div style={{ ...mono, fontSize: 9, color: P.textDim, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 6 }}>
+                      Operations touching this track (latest 50)
+                    </div>
+                    {!trackOps[t.id] ? (
+                      <SkeletonBlock height={24} palette={P} />
+                    ) : trackOps[t.id].length === 0 ? (
+                      <div style={{ ...mono, fontSize: 11, color: P.textDim }}>No logged operations reference this track.</div>
+                    ) : (
+                      trackOps[t.id].map(op => (
+                        <div key={op.id} style={{ display: "flex", gap: 12, alignItems: "center", padding: "3px 0" }}>
+                          <span style={{ ...mono, fontSize: 11, color: ORANGE }}>@{op.user.username}</span>
+                          <span style={{ ...mono, fontSize: 11, color: P.textMid }}>{op.actionName}</span>
+                          <StatusPill status={op.status} />
+                          <span style={{ ...mono, fontSize: 10, color: P.textDim }}>{timeAgo(op.createdAt)}</span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+            ))}
+            {/* Pagination */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 10 }}>
+              <span style={{ ...mono, fontSize: 10, color: P.textDim }}>
+                {total.toLocaleString()} tracks · page {page} of {totalPages}
+              </span>
+              <div style={{ display: "flex", gap: 6 }}>
+                <button
+                  onClick={() => setPage(p => Math.max(p - 1, 1))}
+                  disabled={page <= 1}
+                  style={{ ...catalogSelectStyle(P), cursor: page <= 1 ? "default" : "pointer", opacity: page <= 1 ? 0.4 : 1 }}
+                >
+                  ← Prev
+                </button>
+                <button
+                  onClick={() => setPage(p => Math.min(p + 1, totalPages))}
+                  disabled={page >= totalPages}
+                  style={{ ...catalogSelectStyle(P), cursor: page >= totalPages ? "default" : "pointer", opacity: page >= totalPages ? 0.4 : 1 }}
+                >
+                  Next →
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </SectionCard>
+    </div>
+  );
 }
 
 // --- Main Dashboard Component ---
@@ -711,6 +1047,7 @@ export default function AdminDashboard() {
                     { label: "Operations", value: (stats?.operationsCount ?? 0).toLocaleString(), color: P.text },
                     { label: "Tracks/Op Avg", value: (stats?.avgTracksPerOp ?? 0).toLocaleString(), color: CYAN },
                     { label: "Auto-Splits", value: (stats?.splitsCount ?? 0).toLocaleString(), color: YELLOW },
+                    { label: "Partial", value: (stats?.partialCount ?? 0).toLocaleString(), color: ORANGE },
                   ].map((m) => (
                     <div key={m.label} style={{ textAlign: "center" }}>
                       <div style={{ fontSize: 18, fontWeight: 700, color: m.color, fontFamily: "'Outfit', sans-serif" }}>{m.value}</div>
@@ -720,6 +1057,22 @@ export default function AdminDashboard() {
                     </div>
                   ))}
                 </div>
+                {(stats?.analyticsWriteHealth?.failures ?? 0) > 0 && (
+                  <div
+                    style={{
+                      marginTop: 12,
+                      padding: "8px 10px",
+                      borderRadius: 6,
+                      background: `${RED}14`,
+                      color: RED,
+                      fontSize: 10,
+                      fontFamily: "'JetBrains Mono', monospace",
+                    }}
+                  >
+                    ⚠ {stats.analyticsWriteHealth.failures} operation-log write failure{stats.analyticsWriteHealth.failures === 1 ? "" : "s"} since server start — analytics rows are being dropped.
+                    {stats.analyticsWriteHealth.lastFailureMessage ? ` Last: ${stats.analyticsWriteHealth.lastFailureMessage}` : ""}
+                  </div>
+                )}
               </>
             )}
           </SectionCard>
@@ -769,7 +1122,7 @@ export default function AdminDashboard() {
                 />
                 {/* Status filter */}
                 <div style={{ display: "flex", gap: 2, background: P.segmentBg, borderRadius: 6, padding: 2 }}>
-                  {["all", "success", "split", "error"].map(s => (
+                  {["all", "success", "split", "error", "partial"].map(s => (
                     <button
                       key={s}
                       onClick={() => setStatusFilter(s)}
@@ -961,6 +1314,9 @@ export default function AdminDashboard() {
             </SectionCard>
           </div>
         </div>
+
+        {/* Music Catalog */}
+        <MusicCatalogSection period={period} palette={P} />
 
         {/* SongSwipe Beta Survey */}
         <div style={{ marginTop: 20 }}>

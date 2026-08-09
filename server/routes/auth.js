@@ -5,7 +5,9 @@ import { encrypt } from '../lib/crypto.js';
 import { soundcloudClient } from '../lib/soundcloud-client.js';
 import prisma from '../lib/prisma.js';
 import logger from '../lib/logger.js';
+import { safeError } from '../lib/safe-error.js';
 import { logOperation } from '../lib/analytics.js';
+import { authenticateUser } from '../middleware/auth.js';
 
 const router = express.Router();
 
@@ -229,6 +231,33 @@ router.post('/logout', async (req, res) => {
   } catch (error) {
     logger.error('Logout error:', safeError(error));
     res.status(500).json({ error: 'Failed to logout' });
+  }
+});
+
+/**
+ * DELETE /api/auth/account
+ * Permanently delete the authenticated user's account and everything keyed to
+ * it. Every per-user table relates to users with onDelete: Cascade (tokens,
+ * operation_logs, growth_actions, survey_responses, beta_signups, plus the
+ * cross-branch chat/indexed/snapshot tables), so the single user delete
+ * removes all of it — enforced by tests/account-deletion-cascade.test.js.
+ * Body: { confirm: "DELETE" } — explicit confirmation checked server-side.
+ */
+router.delete('/account', authenticateUser, async (req, res) => {
+  try {
+    if (req.body?.confirm !== 'DELETE') {
+      return res.status(400).json({ error: 'Confirmation required: send { "confirm": "DELETE" }' });
+    }
+    const { id, soundcloudId } = req.user;
+    await prisma.user.delete({ where: { id } });
+    // Deliberately not logOperation: the operation_logs rows (and their FK
+    // target) were just deleted with the account.
+    logger.info(`[account] Deleted account and all data for soundcloudId ${soundcloudId}`);
+    res.clearCookie('session');
+    res.json({ success: true });
+  } catch (error) {
+    logger.error('Account deletion error:', safeError(error));
+    res.status(500).json({ error: 'Failed to delete account' });
   }
 });
 

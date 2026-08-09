@@ -46,9 +46,44 @@ export function extractClientInfo(req) {
   };
 }
 
+// Status vocabulary. 'split' means ONLY "output auto-divided at the 500-track
+// playlist cap" (merge/clone/from-likes/followed-likes-to-playlist).
+// 'partial' means "some items succeeded, some failed" (growth-reverse,
+// followed-playlist-clone). Anything else is coerced to 'error' so bad call
+// sites surface in the dashboard instead of corrupting stats.
+const VALID_STATUSES = new Set(['success', 'split', 'error', 'partial']);
+
+// trackIds stored per row are capped; when sliced, metadata carries
+// trackIdsTruncated: true and trackIdsTotal with the real count.
+const TRACK_IDS_CAP = 1000;
+
+// In-process write-health signal, surfaced via GET /api/admin/stats.
+// The logger still never throws into a user request; this is how schema
+// drift or DB trouble becomes visible instead of silently eating rows.
+const writeHealth = {
+  failures: 0,
+  lastFailureAt: null,
+  lastFailureMessage: null,
+  lastWriteAt: null,
+};
+
+export function getAnalyticsWriteHealth() {
+  return { ...writeHealth };
+}
+
 /**
  * Fire-and-forget analytics log. Never throws, never blocks a response.
  * Call WITHOUT await so it doesn't delay the HTTP response.
+ *
+ * Metadata contract (enforced/normalized here, composed at call sites):
+ * - ID arrays go in the dedicated args (trackIds/playlistIds/targetUserIds),
+ *   never hand-rolled into metadata.
+ * - Per-item bulk ops put counts in metadata as { total, succeeded, failed }.
+ * - merge adds { mode: 'into-existing'|'split'|'new', sourceCount, totalTracks,
+ *   playlistsCreated, ... }.
+ * - All-items-failed outcomes log status 'error' with errorCode
+ *   'ALL_ITEMS_FAILED' and the first per-item error as errorMessage.
+ * - Catch paths can't see try-scoped arrays; they pass IDs from req.body.
  *
  * @param {object} params
  * @param {string} [params.userId]       - Prisma User.id (cuid string)
@@ -60,7 +95,7 @@ export function extractClientInfo(req) {
  * @param {number[]} [params.trackIds] - Operated track IDs
  * @param {number[]} [params.playlistIds] - Operated playlist IDs
  * @param {number[]} [params.targetUserIds] - Operated target user IDs
- * @param {string} [params.status]     - 'success' | 'split' | 'error'
+ * @param {string} [params.status]     - 'success' | 'split' | 'error' | 'partial'
  * @param {number} [params.durationMs] - Execution duration in ms
  * @param {string} [params.errorCode]  - Error identifier if status is 'error'
  * @param {string} [params.errorMessage] - Human-readable error details
@@ -95,6 +130,15 @@ export async function logOperation({
       return;
     }
 
+    // Enforce the status enum; unknown values become visible errors, not stats noise
+    let resolvedStatus = status;
+    if (!VALID_STATUSES.has(resolvedStatus)) {
+      logger.warn(`[analytics] Invalid status "${resolvedStatus}" for action "${action}" — coercing to error`);
+      resolvedStatus = 'error';
+      errorCode = errorCode || 'INVALID_STATUS';
+      metadata = { ...(metadata || {}), invalidStatus: String(status) };
+    }
+
     // Sanitize errorMessage if present (strip secrets/tokens)
     let sanitizedErrorMsg = errorMessage;
     if (sanitizedErrorMsg && typeof sanitizedErrorMsg === 'string') {
@@ -108,7 +152,14 @@ export async function logOperation({
       ...(metadata || {}),
     };
     if (Array.isArray(trackIds) && trackIds.length > 0) {
-      mergedMetadata.trackIds = trackIds.map(Number).filter(n => !isNaN(n)).slice(0, 500); // cap size
+      const cleanTrackIds = trackIds.map(Number).filter(n => !isNaN(n));
+      if (cleanTrackIds.length > TRACK_IDS_CAP) {
+        mergedMetadata.trackIds = cleanTrackIds.slice(0, TRACK_IDS_CAP);
+        mergedMetadata.trackIdsTruncated = true;
+        mergedMetadata.trackIdsTotal = cleanTrackIds.length;
+      } else {
+        mergedMetadata.trackIds = cleanTrackIds;
+      }
     }
     if (Array.isArray(playlistIds) && playlistIds.length > 0) {
       mergedMetadata.playlistIds = playlistIds.map(Number).filter(n => !isNaN(n));
@@ -124,7 +175,7 @@ export async function logOperation({
         action,
         trackCount: trackCount || (Array.isArray(trackIds) ? trackIds.length : 0),
         itemCount: itemCount || (Array.isArray(playlistIds) ? playlistIds.length : Array.isArray(targetUserIds) ? targetUserIds.length : 0),
-        status,
+        status: resolvedStatus,
         durationMs: typeof durationMs === 'number' ? Math.max(0, Math.round(durationMs)) : undefined,
         errorCode: errorCode ?? undefined,
         errorMessage: sanitizedErrorMsg ?? undefined,
@@ -132,8 +183,13 @@ export async function logOperation({
         clientInfo: resolvedClientInfo ?? undefined,
       },
     });
+    writeHealth.lastWriteAt = new Date().toISOString();
   } catch (err) {
-    // Never rethrow — analytics must never break the API
-    logger.error('[analytics] Failed to log operation:', err.message);
+    // Never rethrow — analytics must never break the API. But count and
+    // remember the failure so the admin dashboard can show data is being lost.
+    writeHealth.failures += 1;
+    writeHealth.lastFailureAt = new Date().toISOString();
+    writeHealth.lastFailureMessage = String(err.message || err).slice(0, 300);
+    logger.error('[analytics] Failed to log operation:', err);
   }
 }

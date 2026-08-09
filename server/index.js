@@ -10,6 +10,13 @@ import dotenv from 'dotenv';
 // Load environment variables
 dotenv.config();
 
+// Prisma returns BigInt for BIGINT columns (growth_actions.targetId, catalog
+// IDs). JSON.stringify throws on BigInt, so serialize them as numbers — every
+// SoundCloud ID is far below Number.MAX_SAFE_INTEGER (2^53).
+BigInt.prototype.toJSON = function () {
+  return Number(this);
+};
+
 // Import security middleware
 import { apiRateLimiter, authRateLimiter, heavyOperationRateLimiter, healthCheckRateLimiter } from './middleware/rateLimiter.js';
 import { securityHeaders, preventKeyLeakage, validateEnv } from './middleware/security.js';

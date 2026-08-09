@@ -39,6 +39,9 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/contexts/ThemeContext";
 import { cn } from "@/lib/utils";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "";
 
 /* ── Navigation structure ── */
 
@@ -234,6 +237,29 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const { theme, toggleTheme } = useTheme();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
+  const [deleteAccountOpen, setDeleteAccountOpen] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [deletingAccount, setDeletingAccount] = useState(false);
+
+  const handleDeleteAccount = async () => {
+    if (deleteConfirmText !== "DELETE" || deletingAccount) return;
+    setDeletingAccount(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/auth/account`, {
+        method: "DELETE",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirm: "DELETE" }),
+      });
+      if (res.ok) {
+        window.location.href = "/";
+        return;
+      }
+    } catch {
+      // fall through to re-enable the button
+    }
+    setDeletingAccount(false);
+  };
   const [mobileOpen, setMobileOpen] = useState(false);
 
   // Determine effective collapsed state (expanded if hovered)
@@ -383,6 +409,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 <span className="text-[14px] leading-none">☕</span>
                 <span>Support Me</span>
               </a>
+              <button
+                onClick={() => {
+                  setDeleteConfirmText("");
+                  setDeleteAccountOpen(true);
+                }}
+                className="mt-2 w-full text-center text-[10px] text-muted-foreground/70 hover:text-red-500 transition"
+              >
+                Delete account
+              </button>
             </div>
           </div>
         ) : (
@@ -535,6 +570,28 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <main id="main-content" tabIndex={-1} className="flex-1 min-w-0 min-h-0 pt-12 lg:pt-0 focus:outline-none">
         {children}
       </main>
+
+      <ConfirmDialog
+        open={deleteAccountOpen}
+        title="Delete your account?"
+        description="This permanently deletes your SC Toolkit account and everything stored with it — your login, connected SoundCloud tokens, and all operation history. Your SoundCloud account and playlists are not affected. This cannot be undone."
+        confirmLabel={deletingAccount ? "Deleting…" : "Delete my account"}
+        variant="destructive"
+        onConfirm={handleDeleteAccount}
+        onCancel={() => setDeleteAccountOpen(false)}
+      >
+        <label className="block text-xs text-muted-foreground" htmlFor="delete-account-confirm">
+          Type <span className="font-mono font-semibold">DELETE</span> to confirm
+        </label>
+        <input
+          id="delete-account-confirm"
+          value={deleteConfirmText}
+          onChange={(e) => setDeleteConfirmText(e.target.value)}
+          className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-red-500/40"
+          placeholder="DELETE"
+          autoComplete="off"
+        />
+      </ConfirmDialog>
     </div>
   );
 }

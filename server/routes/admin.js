@@ -1,9 +1,11 @@
 import express from 'express';
+import { Prisma } from '@prisma/client';
 import prisma from '../lib/prisma.js';
 import logger from '../lib/logger.js';
 import { safeError } from '../lib/safe-error.js';
 import { authenticateUser } from '../middleware/auth.js';
 import { adminAuth } from '../middleware/adminAuth.js';
+import { getAnalyticsWriteHealth } from '../lib/analytics.js';
 
 const router = express.Router();
 
@@ -27,6 +29,10 @@ const ACTION_NAMES = {
   'growth-engage-start': 'Growth: Engage',
   'growth-reverse': 'Growth: Reverse',
   'growth-check-followbacks': 'Growth: Check follow-backs',
+  'auth-login': 'Login',
+  'auth-logout': 'Logout',
+  'followed-likes-to-playlist': "Followed User's Likes → Playlist",
+  'followed-playlist-clone': "Followed User's Playlist Clone",
 };
 
 const ACTION_COLORS = {
@@ -49,6 +55,10 @@ const ACTION_COLORS = {
   'growth-engage-start': '#A855F7',
   'growth-reverse': '#A855F7',
   'growth-check-followbacks': '#A855F7',
+  'auth-login': '#64748B',
+  'auth-logout': '#64748B',
+  'followed-likes-to-playlist': '#0D9488',
+  'followed-playlist-clone': '#0D9488',
 };
 
 const FEATURE_NAMES = {
@@ -173,7 +183,7 @@ router.get('/stats', authenticateUser, adminAuth, async (req, res) => {
       `,
       prisma.operationLog.groupBy({
         by: ['errorCode'],
-        where: { ...operationWhere, status: 'error', errorCode: { not: null } },
+        where: { ...operationWhere, status: 'error' },
         _count: { id: true },
         orderBy: { _count: { id: 'desc' } },
         take: 5,
@@ -212,8 +222,10 @@ router.get('/stats', authenticateUser, adminAuth, async (req, res) => {
       .sort((a, b) => b.errorRate - a.errorRate || b.errorCount - a.errorCount)
       .slice(0, 8);
 
+    // null errorCode buckets are real errors from paths that predate (or still
+    // lack) error capture — label them rather than filtering them out.
     const errorBreakdown = topErrors.map(e => ({
-      errorCode: e.errorCode,
+      errorCode: e.errorCode ?? 'UNSPECIFIED',
       count: e._count.id,
     }));
 
@@ -231,9 +243,12 @@ router.get('/stats', authenticateUser, adminAuth, async (req, res) => {
     const statusMap = {};
     for (const row of byStatus) statusMap[row.status] = row._count.id;
     const total = operationsCount || 1;
-    const successRate = Math.round(((statusMap['success'] ?? 0) / total) * 100);
+    // Auto-splits are successful outcomes (the output just exceeded SoundCloud's
+    // 500-track cap), so they count toward the headline success rate.
+    const successRate = Math.round((((statusMap['success'] ?? 0) + (statusMap['split'] ?? 0)) / total) * 100);
     const splitRate = Math.round(((statusMap['split'] ?? 0) / total) * 100);
     const errorRate = Math.round(((statusMap['error'] ?? 0) / total) * 100);
+    const partialRate = Math.round(((statusMap['partial'] ?? 0) / total) * 100);
 
     res.json({
       totalUsers,
@@ -251,8 +266,11 @@ router.get('/stats', authenticateUser, adminAuth, async (req, res) => {
       successRate,
       splitRate,
       errorRate,
+      partialRate,
+      partialCount: statusMap['partial'] ?? 0,
       topFeature,
       activeUsersPeriod,
+      analyticsWriteHealth: getAnalyticsWriteHealth(),
     });
   } catch (err) {
     logger.error('[admin/stats] Error:', safeError(err));
@@ -357,7 +375,7 @@ router.get('/operations', authenticateUser, adminAuth, async (req, res) => {
       createdAt: { gte: cutoff },
       action: actionFilter ? actionFilter : { not: { startsWith: 'view:' } },
     };
-    if (statusFilter && ['success', 'split', 'error'].includes(statusFilter)) {
+    if (statusFilter && ['success', 'split', 'error', 'partial'].includes(statusFilter)) {
       where.status = statusFilter;
     }
     if (searchFilter) {
@@ -411,6 +429,213 @@ router.get('/operations', authenticateUser, adminAuth, async (req, res) => {
   } catch (err) {
     logger.error('[admin/operations] Error:', safeError(err));
     res.status(500).json({ error: 'Failed to fetch operations' });
+  }
+});
+
+/**
+ * GET /api/admin/catalog/summary?period=...
+ *
+ * Aggregate view over the music catalog: totals, genre/access/resolve
+ * breakdowns (gaps included — unresolved and null-genre are first-class),
+ * plus period-scoped touch volume from operation_logs ID arrays.
+ */
+router.get('/catalog/summary', authenticateUser, adminAuth, async (req, res) => {
+  try {
+    const period = validPeriod(req.query.period);
+    const cutoff = periodToCutoff(period);
+
+    const [totalsRows, playlistsCount, accessRows, resolveRows, genreRows, touchRows] = await Promise.all([
+      prisma.$queryRaw`
+        SELECT COUNT(*)::int AS tracks,
+               COUNT(DISTINCT COALESCE("artistId"::text, "artistName"))::int AS artists
+        FROM "tracks"
+      `,
+      prisma.playlist.count(),
+      prisma.track.groupBy({ by: ['access'], _count: { id: true } }),
+      prisma.track.groupBy({ by: ['resolveStatus'], _count: { id: true } }),
+      prisma.$queryRaw`
+        SELECT COALESCE("genreNormalized", '(none)') AS genre, COUNT(*)::int AS count
+        FROM "tracks"
+        GROUP BY 1
+        ORDER BY 2 DESC
+        LIMIT 12
+      `,
+      prisma.$queryRaw`
+        SELECT COUNT(*)::int AS touch_events,
+               COUNT(DISTINCT track_id)::int AS distinct_tracks
+        FROM (
+          SELECT (jsonb_array_elements_text(metadata->'trackIds'))::bigint AS track_id
+          FROM operation_logs
+          WHERE "createdAt" >= ${cutoff} AND metadata ? 'trackIds'
+        ) touches
+      `,
+    ]);
+
+    const toCounts = (rows, field) => rows.reduce((acc, row) => {
+      acc[row[field] ?? 'unknown'] = row._count.id;
+      return acc;
+    }, {});
+
+    res.json({
+      period,
+      totalTracks: totalsRows[0]?.tracks ?? 0,
+      totalArtists: totalsRows[0]?.artists ?? 0,
+      totalPlaylists: playlistsCount,
+      accessBreakdown: toCounts(accessRows, 'access'),
+      resolveBreakdown: toCounts(resolveRows, 'resolveStatus'),
+      genreBreakdown: genreRows.map(g => ({ genre: g.genre, count: Number(g.count) })),
+      periodTouchEvents: Number(touchRows[0]?.touch_events ?? 0),
+      periodDistinctTracks: Number(touchRows[0]?.distinct_tracks ?? 0),
+    });
+  } catch (err) {
+    logger.error('[admin/catalog/summary] Error:', safeError(err));
+    res.status(500).json({ error: 'Failed to fetch catalog summary' });
+  }
+});
+
+const CATALOG_SORTS = {
+  touches: 'touches',
+  users: 'users',
+  lastTouched: 'last_touched',
+  title: 't."title"',
+  artist: 't."artistName"',
+  firstSeen: 't."firstSeenAt"',
+};
+
+/**
+ * GET /api/admin/catalog/tracks
+ *   ?period=&genre=&artist=&access=&resolveStatus=&action=&sort=&order=&page=&pageSize=
+ *
+ * Paginated catalog rows with period-scoped touch counts. Aggregate by
+ * default — no user identity in this listing; per-user drill-down is the
+ * separate /catalog/tracks/:id/operations endpoint. With an action filter
+ * the join tightens to tracks actually touched by that action in-period;
+ * otherwise zero-touch rows stay visible so gaps (unresolved, null genre,
+ * blocked/preview) can be explored.
+ */
+router.get('/catalog/tracks', authenticateUser, adminAuth, async (req, res) => {
+  try {
+    const period = validPeriod(req.query.period);
+    const cutoff = periodToCutoff(period);
+    const page = Math.max(parseInt(req.query.page) || 1, 1);
+    const pageSize = Math.min(Math.max(parseInt(req.query.pageSize) || 25, 1), 100);
+    // Object.hasOwn, not truthiness: '?sort=constructor' must not reach Prisma.raw
+    const sortKey = Object.hasOwn(CATALOG_SORTS, req.query.sort) ? req.query.sort : 'touches';
+    const order = req.query.order === 'asc' ? 'ASC' : 'DESC';
+    const genre = typeof req.query.genre === 'string' && req.query.genre.trim() ? req.query.genre.trim() : null;
+    const artist = typeof req.query.artist === 'string' && req.query.artist.trim() ? req.query.artist.trim() : null;
+    const access = typeof req.query.access === 'string' && req.query.access.trim() ? req.query.access.trim() : null;
+    const resolveStatus = typeof req.query.resolveStatus === 'string' && req.query.resolveStatus.trim() ? req.query.resolveStatus.trim() : null;
+    const action = typeof req.query.action === 'string' && req.query.action.trim() ? req.query.action.trim() : null;
+
+    const touchesCte = Prisma.sql`
+      SELECT (jsonb_array_elements_text(metadata->'trackIds'))::bigint AS track_id,
+             COUNT(*) AS touch_count,
+             COUNT(DISTINCT "userId") AS user_count,
+             MAX("createdAt") AS last_touched
+      FROM operation_logs
+      WHERE "createdAt" >= ${cutoff} AND metadata ? 'trackIds'
+        ${action ? Prisma.sql`AND action = ${action}` : Prisma.empty}
+      GROUP BY 1
+    `;
+
+    const filters = [];
+    if (genre) {
+      filters.push(genre === '(none)'
+        ? Prisma.sql`t."genreNormalized" IS NULL`
+        : Prisma.sql`t."genreNormalized" = ${genre}`);
+    }
+    if (artist) filters.push(Prisma.sql`t."artistName" ILIKE ${'%' + artist + '%'}`);
+    if (access) {
+      filters.push(access === 'unknown'
+        ? Prisma.sql`t."access" IS NULL`
+        : Prisma.sql`t."access" = ${access}`);
+    }
+    if (resolveStatus) filters.push(Prisma.sql`t."resolveStatus" = ${resolveStatus}`);
+    const whereSql = filters.length > 0
+      ? Prisma.sql`WHERE ${Prisma.join(filters, ' AND ')}`
+      : Prisma.empty;
+
+    // Action filter means "touched by this action" — inner join; otherwise
+    // keep zero-touch catalog rows visible.
+    const joinSql = action
+      ? Prisma.sql`INNER JOIN touches tc ON tc.track_id = t.id`
+      : Prisma.sql`LEFT JOIN touches tc ON tc.track_id = t.id`;
+
+    const orderSql = Prisma.raw(`${CATALOG_SORTS[sortKey]} ${order} NULLS LAST, t.id ASC`);
+
+    const [rows, countRows] = await Promise.all([
+      prisma.$queryRaw`
+        WITH touches AS (${touchesCte})
+        SELECT t.id, t.title, t."artistName", t."artistId", t.genre, t."genreNormalized",
+               t."durationMs", t.access, t."permalinkUrl", t."resolveStatus",
+               t."resolveAttempts", t."firstSeenAt", t."lastSeenAt",
+               COALESCE(tc.touch_count, 0)::int AS touches,
+               COALESCE(tc.user_count, 0)::int AS users,
+               tc.last_touched
+        FROM "tracks" t
+        ${joinSql}
+        ${whereSql}
+        ORDER BY ${orderSql}
+        LIMIT ${pageSize} OFFSET ${(page - 1) * pageSize}
+      `,
+      prisma.$queryRaw`
+        WITH touches AS (${touchesCte})
+        SELECT COUNT(*)::int AS total
+        FROM "tracks" t
+        ${joinSql}
+        ${whereSql}
+      `,
+    ]);
+
+    res.json({
+      tracks: rows,
+      total: Number(countRows[0]?.total ?? 0),
+      page,
+      pageSize,
+      sort: sortKey,
+      order: order.toLowerCase(),
+    });
+  } catch (err) {
+    logger.error('[admin/catalog/tracks] Error:', safeError(err));
+    res.status(500).json({ error: 'Failed to fetch catalog tracks' });
+  }
+});
+
+/**
+ * GET /api/admin/catalog/tracks/:id/operations
+ *
+ * Deliberate per-user drill-down for one track: the operations that touched
+ * it, with user identity. Served separately from the aggregate listing.
+ */
+router.get('/catalog/tracks/:id/operations', authenticateUser, adminAuth, async (req, res) => {
+  try {
+    const trackId = Number(req.params.id);
+    if (!Number.isInteger(trackId) || trackId <= 0) {
+      return res.status(400).json({ error: 'Invalid track id' });
+    }
+    const rows = await prisma.$queryRaw`
+      SELECT ol.id, ol.action, ol.status, ol."createdAt",
+             u.username, u."displayName", u."soundcloudId"
+      FROM operation_logs ol
+      JOIN users u ON u.id = ol."userId"
+      WHERE ol.metadata @> jsonb_build_object('trackIds', jsonb_build_array(${trackId}::bigint))
+      ORDER BY ol."createdAt" DESC
+      LIMIT 50
+    `;
+    res.json({
+      operations: rows.map(r => ({
+        id: r.id,
+        action: r.action,
+        actionName: ACTION_NAMES[r.action] || r.action,
+        status: r.status,
+        createdAt: r.createdAt.toISOString(),
+        user: { username: r.username, displayName: r.displayName, soundcloudId: Number(r.soundcloudId) },
+      })),
+    });
+  } catch (err) {
+    logger.error('[admin/catalog/track-operations] Error:', safeError(err));
+    res.status(500).json({ error: 'Failed to fetch track operations' });
   }
 });
 

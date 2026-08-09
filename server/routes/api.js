@@ -5,6 +5,7 @@ import { heavyOperationRateLimiter } from '../middleware/rateLimiter.js';
 import { authenticateUser } from '../middleware/auth.js';
 import { logOperation, startOperationTimer, extractClientInfo } from '../lib/analytics.js';
 import { harvestTracks, harvestPlaylists } from '../lib/catalog.js';
+import { piggybackEnrichment } from '../lib/enrichment.js';
 import logger from '../lib/logger.js';
 import { safeError } from '../lib/safe-error.js';
 import { isAllowedDownloadRedirectTarget, isAllowedDownloadUrl } from '../lib/download-utils.js';
@@ -1999,6 +2000,8 @@ router.post('/playlists/from-likes', authenticateUser, heavyOperationRateLimiter
         playlistIds: [targetPlaylistId, ...overflowPlaylists.map(p => p.id)],
         trackIds,
       });
+      // Client sends bare IDs — the catalog learns their names via enrichment
+      piggybackEnrichment(trackIds, req.accessToken, req.refreshToken);
       invalidatePlaylistState(req.user.id);
 
       return res.json({
@@ -2035,6 +2038,7 @@ router.post('/playlists/from-likes', authenticateUser, heavyOperationRateLimiter
         playlistIds: [newPlaylist.id],
         trackIds,
       });
+      piggybackEnrichment(trackIds, req.accessToken, req.refreshToken);
       invalidatePlaylistState(req.user.id);
       return;
     }
@@ -2082,6 +2086,7 @@ router.post('/playlists/from-likes', authenticateUser, heavyOperationRateLimiter
       playlistIds: createdPlaylists.map(p => p.id),
       trackIds,
     });
+    piggybackEnrichment(trackIds, req.accessToken, req.refreshToken);
     invalidatePlaylistState(req.user.id);
     return;
   } catch (error) {
@@ -2356,6 +2361,8 @@ router.post('/likes/tracks/bulk-unlike', authenticateUser, heavyOperationRateLim
       harvestTracks(cachedLikes.collection.filter(t => t && processed.has(t.id)));
     }
     invalidateUserNamespaces(req.user.id, ['likes']);
+    // Cold-cache IDs still get names via enrichment (no-ops when already known)
+    piggybackEnrichment(trackIds, req.accessToken, req.refreshToken);
   } catch (error) {
     logger.error('Bulk unlike error:', safeError(error));
     logOperation({
@@ -2420,6 +2427,7 @@ router.post('/likes/tracks/bulk-like', authenticateUser, heavyOperationRateLimit
       harvestTracks(cachedLikes.collection.filter(t => t && processed.has(t.id)));
     }
     invalidateUserNamespaces(req.user.id, ['likes']);
+    piggybackEnrichment(trackIds, req.accessToken, req.refreshToken);
   } catch (error) {
     logger.error('Bulk like error:', safeError(error));
     logOperation({
@@ -2636,8 +2644,19 @@ router.post('/reposts/bulk-remove', authenticateUser, heavyOperationRateLimiter,
       harvestPlaylists(touched.filter(r => r.resourceType === 'playlist'));
     }
     invalidateUserNamespaces(req.user.id, ['reposts']);
+    piggybackEnrichment(items.filter(i => i.resourceType === 'track').map(i => i.id), req.accessToken, req.refreshToken);
   } catch (error) {
     logger.error('Bulk unrepost error:', safeError(error));
+    logOperation({
+      userId: req.user.id,
+      action: 'bulk-remove-reposts',
+      status: 'error',
+      trackIds: Array.isArray(req.body?.items)
+        ? req.body.items.filter(i => i?.resourceType === 'track').map(i => i.id)
+        : undefined,
+      errorCode: error.name || 'BULK_UNREPOST_FAILED',
+      errorMessage: safeError(error).message,
+    });
     res.status(500).json({ error: 'Bulk unrepost failed' });
   }
 });

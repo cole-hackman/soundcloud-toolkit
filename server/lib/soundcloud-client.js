@@ -641,6 +641,24 @@ class SoundCloudClient {
   }
 
   /**
+   * Fetch full track objects by ID in bulk (GET /tracks?ids=...).
+   * Pass at most ~50 IDs per call; returns only the tracks SoundCloud still
+   * knows about — missing IDs are simply absent from the result.
+   */
+  async getTracksByIds(accessToken, refreshToken, trackIds) {
+    const ids = (trackIds || []).map(Number).filter(n => Number.isInteger(n) && n > 0);
+    if (ids.length === 0) return [];
+    const queryParams = new URLSearchParams({
+      ids: ids.join(','),
+      limit: String(ids.length),
+      linked_partitioning: '1',
+    });
+    const data = await this.scRequest(`/tracks?${queryParams.toString()}`, accessToken, refreshToken);
+    if (Array.isArray(data?.collection)) return data.collection;
+    return Array.isArray(data) ? data : [];
+  }
+
+  /**
    * Get any user's profile
    */
   async getUserProfile(userId, accessToken, refreshToken) {

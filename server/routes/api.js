@@ -4,6 +4,7 @@ import prisma from '../lib/prisma.js';
 import { heavyOperationRateLimiter } from '../middleware/rateLimiter.js';
 import { authenticateUser } from '../middleware/auth.js';
 import { logOperation, startOperationTimer, extractClientInfo } from '../lib/analytics.js';
+import { harvestTracks, harvestPlaylists } from '../lib/catalog.js';
 import logger from '../lib/logger.js';
 import { safeError } from '../lib/safe-error.js';
 import { isAllowedDownloadRedirectTarget, isAllowedDownloadUrl } from '../lib/download-utils.js';
@@ -457,6 +458,8 @@ router.get('/library/audit', authenticateUser, heavyOperationRateLimiter, async 
       }
     }
 
+    harvestTracks(fullPlaylists.flatMap(p => (Array.isArray(p.tracks) ? p.tracks : [])));
+    harvestPlaylists(fullPlaylists);
     const audit = summarizeLibraryAudit(fullPlaylists);
     logOperation({
       req,
@@ -495,6 +498,11 @@ router.post('/playlists/compare', authenticateUser, heavyOperationRateLimiter, a
       soundcloudClient.getPlaylistWithTracks(req.accessToken, req.refreshToken, playlistBId),
     ]);
 
+    harvestTracks([
+      ...(Array.isArray(playlistA.tracks) ? playlistA.tracks : []),
+      ...(Array.isArray(playlistB.tracks) ? playlistB.tracks : []),
+    ]);
+    harvestPlaylists([playlistA, playlistB]);
     const comparison = comparePlaylists(playlistA, playlistB);
     logOperation({
       req,
@@ -588,6 +596,8 @@ router.post('/playlists/clone', authenticateUser, heavyOperationRateLimiter, val
 
     const all = Array.isArray(playlist.tracks) ? playlist.tracks : [];
     const filtered = all.filter(t => t && !t.blocked_at && t.streamable !== false);
+    harvestTracks(all);
+    harvestPlaylists([playlist]);
     const trackIdsArray = filtered.map(t => t.id).filter(id => id != null);
 
     if (trackIdsArray.length === 0) {
@@ -817,6 +827,8 @@ router.get('/playlists/:id', authenticateUser, validatePlaylistId, async (req, r
       req.refreshToken,
       id
     );
+    harvestTracks(Array.isArray(playlist.tracks) ? playlist.tracks : []);
+    harvestPlaylists([playlist]);
     res.json(playlist);
   } catch (error) {
     logger.error('Get playlist with tracks error:', safeError(error));
@@ -884,6 +896,7 @@ router.get('/likes', authenticateUser, async (req, res) => {
           req.refreshToken,
           200
         ));
+        harvestTracks(items);
         return { collection: items, total_results: items.length };
       },
       CACHE_TTL.likes,
@@ -920,6 +933,7 @@ router.get('/likes/paged', authenticateUser, validateLikesPagination, async (req
     }
 
     const page = await soundcloudClient.scRequest(endpoint, req.accessToken, req.refreshToken);
+    harvestTracks(Array.isArray(page.collection) ? page.collection : []);
     res.json({
       collection: Array.isArray(page.collection) ? page.collection : [],
       next_href: page.next_href || null,
@@ -988,6 +1002,11 @@ async function handleResolve(req, res) {
     }
     const normalized = normalizeResource(resource);
     if (!normalized) return res.status(422).json({ error: 'Unsupported or unknown resource' });
+    if (normalized.type === 'track') harvestTracks([resource]);
+    else if (normalized.type === 'playlist') {
+      harvestPlaylists([resource]);
+      harvestTracks(Array.isArray(resource.tracks) ? resource.tracks : []);
+    }
 
     // Optional oEmbed supplement (best effort)
     try {
@@ -1113,6 +1132,8 @@ router.post('/playlists/merge', authenticateUser, heavyOperationRateLimiter, val
       );
       const all = Array.isArray(playlist.tracks) ? playlist.tracks : [];
       const filtered = all.filter(t => t && !t.blocked_at && t.streamable !== false);
+      harvestTracks(all); // blocked/preview tracks are catalog signal too
+      harvestPlaylists([playlist]);
       fetchedTotal += all.length;
       acceptedTotal += filtered.length;
       perPlaylistCounts.push({ id: playlistId, fetched: all.length, accepted: filtered.length });
@@ -2107,6 +2128,7 @@ router.get('/tracks/search', authenticateUser, validateTrackSearch, async (req, 
     if (offset) params.offset = Number(offset);
 
     const data = await soundcloudClient.searchTracks(req.accessToken, req.refreshToken, params);
+    harvestTracks(Array.isArray(data.collection) ? data.collection : []);
     const collection = (Array.isArray(data.collection) ? data.collection : [])
       .map(normalizeResource)
       .filter(Boolean);
@@ -2153,6 +2175,8 @@ router.post('/resolve/batch', authenticateUser, heavyOperationRateLimiter, valid
     const useV2 = isResolveV2(req);
     const { urls } = req.body;
     const results = [];
+    // v1-normalized resources for logging + harvest, regardless of response version
+    const resolvedResources = [];
 
     // Process sequentially to avoid SoundCloud rate limits
     for (let index = 0; index < urls.length; index += 1) {
@@ -2167,6 +2191,7 @@ router.post('/resolve/batch', authenticateUser, heavyOperationRateLimiter, valid
       // Check cache first
       const cached = resolveCache.get(url);
       if (cached && cached.expiresAt > Date.now()) {
+        resolvedResources.push(cached.data);
         const cachedData = useV2 ? (normalizeResourceV2(cached.data) || cached.data) : cached.data;
         const okResult = { url: rawUrl, status: 'ok', data: cachedData };
         results.push(useV2 ? { ...okResult, index } : okResult);
@@ -2182,6 +2207,9 @@ router.post('/resolve/batch', authenticateUser, heavyOperationRateLimiter, valid
         }
         const normalizedV1 = normalizeResource(resource);
         if (normalizedV1) {
+          resolvedResources.push(normalizedV1);
+          if (normalizedV1.type === 'track') harvestTracks([resource]);
+          else if (normalizedV1.type === 'playlist') harvestPlaylists([resource]);
           setResolveCache(url, normalizedV1);
           const payload = useV2 ? normalizeResourceV2(resource) : normalizedV1;
           const okResult = { url: rawUrl, status: 'ok', data: payload };
@@ -2197,15 +2225,12 @@ router.post('/resolve/batch', authenticateUser, heavyOperationRateLimiter, valid
     }
 
     const failures = results.filter(r => r.status === 'error').length;
-    const resolvedTrackIds = [];
-    const resolvedPlaylistIds = [];
-    for (const r of results) {
-      if (r.status !== 'ok') continue;
-      // Cache hits store the v1-normalized shape; fresh resolves were normalized above.
-      const ref = r.data && typeof r.data === 'object' ? r.data : null;
-      if (ref?.type === 'track' && ref.id != null) resolvedTrackIds.push(ref.id);
-      else if (ref?.type === 'playlist' && ref.id != null) resolvedPlaylistIds.push(ref.id);
-    }
+    const resolvedTrackIds = resolvedResources
+      .filter(r => r?.type === 'track' && r.id != null)
+      .map(r => r.id);
+    const resolvedPlaylistIds = resolvedResources
+      .filter(r => r?.type === 'playlist' && r.id != null)
+      .map(r => r.id);
     if (!useV2) {
       res.json({ results });
     } else {
@@ -2275,6 +2300,7 @@ router.get('/activities', authenticateUser, validateActivities, async (req, res)
         }).filter(Boolean);
 
         logger.info(`[/api/activities] Returning ${trackActivities.length} valid track activities`);
+        harvestTracks(trackActivities.map(a => a.origin));
         return { collection: trackActivities };
       },
       CACHE_TTL.activities,
@@ -2324,6 +2350,11 @@ router.post('/likes/tracks/bulk-unlike', authenticateUser, heavyOperationRateLim
     });
     // Invalidate AFTER identity is captured — the likes cache holds the full
     // track objects harvesting needs. Same tick as res.json, so no stale reads.
+    const cachedLikes = requestCache.get('likes', req.user.id, 'default');
+    if (Array.isArray(cachedLikes?.collection)) {
+      const processed = new Set(trackIds);
+      harvestTracks(cachedLikes.collection.filter(t => t && processed.has(t.id)));
+    }
     invalidateUserNamespaces(req.user.id, ['likes']);
   } catch (error) {
     logger.error('Bulk unlike error:', safeError(error));
@@ -2383,6 +2414,11 @@ router.post('/likes/tracks/bulk-like', authenticateUser, heavyOperationRateLimit
       errorMessage: failed > 0 && succeeded === 0 ? results.find(r => r.status === 'error')?.error : undefined,
       metadata: { total: results.length, succeeded, failed },
     });
+    const cachedLikes = requestCache.get('likes', req.user.id, 'default');
+    if (Array.isArray(cachedLikes?.collection)) {
+      const processed = new Set(trackIds);
+      harvestTracks(cachedLikes.collection.filter(t => t && processed.has(t.id)));
+    }
     invalidateUserNamespaces(req.user.id, ['likes']);
   } catch (error) {
     logger.error('Bulk like error:', safeError(error));
@@ -2517,6 +2553,7 @@ router.get('/recently-played', authenticateUser, async (req, res) => {
       async () => {
         const recentlyPlayed = await soundcloudClient.getRecentlyPlayed(req.accessToken, req.refreshToken);
         logger.info(`[GET /api/recently-played] returning ${recentlyPlayed.length} tracks`);
+        harvestTracks(recentlyPlayed);
         return { collection: recentlyPlayed };
       },
       60 * 1000 // 1 minute TTL
@@ -2591,6 +2628,13 @@ router.post('/reposts/bulk-remove', authenticateUser, heavyOperationRateLimiter,
       errorMessage: failed > 0 && succeeded === 0 ? results.find(r => r.status === 'error')?.error : undefined,
       metadata: { total: results.length, succeeded, failed },
     });
+    const cachedReposts = requestCache.get('reposts', req.user.id, 'default');
+    if (Array.isArray(cachedReposts?.collection)) {
+      const processedIds = new Set(items.map(i => i.id));
+      const touched = cachedReposts.collection.filter(r => r && processedIds.has(r.id));
+      harvestTracks(touched.filter(r => r.resourceType === 'track'));
+      harvestPlaylists(touched.filter(r => r.resourceType === 'playlist'));
+    }
     invalidateUserNamespaces(req.user.id, ['reposts']);
   } catch (error) {
     logger.error('Bulk unrepost error:', safeError(error));

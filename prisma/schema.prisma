@@ -124,7 +124,49 @@ model OperationLog {
   @@index([userId, createdAt])
   @@index([soundcloudId, createdAt])
   @@index([action, createdAt])
+  // GIN index so admin catalog queries can unnest metadata->'trackIds' without scans
+  @@index([metadata], type: Gin)
   @@map("operation_logs")
+}
+
+// ── Music catalog ───────────────────────────────────────────────────────────
+// One row per SoundCloud track/playlist ever touched by an operation. Rows are
+// harvested at zero API cost from track objects the app already fetches
+// (playlists, likes pages, search, resolve) and enriched by ID for the rest.
+// Public metadata only; not keyed to any user.
+
+model Track {
+  id              BigInt   @id // SoundCloud track ID (exceeds int32)
+  title           String?
+  artistName      String?
+  artistId        BigInt?
+  genre           String?
+  genreNormalized String?
+  durationMs      Int?
+  access          String?  // playable | preview | blocked | gone (deleted upstream)
+  permalinkUrl    String?
+  resolveStatus   String   @default("pending") // pending | resolved | not_found | gone
+  resolveAttempts Int      @default(0)
+  firstSeenAt     DateTime @default(now())
+  lastSeenAt      DateTime @default(now())
+
+  @@index([genreNormalized])
+  @@index([artistName])
+  @@index([resolveStatus])
+  @@index([access])
+  @@index([lastSeenAt])
+  @@map("tracks")
+}
+
+model Playlist {
+  id          BigInt   @id // SoundCloud playlist ID
+  title       String?
+  ownerScId   BigInt?
+  trackCount  Int?
+  firstSeenAt DateTime @default(now())
+  lastSeenAt  DateTime @default(now())
+
+  @@map("playlists")
 }
 
 model GrowthAction {

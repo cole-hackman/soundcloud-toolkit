@@ -32,6 +32,7 @@ const TOOL_SLUGS: Record<string, string> = {
   "/repost-manager": "repost-manager",
   "/growth": "growth",
   "/recently-played": "recently-played",
+  "/rekordbox-sync": "rekordbox-sync",
 };
 
 const LAST_TOOLS_KEY = "sc-toolkit-last-tools";

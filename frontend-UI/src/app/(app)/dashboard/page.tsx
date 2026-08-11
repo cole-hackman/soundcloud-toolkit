@@ -27,6 +27,7 @@ import {
   ArrowRightLeft,
   FileUp,
   History,
+  Disc3,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useSurvey } from "@/contexts/SurveyContext";
@@ -187,6 +188,14 @@ const FEATURES: FeatureCard[] = [
     category: "Playlists",
   },
   {
+    id: "rekordbox-sync",
+    title: "Rekordbox Sync",
+    description: "Find liked tracks you never imported into rekordbox",
+    icon: Disc3,
+    path: "/rekordbox-sync",
+    category: "Playlists",
+  },
+  {
     id: "genre-search",
     title: "Genre Search",
     description: "Discover tracks by genre or tag and add them to your playlists",
@@ -227,6 +236,7 @@ const RECENT_LABELS: Record<string, string> = {
   "batch-resolver": "Batch Link Resolver",
   "playlist-cloner": "Playlist Cloner",
   "playlist-compare": "Playlist Compare",
+  "rekordbox-sync": "Rekordbox Sync",
   "genre-search": "Genre Search",
   "repost-manager": "Repost Manager",
   "activity-to-playlist": "Activity → Playlist",
@@ -247,6 +257,7 @@ const RECENT_PATHS: Record<string, string> = {
   "batch-resolver": "/batch-link-resolver",
   "playlist-cloner": "/playlist-cloner",
   "playlist-compare": "/playlist-compare",
+  "rekordbox-sync": "/rekordbox-sync",
   "genre-search": "/genre-search",
   "repost-manager": "/repost-manager",
   "activity-to-playlist": "/activity-to-playlist",

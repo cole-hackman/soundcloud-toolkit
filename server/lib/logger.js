@@ -19,6 +19,7 @@ const SECRET_PATTERNS = [
   /authorization[=:]\S+/gi,
   /bearer\s+\S+/gi,
   /oauth\s+\S+/gi,
+  /[?&](oauth_token|access_token|refresh_token|client_secret|token|code|key|secret|password)=[^&\s"']+/gi,
 ];
 
 // Keys that should be redacted from objects
@@ -177,11 +178,13 @@ export const logger = {
    * Log info (no sanitization needed for info logs, but available)
    */
   info(message, data = null) {
+    const sanitizedMessage = sanitizeString(String(message));
+
     if (data) {
       const sanitizedData = sanitizeError(data);
-      console.log(`[INFO] ${message}`, sanitizedData);
+      console.log(`[INFO] ${sanitizedMessage}`, sanitizedData);
     } else {
-      console.log(`[INFO] ${message}`);
+      console.log(`[INFO] ${sanitizedMessage}`);
     }
   },
   
@@ -190,11 +193,13 @@ export const logger = {
    */
   debug(message, data = null) {
     if (process.env.NODE_ENV === 'development') {
+      const sanitizedMessage = sanitizeString(String(message));
+
       if (data) {
         const sanitizedData = sanitizeError(data);
-        console.log(`[DEBUG] ${message}`, sanitizedData);
+        console.log(`[DEBUG] ${sanitizedMessage}`, sanitizedData);
       } else {
-        console.log(`[DEBUG] ${message}`);
+        console.log(`[DEBUG] ${sanitizedMessage}`);
       }
     }
   },

@@ -202,3 +202,53 @@ export const validateEnv = (req, res, next) => {
   next();
 };
 
+
+/**
+ * Is this Origin allowed to make credentialed state-changing requests?
+ * Mirrors the CORS allowlist in server/index.js. Parsed fresh per call
+ * (same pattern as adminAuth) so env changes apply without restart.
+ */
+export function isTrustedOrigin(origin) {
+  let url;
+  try {
+    url = new URL(origin);
+  } catch {
+    return false;
+  }
+  if (url.hostname === 'localhost') return true;
+
+  const allowed = (process.env.APP_URLS || process.env.APP_URL || '')
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean);
+  if (allowed.includes(origin)) return true;
+
+  const allowedHostnames = allowed
+    .map((o) => { try { return new URL(o).hostname; } catch { return null; } })
+    .filter(Boolean);
+  if (allowedHostnames.includes(url.hostname)) return true;
+
+  const extensionOrigins = (process.env.CHROME_EXTENSION_IDS || '')
+    .split(',')
+    .map((id) => id.trim())
+    .filter(Boolean)
+    .map((id) => `chrome-extension://${id}`);
+  return extensionOrigins.includes(origin);
+}
+
+/**
+ * CSRF defense-in-depth. Today CSRF is prevented "by accident": express.json()
+ * is the only body parser, so a cross-site HTML form (urlencoded/text-plain,
+ * no preflight) yields an empty req.body and every mutating route's validator
+ * fails closed. That invariant is one express.urlencoded() away from breaking,
+ * so this middleware makes the protection explicit: state-changing requests
+ * bearing an untrusted Origin are rejected outright. Requests WITHOUT an
+ * Origin header pass (same-origin navigations, curl, server-to-server).
+ */
+export function rejectUntrustedOrigin(req, res, next) {
+  if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) return next();
+  const origin = req.get('origin');
+  if (!origin) return next();
+  if (isTrustedOrigin(origin)) return next();
+  return res.status(403).json({ error: 'Origin not allowed' });
+}

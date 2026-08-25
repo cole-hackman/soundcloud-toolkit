@@ -19,7 +19,7 @@ BigInt.prototype.toJSON = function () {
 
 // Import security middleware
 import { apiRateLimiter, authRateLimiter, heavyOperationRateLimiter, healthCheckRateLimiter } from './middleware/rateLimiter.js';
-import { securityHeaders, preventKeyLeakage, validateEnv } from './middleware/security.js';
+import { securityHeaders, preventKeyLeakage, validateEnv, rejectUntrustedOrigin } from './middleware/security.js';
 import logger from './lib/logger.js';
 import { safeError } from './lib/safe-error.js';
 
@@ -103,11 +103,15 @@ app.use((req, res, next) => {
 app.use(express.json());
 app.use(cookieParser());
 
+// CSRF defense-in-depth: see rejectUntrustedOrigin doc comment.
+app.use('/api', rejectUntrustedOrigin);
+
 // Import routes
 import authRoutes from './routes/auth.js';
 import { soundcloudClient } from './lib/soundcloud-client.js';
 import { startGrowthScheduler } from './lib/growth-scheduler.js';
 import apiRoutes from './routes/api.js';
+import growthRoutes from './routes/growth.js';
 import adminRoutes from './routes/admin.js';
 import feedbackRoutes from './routes/feedback.js';
 
@@ -126,6 +130,7 @@ app.use('/api', apiRateLimiter);
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api', apiRoutes);
+app.use('/api', growthRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/feedback', feedbackRoutes);
 

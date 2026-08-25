@@ -1,5 +1,9 @@
 import crypto from 'crypto';
 
+/** Session lifetime. Also the cookie maxAge; enforced INSIDE the signed
+ * payload via iat so a stolen cookie cannot outlive it. */
+export const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
 /**
  * Sign a session cookie value
  * @param value The value to sign
@@ -35,7 +39,10 @@ export function unsignSession(signedValue, secret) {
     .update(value)
     .digest('base64url');
 
-  if (signature !== expectedSignature) {
+  const providedBuf = Buffer.from(signature);
+  const expectedBuf = Buffer.from(expectedSignature);
+  if (providedBuf.length !== expectedBuf.length ||
+      !crypto.timingSafeEqual(providedBuf, expectedBuf)) {
     return null;
   }
 
@@ -49,7 +56,14 @@ export function unsignSession(signedValue, secret) {
  */
 export function parseSessionData(sessionJson) {
   try {
-    return JSON.parse(sessionJson);
+    const data = JSON.parse(sessionJson);
+    if (!data || typeof data !== 'object') return null;
+    // Sessions signed before iat existed (pre-hardening) are treated as
+    // expired: users re-authenticate once after this deploys.
+    if (typeof data.iat !== 'number' || Date.now() - data.iat > SESSION_TTL_MS) {
+      return null;
+    }
+    return data;
   } catch {
     return null;
   }
@@ -60,7 +74,7 @@ export function parseSessionData(sessionJson) {
  * @param maxAge Maximum age in milliseconds
  * @returns Cookie options object
  */
-export function createSessionCookieOptions(maxAge = 7 * 24 * 60 * 60 * 1000) {
+export function createSessionCookieOptions(maxAge = SESSION_TTL_MS) {
   return {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',

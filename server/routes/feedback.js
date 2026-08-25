@@ -44,7 +44,7 @@ router.get('/survey/status', authenticateUser, async (req, res) => {
       submittedAt: existing?.createdAt ?? null,
     });
   } catch (error) {
-    logger.error({ err: error.message }, 'survey status error');
+    logger.error('survey status error', safeError(error));
     res.status(500).json(safeError(error, 'Failed to load survey status'));
   }
 });
@@ -99,14 +99,14 @@ router.post('/survey', authenticateUser, validateBetaSignup, async (req, res) =>
         select: { id: true, createdAt: true },
       });
 
-      logger.info({
+      logger.info('beta signup recorded', {
         userId: req.user.id,
         campaignId,
         rekordboxUse,
         interest,
         wantsBeta: wantsBeta === true,
         context,
-      }, 'beta signup recorded');
+      });
 
       return res.status(201).json({ success: true, id: created.id, campaignId });
     } catch (err) {
@@ -117,7 +117,7 @@ router.post('/survey', authenticateUser, validateBetaSignup, async (req, res) =>
       throw err;
     }
   } catch (error) {
-    logger.error({ err: error.message }, 'survey submit error');
+    logger.error('survey submit error', safeError(error));
     res.status(500).json(safeError(error, 'Failed to submit survey response'));
   }
 });

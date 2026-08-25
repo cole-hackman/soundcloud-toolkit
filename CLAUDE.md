@@ -36,21 +36,44 @@ SoundCloud Toolkit is a full-stack web application for SoundCloud power users wh
 ```
 soundcloud-tool/
 ├── server/
-│   ├── index.js                  # Express app entry point; middleware stack, static serving, error handler
-│   ├── routes/
-│   │   └── api.js                # ALL route handlers — auth, playlists, likes, social, resolve, proxy
+│   ├── index.js                  # Express entry point; middleware stack, route mounting, static serving, error handler
+│   ├── routes/                   # FIVE route files (api.js is no longer "everything")
+│   │   ├── api.js                # Core tools — playlists, likes, followings, reposts, resolve, library, transfer/compare/clone, exports, proxy-download
+│   │   ├── growth.js             # Growth/discovery suite — /growth/* (discover, engage, analytics, history, follow-backs, reverse, stats)
+│   │   ├── admin.js              # Admin dashboard — stats, operations, catalog, feedback (every route is authenticateUser + adminAuth)
+│   │   ├── auth.js               # OAuth2+PKCE login/callback, session /me, logout, account deletion
+│   │   └── feedback.js           # SongSwipe beta survey — status + submit
 │   ├── lib/
-│   │   └── soundcloud-client.js  # SoundCloud API wrapper — token exchange, pagination, all SC API methods
+│   │   ├── soundcloud-client.js  # SoundCloud API wrapper — token exchange, pagination, 401 refresh, 429 backoff, 30s fetch timeout
+│   │   ├── session.js            # signSession/unsignSession (HMAC-SHA256, timing-safe), parseSessionData (iat/TTL), SESSION_TTL_MS
+│   │   ├── crypto.js             # encrypt() / decrypt() using AES-256-GCM
+│   │   ├── pkce.js               # createPkcePair() — code verifier + SHA256 challenge
+│   │   ├── prisma.js             # Prisma singleton + transient-connection retry extension (Neon idle drops)
+│   │   ├── logger.js             # Sanitizing logger — redacts secrets in messages AND data, all levels
+│   │   ├── safe-error.js         # Client-safe error payload builder
+│   │   ├── analytics.js          # logOperation() → OperationLog; operation timers, client info
+│   │   ├── normalize.js          # Pure resource normalizers (track/playlist/user, library-browser shapes)
+│   │   ├── pacing.js             # Shared sleep() + SC_WRITE_PACING_MS (300ms) — the single source for write pacing
+│   │   ├── resolve-cache.js      # In-memory /api/resolve cache (5-min TTL, 1000-entry cap)
+│   │   ├── social-cache.js       # Per-user cached followings/followers/likes/playlists payloads + invalidation
+│   │   ├── request-cache.js      # Generic namespaced per-user TTL cache backing social-cache
+│   │   ├── merge-utils.js        # Dedup + 500-track chunking for merge/from-likes
+│   │   ├── playlist-transfer.js  # Move/duplicate a track between playlists
+│   │   ├── playlist-compare.js   # Diff two playlists
+│   │   ├── library-audit.js      # Blocked/non-streamable summary across the library
+│   │   ├── dashboard-summary.js  # Dashboard aggregate payload
+│   │   ├── catalog.js            # Music-catalog harvest/upsert (Track, Playlist tables)
+│   │   ├── enrichment.js         # Piggybacked track metadata backfill
+│   │   ├── download-utils.js     # Download URL + CDN redirect allowlists
+│   │   ├── growth-engine.js      # Discovery scoring, follow budget, background engagement jobs
+│   │   ├── growth-scheduler.js   # Daily follow-back check scheduler (GROWTH_AUTOCHECK)
+│   │   └── token-context.js      # AsyncLocalStorage token context for refresh propagation
 │   ├── middleware/
 │   │   ├── auth.js               # authenticateUser() — session cookie → DB user → decrypted tokens
-│   │   ├── validation.js         # express-validator rule sets (merge, bulk-unlike, resolve, etc.)
+│   │   ├── adminAuth.js          # adminAuth() — req.user.soundcloudId ∈ ADMIN_IDS; fails closed when unset
+│   │   ├── security.js           # securityHeaders, preventKeyLeakage, validateEnv, rejectUntrustedOrigin
+│   │   ├── validation.js         # express-validator rule sets (merge, bulk-unlike, resolve, growth, survey, etc.)
 │   │   └── rateLimiter.js        # Four rate limiters: api, auth, heavy, health
-│   ├── utils/
-│   │   ├── crypto.js             # encrypt() / decrypt() using AES-256-GCM
-│   │   ├── session.js            # signSession() / unsignSession() using HMAC-SHA256
-│   │   └── pkce.js               # createPkcePair() — code verifier + SHA256 challenge
-│   ├── prisma/
-│   │   └── schema.prisma         # User + Token models
 │   └── package.json
 ├── frontend-UI/
 │   ├── src/
@@ -61,12 +84,22 @@ soundcloud-tool/
 │   │   │   │   ├── likes-to-playlist/
 │   │   │   │   ├── like-manager/
 │   │   │   │   ├── following-manager/
+│   │   │   │   ├── following-library/
 │   │   │   │   ├── playlist-modifier/
+│   │   │   │   ├── playlist-cloner/
+│   │   │   │   ├── playlist-compare/
+│   │   │   │   ├── playlist-to-likes/
+│   │   │   │   ├── playlist-health-check/
 │   │   │   │   ├── link-resolver/
 │   │   │   │   ├── batch-link-resolver/
 │   │   │   │   ├── activity-to-playlist/
+│   │   │   │   ├── recently-played/
+│   │   │   │   ├── repost-manager/
+│   │   │   │   ├── library-audit/
+│   │   │   │   ├── genre-search/
+│   │   │   │   ├── growth/
+│   │   │   │   ├── export/
 │   │   │   │   ├── downloads/
-│   │   │   │   ├── playlist-health-check/
 │   │   │   │   └── layout.tsx    # App shell with sidebar and auth guard
 │   │   │   ├── login/page.tsx
 │   │   │   ├── about/page.tsx
@@ -75,24 +108,28 @@ soundcloud-tool/
 │   │   │   └── page.tsx          # Landing page
 │   │   ├── components/
 │   │   │   ├── ui/               # shadcn-style primitive components
-│   │   │   ├── AuthContext.tsx   # Auth state provider
 │   │   │   ├── AppShell.tsx      # Sidebar layout wrapper
+│   │   │   ├── BetaSurveyModal.tsx  # SongSwipe beta survey modal
 │   │   │   ├── Providers.tsx     # Context aggregator
 │   │   │   └── Analytics.tsx     # Google Analytics integration
 │   │   ├── contexts/
 │   │   │   ├── AuthContext.tsx   # isAuthenticated, user, login(), logout()
+│   │   │   ├── SurveyContext.tsx # Survey gating (server truth + 14-day cooldown)
 │   │   │   └── ThemeContext.tsx
 │   │   └── lib/utils.ts
 │   ├── next.config.js            # Static export config, API rewrites for dev
 │   ├── tailwind.config.ts
 │   └── package.json
-├── tests/                        # Jest tests (crypto, merge-utils, soundcloud-client)
+├── tests/                        # Jest suites — lib units plus tests/routes/ (supertest authz/CSRF boundaries)
 ├── prisma/
-│   └── schema.prisma             # Root-level schema (may be symlinked or duplicated)
+│   └── schema.prisma             # Single source of truth for the schema (13 models)
+├── docs/                         # Engineering review, SECURITY.md, plans, incident notes, api.json
 ├── .do/app.yaml                  # DigitalOcean App Platform deployment config
 ├── package.json                  # Root scripts (dev, build, server, test)
+├── STATE.md                      # Session state + decision log (read this first)
 └── CLAUDE.md                     # This file
 ```
+
 
 ---
 
@@ -137,12 +174,15 @@ Browser ──HTTPS──▶ Vercel (Next.js static)
    - Fetches `/me` to get user info
    - Upserts `User` record in DB (by `soundcloudId`)
    - Encrypts both tokens with AES-256-GCM, upserts `Token` record
-   - Signs session payload `{ userId }` with HMAC-SHA256
+   - Signs session payload `{ userId, soundcloudId, username, avatarUrl, displayName, iat }` with HMAC-SHA256
    - Sets `session` cookie (httpOnly, secure, sameSite, 7-day)
    - Redirects to `/dashboard`
 
 3. **Authenticated requests**: `authenticateUser` middleware (`server/middleware/auth.js`)
-   - Reads `session` cookie, verifies HMAC signature
+   - Reads `session` cookie, verifies HMAC signature with `crypto.timingSafeEqual`
+   - Rejects payloads with no `iat` or older than `SESSION_TTL_MS` (7 days) — the
+     lifetime is enforced **inside the signed payload**, so a stolen cookie cannot
+     outlive it by ignoring the cookie's own `maxAge`
    - Looks up `User` with `tokens` in DB
    - Decrypts access + refresh tokens
    - Attaches `req.user`, `req.accessToken`, `req.refreshToken` to request
@@ -162,9 +202,44 @@ Browser ──HTTPS──▶ Vercel (Next.js static)
 
 `SameSite=None` is required in production because the frontend (Vercel) and backend (DigitalOcean) are on different subdomains.
 
+### CSRF & Origin Enforcement
+
+Because production cookies are `SameSite=None`, CSRF is handled in two layers:
+
+1. **`rejectUntrustedOrigin`** (`server/middleware/security.js`, mounted on `/api`
+   in `server/index.js`) rejects `POST`/`PUT`/`PATCH`/`DELETE` whose `Origin`
+   header is present and not in the allowlist. Requests with no `Origin`
+   (same-origin navigations, curl, server-to-server) pass.
+2. **`express.json()` is deliberately the only body parser.** A cross-site HTML
+   form posts `urlencoded`/`text-plain` with no preflight; those parse to an
+   empty `req.body`, so every mutating route's validator fails closed. **Do not
+   add `express.urlencoded()`** without revisiting `docs/SECURITY.md`.
+
+Regression tests: `tests/routes/origin.test.js`, `tests/routes/feedback-authz.test.js`.
+
+Known limitation: there is no server-side session revocation list. Logout clears
+the cookie, but a previously exfiltrated cookie stays valid until its `iat` TTL
+expires.
+
 ---
 
 ## Data Model
+
+The schema (`prisma/schema.prisma`) has **13 models**, not two:
+
+| Model | Purpose |
+|-------|---------|
+| `User` | One row per SoundCloud account that has logged in |
+| `Token` | AES-256-GCM-encrypted access + refresh token pair (one per user) |
+| `OperationLog` | Per-operation analytics record — action, status, duration, track/playlist ids |
+| `Track` / `Playlist` | Harvested music catalog (populated opportunistically from resolved/browsed content) |
+| `GrowthAction` | Follow/like actions taken by the growth suite, plus follow-back outcomes |
+| `BetaSignup` | SongSwipe beta survey responses (`@@unique([userId, campaignId])`) |
+| `SurveyResponse` | The retired monetization survey — retained read-only for history |
+| `chat_conversations` / `chat_messages` | AI library chat (owned by `feature/ai-library-chat`; declared here so `prisma db push` does not drop them) |
+| `indexed_likes` / `indexed_playlist_tracks` / `library_snapshots` | Library indexing for that same feature — same db-push caveat |
+
+The two models this app touches on every request are detailed below.
 
 ### `User` (`users` table)
 
@@ -236,7 +311,6 @@ Rate limited: `authRateLimiter` (5 requests / 15 min)
 |--------|------|-------------|
 | `GET` | `/api/activities` | Activity feed; query: `limit` (1–500); returns normalized tracks |
 | `GET` | `/api/reposts` | All user reposts; uses V2 API with V1 fallback (see Key Features) |
-| `GET` | `/api/reposts/debug` | Diagnostic: hits multiple SC endpoints and returns raw responses |
 | `POST` | `/api/reposts/bulk-remove` | Remove multiple reposts; body: `{ items: { id: number, resourceType: 'track' | 'playlist' }[] }` |
 
 ### Playlists (mutations)
@@ -293,6 +367,80 @@ All are `heavyOperationRateLimiter` (20 requests / hour).
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET` | `/health` | `{ status: 'ok', timestamp }`; rate limited 60/min |
+
+### Library, Transfer, Compare & Clone (`routes/api.js`)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/library/audit` | Blocked / non-streamable summary across the user's library |
+| `GET` | `/api/recently-played` | Recently played tracks |
+| `GET` | `/api/tracks/search` | Track search |
+| `GET` | `/api/users/:id/profile` | Public profile of a SoundCloud user |
+| `GET` | `/api/users/:id/tracks` | Public tracks of a SoundCloud user |
+| `GET` | `/api/users/:userUrn/related` | Related-artist suggestions |
+| `GET` | `/api/followings/:userId/likes/paged` | Page of a followed user's public likes |
+| `GET` | `/api/followings/:userId/playlists/paged` | Page of a followed user's public playlists |
+| `GET` | `/api/followings/:userId/liked-playlists/paged` | Page of a followed user's liked playlists |
+| `POST` | `/api/followings/:userId/likes/playlist` | Build a playlist from a followed user's likes |
+| `POST` | `/api/followings/:userId/playlists/clone` | Clone a followed user's playlists |
+| `POST` | `/api/playlists/clone` | Clone a playlist |
+| `POST` | `/api/playlists/compare` | Diff two playlists |
+| `POST` | `/api/playlists/transfer-track` | Move or duplicate a track between playlists |
+| `DELETE` | `/api/playlists/:id` | Delete a playlist |
+| `POST` | `/api/likes/tracks/bulk-like` | Bulk-like tracks |
+| `POST` | `/api/events` | Fire-and-forget feature-usage signal (`view:<feature>`) |
+
+The three `/followings/:userId/*/paged` routes share one parameterized handler
+(`followedLibraryPageHandler`) — same response shape, different client method
+and normalizer.
+
+### Growth & Discovery (`routes/growth.js`)
+
+All `/growth/*` routes are `authenticateUser`; the write-heavy ones also carry
+`heavyOperationRateLimiter`. Follow caps are enforced server-side (50/24h +
+30-minute session cooldown) regardless of what the client requests.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/growth/discover` | Score and return follow candidates for the chosen seed strategy |
+| `GET` | `/api/growth/limits` | Remaining daily follow budget and cooldown state |
+| `POST` | `/api/growth/engage` | Start a paced background follow/like batch job |
+| `GET` | `/api/growth/engage/status` | Poll the running job |
+| `POST` | `/api/growth/engage/cancel` | Cancel the running job |
+| `GET` | `/api/growth/analytics` | Per-seed conversion and follow-back curve |
+| `GET` | `/api/growth/history` | Past growth actions (CSV-exportable client-side) |
+| `POST` | `/api/growth/check-followbacks` | On-demand follow-back reconciliation |
+| `POST` | `/api/growth/reverse` | Unfollow previously followed targets (does not refund budget) |
+| `GET` | `/api/growth/stats` | Aggregate growth counters |
+
+### Admin (`routes/admin.js`)
+
+Every admin route runs `authenticateUser` **then** `adminAuth`. `adminAuth`
+fails closed: an unset or empty `ADMIN_IDS` 403s everyone.
+`tests/routes/admin-auth.test.js` asserts both the boundary and that no route
+is registered without the pair.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/admin/stats` | Top-line usage stats |
+| `GET` | `/api/admin/daily` | Daily activity series |
+| `GET` | `/api/admin/operations` | Paginated operation log |
+| `GET` | `/api/admin/catalog/summary` | Harvested music-catalog summary |
+| `GET` | `/api/admin/catalog/tracks` | Catalog track list |
+| `GET` | `/api/admin/catalog/tracks/:id/operations` | Operations touching one track |
+| `GET` | `/api/admin/feedback/summary` | Beta-survey aggregates |
+| `GET` | `/api/admin/feedback` | Beta-survey response list |
+| `GET` | `/api/admin/feedback/beta-emails` | CSV export of beta opt-in emails |
+
+### Account
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `DELETE` | `/api/auth/account` | Delete the account and cascade-delete all owned rows |
+
+> `docs/api.json` is the machine-readable inventory. It is generated, not
+> hand-maintained — re-check it against `grep -n "router\." server/routes/*.js`
+> before trusting it.
 
 ### Feedback Survey (SongSwipe beta recruitment)
 
@@ -444,6 +592,9 @@ campaign is `2026-songswipe-beta-v1`.
 | `SURVEY_ENABLED` | No | Kill switch for the in-app feedback survey (`true` by default; set to `false` to disable globally without a redeploy) |
 | `SURVEY_CAMPAIGN_ID` | No | Active survey campaign identifier (default `2026-songswipe-beta-v1`). Bumping this opens a new campaign so previously-submitted users see the prompt again |
 | `GROWTH_AUTOCHECK` | No | Set to `false` to disable the daily growth follow-back scheduler |
+| `ADMIN_IDS` | No | Comma-separated SoundCloud numeric user IDs allowed into `/api/admin/*`. Unset or empty = **nobody** (fails closed) |
+| `SC_FETCH_TIMEOUT_MS` | No | AbortController deadline on every SoundCloud fetch (default `30000`) |
+| `CHROME_EXTENSION_IDS` | No | Comma-separated extension IDs allowed as credentialed origins (CORS + `rejectUntrustedOrigin`) |
 
 ### Frontend (`frontend-UI/.env.local`)
 

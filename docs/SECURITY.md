@@ -182,3 +182,22 @@ All database operations use Prisma methods:
 5. **Log Monitoring**: Monitor secure logs for patterns indicating security issues
 6. **Security Testing**: Consider implementing automated security testing in CI/CD pipeline
 
+
+## CSRF model
+
+Production cookies are `SameSite=None` (frontend and API live on different
+subdomains), so CSRF is handled in layers: (1) `rejectUntrustedOrigin`
+middleware rejects state-changing `/api` requests whose `Origin` header is not
+in the allowlist; (2) `express.json()` is deliberately the ONLY body parser —
+cross-site HTML form posts (urlencoded/text-plain) parse to an empty body and
+every mutating route's validator fails closed. Do not add
+`express.urlencoded()` without revisiting this section.
+`tests/routes/origin.test.js` and `tests/routes/feedback-authz.test.js` are
+the regression tests for both layers.
+
+## Session lifetime
+
+Sessions are HMAC-SHA256-signed cookies carrying `iat`; they expire 7 days
+after issuance server-side (`SESSION_TTL_MS`) regardless of cookie replay.
+Known limitation: there is no server-side revocation list — logout clears the
+cookie but a previously exfiltrated cookie stays valid until its TTL.

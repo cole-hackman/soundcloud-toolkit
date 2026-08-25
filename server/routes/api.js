@@ -7,6 +7,17 @@ import { logOperation, startOperationTimer, extractClientInfo } from '../lib/ana
 import { harvestTracks, harvestPlaylists } from '../lib/catalog.js';
 import { piggybackEnrichment } from '../lib/enrichment.js';
 import logger from '../lib/logger.js';
+import { sleep, SC_WRITE_PACING_MS } from '../lib/pacing.js';
+import { extractNumericId, normalizeResource, normalizeResourceV2, normalizeTrackForLibraryBrowser, normalizePlaylistForLibraryBrowser } from '../lib/normalize.js';
+import { getCachedResolve, setCachedResolve } from '../lib/resolve-cache.js';
+import {
+  CACHE_TTL,
+  getCachedUserPayload,
+  invalidateUserNamespaces,
+  loadCachedFollowings,
+  loadCachedFollowers,
+  invalidatePlaylistState,
+} from '../lib/social-cache.js';
 import { safeError } from '../lib/safe-error.js';
 import { isAllowedDownloadRedirectTarget, isAllowedDownloadUrl } from '../lib/download-utils.js';
 import { buildDashboardSummary } from '../lib/dashboard-summary.js';
@@ -40,69 +51,8 @@ import {
   validateTrackSearch,
   validateDeletePlaylist,
   validateEvent,
-  validateGrowthDiscover,
-  validateGrowthCheckFollowbacks,
-  validateGrowthEngageBatch,
-  validateReverseGrowthActions,
 } from '../middleware/validation.js';
-import {
-  GrowthEngine,
-  getGrowthBudget,
-  getEngagementJob,
-  cancelEngagementJob,
-  startEngagementJob,
-  serializeJob,
-  GROWTH_BATCH_MAX,
-} from '../lib/growth-engine.js';
-
-const growthEngine = new GrowthEngine(soundcloudClient);
-
 const router = express.Router();
-
-const CACHE_TTL = {
-  playlists: 5 * 60 * 1000,
-  followings: 5 * 60 * 1000,
-  followers: 5 * 60 * 1000,
-  likes: 60 * 1000,
-  reposts: 60 * 1000,
-  activities: 60 * 1000,
-};
-
-function getCachedUserPayload(namespace, userId, key, load, ttlMs) {
-  const cached = requestCache.get(namespace, userId, key);
-  if (cached !== undefined) return Promise.resolve(cached);
-  return Promise.resolve(load()).then((data) => {
-    requestCache.set(namespace, userId, key, data, ttlMs);
-    return data;
-  });
-}
-
-function invalidateUserNamespaces(userId, namespaces) {
-  namespaces.forEach((namespace) => {
-    requestCache.invalidateNamespaceForUser(namespace, userId);
-  });
-}
-
-/* Shared cached loaders for the auth user's social lists. The GET routes and
- * growth discovery use the same namespace/key/payload shape, so whichever
- * runs first warms the cache for the other. */
-function loadCachedFollowings(req) {
-  return getCachedUserPayload('followings', req.user.id, 'default', async () => {
-    const followings = await soundcloudClient.getFollowings(req.accessToken, req.refreshToken);
-    return { collection: followings, total: followings.length };
-  }, CACHE_TTL.followings);
-}
-
-function loadCachedFollowers(req) {
-  return getCachedUserPayload('followers', req.user.id, 'default', async () => {
-    const followers = await soundcloudClient.getFollowers(req.accessToken, req.refreshToken);
-    return { collection: followers, total: followers.length };
-  }, CACHE_TTL.followers);
-}
-
-function invalidatePlaylistState(userId) {
-  invalidateUserNamespaces(userId, ['playlists']);
-}
 
 const SC_TOOLKIT_PLAYLIST_SITE = 'www.soundcloudtoolkit.com';
 const SC_TOOLKIT_PLAYLIST_FOOTER = `Created using SC Toolkit. Try it for free ${SC_TOOLKIT_PLAYLIST_SITE}`;
@@ -112,11 +62,6 @@ function playlistDescriptionWithToolkit(operationDescription) {
   const body = String(operationDescription ?? '').trim();
   return `${body}\n\n${SC_TOOLKIT_PLAYLIST_FOOTER}`;
 }
-
-// Simple in-memory cache for resolve results (5 minutes TTL)
-const RESOLVE_CACHE_TTL_MS = 5 * 60 * 1000;
-const RESOLVE_CACHE_MAX_ENTRIES = 1000;
-const resolveCache = new Map(); // key: normalized input URL, value: { data, expiresAt }
 
 function sanitizeUrl(input = '') {
   let url = String(input).trim();
@@ -137,19 +82,6 @@ function sanitizeUrl(input = '') {
   }
 }
 
-function extractNumericId(maybe) {
-  if (maybe == null) return undefined;
-  if (typeof maybe === 'number') return maybe;
-  if (typeof maybe === 'string') {
-    const n = Number(maybe);
-    if (!Number.isNaN(n)) return n;
-    // try urn like soundcloud:tracks:123
-    const m = maybe.match(/(tracks|playlists|users):(\d+)/);
-    if (m) return Number(m[2]);
-  }
-  return undefined;
-}
-
 function nowIso() {
   return new Date().toISOString();
 }
@@ -158,157 +90,6 @@ function isResolveV2(req) {
   const queryVersion = String(req.query?.v || '').trim();
   const headerVersion = String(req.get('x-resolve-version') || '').trim();
   return queryVersion === '2' || headerVersion === '2';
-}
-
-function pruneResolveCache() {
-  const now = Date.now();
-  for (const [key, value] of resolveCache.entries()) {
-    if (!value || value.expiresAt <= now) resolveCache.delete(key);
-  }
-  if (resolveCache.size <= RESOLVE_CACHE_MAX_ENTRIES) return;
-  const overflow = resolveCache.size - RESOLVE_CACHE_MAX_ENTRIES;
-  let removed = 0;
-  for (const key of resolveCache.keys()) {
-    resolveCache.delete(key);
-    removed += 1;
-    if (removed >= overflow) break;
-  }
-}
-
-function setResolveCache(url, data) {
-  pruneResolveCache();
-  resolveCache.set(url, { data, expiresAt: Date.now() + RESOLVE_CACHE_TTL_MS });
-}
-
-function normalizeResource(resource) {
-  const kind = resource?.kind;
-  if (kind === 'track') {
-    const id = extractNumericId(resource.id || resource.urn);
-    return {
-      type: 'track',
-      id,
-      title: resource.title,
-      user: { id: extractNumericId(resource.user?.id || resource.user?.urn), username: resource.user?.username },
-      username: resource.user?.username,
-      duration_ms: resource.duration,
-      permalink_url: resource.permalink_url,
-      artwork_url: resource.artwork_url || resource.user?.avatar_url,
-      downloadable: resource.downloadable,
-      download_url: resource.download_url,
-      purchase_url: resource.purchase_url,
-      purchase_title: resource.purchase_title
-    };
-  }
-  if (kind === 'playlist') {
-    const id = extractNumericId(resource.id || resource.urn);
-    return {
-      type: 'playlist',
-      id,
-      title: resource.title,
-      user: { id: extractNumericId(resource.user?.id || resource.user?.urn), username: resource.user?.username },
-      username: resource.user?.username,
-      track_count: resource.track_count,
-      permalink_url: resource.permalink_url,
-      artwork_url: resource.artwork_url || resource.user?.avatar_url
-    };
-  }
-  if (kind === 'user') {
-    const id = extractNumericId(resource.id || resource.urn);
-    return {
-      type: 'user',
-      id,
-      username: resource.username,
-      followers_count: resource.followers_count,
-      permalink_url: resource.permalink_url,
-      avatar_url: resource.avatar_url
-    };
-  }
-  // Fallback heuristic
-  if (resource.track) return normalizeResource({ ...resource.track, kind: 'track' });
-  if (resource.playlist) return normalizeResource({ ...resource.playlist, kind: 'playlist' });
-  if (resource.username) return normalizeResource({ ...resource, kind: 'user' });
-  return null;
-}
-
-function normalizeResourceV2(resource) {
-  const base = normalizeResource(resource);
-  if (!base) return null;
-
-  if (base.type === 'track') {
-    return {
-      ...base,
-      kind: 'track',
-      duration: base.duration_ms,
-      description: resource.description || null,
-      genre: resource.genre || null,
-      tag_list: resource.tag_list || null,
-      created_at: resource.created_at || null,
-      playback_count: resource.playback_count ?? null,
-      likes_count: resource.likes_count ?? resource.favoritings_count ?? null,
-      reposts_count: resource.reposts_count ?? null,
-      comment_count: resource.comment_count ?? null
-    };
-  }
-  if (base.type === 'playlist') {
-    return {
-      ...base,
-      kind: 'playlist',
-      description: resource.description || null,
-      genre: resource.genre || null,
-      tag_list: resource.tag_list || null,
-      created_at: resource.created_at || null,
-      likes_count: resource.likes_count ?? resource.favoritings_count ?? null,
-      reposts_count: resource.reposts_count ?? null
-    };
-  }
-  return {
-    ...base,
-    kind: 'user',
-    full_name: resource.full_name || null,
-    description: resource.description || null,
-    followings_count: resource.followings_count ?? null,
-    track_count: resource.track_count ?? null,
-    playlist_count: resource.playlist_count ?? null,
-    likes_count: resource.likes_count ?? resource.public_favorites_count ?? null
-  };
-}
-
-function normalizeTrackForLibraryBrowser(track) {
-  const id = extractNumericId(track?.id || track?.urn);
-  if (!id) return null;
-  return {
-    id,
-    title: track.title || 'Untitled track',
-    user: {
-      id: extractNumericId(track.user?.id || track.user?.urn),
-      username: track.user?.username || 'Unknown',
-    },
-    artwork_url: track.artwork_url || track.user?.avatar_url || null,
-    duration: track.duration ?? null,
-    permalink_url: track.permalink_url || null,
-    streamable: track.streamable,
-    access: track.access || null,
-  };
-}
-
-function normalizePlaylistForLibraryBrowser(playlist) {
-  const id = extractNumericId(playlist?.id || playlist?.urn);
-  if (!id) return null;
-  const tracks = Array.isArray(playlist.tracks) ? playlist.tracks : [];
-  const firstTrackArtwork = tracks.find((track) => track?.artwork_url)?.artwork_url;
-  return {
-    id,
-    title: playlist.title || 'Untitled playlist',
-    user: {
-      id: extractNumericId(playlist.user?.id || playlist.user?.urn),
-      username: playlist.user?.username || 'Unknown',
-    },
-    artwork_url: playlist.artwork_url || firstTrackArtwork || playlist.user?.avatar_url || null,
-    permalink_url: playlist.permalink_url || null,
-    track_count: playlist.track_count ?? tracks.length,
-    likes_count: playlist.likes_count ?? playlist.favoritings_count ?? null,
-    reposts_count: playlist.reposts_count ?? null,
-  };
 }
 
 function getPlayableTrackIds(tracks = []) {
@@ -606,7 +387,6 @@ router.post('/playlists/clone', authenticateUser, heavyOperationRateLimiter, val
     }
 
     // Helper to slow down between API calls
-    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     const baseTitle = title || `Clone of ${playlist.title}`;
 
     if (trackIdsArray.length > 500) {
@@ -636,7 +416,7 @@ router.post('/playlists/clone', authenticateUser, heavyOperationRateLimiter, val
 
         let addIndex = mergeBatchSize;
         while (addIndex < batch.length) {
-          await sleep(300);
+          await sleep(SC_WRITE_PACING_MS);
           const addBatch = batch.slice(0, addIndex + mergeBatchSize);
           await soundcloudClient.addTracksToPlaylist(
             req.accessToken,
@@ -689,7 +469,7 @@ router.post('/playlists/clone', authenticateUser, heavyOperationRateLimiter, val
 
       let addIndex = mergeBatchSize;
       while (addIndex < trackIdsArray.length) {
-        await sleep(300);
+        await sleep(SC_WRITE_PACING_MS);
         const addBatch = trackIdsArray.slice(0, addIndex + mergeBatchSize);
         await soundcloudClient.addTracksToPlaylist(
           req.accessToken,
@@ -958,20 +738,19 @@ async function handleResolve(req, res) {
     const cleaned = sanitizeUrl(rawUrl);
     if (!cleaned) return res.status(400).json({ error: 'Invalid SoundCloud URL' });
 
-    const now = Date.now();
-    const cached = resolveCache.get(cleaned);
-    if (cached && cached.expiresAt > now) {
+    const cached = getCachedResolve(cleaned);
+    if (cached) {
       logOperation({
         userId: req.user.id,
         action: 'resolve',
         status: 'success',
-        trackIds: cached.data?.type === 'track' && cached.data.id != null ? [cached.data.id] : undefined,
-        playlistIds: cached.data?.type === 'playlist' && cached.data.id != null ? [cached.data.id] : undefined,
-        metadata: { resolvedType: cached.data?.type ?? 'unknown', cached: true },
+        trackIds: cached?.type === 'track' && cached.id != null ? [cached.id] : undefined,
+        playlistIds: cached?.type === 'playlist' && cached.id != null ? [cached.id] : undefined,
+        metadata: { resolvedType: cached?.type ?? 'unknown', cached: true },
       });
-      if (!useV2) return res.json(cached.data);
+      if (!useV2) return res.json(cached);
       return res.json({
-        data: normalizeResourceV2(cached.data) || cached.data,
+        data: normalizeResourceV2(cached) || cached,
         meta: {
           version: '2',
           source_url: cleaned,
@@ -1022,7 +801,7 @@ async function handleResolve(req, res) {
       }
     } catch {}
 
-    setResolveCache(cleaned, normalized);
+    setCachedResolve(cleaned, normalized);
     if (!useV2) {
       res.json(normalized);
     } else {
@@ -1118,7 +897,6 @@ router.post('/playlists/merge', authenticateUser, heavyOperationRateLimiter, val
     // Validation middleware already checked the input
 
     // Helper to slow down between API calls
-    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
     // Get all tracks from source playlists (with tracks included)
     const perPlaylistCounts = [];
@@ -1141,7 +919,7 @@ router.post('/playlists/merge', authenticateUser, heavyOperationRateLimiter, val
       for (const t of filtered) {
         if (t.id != null) trackIdSet.add(t.id);
       }
-      await sleep(300); // small pause between playlist fetches
+      await sleep(SC_WRITE_PACING_MS); // small pause between playlist fetches
     }
 
     // ── MERGE INTO EXISTING PLAYLIST ──────────────────────────────────────────
@@ -1169,7 +947,7 @@ router.post('/playlists/merge', authenticateUser, heavyOperationRateLimiter, val
       const mergeBatchSize = 100;
       let updateIndex = mergeBatchSize;
       while (updateIndex < targetChunk.length) {
-        await sleep(300);
+        await sleep(SC_WRITE_PACING_MS);
         const batch = targetChunk.slice(0, updateIndex + mergeBatchSize);
         await soundcloudClient.addTracksToPlaylist(
           req.accessToken,
@@ -1194,7 +972,7 @@ router.post('/playlists/merge', authenticateUser, heavyOperationRateLimiter, val
       const baseTitle = (title && title.trim()) || targetPlaylist.title || 'Merged Playlist';
       const overflowPlaylists = [];
       for (let i = 0; i < overflowChunks.length; i++) {
-        await sleep(300);
+        await sleep(SC_WRITE_PACING_MS);
         const chunk = overflowChunks[i];
         const partNumber = i + 2; // Part 1 is targetPlaylist
         const partTitle = `${baseTitle} (Part ${partNumber})`;
@@ -1208,7 +986,7 @@ router.post('/playlists/merge', authenticateUser, heavyOperationRateLimiter, val
 
         let addIndex = mergeBatchSize;
         while (addIndex < chunk.length) {
-          await sleep(300);
+          await sleep(SC_WRITE_PACING_MS);
           const batch = chunk.slice(0, addIndex + mergeBatchSize);
           await soundcloudClient.addTracksToPlaylist(
             req.accessToken,
@@ -1233,7 +1011,7 @@ router.post('/playlists/merge', authenticateUser, heavyOperationRateLimiter, val
       if (deleteAfterMerge) {
         const toDelete = sourcePlaylistIds.filter(id => id !== targetPlaylistId);
         for (const id of toDelete) {
-          await sleep(300);
+          await sleep(SC_WRITE_PACING_MS);
           try {
             await soundcloudClient.deletePlaylist(req.accessToken, req.refreshToken, id);
             deletedPlaylistIds.push(id);
@@ -1328,7 +1106,7 @@ router.post('/playlists/merge', authenticateUser, heavyOperationRateLimiter, val
         let finalCount = initialBatch.length;
         let addIndex = mergeBatchSize;
         while (addIndex < chunk.length) {
-          await sleep(300);
+          await sleep(SC_WRITE_PACING_MS);
           const addBatch = chunk.slice(0, addIndex + mergeBatchSize);
           await soundcloudClient.addTracksToPlaylist(
             req.accessToken,
@@ -1347,7 +1125,7 @@ router.post('/playlists/merge', authenticateUser, heavyOperationRateLimiter, val
         });
 
         if (i < chunks.length - 1) {
-          await sleep(300);
+          await sleep(SC_WRITE_PACING_MS);
         }
       }
 
@@ -1422,7 +1200,7 @@ router.post('/playlists/merge', authenticateUser, heavyOperationRateLimiter, val
       let finalCount = initialBatch.length;
       let addIndex = mergeBatchSize;
       while (addIndex < trackIdsArray.length) {
-        await sleep(300);
+        await sleep(SC_WRITE_PACING_MS);
         const addBatch = trackIdsArray.slice(0, addIndex + mergeBatchSize);
         await soundcloudClient.addTracksToPlaylist(
           req.accessToken,
@@ -1514,7 +1292,6 @@ const MAX_TRACKS_PER_PLAYLIST = 500;
  * @param {string} operationDescription - Summary only; SC Toolkit footer is appended automatically.
  */
 async function createPlaylistFromTrackIds(accessToken, refreshToken, trackIds, title, operationDescription) {
-  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const initialBatch = trackIds.slice(0, BATCH_SIZE_PLAYLIST_TRACKS);
   const newPlaylist = await soundcloudClient.createPlaylist(
     accessToken,
@@ -1526,7 +1303,7 @@ async function createPlaylistFromTrackIds(accessToken, refreshToken, trackIds, t
 
   let index = BATCH_SIZE_PLAYLIST_TRACKS;
   while (index < trackIds.length) {
-    await sleep(300);
+    await sleep(SC_WRITE_PACING_MS);
     const batch = trackIds.slice(0, index + BATCH_SIZE_PLAYLIST_TRACKS);
     await soundcloudClient.addTracksToPlaylist(
       accessToken,
@@ -1554,7 +1331,6 @@ function uniquePositiveIds(ids = []) {
 
 /** @param {string} [description] - Operation summary only (no footer); required when creating new playlist(s). */
 async function createOrAppendTrackIds({ accessToken, refreshToken, trackIds, title, targetPlaylistId, description }) {
-  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const uniqueTrackIds = uniquePositiveIds(trackIds);
 
   if (targetPlaylistId) {
@@ -1569,12 +1345,12 @@ async function createOrAppendTrackIds({ accessToken, refreshToken, trackIds, tit
 
     let index = BATCH_SIZE_PLAYLIST_TRACKS;
     while (index < targetChunk.length) {
-      await sleep(300);
+      await sleep(SC_WRITE_PACING_MS);
       await soundcloudClient.addTracksToPlaylist(accessToken, refreshToken, targetPlaylistId, targetChunk.slice(0, index));
       index += BATCH_SIZE_PLAYLIST_TRACKS;
     }
 
-    await sleep(300);
+    await sleep(SC_WRITE_PACING_MS);
     await soundcloudClient.addTracksToPlaylist(accessToken, refreshToken, targetPlaylistId, targetChunk);
 
     const overflowPlaylists = [];
@@ -1644,20 +1420,16 @@ async function createOrAppendTrackIds({ accessToken, refreshToken, trackIds, tit
   };
 }
 
-router.get(
-  '/followings/:userId/likes/paged',
-  authenticateUser,
-  validateFollowingUserId,
-  validateFollowedUserLibraryPagination,
-  async (req, res) => {
+/** The three followed-user library pages differ only in which client method
+ * fetches the page, which normalizer shapes the items, and their log/error
+ * wording. Response shape and status mapping are identical across all three. */
+function followedLibraryPageHandler({ fetchPage, normalizeItem, logLabel, forbiddenMessage, failureMessage }) {
+  return async (req, res) => {
     try {
       const targetUser = await assertFollowedUser(req, req.params.userId);
-      const page = await soundcloudClient.getUserLikedTracksPage(req.accessToken, req.refreshToken, req.params.userId, {
-        limit: req.query.limit || 50,
-        next: req.query.next,
-      });
+      const page = await fetchPage(req);
       const collection = (Array.isArray(page.collection) ? page.collection : [])
-        .map(normalizeTrackForLibraryBrowser)
+        .map(normalizeItem)
         .filter(Boolean);
       res.json({
         user: {
@@ -1671,13 +1443,38 @@ router.get(
         total: page.total_results || undefined,
       });
     } catch (error) {
-      logger.error('Get followed user liked tracks error:', safeError(error));
+      logger.error(logLabel, safeError(error));
       const status = error?.status || 500;
       res.status(status === 403 ? 403 : 500).json({
-        error: status === 403 ? 'Choose a user you follow to browse their public likes.' : 'Failed to get followed user likes',
+        error: status === 403 ? forbiddenMessage : failureMessage,
       });
     }
-  }
+  };
+}
+
+const followedLibraryPageParams = (req) => ({
+  limit: req.query.limit || 50,
+  next: req.query.next,
+});
+
+router.get(
+  '/followings/:userId/likes/paged',
+  authenticateUser,
+  validateFollowingUserId,
+  validateFollowedUserLibraryPagination,
+  followedLibraryPageHandler({
+    fetchPage: (req) =>
+      soundcloudClient.getUserLikedTracksPage(
+        req.accessToken,
+        req.refreshToken,
+        req.params.userId,
+        followedLibraryPageParams(req)
+      ),
+    normalizeItem: normalizeTrackForLibraryBrowser,
+    logLabel: 'Get followed user liked tracks error:',
+    forbiddenMessage: 'Choose a user you follow to browse their public likes.',
+    failureMessage: 'Failed to get followed user likes',
+  })
 );
 
 router.get(
@@ -1685,35 +1482,19 @@ router.get(
   authenticateUser,
   validateFollowingUserId,
   validateFollowedUserLibraryPagination,
-  async (req, res) => {
-    try {
-      const targetUser = await assertFollowedUser(req, req.params.userId);
-      const page = await soundcloudClient.getUserPlaylistsPage(req.accessToken, req.refreshToken, req.params.userId, {
-        limit: req.query.limit || 50,
-        next: req.query.next,
-      });
-      const collection = (Array.isArray(page.collection) ? page.collection : [])
-        .map(normalizePlaylistForLibraryBrowser)
-        .filter(Boolean);
-      res.json({
-        user: {
-          id: targetUser.id,
-          username: targetUser.username,
-          avatar_url: targetUser.avatar_url,
-          permalink_url: targetUser.permalink_url,
-        },
-        collection,
-        next_href: page.next_href || null,
-        total: page.total_results || undefined,
-      });
-    } catch (error) {
-      logger.error('Get followed user playlists error:', safeError(error));
-      const status = error?.status || 500;
-      res.status(status === 403 ? 403 : 500).json({
-        error: status === 403 ? 'Choose a user you follow to browse their public playlists.' : 'Failed to get followed user playlists',
-      });
-    }
-  }
+  followedLibraryPageHandler({
+    fetchPage: (req) =>
+      soundcloudClient.getUserPlaylistsPage(
+        req.accessToken,
+        req.refreshToken,
+        req.params.userId,
+        followedLibraryPageParams(req)
+      ),
+    normalizeItem: normalizePlaylistForLibraryBrowser,
+    logLabel: 'Get followed user playlists error:',
+    forbiddenMessage: 'Choose a user you follow to browse their public playlists.',
+    failureMessage: 'Failed to get followed user playlists',
+  })
 );
 
 router.get(
@@ -1721,35 +1502,19 @@ router.get(
   authenticateUser,
   validateFollowingUserId,
   validateFollowedUserLibraryPagination,
-  async (req, res) => {
-    try {
-      const targetUser = await assertFollowedUser(req, req.params.userId);
-      const page = await soundcloudClient.getUserLikedPlaylistsPage(req.accessToken, req.refreshToken, req.params.userId, {
-        limit: req.query.limit || 50,
-        next: req.query.next,
-      });
-      const collection = (Array.isArray(page.collection) ? page.collection : [])
-        .map(normalizePlaylistForLibraryBrowser)
-        .filter(Boolean);
-      res.json({
-        user: {
-          id: targetUser.id,
-          username: targetUser.username,
-          avatar_url: targetUser.avatar_url,
-          permalink_url: targetUser.permalink_url,
-        },
-        collection,
-        next_href: page.next_href || null,
-        total: page.total_results || undefined,
-      });
-    } catch (error) {
-      logger.error('Get followed user liked playlists error:', safeError(error));
-      const status = error?.status || 500;
-      res.status(status === 403 ? 403 : 500).json({
-        error: status === 403 ? 'Choose a user you follow to browse their public liked playlists.' : 'Failed to get followed user liked playlists',
-      });
-    }
-  }
+  followedLibraryPageHandler({
+    fetchPage: (req) =>
+      soundcloudClient.getUserLikedPlaylistsPage(
+        req.accessToken,
+        req.refreshToken,
+        req.params.userId,
+        followedLibraryPageParams(req)
+      ),
+    normalizeItem: normalizePlaylistForLibraryBrowser,
+    logLabel: 'Get followed user liked playlists error:',
+    forbiddenMessage: 'Choose a user you follow to browse their public liked playlists.',
+    failureMessage: 'Failed to get followed user liked playlists',
+  })
 );
 
 router.post(
@@ -1931,7 +1696,6 @@ router.post(
 router.post('/playlists/from-likes', authenticateUser, heavyOperationRateLimiter, validateCreateFromLikes, async (req, res) => {
   try {
     const { title, trackIds, targetPlaylistId } = req.body;
-    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
     // ── ADD TO EXISTING PLAYLIST ──────────────────────────────────────────────
     if (targetPlaylistId) {
@@ -1958,7 +1722,7 @@ router.post('/playlists/from-likes', authenticateUser, heavyOperationRateLimiter
       const batchSize = 100;
       let i = batchSize;
       while (i < targetChunk.length) {
-        await sleep(300);
+        await sleep(SC_WRITE_PACING_MS);
         await soundcloudClient.addTracksToPlaylist(
           req.accessToken,
           req.refreshToken,
@@ -1968,7 +1732,7 @@ router.post('/playlists/from-likes', authenticateUser, heavyOperationRateLimiter
         i += batchSize;
       }
       // Final PUT with full target chunk
-      await sleep(300);
+      await sleep(SC_WRITE_PACING_MS);
       await soundcloudClient.addTracksToPlaylist(
         req.accessToken,
         req.refreshToken,
@@ -2194,10 +1958,10 @@ router.post('/resolve/batch', authenticateUser, heavyOperationRateLimiter, valid
       }
 
       // Check cache first
-      const cached = resolveCache.get(url);
-      if (cached && cached.expiresAt > Date.now()) {
-        resolvedResources.push(cached.data);
-        const cachedData = useV2 ? (normalizeResourceV2(cached.data) || cached.data) : cached.data;
+      const cached = getCachedResolve(url);
+      if (cached) {
+        resolvedResources.push(cached);
+        const cachedData = useV2 ? (normalizeResourceV2(cached) || cached) : cached;
         const okResult = { url: rawUrl, status: 'ok', data: cachedData };
         results.push(useV2 ? { ...okResult, index } : okResult);
         continue;
@@ -2215,7 +1979,7 @@ router.post('/resolve/batch', authenticateUser, heavyOperationRateLimiter, valid
           resolvedResources.push(normalizedV1);
           if (normalizedV1.type === 'track') harvestTracks([resource]);
           else if (normalizedV1.type === 'playlist') harvestPlaylists([resource]);
-          setResolveCache(url, normalizedV1);
+          setCachedResolve(url, normalizedV1);
           const payload = useV2 ? normalizeResourceV2(resource) : normalizedV1;
           const okResult = { url: rawUrl, status: 'ok', data: payload };
           results.push(useV2 ? { ...okResult, index } : okResult);
@@ -2386,7 +2150,6 @@ router.post('/likes/tracks/bulk-unlike', authenticateUser, heavyOperationRateLim
  */
 router.post('/likes/tracks/bulk-like', authenticateUser, heavyOperationRateLimiter, validateBulkLike, async (req, res) => {
   // Gentle pacing between writes — liking a full playlist is many rapid POSTs.
-  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const elapsed = startOperationTimer();
   try {
     const { trackIds } = req.body;
@@ -2704,56 +2467,6 @@ router.get('/users/:id/tracks', authenticateUser, async (req, res) => {
 });
 
 /**
- * POST /api/growth/discover
- * Discover suggested follow candidates
- */
-router.post('/growth/discover', authenticateUser, heavyOperationRateLimiter, validateGrowthDiscover, async (req, res) => {
-  try {
-    const { inspirationUserIds, limit, strategy } = req.body;
-
-    // Never resurface anyone previously targeted (including reversed follows)
-    // and preload the auth user's own lists through the shared request cache
-    // (a page load of the growth tool has usually warmed the followings entry).
-    const [priorTargets, followingsPayload, followersPayload] = await Promise.all([
-      prisma.growthAction.findMany({
-        where: { userId: req.user.id, actionType: 'follow' },
-        select: { targetId: true },
-        distinct: ['targetId'],
-      }),
-      loadCachedFollowings(req).catch(() => null),
-      loadCachedFollowers(req).catch(() => null),
-    ]);
-
-    const result = await growthEngine.discoverSuggestions({
-      inspirationUserIds,
-      authUserId: req.user.id,
-      authSoundCloudId: req.user.soundcloudId,
-      accessToken: req.accessToken,
-      refreshToken: req.refreshToken,
-      strategy,
-      limit,
-      excludedTargetIds: priorTargets.map((t) => Number(t.targetId)),
-      // On a preload failure the engine falls back to fetching these itself
-      authFollowingIds: followingsPayload ? followingsPayload.collection.map((u) => u.id) : null,
-      authFollowerIds: followersPayload ? followersPayload.collection.map((u) => u.id) : null,
-    });
-    res.json(result);
-    logOperation({
-      userId: req.user.id,
-      action: 'growth-discover',
-      itemCount: result?.suggestions?.length ?? 0,
-      status: 'success',
-      targetUserIds: (result?.suggestions ?? []).map(s => s.user?.id).filter(id => id != null),
-      trackIds: (result?.suggestions ?? []).map(s => s.suggestedTrack?.id).filter(id => id != null),
-      metadata: { inspirationUserIds },
-    });
-  } catch (error) {
-    logger.error('Growth discover error:', safeError(error));
-    res.status(500).json({ error: 'Failed to run growth discovery' });
-  }
-});
-
-/**
  * POST /api/events
  * Lightweight feature-usage event. Records a "user opened feature X" signal
  * into the operation log (namespaced `view:<feature>`) for internal product
@@ -2768,467 +2481,5 @@ router.post('/events', authenticateUser, validateEvent, async (req, res) => {
   });
   res.status(204).end();
 });
-
-/**
- * GET /api/growth/limits
- * Daily follow budget and session cooldown for the current user
- */
-router.get('/growth/limits', authenticateUser, async (req, res) => {
-  try {
-    const budget = await getGrowthBudget(prisma, req.user.id);
-    res.json(budget);
-  } catch (error) {
-    logger.error('Get growth limits error:', safeError(error));
-    res.status(500).json({ error: 'Failed to fetch growth limits' });
-  }
-});
-
-/**
- * POST /api/growth/engage
- * Start a paced background engagement batch (follow + optional like).
- * Server enforces the daily follow cap and session cooldown.
- */
-router.post('/growth/engage', authenticateUser, heavyOperationRateLimiter, validateGrowthEngageBatch, async (req, res) => {
-  try {
-    const { targets, likeTracks, sessionLabel, inspirationIds, inspirationNames } = req.body;
-
-    const budget = await getGrowthBudget(prisma, req.user.id);
-    if (budget.remaining <= 0) {
-      return res.status(429).json({
-        error: `Daily follow limit reached (${budget.dailyCap} per 24h). Try again later.`,
-        budget,
-      });
-    }
-    if (budget.cooldownRemainingMs > 0) {
-      const mins = Math.ceil(budget.cooldownRemainingMs / 60000);
-      return res.status(429).json({
-        error: `Session cooldown active. You can start a new batch in ${mins} minute${mins === 1 ? '' : 's'}.`,
-        budget,
-      });
-    }
-    if (targets.length > budget.remaining) {
-      return res.status(400).json({
-        error: `Only ${budget.remaining} follows remaining in your daily budget. Select ${budget.remaining} or fewer users.`,
-        budget,
-      });
-    }
-
-    const job = startEngagementJob(growthEngine, {
-      prisma,
-      userId: req.user.id,
-      accessToken: req.accessToken,
-      refreshToken: req.refreshToken,
-      targets,
-      likeTracks,
-      sessionLabel,
-      inspirationIds,
-      inspirationNames,
-    });
-
-    invalidateUserNamespaces(req.user.id, ['followings', 'likes']);
-    res.status(202).json({ job: serializeJob(job), budget });
-    logOperation({
-      userId: req.user.id,
-      action: 'growth-engage-start',
-      itemCount: targets.length,
-      status: 'success',
-      targetUserIds: targets.map(t => t.userId),
-      trackIds: targets.filter(t => t.likeTrackId).map(t => t.likeTrackId),
-    });
-  } catch (error) {
-    if (error.code === 'JOB_RUNNING') {
-      return res.status(409).json({ error: 'An engagement batch is already running.' });
-    }
-    logger.error('Growth engage error:', safeError(error));
-    res.status(500).json({ error: 'Failed to start engagement batch' });
-  }
-});
-
-/**
- * GET /api/growth/engage/status
- * Progress of the current (or most recent) engagement batch
- */
-router.get('/growth/engage/status', authenticateUser, (req, res) => {
-  const job = getEngagementJob(req.user.id);
-  res.json({ job: serializeJob(job) });
-});
-
-/**
- * POST /api/growth/engage/cancel
- * Request cancellation of the running engagement batch
- */
-router.post('/growth/engage/cancel', authenticateUser, (req, res) => {
-  const cancelled = cancelEngagementJob(req.user.id);
-  res.json({ cancelled });
-});
-
-/**
- * GET /api/growth/analytics
- * Per-seed conversion rates and follow-back timing buckets
- */
-router.get('/growth/analytics', authenticateUser, async (req, res) => {
-  try {
-    const follows = await prisma.growthAction.findMany({
-      where: { userId: req.user.id, actionType: 'follow' },
-      select: {
-        targetId: true,
-        followedBack: true,
-        checkedAt: true,
-        createdAt: true,
-        inspirationIds: true,
-        inspirationNames: true,
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 2000,
-    });
-
-    // Per-seed conversion (each follow attributes to every seed in its session)
-    const seedMap = new Map(); // seedId -> { seedId, name, follows, followedBack, checked }
-    for (const f of follows) {
-      if (!f.inspirationIds) continue;
-      const ids = f.inspirationIds.split(',').map((x) => x.trim()).filter(Boolean);
-      const names = (f.inspirationNames || '').split(',').map((x) => x.trim());
-      ids.forEach((id, idx) => {
-        if (!seedMap.has(id)) {
-          seedMap.set(id, { seedId: id, name: names[idx] || `User ${id}`, follows: 0, followedBack: 0, checked: 0 });
-        }
-        const entry = seedMap.get(id);
-        entry.follows++;
-        if (f.followedBack !== null) {
-          entry.checked++;
-          if (f.followedBack === true) entry.followedBack++;
-        }
-        // Prefer a real name if a later record has one
-        if (names[idx] && entry.name.startsWith('User ')) entry.name = names[idx];
-      });
-    }
-    const perSeed = Array.from(seedMap.values())
-      .map((s) => ({ ...s, rate: s.checked > 0 ? s.followedBack / s.checked : null }))
-      .sort((a, b) => (b.rate ?? -1) - (a.rate ?? -1));
-
-    // Follow-back timing buckets (days between follow and confirmation check)
-    const curve = [
-      { bucket: '0-3 days', followedBack: 0, notFollowedBack: 0 },
-      { bucket: '4-7 days', followedBack: 0, notFollowedBack: 0 },
-      { bucket: '8-14 days', followedBack: 0, notFollowedBack: 0 },
-      { bucket: '15+ days', followedBack: 0, notFollowedBack: 0 },
-    ];
-    for (const f of follows) {
-      if (f.followedBack === null || !f.checkedAt) continue;
-      const days = (new Date(f.checkedAt).getTime() - new Date(f.createdAt).getTime()) / 86400000;
-      const idx = days <= 3 ? 0 : days <= 7 ? 1 : days <= 14 ? 2 : 3;
-      if (f.followedBack) curve[idx].followedBack++;
-      else curve[idx].notFollowedBack++;
-    }
-
-    res.json({ perSeed, followBackCurve: curve, totalFollows: follows.length });
-  } catch (error) {
-    logger.error('Get growth analytics error:', safeError(error));
-    res.status(500).json({ error: 'Failed to fetch growth analytics' });
-  }
-});
-
-/**
- * GET /api/growth/history
- * Fetch past growth actions
- */
-router.get('/growth/history', authenticateUser, async (req, res) => {
-  try {
-    const { actionType, followedBack, reversed, sessionId } = req.query;
-
-    const whereClause = { userId: req.user.id };
-
-    if (actionType) whereClause.actionType = actionType;
-    if (reversed) whereClause.reversed = reversed === 'true';
-    if (sessionId) whereClause.sessionId = sessionId;
-
-    if (followedBack) {
-      if (followedBack === 'unchecked') {
-        whereClause.followedBack = null;
-      } else {
-        whereClause.followedBack = followedBack === 'true';
-      }
-    }
-
-    const actions = await prisma.growthAction.findMany({
-      where: whereClause,
-      orderBy: { createdAt: 'desc' },
-      take: 500,
-    });
-
-    // Fetch and aggregate session groups
-    const allActionsForSessions = await prisma.growthAction.findMany({
-      where: { userId: req.user.id },
-      select: {
-        sessionId: true,
-        sessionLabel: true,
-        actionType: true,
-        followedBack: true,
-        reversed: true,
-        createdAt: true,
-      },
-    });
-
-    const sessionGroupsMap = new Map();
-    for (const act of allActionsForSessions) {
-      if (!act.sessionId) continue;
-      if (!sessionGroupsMap.has(act.sessionId)) {
-        sessionGroupsMap.set(act.sessionId, {
-          sessionId: act.sessionId,
-          label: act.sessionLabel || 'Unnamed Session',
-          date: act.createdAt,
-          totalActions: 0,
-          followedBack: 0,
-          notFollowedBack: 0,
-          unchecked: 0,
-          reversed: 0,
-        });
-      }
-
-      const s = sessionGroupsMap.get(act.sessionId);
-      s.totalActions++;
-      if (act.reversed) {
-        s.reversed++;
-      } else if (act.actionType === 'follow') {
-        if (act.followedBack === true) s.followedBack++;
-        else if (act.followedBack === false) s.notFollowedBack++;
-        else s.unchecked++;
-      }
-      
-      // Keep earliest/latest date?
-      if (act.createdAt > s.date) s.date = act.createdAt;
-    }
-
-    const sessions = Array.from(sessionGroupsMap.values()).sort((a, b) => b.date - a.date);
-
-    res.json({ actions, sessions });
-  } catch (error) {
-    logger.error('Get growth history error:', safeError(error));
-    res.status(500).json({ error: 'Failed to fetch growth history' });
-  }
-});
-
-/**
- * POST /api/growth/check-followbacks
- * Check reciprocation rate against the current followers list
- */
-router.post('/growth/check-followbacks', authenticateUser, heavyOperationRateLimiter, validateGrowthCheckFollowbacks, async (req, res) => {
-  try {
-    const { sessionId } = req.body;
-
-    logger.info(`[check-followbacks] Fetching current followers list for user ${req.user.id}`);
-    const followers = await soundcloudClient.getFollowers(req.accessToken, req.refreshToken);
-    const followerIds = new Set(followers.map(f => f.id));
-    logger.info(`[check-followbacks] Found ${followerIds.size} total followers on SoundCloud`);
-
-    const whereClause = {
-      userId: req.user.id,
-      actionType: 'follow',
-      reversed: false,
-    };
-    if (sessionId) {
-      whereClause.sessionId = sessionId;
-    }
-
-    const unreversedFollows = await prisma.growthAction.findMany({
-      where: whereClause,
-    });
-
-    let checked = 0;
-    let followedBack = 0;
-    let didNotFollowBack = 0;
-    let alreadyChecked = 0;
-    const results = [];
-
-    const ONE_DAY_MS = 24 * 60 * 60 * 1000;
-
-    for (const action of unreversedFollows) {
-      // Cooldown: skip checking if checked in the last 24 hours and already checked
-      if (action.checkedAt && (Date.now() - new Date(action.checkedAt).getTime() < ONE_DAY_MS) && action.followedBack !== null) {
-        alreadyChecked++;
-        continue;
-      }
-
-      const isFollowingBack = followerIds.has(Number(action.targetId));
-      
-      await prisma.growthAction.update({
-        where: { id: action.id },
-        data: {
-          followedBack: isFollowingBack,
-          checkedAt: new Date(),
-        },
-      });
-
-      results.push({
-        actionId: action.id,
-        targetId: Number(action.targetId),
-        targetName: action.targetName,
-        followedBack: isFollowingBack,
-      });
-
-      checked++;
-      if (isFollowingBack) followedBack++;
-      else didNotFollowBack++;
-    }
-
-    invalidateUserNamespaces(req.user.id, ['followers']);
-
-    res.json({
-      checked,
-      followedBack,
-      didNotFollowBack,
-      alreadyChecked,
-      results,
-    });
-    logOperation({
-      userId: req.user.id,
-      action: 'growth-check-followbacks',
-      itemCount: checked,
-      status: 'success',
-      targetUserIds: results.map(r => Number(r.targetId)).filter(n => !isNaN(n)),
-      metadata: { followedBack, didNotFollowBack, alreadyChecked },
-    });
-  } catch (error) {
-    logger.error('Check followbacks error:', safeError(error));
-    res.status(500).json({ error: 'Failed to check followbacks' });
-  }
-});
-
-/**
- * POST /api/growth/reverse
- * Unfollow and/or unlike targeted growth actions
- */
-router.post('/growth/reverse', authenticateUser, validateReverseGrowthActions, async (req, res) => {
-  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-  try {
-    const { actionIds, filter } = req.body;
-    let targets = [];
-
-    if (actionIds) {
-      targets = await prisma.growthAction.findMany({
-        where: {
-          id: { in: actionIds },
-          userId: req.user.id,
-          reversed: false,
-        },
-      });
-    } else if (filter) {
-      const whereClause = {
-        userId: req.user.id,
-        reversed: false,
-      };
-      if (filter.sessionId) whereClause.sessionId = filter.sessionId;
-      if (filter.actionType) whereClause.actionType = filter.actionType;
-      
-      if (filter.followedBack !== undefined) {
-        whereClause.followedBack = filter.followedBack;
-      }
-
-      targets = await prisma.growthAction.findMany({
-        where: whereClause,
-      });
-    }
-
-    logger.info(`[reverse] Initiating reversal of ${targets.length} growth actions`);
-    const results = [];
-    let reversed = 0;
-    let failed = 0;
-
-    for (const action of targets) {
-      try {
-        if (action.actionType === 'follow') {
-          await soundcloudClient.unfollowUser(req.accessToken, req.refreshToken, action.targetId);
-        } else if (action.actionType === 'like') {
-          await soundcloudClient.unlikeTrack(req.accessToken, req.refreshToken, action.targetId);
-        }
-
-        await prisma.growthAction.update({
-          where: { id: action.id },
-          data: {
-            reversed: true,
-            reversedAt: new Date(),
-          },
-        });
-
-        results.push({ actionId: action.id, targetId: action.targetId, status: 'reversed' });
-        reversed++;
-      } catch (err) {
-        logger.error(`Failed to reverse growth action ${action.id}:`, safeError(err));
-        results.push({ actionId: action.id, targetId: action.targetId, status: 'error', error: 'Reversal failed' });
-        failed++;
-      }
-      // sequential delay
-      await sleep(300);
-    }
-
-    invalidateUserNamespaces(req.user.id, ['followings', 'likes']);
-
-    res.json({
-      reversed,
-      failed,
-      results,
-    });
-    // 'partial' (not 'split') for partial failures — 'split' means playlist auto-splitting.
-    logOperation({
-      userId: req.user.id,
-      action: 'growth-reverse',
-      itemCount: targets.length,
-      status: failed === 0 ? 'success' : (reversed > 0 ? 'partial' : 'error'),
-      targetUserIds: targets.filter(t => t.actionType === 'follow' && results.some(r => r.actionId === t.id && r.status === 'reversed')).map(t => t.targetId),
-      trackIds: targets.filter(t => t.actionType === 'like' && results.some(r => r.actionId === t.id && r.status === 'reversed')).map(t => t.targetId),
-      errorCode: failed > 0 && reversed === 0 ? 'ALL_ITEMS_FAILED' : undefined,
-      metadata: { total: targets.length, succeeded: reversed, failed },
-    });
-  } catch (error) {
-    logger.error('Reverse growth actions error:', safeError(error));
-    res.status(500).json({ error: 'Reversal operation failed' });
-  }
-});
-
-/**
- * GET /api/growth/stats
- * Stats summary of growth features
- */
-router.get('/growth/stats', authenticateUser, async (req, res) => {
-  try {
-    const totalFollowed = await prisma.growthAction.count({
-      where: { userId: req.user.id, actionType: 'follow' },
-    });
-    const totalLiked = await prisma.growthAction.count({
-      where: { userId: req.user.id, actionType: 'like' },
-    });
-    const followedBackCount = await prisma.growthAction.count({
-      where: { userId: req.user.id, actionType: 'follow', followedBack: true },
-    });
-    const didNotFollowBackCount = await prisma.growthAction.count({
-      where: { userId: req.user.id, actionType: 'follow', followedBack: false },
-    });
-    const activeFollows = await prisma.growthAction.count({
-      where: { userId: req.user.id, actionType: 'follow', reversed: false },
-    });
-    const reversedFollows = await prisma.growthAction.count({
-      where: { userId: req.user.id, actionType: 'follow', reversed: true },
-    });
-    const uncheckedFollows = await prisma.growthAction.count({
-      where: { userId: req.user.id, actionType: 'follow', followedBack: null },
-    });
-
-    const totalFollowsChecked = followedBackCount + didNotFollowBackCount;
-    const followedBackRate = totalFollowsChecked > 0 ? (followedBackCount / totalFollowsChecked) : 0;
-
-    res.json({
-      totalFollowed,
-      totalLiked,
-      followedBackRate,
-      activeFollows,
-      reversedFollows,
-      uncheckedFollows,
-    });
-  } catch (error) {
-    logger.error('Get growth stats error:', safeError(error));
-    res.status(500).json({ error: 'Failed to fetch growth stats' });
-  }
-});
-
 
 export default router;

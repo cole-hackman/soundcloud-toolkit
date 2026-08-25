@@ -1,6 +1,6 @@
 import logger from './logger.js';
+import { sleep } from './pacing.js';
 
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const DISCOVERY_TRACK_CONCURRENCY = 5;
 // Per seed and per direction (followers/followings), sample only the most
 // recent slice of a large network. SoundCloud returns newest first, so this

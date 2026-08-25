@@ -166,6 +166,7 @@ router.get('/callback', async (req, res) => {
       username: user.username,
       avatarUrl: user.avatarUrl,
       displayName: user.displayName,
+      iat: Date.now(),
     };
 
     // Sign and set session cookie

@@ -40,6 +40,8 @@ Library & Export, and Discovery & Links. Underneath them:
   app on DigitalOcean acting as an OAuth2 + PKCE proxy: the browser never sees
   SoundCloud tokens. Tokens are AES-256-GCM-encrypted at rest in Postgres, and
   every SoundCloud call is made server-side with the user's decrypted token.
+  The threat model, CSRF layering, and session-lifetime limitations are written
+  up in [docs/SECURITY.md](docs/SECURITY.md).
 - A request flows: HMAC-signed session cookie → user and token lookup → the
   SoundCloud client wrapper → SoundCloud's API, with automatic token refresh
   on 401 and backoff on 429.

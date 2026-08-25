@@ -111,6 +111,7 @@ import authRoutes from './routes/auth.js';
 import { soundcloudClient } from './lib/soundcloud-client.js';
 import { startGrowthScheduler } from './lib/growth-scheduler.js';
 import apiRoutes from './routes/api.js';
+import growthRoutes from './routes/growth.js';
 import adminRoutes from './routes/admin.js';
 import feedbackRoutes from './routes/feedback.js';
 
@@ -129,6 +130,7 @@ app.use('/api', apiRateLimiter);
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api', apiRoutes);
+app.use('/api', growthRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/feedback', feedbackRoutes);
 

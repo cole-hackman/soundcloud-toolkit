@@ -47,6 +47,9 @@ beforeEach(() => {
   logOperation.mockClear();
 });
 
+// The bulk-like route sleeps 150ms between tracks (real timers, deliberately
+// not faked). Under a full parallel suite run those sleeps can slip well past
+// Jest's 5s default, so every test here gets explicit headroom.
 describe('bulk-like reports per-item outcomes instead of silently succeeding', () => {
   test('a partial failure is visible in the response AND in the operation log', async () => {
     likeTrack
@@ -70,7 +73,7 @@ describe('bulk-like reports per-item outcomes instead of silently succeeding', (
     // only the tracks that actually landed are recorded as liked
     expect(logged.trackIds).toEqual([1, 3]);
     expect(logged.trackCount).toBe(2);
-  });
+  }, 30000);
 
   test('an all-items-failed run is logged as an error, not a success', async () => {
     likeTrack.mockRejectedValue(new Error('429 Too Many Requests'));
@@ -85,7 +88,7 @@ describe('bulk-like reports per-item outcomes instead of silently succeeding', (
     expect(logged.errorCode).toBe('ALL_ITEMS_FAILED');
     expect(logged.trackCount).toBe(0);
     expect(logged.metadata).toEqual({ total: 2, succeeded: 0, failed: 2 });
-  });
+  }, 30000);
 
   test('a fully successful run is logged as success with every track recorded', async () => {
     likeTrack.mockResolvedValue({});
@@ -96,5 +99,5 @@ describe('bulk-like reports per-item outcomes instead of silently succeeding', (
     expect(logged.status).toBe('success');
     expect(logged.errorCode).toBeUndefined();
     expect(logged.metadata).toEqual({ total: 2, succeeded: 2, failed: 0 });
-  });
+  }, 30000);
 });

@@ -2,6 +2,7 @@ import prisma from './prisma.js';
 import logger from './logger.js';
 import { soundcloudClient } from './soundcloud-client.js';
 import { upsertTrackRows, mapTrackForCatalog } from './catalog.js';
+import { sleep } from './pacing.js';
 
 // Piggyback enrichment: resolve bare track IDs to catalog metadata using the
 // requesting user's own token context, fire-and-forget, with the app's
@@ -16,8 +17,6 @@ const MAX_RESOLVE_ATTEMPTS = 3;
 // IDs being enriched anywhere in this process, so concurrent requests don't
 // duplicate SoundCloud calls. Single-instance assumption, like the caches.
 const inFlight = new Set();
-
-const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 /**
  * Awaitable enrichment core. Filters to IDs that actually need work

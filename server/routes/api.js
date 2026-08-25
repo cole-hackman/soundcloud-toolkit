@@ -7,6 +7,7 @@ import { logOperation, startOperationTimer, extractClientInfo } from '../lib/ana
 import { harvestTracks, harvestPlaylists } from '../lib/catalog.js';
 import { piggybackEnrichment } from '../lib/enrichment.js';
 import logger from '../lib/logger.js';
+import { sleep, SC_WRITE_PACING_MS } from '../lib/pacing.js';
 import { safeError } from '../lib/safe-error.js';
 import { isAllowedDownloadRedirectTarget, isAllowedDownloadUrl } from '../lib/download-utils.js';
 import { buildDashboardSummary } from '../lib/dashboard-summary.js';
@@ -606,7 +607,6 @@ router.post('/playlists/clone', authenticateUser, heavyOperationRateLimiter, val
     }
 
     // Helper to slow down between API calls
-    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     const baseTitle = title || `Clone of ${playlist.title}`;
 
     if (trackIdsArray.length > 500) {
@@ -636,7 +636,7 @@ router.post('/playlists/clone', authenticateUser, heavyOperationRateLimiter, val
 
         let addIndex = mergeBatchSize;
         while (addIndex < batch.length) {
-          await sleep(300);
+          await sleep(SC_WRITE_PACING_MS);
           const addBatch = batch.slice(0, addIndex + mergeBatchSize);
           await soundcloudClient.addTracksToPlaylist(
             req.accessToken,
@@ -689,7 +689,7 @@ router.post('/playlists/clone', authenticateUser, heavyOperationRateLimiter, val
 
       let addIndex = mergeBatchSize;
       while (addIndex < trackIdsArray.length) {
-        await sleep(300);
+        await sleep(SC_WRITE_PACING_MS);
         const addBatch = trackIdsArray.slice(0, addIndex + mergeBatchSize);
         await soundcloudClient.addTracksToPlaylist(
           req.accessToken,
@@ -1118,7 +1118,6 @@ router.post('/playlists/merge', authenticateUser, heavyOperationRateLimiter, val
     // Validation middleware already checked the input
 
     // Helper to slow down between API calls
-    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
     // Get all tracks from source playlists (with tracks included)
     const perPlaylistCounts = [];
@@ -1141,7 +1140,7 @@ router.post('/playlists/merge', authenticateUser, heavyOperationRateLimiter, val
       for (const t of filtered) {
         if (t.id != null) trackIdSet.add(t.id);
       }
-      await sleep(300); // small pause between playlist fetches
+      await sleep(SC_WRITE_PACING_MS); // small pause between playlist fetches
     }
 
     // ── MERGE INTO EXISTING PLAYLIST ──────────────────────────────────────────
@@ -1169,7 +1168,7 @@ router.post('/playlists/merge', authenticateUser, heavyOperationRateLimiter, val
       const mergeBatchSize = 100;
       let updateIndex = mergeBatchSize;
       while (updateIndex < targetChunk.length) {
-        await sleep(300);
+        await sleep(SC_WRITE_PACING_MS);
         const batch = targetChunk.slice(0, updateIndex + mergeBatchSize);
         await soundcloudClient.addTracksToPlaylist(
           req.accessToken,
@@ -1194,7 +1193,7 @@ router.post('/playlists/merge', authenticateUser, heavyOperationRateLimiter, val
       const baseTitle = (title && title.trim()) || targetPlaylist.title || 'Merged Playlist';
       const overflowPlaylists = [];
       for (let i = 0; i < overflowChunks.length; i++) {
-        await sleep(300);
+        await sleep(SC_WRITE_PACING_MS);
         const chunk = overflowChunks[i];
         const partNumber = i + 2; // Part 1 is targetPlaylist
         const partTitle = `${baseTitle} (Part ${partNumber})`;
@@ -1208,7 +1207,7 @@ router.post('/playlists/merge', authenticateUser, heavyOperationRateLimiter, val
 
         let addIndex = mergeBatchSize;
         while (addIndex < chunk.length) {
-          await sleep(300);
+          await sleep(SC_WRITE_PACING_MS);
           const batch = chunk.slice(0, addIndex + mergeBatchSize);
           await soundcloudClient.addTracksToPlaylist(
             req.accessToken,
@@ -1233,7 +1232,7 @@ router.post('/playlists/merge', authenticateUser, heavyOperationRateLimiter, val
       if (deleteAfterMerge) {
         const toDelete = sourcePlaylistIds.filter(id => id !== targetPlaylistId);
         for (const id of toDelete) {
-          await sleep(300);
+          await sleep(SC_WRITE_PACING_MS);
           try {
             await soundcloudClient.deletePlaylist(req.accessToken, req.refreshToken, id);
             deletedPlaylistIds.push(id);
@@ -1328,7 +1327,7 @@ router.post('/playlists/merge', authenticateUser, heavyOperationRateLimiter, val
         let finalCount = initialBatch.length;
         let addIndex = mergeBatchSize;
         while (addIndex < chunk.length) {
-          await sleep(300);
+          await sleep(SC_WRITE_PACING_MS);
           const addBatch = chunk.slice(0, addIndex + mergeBatchSize);
           await soundcloudClient.addTracksToPlaylist(
             req.accessToken,
@@ -1347,7 +1346,7 @@ router.post('/playlists/merge', authenticateUser, heavyOperationRateLimiter, val
         });
 
         if (i < chunks.length - 1) {
-          await sleep(300);
+          await sleep(SC_WRITE_PACING_MS);
         }
       }
 
@@ -1422,7 +1421,7 @@ router.post('/playlists/merge', authenticateUser, heavyOperationRateLimiter, val
       let finalCount = initialBatch.length;
       let addIndex = mergeBatchSize;
       while (addIndex < trackIdsArray.length) {
-        await sleep(300);
+        await sleep(SC_WRITE_PACING_MS);
         const addBatch = trackIdsArray.slice(0, addIndex + mergeBatchSize);
         await soundcloudClient.addTracksToPlaylist(
           req.accessToken,
@@ -1514,7 +1513,6 @@ const MAX_TRACKS_PER_PLAYLIST = 500;
  * @param {string} operationDescription - Summary only; SC Toolkit footer is appended automatically.
  */
 async function createPlaylistFromTrackIds(accessToken, refreshToken, trackIds, title, operationDescription) {
-  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const initialBatch = trackIds.slice(0, BATCH_SIZE_PLAYLIST_TRACKS);
   const newPlaylist = await soundcloudClient.createPlaylist(
     accessToken,
@@ -1526,7 +1524,7 @@ async function createPlaylistFromTrackIds(accessToken, refreshToken, trackIds, t
 
   let index = BATCH_SIZE_PLAYLIST_TRACKS;
   while (index < trackIds.length) {
-    await sleep(300);
+    await sleep(SC_WRITE_PACING_MS);
     const batch = trackIds.slice(0, index + BATCH_SIZE_PLAYLIST_TRACKS);
     await soundcloudClient.addTracksToPlaylist(
       accessToken,
@@ -1554,7 +1552,6 @@ function uniquePositiveIds(ids = []) {
 
 /** @param {string} [description] - Operation summary only (no footer); required when creating new playlist(s). */
 async function createOrAppendTrackIds({ accessToken, refreshToken, trackIds, title, targetPlaylistId, description }) {
-  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const uniqueTrackIds = uniquePositiveIds(trackIds);
 
   if (targetPlaylistId) {
@@ -1569,12 +1566,12 @@ async function createOrAppendTrackIds({ accessToken, refreshToken, trackIds, tit
 
     let index = BATCH_SIZE_PLAYLIST_TRACKS;
     while (index < targetChunk.length) {
-      await sleep(300);
+      await sleep(SC_WRITE_PACING_MS);
       await soundcloudClient.addTracksToPlaylist(accessToken, refreshToken, targetPlaylistId, targetChunk.slice(0, index));
       index += BATCH_SIZE_PLAYLIST_TRACKS;
     }
 
-    await sleep(300);
+    await sleep(SC_WRITE_PACING_MS);
     await soundcloudClient.addTracksToPlaylist(accessToken, refreshToken, targetPlaylistId, targetChunk);
 
     const overflowPlaylists = [];
@@ -1931,7 +1928,6 @@ router.post(
 router.post('/playlists/from-likes', authenticateUser, heavyOperationRateLimiter, validateCreateFromLikes, async (req, res) => {
   try {
     const { title, trackIds, targetPlaylistId } = req.body;
-    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
     // ── ADD TO EXISTING PLAYLIST ──────────────────────────────────────────────
     if (targetPlaylistId) {
@@ -1958,7 +1954,7 @@ router.post('/playlists/from-likes', authenticateUser, heavyOperationRateLimiter
       const batchSize = 100;
       let i = batchSize;
       while (i < targetChunk.length) {
-        await sleep(300);
+        await sleep(SC_WRITE_PACING_MS);
         await soundcloudClient.addTracksToPlaylist(
           req.accessToken,
           req.refreshToken,
@@ -1968,7 +1964,7 @@ router.post('/playlists/from-likes', authenticateUser, heavyOperationRateLimiter
         i += batchSize;
       }
       // Final PUT with full target chunk
-      await sleep(300);
+      await sleep(SC_WRITE_PACING_MS);
       await soundcloudClient.addTracksToPlaylist(
         req.accessToken,
         req.refreshToken,
@@ -2386,7 +2382,6 @@ router.post('/likes/tracks/bulk-unlike', authenticateUser, heavyOperationRateLim
  */
 router.post('/likes/tracks/bulk-like', authenticateUser, heavyOperationRateLimiter, validateBulkLike, async (req, res) => {
   // Gentle pacing between writes — liking a full playlist is many rapid POSTs.
-  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const elapsed = startOperationTimer();
   try {
     const { trackIds } = req.body;
@@ -3099,7 +3094,6 @@ router.post('/growth/check-followbacks', authenticateUser, heavyOperationRateLim
  * Unfollow and/or unlike targeted growth actions
  */
 router.post('/growth/reverse', authenticateUser, validateReverseGrowthActions, async (req, res) => {
-  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   try {
     const { actionIds, filter } = req.body;
     let targets = [];
@@ -3158,7 +3152,7 @@ router.post('/growth/reverse', authenticateUser, validateReverseGrowthActions, a
         failed++;
       }
       // sequential delay
-      await sleep(300);
+      await sleep(SC_WRITE_PACING_MS);
     }
 
     invalidateUserNamespaces(req.user.id, ['followings', 'likes']);

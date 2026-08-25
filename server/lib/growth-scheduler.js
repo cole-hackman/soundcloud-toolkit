@@ -2,13 +2,13 @@ import prisma from './prisma.js';
 import logger from './logger.js';
 import { decrypt } from './crypto.js';
 import { safeError } from './safe-error.js';
+import { sleep } from './pacing.js';
 
 const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000; // daily
 const INITIAL_DELAY_MS = 5 * 60 * 1000; // let the server settle first
 const MIN_FOLLOW_AGE_MS = 2 * 24 * 60 * 60 * 1000; // give people time to reciprocate
 const RECHECK_AFTER_MS = 24 * 60 * 60 * 1000;
 const USER_CHECK_DELAY_MS = 400;
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
  * Scheduled follow-back verification. Finds users with pending growth

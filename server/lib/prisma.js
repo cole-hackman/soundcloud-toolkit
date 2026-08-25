@@ -1,6 +1,7 @@
 import pkg from '@prisma/client';
 const { PrismaClient } = pkg;
 import logger from './logger.js';
+import { sleep } from './pacing.js';
 
 // Neon (serverless Postgres) closes idle connections — the compute can suspend
 // after inactivity and the pooler drops idle clients. Prisma keeps the now-dead
@@ -14,8 +15,6 @@ function isTransientConnectionError(err) {
   const msg = String(err.message || '');
   return /kind:\s*Closed|connection closed|connection reset|terminating connection/i.test(msg);
 }
-
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function createPrismaClient() {
   const base = new PrismaClient({

@@ -43,6 +43,19 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = SC_FETCH_TIMEOUT_
   }
 }
 
+/**
+ * In-flight token refreshes, keyed by userId. SoundCloud rotates the refresh
+ * token on every exchange, so two concurrent 401s for the same user would
+ * present the same refresh token twice: the second exchange fails, and the
+ * losing prisma.token.update can persist the older pair and log the user out.
+ * Collapsing them onto one promise makes the refresh idempotent per user.
+ *
+ * Per-process, like the resolve cache and the growth job registry — it matches
+ * the single-instance deploy. A second backend instance would each hold their
+ * own map; the DB write is still last-writer-wins across instances.
+ */
+const inFlightRefreshes = new Map();
+
 class SoundCloudClient {
   constructor() {
     this.baseUrl = 'https://api.soundcloud.com';
@@ -118,11 +131,31 @@ class SoundCloudClient {
   }
 
   async refreshTokensAndPersist(refreshToken) {
-    const newTokens = await this.refreshTokens(refreshToken);
     const context = getTokenContext();
+    const userId = context?.userId;
 
-    if (!context?.userId) {
-      console.warn('Token refresh completed without user context; refreshed tokens were not persisted', {
+    // No user context => nothing to collide on (and nothing to persist).
+    if (!userId) return this._refreshAndPersistNow(refreshToken, null);
+
+    const existing = inFlightRefreshes.get(userId);
+    if (existing) return existing;
+
+    const pending = this._refreshAndPersistNow(refreshToken, userId)
+      .finally(() => {
+        // Always clear, on success AND failure, so a failed refresh does not
+        // poison every later attempt for this user.
+        inFlightRefreshes.delete(userId);
+      });
+    inFlightRefreshes.set(userId, pending);
+    return pending;
+  }
+
+  /** The original, un-deduplicated refresh+persist. Do not call directly. */
+  async _refreshAndPersistNow(refreshToken, userId) {
+    const newTokens = await this.refreshTokens(refreshToken);
+
+    if (!userId) {
+      logger.warn('Token refresh completed without user context; refreshed tokens were not persisted', {
         hasAccessToken: Boolean(newTokens.access_token),
         hasRefreshToken: Boolean(newTokens.refresh_token),
         expiresIn: newTokens.expires_in,
@@ -133,7 +166,7 @@ class SoundCloudClient {
     if (newTokens.access_token && newTokens.refresh_token) {
       const expiresAt = new Date(Date.now() + ((newTokens.expires_in || 3600) * 1000));
       await prisma.token.update({
-        where: { userId: context.userId },
+        where: { userId },
         data: {
           encrypted: encrypt(newTokens.access_token, this.encryptionKey),
           refresh: encrypt(newTokens.refresh_token, this.encryptionKey),

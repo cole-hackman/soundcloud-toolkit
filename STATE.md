@@ -1,57 +1,41 @@
 # STATE
 
 ## Now
-Branch `ui-audit-overhaul` (from main@8bfd62a) holds the UI overhaul, growth
-audit fixes, AND the SongSwipe beta survey (replaces the monetization survey).
-The branch is pushed but not merged or deployed. Production Neon migrations
-completed July 9, 2026: `GrowthAction.inspirationNames` and `beta_signups` are
-live. Landing still wants two manual assets: a
-dashboard screenshot (`HERO_SHOT`) and testimonial quotes (`testimonials[]`),
-both in frontend-UI/src/app/page.tsx.
+Branch `engineering-review-remediation` (15 commits off main) is pushed and open
+as **PR #29** — awaiting Cole's review/merge. It implements the full remediation
+plan in `docs/superpowers/plans/2026-08-25-engineering-review-remediation.md`
+against the review in `docs/engineering-review-2026-08-25.md`. Everything is
+verified locally (26 suites / 176 tests green, frontend static export clean,
+server boot check clean) but **nothing is deployed yet**. Note the earlier
+`ui-audit-overhaul` branch (SongSwipe beta survey + UI overhaul) is now merged
+into main; its two manual landing assets (`HERO_SHOT` screenshot, `testimonials[]`)
+are still empty by design.
 
 ## Just done
-- (this session) — privacy line for beta email; accessibility pass backing the
-  WCAG 2.1 AA claim (prefers-reduced-motion global CSS + FlickeringGrid static
-  frame, skip-to-content link + #main-content landmarks, global focus-visible
-  fallback, aria-pressed on survey toggles); admin dashboard repointed to the
-  beta-survey fields + beta-emails export button (the old admin UI would have
-  shown empty after the API change); CLAUDE.md updated for the new survey.
-- 6d2d4e9 — SongSwipe beta survey replaces monetization survey: new
-  `beta_signups` table, `validateBetaSignup` (email required only if wantsBeta),
-  feedback.js on the new table (campaign `2026-songswipe-beta-v1`), admin
-  summary/list + `/feedback/beta-emails` CSV export, new tokenized
-  `BetaSurveyModal` (product name in `SONGSWIPE_NAME` constant for easy
-  rebrand), SurveyContext rewired. Old monetization modal+table kept for
-  history. Spec: docs/superpowers/specs/2026-07-09-songswipe-beta-survey-design.md.
-- 478bab1 — hero product-shot frame (gated by HERO_SHOT, null=hidden),
-  testimonials scaffold (empty array=hidden), following-library SelectionBanner
-  bottom padding.
-- de0bfdb — growth audit fixes: server-enforced daily follow cap (50/24h) +
-  cooldown, paced background batch runner w/ poll+cancel, likeTrack PUT→POST,
-  'followings' strategy + genre-affinity scoring (follow-ratio downweighted),
-  discovery excludes prior targets, id validation, opt-in auto-like, track
-  preview, analytics tab (per-seed conversion + follow-back curve), daily
-  follow-back scheduler, session CSV export.
-- 7edeadb — committed the pre-existing growth WIP as a clean base.
-- 1b4edd1 — UI overhaul all 4 phases (animation diet, token sweep, a11y,
-  dashboard grouping). Report: docs/ui-audit-2026-07-08.md.
-- Verified: full Jest suite green (87), frontend production build and TypeScript
-  check clean. The configured frontend lint command still requires `bunx`.
+- dc4923e — landing claim fixed: "Trusted by 2,000+ DJs & producers" →
+  "Trusted by 3,500+ SoundCloud users" (backed by the real 3,570 figure).
+- 85c4ad2 — README stats refreshed (3,570 users / 2,032,233 tracks, 2026-08-25)
+  with operation_log attribution; MIT LICENSE added; README-QUESTIONS.md deleted.
+- 5ad7604 — CLAUDE.md rewritten to match actual code (5 route files, real
+  server/lib tree, 13 Prisma models, growth/admin route families, CSRF+session
+  invariants); AGENTS.md reduced to a pointer; docs/SECURITY.md gained CSRF and
+  session-lifetime sections.
+- 703e38e + d1e145d + 1ea67a5 + b5a8069 + 93fa83f — refactors: routes/growth.js
+  and lib/social-cache.js extracted, three followed-library paged handlers
+  collapsed into one, lib/resolve-cache.js, lib/normalize.js, lib/pacing.js.
+  api.js 3,180 → 2,485 lines. No behavior change.
+- 8af4958 + 2800c76 + 4ce5ab0 + da9e12a + 1e9fbaa — security: session
+  timingSafeEqual + iat/TTL, rejectUntrustedOrigin on /api, 30s AbortController
+  on every SC fetch, logger message sanitization on all levels, and the first
+  route-level authz/CSRF tests (tests/routes/).
 
 ## Next
-1. DONE (2026-07-09): production Neon migrated via `prisma db push` —
-   `beta_signups` + `growth_actions` + `GrowthAction.inspirationNames` created,
-   additive-only. Schema now also declares the cross-branch tables
-   (chat_conversations, chat_messages, indexed_likes, indexed_playlist_tracks,
-   library_snapshots) that live in prod but aren't owned by this branch, so
-   db push doesn't drop them. Neon has 11 tables.
-2. DONE (2026-07-09): privacy policy now discloses SongSwipe beta email
-   collection and lightweight product-usage analytics.
-3. Decide the SongSwipe/rebrand name; if renaming, change `SONGSWIPE_NAME` in
-   BetaSurveyModal.tsx (one line).
-4. Add the two manual landing assets (HERO_SHOT screenshot + testimonials).
-5. Review branch, merge/PR, deploy, run /verify-deploy. The survey goes live the
-   moment it deploys with `SURVEY_CAMPAIGN_ID` = 2026-songswipe-beta-v1.
+1. Review and merge PR #29, then let Vercel + DigitalOcean deploy.
+2. Run `/verify-deploy` against the live site — landing copy, login round-trip
+   (everyone gets logged out once; confirm re-login works), one authenticated
+   call. This step is REQUIRED before calling the work done.
+3. Re-run `/handoff` after the deploy verifies, and decide the SongSwipe/rebrand
+   name (`SONGSWIPE_NAME` in BetaSurveyModal.tsx, one line).
 
 ## Decisions
 - Headline "The Ultimate SoundCloud Toolkit" kept as-is — only subhead copy
@@ -76,21 +60,38 @@ both in frontend-UI/src/app/page.tsx.
   `WHATS_NEW_VERSION` in lib/whatsNew.ts; bump that string to re-announce. Shows
   once on the dashboard after login, dismiss = never again, and takes priority
   over the survey so the two never stack in one session (2026-07-09).
+- Public numbers must be traceable to the production operation_log. The landing
+  says "3,500+ SoundCloud users" against a real 3,570; README carries the exact
+  figures plus their source. Never round up past the measurement (2026-08-25).
+- CLAUDE.md is the single authoritative project brief; AGENTS.md is only a
+  pointer at it. Do not re-fork the two (2026-08-25).
+- `express.json()` stays the ONLY body parser — it is load-bearing CSRF defense.
+  Adding `express.urlencoded()` breaks the fail-closed invariant that
+  tests/routes/feedback-authz.test.js guards (2026-08-25).
+- Session lifetime is enforced inside the signed payload via `iat` +
+  `SESSION_TTL_MS`, not by cookie maxAge alone. There is deliberately no
+  server-side revocation list — documented as a known limitation, not a bug
+  to "fix" with a session table unless that tradeoff is revisited (2026-08-25).
+- Licensed MIT, © 2026 Cole Hackman (2026-08-25).
 
 ## Landmines
+- **PR #29 logs every user out once on deploy.** Legacy session cookies have no
+  `iat` and are treated as expired. Expected, one-time, no data loss — but it
+  will look like an outage if you forget.
 - `prisma db push` from ANY branch syncs prod to that branch's schema and will
   DROP tables not present in it. Prod has cross-branch tables (AI chat +
-  library indexing); this branch's schema now declares them so push is safe.
-  Any other branch doing db push without those models would drop ~2,350 rows —
-  reconcile schemas before db push from other branches.
-- Growth engagement job registry is in-memory (one job/user, single-instance
-  assumption, like the resolve cache). Multiple backend instances would each
-  hold separate jobs — fine on the current single-instance deploy.
-- The "Trusted by 2,000+ DJs & producers" line on the landing is an unbacked
-  claim; verify it's real or soften it before leaning on testimonials.
+  library indexing); main's schema declares them so push is safe. Any other
+  branch doing db push without those models would drop ~2,350 rows.
+- Growth engagement job registry and the resolve cache are in-memory
+  (single-instance assumption). A second backend instance forks both.
+- Jest fake-timer tests in tests/soundcloud-client.test.js must use
+  `advanceTimersByTimeAsync` and attach `.rejects` handlers BEFORE advancing —
+  `fetchWithTimeout` adds a microtask hop that broke the old tick-counted flushes.
 - `next.config.js` rewrites/headers warnings under `output: export` are
   pre-existing and expected (dev-only rewrites).
 - Landing gradient text uses `.text-gradient` — do not lighten end stops
   past #ff8a3d; earlier #ffd28f failed contrast on the cream background.
 - `frontend-UI` logo assets have spaces in filenames ("/sc toolkit
   transparent .png") — referenced verbatim in code; renaming breaks pages.
+- No CI runs the Jest suite on push. `npm test` is manual, from the repo root
+  (not from frontend-UI, which has no test script).

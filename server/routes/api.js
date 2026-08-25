@@ -1473,20 +1473,16 @@ async function createOrAppendTrackIds({ accessToken, refreshToken, trackIds, tit
   };
 }
 
-router.get(
-  '/followings/:userId/likes/paged',
-  authenticateUser,
-  validateFollowingUserId,
-  validateFollowedUserLibraryPagination,
-  async (req, res) => {
+/** The three followed-user library pages differ only in which client method
+ * fetches the page, which normalizer shapes the items, and their log/error
+ * wording. Response shape and status mapping are identical across all three. */
+function followedLibraryPageHandler({ fetchPage, normalizeItem, logLabel, forbiddenMessage, failureMessage }) {
+  return async (req, res) => {
     try {
       const targetUser = await assertFollowedUser(req, req.params.userId);
-      const page = await soundcloudClient.getUserLikedTracksPage(req.accessToken, req.refreshToken, req.params.userId, {
-        limit: req.query.limit || 50,
-        next: req.query.next,
-      });
+      const page = await fetchPage(req);
       const collection = (Array.isArray(page.collection) ? page.collection : [])
-        .map(normalizeTrackForLibraryBrowser)
+        .map(normalizeItem)
         .filter(Boolean);
       res.json({
         user: {
@@ -1500,13 +1496,38 @@ router.get(
         total: page.total_results || undefined,
       });
     } catch (error) {
-      logger.error('Get followed user liked tracks error:', safeError(error));
+      logger.error(logLabel, safeError(error));
       const status = error?.status || 500;
       res.status(status === 403 ? 403 : 500).json({
-        error: status === 403 ? 'Choose a user you follow to browse their public likes.' : 'Failed to get followed user likes',
+        error: status === 403 ? forbiddenMessage : failureMessage,
       });
     }
-  }
+  };
+}
+
+const followedLibraryPageParams = (req) => ({
+  limit: req.query.limit || 50,
+  next: req.query.next,
+});
+
+router.get(
+  '/followings/:userId/likes/paged',
+  authenticateUser,
+  validateFollowingUserId,
+  validateFollowedUserLibraryPagination,
+  followedLibraryPageHandler({
+    fetchPage: (req) =>
+      soundcloudClient.getUserLikedTracksPage(
+        req.accessToken,
+        req.refreshToken,
+        req.params.userId,
+        followedLibraryPageParams(req)
+      ),
+    normalizeItem: normalizeTrackForLibraryBrowser,
+    logLabel: 'Get followed user liked tracks error:',
+    forbiddenMessage: 'Choose a user you follow to browse their public likes.',
+    failureMessage: 'Failed to get followed user likes',
+  })
 );
 
 router.get(
@@ -1514,35 +1535,19 @@ router.get(
   authenticateUser,
   validateFollowingUserId,
   validateFollowedUserLibraryPagination,
-  async (req, res) => {
-    try {
-      const targetUser = await assertFollowedUser(req, req.params.userId);
-      const page = await soundcloudClient.getUserPlaylistsPage(req.accessToken, req.refreshToken, req.params.userId, {
-        limit: req.query.limit || 50,
-        next: req.query.next,
-      });
-      const collection = (Array.isArray(page.collection) ? page.collection : [])
-        .map(normalizePlaylistForLibraryBrowser)
-        .filter(Boolean);
-      res.json({
-        user: {
-          id: targetUser.id,
-          username: targetUser.username,
-          avatar_url: targetUser.avatar_url,
-          permalink_url: targetUser.permalink_url,
-        },
-        collection,
-        next_href: page.next_href || null,
-        total: page.total_results || undefined,
-      });
-    } catch (error) {
-      logger.error('Get followed user playlists error:', safeError(error));
-      const status = error?.status || 500;
-      res.status(status === 403 ? 403 : 500).json({
-        error: status === 403 ? 'Choose a user you follow to browse their public playlists.' : 'Failed to get followed user playlists',
-      });
-    }
-  }
+  followedLibraryPageHandler({
+    fetchPage: (req) =>
+      soundcloudClient.getUserPlaylistsPage(
+        req.accessToken,
+        req.refreshToken,
+        req.params.userId,
+        followedLibraryPageParams(req)
+      ),
+    normalizeItem: normalizePlaylistForLibraryBrowser,
+    logLabel: 'Get followed user playlists error:',
+    forbiddenMessage: 'Choose a user you follow to browse their public playlists.',
+    failureMessage: 'Failed to get followed user playlists',
+  })
 );
 
 router.get(
@@ -1550,35 +1555,19 @@ router.get(
   authenticateUser,
   validateFollowingUserId,
   validateFollowedUserLibraryPagination,
-  async (req, res) => {
-    try {
-      const targetUser = await assertFollowedUser(req, req.params.userId);
-      const page = await soundcloudClient.getUserLikedPlaylistsPage(req.accessToken, req.refreshToken, req.params.userId, {
-        limit: req.query.limit || 50,
-        next: req.query.next,
-      });
-      const collection = (Array.isArray(page.collection) ? page.collection : [])
-        .map(normalizePlaylistForLibraryBrowser)
-        .filter(Boolean);
-      res.json({
-        user: {
-          id: targetUser.id,
-          username: targetUser.username,
-          avatar_url: targetUser.avatar_url,
-          permalink_url: targetUser.permalink_url,
-        },
-        collection,
-        next_href: page.next_href || null,
-        total: page.total_results || undefined,
-      });
-    } catch (error) {
-      logger.error('Get followed user liked playlists error:', safeError(error));
-      const status = error?.status || 500;
-      res.status(status === 403 ? 403 : 500).json({
-        error: status === 403 ? 'Choose a user you follow to browse their public liked playlists.' : 'Failed to get followed user liked playlists',
-      });
-    }
-  }
+  followedLibraryPageHandler({
+    fetchPage: (req) =>
+      soundcloudClient.getUserLikedPlaylistsPage(
+        req.accessToken,
+        req.refreshToken,
+        req.params.userId,
+        followedLibraryPageParams(req)
+      ),
+    normalizeItem: normalizePlaylistForLibraryBrowser,
+    logLabel: 'Get followed user liked playlists error:',
+    forbiddenMessage: 'Choose a user you follow to browse their public liked playlists.',
+    failureMessage: 'Failed to get followed user liked playlists',
+  })
 );
 
 router.post(

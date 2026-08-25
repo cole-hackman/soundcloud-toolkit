@@ -181,3 +181,28 @@ Final sweep: README top section links ANALYSIS.md + SECURITY.md; confirm no TODO
 8. Commits 7–9 — the four small extractions, test-run between each.
 9. Commits 10–11 — docs rewrite + README/LICENSE.
 10. Commit 12 — landing claim fix, deploy, /verify-deploy, then /handoff to refresh STATE.md.
+
+---
+
+## Phase 4 Results (measured 2026-08-25)
+
+Benchmark: `scripts/bench-logger.js`, 20,000 iterations per case, Node
+production mode, output suppressed. Figures recorded from Run 2 (representative middle run of three).
+
+| Case | µs/op |
+|---|---|
+| `logger.info`, clean message | 0.77 |
+| `logger.info`, message containing secrets | 1.30 |
+| `logger.info`, message + 50-item payload | 227.28 |
+| `preventKeyLeakage` on a 50-track response | 82.89 |
+
+**Typical per-request cost:** 0.084 ms.
+
+Run-to-run spread across 3 runs on the same machine: payload case ~227–233 µs/op, middleware case ~82–84 µs/op. Single-run figures above; the decision is insensitive to this spread.
+
+**Decision:** keep `preventKeyLeakage` as-is — the combined cost of one sanitized log (0.77 µs) plus one wrapped JSON response (82.89 µs) totals 83.66 µs per typical request, or ~0.084 ms. This is negligible compared to network latency and SoundCloud API calls (typically 100–500ms per request). The re-serialization does no material harm and is cheap enough to leave unoptimized indefinitely.
+
+**Merge throughput** (the other Phase 4 candidate) is NOT measured here: it
+requires a production `operation_log` export, which is a Cole action, not a
+repo action. See "What I Need From Cole" in
+`docs/superpowers/plans/2026-08-25-audit-completion.md`.

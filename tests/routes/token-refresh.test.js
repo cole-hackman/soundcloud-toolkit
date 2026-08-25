@@ -4,6 +4,10 @@ import cookieParser from 'cookie-parser';
 import request from 'supertest';
 import { Response } from 'node-fetch';
 
+// Capture original env before overwriting
+const ORIGINAL_ENCRYPTION_KEY = process.env.ENCRYPTION_KEY;
+const ORIGINAL_SESSION_SECRET = process.env.SESSION_SECRET;
+
 process.env.ENCRYPTION_KEY = 'x'.repeat(32);
 process.env.SESSION_SECRET = 's'.repeat(40);
 
@@ -37,14 +41,11 @@ function sessionCookie(userId = 'user-1') {
   return `session=${encodeURIComponent(signSession(value, process.env.SESSION_SECRET))}`;
 }
 
-const originalEnv = {
-  ENCRYPTION_KEY: process.env.ENCRYPTION_KEY,
-  SESSION_SECRET: process.env.SESSION_SECRET,
-};
 const originalFetch = global.fetch;
 
 beforeEach(() => {
   tokenUpdate.mockClear();
+  findUnique.mockClear();
   findUnique.mockResolvedValue({
     id: 'user-1',
     soundcloudId: 111,
@@ -57,8 +58,10 @@ beforeEach(() => {
 });
 
 afterAll(() => {
-  process.env.ENCRYPTION_KEY = originalEnv.ENCRYPTION_KEY;
-  process.env.SESSION_SECRET = originalEnv.SESSION_SECRET;
+  if (ORIGINAL_ENCRYPTION_KEY === undefined) delete process.env.ENCRYPTION_KEY;
+  else process.env.ENCRYPTION_KEY = ORIGINAL_ENCRYPTION_KEY;
+  if (ORIGINAL_SESSION_SECRET === undefined) delete process.env.SESSION_SECRET;
+  else process.env.SESSION_SECRET = ORIGINAL_SESSION_SECRET;
   global.fetch = originalFetch;
 });
 

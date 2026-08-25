@@ -19,7 +19,7 @@ BigInt.prototype.toJSON = function () {
 
 // Import security middleware
 import { apiRateLimiter, authRateLimiter, heavyOperationRateLimiter, healthCheckRateLimiter } from './middleware/rateLimiter.js';
-import { securityHeaders, preventKeyLeakage, validateEnv } from './middleware/security.js';
+import { securityHeaders, preventKeyLeakage, validateEnv, rejectUntrustedOrigin } from './middleware/security.js';
 import logger from './lib/logger.js';
 import { safeError } from './lib/safe-error.js';
 
@@ -102,6 +102,9 @@ app.use((req, res, next) => {
 
 app.use(express.json());
 app.use(cookieParser());
+
+// CSRF defense-in-depth: see rejectUntrustedOrigin doc comment.
+app.use('/api', rejectUntrustedOrigin);
 
 // Import routes
 import authRoutes from './routes/auth.js';

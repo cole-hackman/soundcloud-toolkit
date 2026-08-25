@@ -3,8 +3,12 @@
 Bulk library management for SoundCloud power users — the batch operations the
 official site makes you do one click at a time.
 
-**3,155 registered users · 1,216 active in the last 90 days · 1,125,105 tracks
-processed all-time** (as of August 2026)
+**3,570 registered users · 1,216 active in the last 90 days · 2,032,233 tracks
+processed all-time** (users and tracks as of August 25, 2026; the 90-day active
+figure is from August 2026 and has not been re-measured since)
+
+Numbers come from the production `operation_log` table (see
+[ANALYSIS.md](ANALYSIS.md) for methodology).
 
 Live at [soundcloudtoolkit.com](https://soundcloudtoolkit.com).
 
@@ -23,8 +27,9 @@ effectively impossible. The toolkit runs those operations in batches through
 SoundCloud's OAuth API, and splits playlist output into numbered parts when it
 hits the cap.
 
-<!-- TODO: verify — one line on how the problem was discovered (own workflow?
-user conversations? forum threads?). See README-QUESTIONS.md. -->
+I built the first version for my own library — thousands of likes and playlists
+sitting past the 500-track cap, with no way in the official site to clean any of
+it up in bulk.
 
 ## How it works
 
@@ -115,9 +120,10 @@ slow, and that's the predictable complaint.
 - Observability is application logs plus the in-database operation log. No
   metrics, no alerting, no error tracker. The only scheduled automation is a
   GitHub Actions cron pinging `/health` every five minutes.
-- 110 unit tests across 14 suites pass locally (crypto, merge logic,
-  validation, the follow engine, the API client wrapper), but no CI runs them
-  on push, and the frontend has no tests.
+- 176 tests across 26 suites pass locally (crypto, merge logic, validation, the
+  follow engine, the API client wrapper, plus route-level authz/CSRF boundary
+  tests under `tests/routes/`), but no CI runs them on push, and the frontend
+  has no tests.
 
 ## What I'd do next
 
@@ -134,3 +140,7 @@ slow, and that's the predictable complaint.
 
 Next.js 15 · React 18 · TypeScript · Tailwind CSS · Express · Prisma ·
 PostgreSQL (Neon) · Vercel · DigitalOcean
+
+## License
+
+MIT — see [LICENSE](LICENSE).

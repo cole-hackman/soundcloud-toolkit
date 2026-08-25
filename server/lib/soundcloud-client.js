@@ -28,6 +28,21 @@ async function parseScJson(response, { context = 'SoundCloud API', allowEmpty = 
   }
 }
 
+const SC_FETCH_TIMEOUT_MS = Number(process.env.SC_FETCH_TIMEOUT_MS) || 30_000;
+
+/** fetch that cannot hang: aborts after timeoutMs. SoundCloud has no SLA on
+ * slow sockets; without this a single stuck request holds the response open
+ * indefinitely. */
+async function fetchWithTimeout(url, options = {}, timeoutMs = SC_FETCH_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 class SoundCloudClient {
   constructor() {
     this.baseUrl = 'https://api.soundcloud.com';
@@ -54,7 +69,7 @@ class SoundCloudClient {
       code_verifier: codeVerifier
     });
 
-    const response = await fetch('https://secure.soundcloud.com/oauth/token', {
+    const response = await fetchWithTimeout('https://secure.soundcloud.com/oauth/token', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
@@ -85,7 +100,7 @@ class SoundCloudClient {
       refresh_token: refreshToken
     });
 
-    const response = await fetch('https://secure.soundcloud.com/oauth/token', {
+    const response = await fetchWithTimeout('https://secure.soundcloud.com/oauth/token', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
@@ -138,7 +153,7 @@ class SoundCloudClient {
     const { max429Retries = 3, retryAttempt = 0, ...fetchOptions } = options;
     const url = `${this.baseUrl}${endpoint}`;
     
-    const response = await fetch(url, {
+    const response = await fetchWithTimeout(url, {
       ...fetchOptions,
       headers: {
         'Authorization': `OAuth ${accessToken}`,
@@ -154,7 +169,7 @@ class SoundCloudClient {
         const newAccessToken = newTokens.access_token;
 
         // Retry the request with new token
-        const retryResponse = await fetch(url, {
+        const retryResponse = await fetchWithTimeout(url, {
           ...fetchOptions,
           headers: {
             'Authorization': `OAuth ${newAccessToken}`,
@@ -276,7 +291,7 @@ class SoundCloudClient {
     let retries429 = 0;
 
     while (nextUrl && allItems.length < maxItems && (deadlineAt === null || Date.now() < deadlineAt)) {
-      const res = await fetch(nextUrl, {
+      const res = await fetchWithTimeout(nextUrl, {
         headers: {
           'Authorization': `OAuth ${currentAccessToken}`,
           'Accept': 'application/json'
@@ -380,7 +395,7 @@ class SoundCloudClient {
    */
   async resolveAny(accessToken, refreshToken, targetUrl) {
     const doFetch = async (token) => {
-      const res = await fetch(`https://api.soundcloud.com/resolve?url=${encodeURIComponent(targetUrl)}`, {
+      const res = await fetchWithTimeout(`https://api.soundcloud.com/resolve?url=${encodeURIComponent(targetUrl)}`, {
         method: 'GET',
         redirect: 'manual',
         headers: {
@@ -391,7 +406,7 @@ class SoundCloudClient {
       if (res.status === 302) {
         const location = res.headers.get('location');
         if (!location) throw new Error('Resolve redirect missing location');
-        const res2 = await fetch(location, {
+        const res2 = await fetchWithTimeout(location, {
           headers: {
             'Authorization': `OAuth ${token}`,
             'Accept': 'application/json'
@@ -424,7 +439,7 @@ class SoundCloudClient {
    */
   async resolvePublic(targetUrl) {
     const base = `https://api.soundcloud.com/resolve?url=${encodeURIComponent(targetUrl)}&client_id=${encodeURIComponent(this.clientId)}`;
-    const res = await fetch(base, {
+    const res = await fetchWithTimeout(base, {
       method: 'GET',
       redirect: 'manual',
       headers: { 'Accept': 'application/json' }
@@ -432,7 +447,7 @@ class SoundCloudClient {
     if (res.status === 302) {
       const location = res.headers.get('location');
       if (!location) throw new Error('Resolve redirect missing location');
-      const res2 = await fetch(location, { headers: { 'Accept': 'application/json' } });
+      const res2 = await fetchWithTimeout(location, { headers: { 'Accept': 'application/json' } });
       if (!res2.ok) {
         // Don't include response body in error message
         throw new Error(`Resolve follow error: ${res2.status}`);
@@ -726,7 +741,7 @@ class SoundCloudClient {
     }
 
     const fetchUrl = downloadUrl.replace('https://api.soundcloud.com', this.baseUrl);
-    const res = await fetch(fetchUrl, {
+    const res = await fetchWithTimeout(fetchUrl, {
       method: 'GET',
       headers: {
         'Authorization': `OAuth ${accessToken}`,

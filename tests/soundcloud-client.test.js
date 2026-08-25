@@ -40,8 +40,7 @@ describe('soundcloud client behaviors', () => {
     fetch.mockReturnValueOnce(first).mockReturnValueOnce(second);
 
     const p = soundcloudClient.scRequest(endpoint, 'a', 'r');
-    await Promise.resolve();
-    jest.advanceTimersByTime(1000);
+    await jest.advanceTimersByTimeAsync(1000);
     const res = await p;
     expect(res).toEqual(okJson);
     expect(fetch).toHaveBeenCalledTimes(2);
@@ -54,10 +53,12 @@ describe('soundcloud client behaviors', () => {
       .mockReturnValueOnce(Promise.resolve(new Response('', { status: 429 })));
 
     const request = soundcloudClient.scRequest(endpoint, 'a', 'r', { max429Retries: 1 });
-    await Promise.resolve();
-    jest.advanceTimersByTime(1000);
+    // Attach the rejection handler BEFORE advancing timers: the request now
+    // rejects during the advance, and an unattached rejection would be unhandled.
+    const rejects = expect(request).rejects.toThrow('API request failed: 429');
+    await jest.advanceTimersByTimeAsync(1000);
 
-    await expect(request).rejects.toThrow('API request failed: 429');
+    await rejects;
     expect(fetch).toHaveBeenCalledTimes(2);
   });
 
@@ -183,8 +184,7 @@ describe('soundcloud client behaviors', () => {
         .mockReturnValueOnce(page(0, 1, null));
 
       const p = soundcloudClient.paginate('/x', 'a', 'r', 50);
-      await Promise.resolve();
-      jest.advanceTimersByTime(1000);
+      await jest.advanceTimersByTimeAsync(1000);
       const items = await p;
 
       expect(items).toHaveLength(1);
@@ -198,10 +198,10 @@ describe('soundcloud client behaviors', () => {
         .mockReturnValueOnce(Promise.resolve(new Response('', { status: 429 })));
 
       const request = soundcloudClient.paginate('/x', 'a', 'r', 50, { max429Retries: 1 });
-      await Promise.resolve();
-      jest.advanceTimersByTime(1000);
+      const rejects = expect(request).rejects.toThrow('API request failed: 429');
+      await jest.advanceTimersByTimeAsync(1000);
 
-      await expect(request).rejects.toThrow('API request failed: 429');
+      await rejects;
       expect(fetch).toHaveBeenCalledTimes(2);
     });
 

@@ -9,6 +9,7 @@ import { piggybackEnrichment } from '../lib/enrichment.js';
 import logger from '../lib/logger.js';
 import { sleep, SC_WRITE_PACING_MS } from '../lib/pacing.js';
 import { extractNumericId, normalizeResource, normalizeResourceV2, normalizeTrackForLibraryBrowser, normalizePlaylistForLibraryBrowser } from '../lib/normalize.js';
+import { getCachedResolve, setCachedResolve } from '../lib/resolve-cache.js';
 import { safeError } from '../lib/safe-error.js';
 import { isAllowedDownloadRedirectTarget, isAllowedDownloadUrl } from '../lib/download-utils.js';
 import { buildDashboardSummary } from '../lib/dashboard-summary.js';
@@ -115,11 +116,6 @@ function playlistDescriptionWithToolkit(operationDescription) {
   return `${body}\n\n${SC_TOOLKIT_PLAYLIST_FOOTER}`;
 }
 
-// Simple in-memory cache for resolve results (5 minutes TTL)
-const RESOLVE_CACHE_TTL_MS = 5 * 60 * 1000;
-const RESOLVE_CACHE_MAX_ENTRIES = 1000;
-const resolveCache = new Map(); // key: normalized input URL, value: { data, expiresAt }
-
 function sanitizeUrl(input = '') {
   let url = String(input).trim();
   if (!url) return '';
@@ -147,26 +143,6 @@ function isResolveV2(req) {
   const queryVersion = String(req.query?.v || '').trim();
   const headerVersion = String(req.get('x-resolve-version') || '').trim();
   return queryVersion === '2' || headerVersion === '2';
-}
-
-function pruneResolveCache() {
-  const now = Date.now();
-  for (const [key, value] of resolveCache.entries()) {
-    if (!value || value.expiresAt <= now) resolveCache.delete(key);
-  }
-  if (resolveCache.size <= RESOLVE_CACHE_MAX_ENTRIES) return;
-  const overflow = resolveCache.size - RESOLVE_CACHE_MAX_ENTRIES;
-  let removed = 0;
-  for (const key of resolveCache.keys()) {
-    resolveCache.delete(key);
-    removed += 1;
-    if (removed >= overflow) break;
-  }
-}
-
-function setResolveCache(url, data) {
-  pruneResolveCache();
-  resolveCache.set(url, { data, expiresAt: Date.now() + RESOLVE_CACHE_TTL_MS });
 }
 
 function getPlayableTrackIds(tracks = []) {
@@ -815,20 +791,19 @@ async function handleResolve(req, res) {
     const cleaned = sanitizeUrl(rawUrl);
     if (!cleaned) return res.status(400).json({ error: 'Invalid SoundCloud URL' });
 
-    const now = Date.now();
-    const cached = resolveCache.get(cleaned);
-    if (cached && cached.expiresAt > now) {
+    const cached = getCachedResolve(cleaned);
+    if (cached) {
       logOperation({
         userId: req.user.id,
         action: 'resolve',
         status: 'success',
-        trackIds: cached.data?.type === 'track' && cached.data.id != null ? [cached.data.id] : undefined,
-        playlistIds: cached.data?.type === 'playlist' && cached.data.id != null ? [cached.data.id] : undefined,
-        metadata: { resolvedType: cached.data?.type ?? 'unknown', cached: true },
+        trackIds: cached?.type === 'track' && cached.id != null ? [cached.id] : undefined,
+        playlistIds: cached?.type === 'playlist' && cached.id != null ? [cached.id] : undefined,
+        metadata: { resolvedType: cached?.type ?? 'unknown', cached: true },
       });
-      if (!useV2) return res.json(cached.data);
+      if (!useV2) return res.json(cached);
       return res.json({
-        data: normalizeResourceV2(cached.data) || cached.data,
+        data: normalizeResourceV2(cached) || cached,
         meta: {
           version: '2',
           source_url: cleaned,
@@ -879,7 +854,7 @@ async function handleResolve(req, res) {
       }
     } catch {}
 
-    setResolveCache(cleaned, normalized);
+    setCachedResolve(cleaned, normalized);
     if (!useV2) {
       res.json(normalized);
     } else {
@@ -2047,10 +2022,10 @@ router.post('/resolve/batch', authenticateUser, heavyOperationRateLimiter, valid
       }
 
       // Check cache first
-      const cached = resolveCache.get(url);
-      if (cached && cached.expiresAt > Date.now()) {
-        resolvedResources.push(cached.data);
-        const cachedData = useV2 ? (normalizeResourceV2(cached.data) || cached.data) : cached.data;
+      const cached = getCachedResolve(url);
+      if (cached) {
+        resolvedResources.push(cached);
+        const cachedData = useV2 ? (normalizeResourceV2(cached) || cached) : cached;
         const okResult = { url: rawUrl, status: 'ok', data: cachedData };
         results.push(useV2 ? { ...okResult, index } : okResult);
         continue;
@@ -2068,7 +2043,7 @@ router.post('/resolve/batch', authenticateUser, heavyOperationRateLimiter, valid
           resolvedResources.push(normalizedV1);
           if (normalizedV1.type === 'track') harvestTracks([resource]);
           else if (normalizedV1.type === 'playlist') harvestPlaylists([resource]);
-          setResolveCache(url, normalizedV1);
+          setCachedResolve(url, normalizedV1);
           const payload = useV2 ? normalizeResourceV2(resource) : normalizedV1;
           const okResult = { url: rawUrl, status: 'ok', data: payload };
           results.push(useV2 ? { ...okResult, index } : okResult);

@@ -336,7 +336,7 @@ export default function Home() {
         <section className="border-y border-border/60 bg-surface px-4 py-6 sm:px-6">
           <div className="mx-auto max-w-5xl">
             <p className="mb-6 text-center text-sm font-semibold uppercase tracking-wider text-muted-foreground sm:text-base">
-              Trusted by 2,000+ DJs & producers
+              Trusted by 3,500+ SoundCloud users
             </p>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               {[

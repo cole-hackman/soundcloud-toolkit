@@ -6,6 +6,8 @@
 > copy any of this into the live page until the feature branch is actually
 > deployed and the SoundCloud API terms questions in `TERMS-CHECK.md` are
 > resolved.
+> **SUPERSEDED 2026-08-25** — the live privacy page now covers beta-email
+> collection and product-usage analytics. Kept for history; do not edit.
 
 ## What this draft replaces or extends
 

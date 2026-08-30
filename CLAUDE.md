@@ -42,7 +42,7 @@ soundcloud-tool/
 │   │   ├── growth.js             # Growth/discovery suite — /growth/* (discover, engage, analytics, history, follow-backs, reverse, stats)
 │   │   ├── admin.js              # Admin dashboard — stats, operations, catalog, feedback (every route is authenticateUser + adminAuth)
 │   │   ├── auth.js               # OAuth2+PKCE login/callback, session /me, logout, account deletion
-│   │   └── feedback.js           # SongSwipe beta survey — status + submit
+│   │   └── feedback.js           # Rebrand name vote — status + submit
 │   ├── lib/
 │   │   ├── soundcloud-client.js  # SoundCloud API wrapper — token exchange, pagination, 401 refresh, 429 backoff, 30s fetch timeout
 │   │   ├── session.js            # signSession/unsignSession (HMAC-SHA256, timing-safe), parseSessionData (iat/TTL), SESSION_TTL_MS
@@ -109,7 +109,7 @@ soundcloud-tool/
 │   │   ├── components/
 │   │   │   ├── ui/               # shadcn-style primitive components
 │   │   │   ├── AppShell.tsx      # Sidebar layout wrapper
-│   │   │   ├── BetaSurveyModal.tsx  # SongSwipe beta survey modal
+│   │   │   ├── RebrandSurveyModal.tsx # Rebrand name-vote modal
 │   │   │   ├── Providers.tsx     # Context aggregator
 │   │   │   └── Analytics.tsx     # Google Analytics integration
 │   │   ├── contexts/
@@ -234,7 +234,8 @@ The schema (`prisma/schema.prisma`) has **13 models**, not two:
 | `OperationLog` | Per-operation analytics record — action, status, duration, track/playlist ids |
 | `Track` / `Playlist` | Harvested music catalog (populated opportunistically from resolved/browsed content) |
 | `GrowthAction` | Follow/like actions taken by the growth suite, plus follow-back outcomes |
-| `BetaSignup` | SongSwipe beta survey responses (`@@unique([userId, campaignId])`) |
+| `RebrandVote` | Rebrand name-vote responses — the live survey (`@@unique([userId, campaignId])`) |
+| `BetaSignup` | The retired SongSwipe beta survey — retained read-only for history |
 | `SurveyResponse` | The retired monetization survey — retained read-only for history |
 | `chat_conversations` / `chat_messages` | AI library chat (owned by `feature/ai-library-chat`; declared here so `prisma db push` does not drop them) |
 | `indexed_likes` / `indexed_playlist_tracks` / `library_snapshots` | Library indexing for that same feature — same db-push caveat |
@@ -428,6 +429,8 @@ is registered without the pair.
 | `GET` | `/api/admin/catalog/summary` | Harvested music-catalog summary |
 | `GET` | `/api/admin/catalog/tracks` | Catalog track list |
 | `GET` | `/api/admin/catalog/tracks/:id/operations` | Operations touching one track |
+| `GET` | `/api/admin/rebrand/summary` | Rebrand name-vote tally + write-in counts |
+| `GET` | `/api/admin/rebrand` | Rebrand vote list (write-in names, feature requests) |
 | `GET` | `/api/admin/feedback/summary` | Beta-survey aggregates |
 | `GET` | `/api/admin/feedback` | Beta-survey response list |
 | `GET` | `/api/admin/feedback/beta-emails` | CSV export of beta opt-in emails |
@@ -442,27 +445,45 @@ is registered without the pair.
 > hand-maintained — re-check it against `grep -n "router\." server/routes/*.js`
 > before trusting it.
 
-### Feedback Survey (SongSwipe beta recruitment)
+### Feedback Survey (rebrand name vote)
 
-The survey infrastructure now runs the **SongSwipe beta** survey (recruit SC
-Toolkit's DJ users to beta-test a Rekordbox culling app + validate the problem).
-It replaced the earlier monetization survey; the old `SurveyResponse` table +
-`MonetizationSurveyModal.tsx` are retained read-only for history.
+The survey infrastructure now runs the **rebrand name vote**. SoundCloud's API
+Terms of Use forbid "SoundCloud" in an app's name *or* its domain, so the
+product has to rename; this survey shows every logged-in user the ranked
+shortlist and collects a vote plus two optional write-ins.
+
+It replaced the SongSwipe beta survey, which replaced the monetization survey
+before that. Both predecessors (`BetaSignup`, `SurveyResponse`) are retained
+read-only for history — their admin read endpoints still work, their write
+paths and modals are gone.
 
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET` | `/api/feedback/survey/status` | `{ enabled, campaignId, submitted, submittedAt }` for the current user / active campaign |
-| `POST` | `/api/feedback/survey` | Submit beta signup: `{ rekordboxUse, interest, wantsBeta, email?, platform?, cullMethod?, featuresWanted?, editHesitations?, trustDirectWrite?, wantsCall?, suggestions?, nameIdea?, context }`; `email` required only when `wantsBeta` is true; 409 if already submitted for the campaign |
-| `GET` | `/api/admin/feedback/summary` | Admin-only aggregate counts by `interest`, `rekordboxUse`, `platform`, plus `wantsBetaCount` |
-| `GET` | `/api/admin/feedback` | Admin-only paginated response list with user info + new fields |
-| `GET` | `/api/admin/feedback/beta-emails` | Admin-only CSV export of beta opt-in emails (the invite list) |
+| `POST` | `/api/feedback/survey` | Submit a vote: `{ nameChoice, nameIdea?, featureIdea?, context }`; 409 if already submitted for the campaign |
+| `GET` | `/api/admin/rebrand/summary` | Admin-only tally by `nameChoice`, plus write-in and feature-request counts |
+| `GET` | `/api/admin/rebrand` | Admin-only paginated vote list with user info and both write-in fields |
 
-Responses live in the `BetaSignup` table (`@@unique([userId, campaignId])`),
-linked to `userId` + snapshotted `soundcloudId`. Modal ([`BetaSurveyModal.tsx`](frontend-UI/src/components/BetaSurveyModal.tsx),
-product name in the `SONGSWIPE_NAME` constant) is gated by [`SurveyContext.tsx`](frontend-UI/src/contexts/SurveyContext.tsx)
-using server-truth submission + a 14-day client cooldown. Triggers fire on the
-dashboard, post-merge success, and post-likes-to-playlist success. Default
-campaign is `2026-songswipe-beta-v1`.
+`nameChoice` is one of the shortlist slugs — `tracktidy`, `deckdig`,
+`sortwave`, `deckhaul`, `tracktoolkit` — or `none`. The list is defined in
+three places that must stay in sync: `REBRAND_NAME_SLUGS`
+([`validation.js`](server/middleware/validation.js)), `NAME_OPTIONS`
+([`RebrandSurveyModal.tsx`](frontend-UI/src/components/RebrandSurveyModal.tsx)),
+and `REBRAND_NAME_ORDER` in the admin page.
+
+Responses live in the `RebrandVote` table (`@@unique([userId, campaignId])`),
+linked to `userId` + snapshotted `soundcloudId`. The modal is gated by
+[`SurveyContext.tsx`](frontend-UI/src/contexts/SurveyContext.tsx) using
+server-truth submission plus client-side snooze / cooldown. Unlike the beta
+survey there is **no qualifier gate and no heavy-user carve-out** — every
+authenticated user is in scope. Triggers fire on the dashboard, post-merge
+success, and post-likes-to-playlist success. Default campaign is
+`2026-rebrand-name-v1`.
+
+Because localStorage keys are namespaced by campaign id, a stale
+`SURVEY_CAMPAIGN_ID` in the environment would carry the previous survey's
+snooze / don't-show-again state over. **Unset it (or set it to
+`2026-rebrand-name-v1`) when deploying this survey.**
 
 ---
 
@@ -590,7 +611,7 @@ campaign is `2026-songswipe-beta-v1`.
 | `NODE_ENV` | Yes | `development` or `production` |
 | `PORT` | No | HTTP port (default 3001) |
 | `SURVEY_ENABLED` | No | Kill switch for the in-app feedback survey (`true` by default; set to `false` to disable globally without a redeploy) |
-| `SURVEY_CAMPAIGN_ID` | No | Active survey campaign identifier (default `2026-songswipe-beta-v1`). Bumping this opens a new campaign so previously-submitted users see the prompt again |
+| `SURVEY_CAMPAIGN_ID` | No | Active survey campaign identifier (default `2026-rebrand-name-v1`). Bumping this opens a new campaign so previously-submitted users see the prompt again |
 | `GROWTH_AUTOCHECK` | No | Set to `false` to disable the daily growth follow-back scheduler |
 | `ADMIN_IDS` | No | Comma-separated SoundCloud numeric user IDs allowed into `/api/admin/*`. Unset or empty = **nobody** (fails closed) |
 | `SC_FETCH_TIMEOUT_MS` | No | AbortController deadline on every SoundCloud fetch (default `30000`) |

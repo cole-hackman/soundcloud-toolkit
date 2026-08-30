@@ -1,17 +1,23 @@
 # STATE
 
 ## Now
-Branch `engineering-review-remediation` (15 commits off main) is pushed and open
-as **PR #29** — awaiting Cole's review/merge. It implements the full remediation
-plan in `docs/superpowers/plans/2026-08-25-engineering-review-remediation.md`
-against the review in `docs/engineering-review-2026-08-25.md`. Everything is
-verified locally (26 suites / 176 tests green, frontend static export clean,
-server boot check clean) but **nothing is deployed yet**. Note the earlier
-`ui-audit-overhaul` branch (SongSwipe beta survey + UI overhaul) is now merged
-into main; its two manual landing assets (`HERO_SHOT` screenshot, `testimonials[]`)
-are still empty by design.
+Branch `claude/rebrand-survey-names-3ue8dk` replaces the live in-app survey with
+the **rebrand name vote**. SoundCloud's API terms forbid "SoundCloud" in an app
+name or domain, so the rename is compliance work, not marketing — this survey
+puts the ranked shortlist to every logged-in user and collects a vote plus two
+optional write-ins (their own name, a feature request).
+
+**Not deployed.** It needs `prisma db push` for the new `RebrandVote` table
+before the backend ships, and `SURVEY_CAMPAIGN_ID` must be unset (or set to
+`2026-rebrand-name-v1`) so the previous campaign's localStorage snooze state
+doesn't suppress the new prompt.
 
 ## Just done
+- Rebrand name vote shipped to the branch: `RebrandVote` model,
+  `validateRebrandVote`, rewritten `routes/feedback.js`, `RebrandSurveyModal.tsx`
+  (replaces `BetaSurveyModal.tsx`), `/api/admin/rebrand{,/summary}` + an admin
+  dashboard section. SongSwipe beta survey retired read-only, same as the
+  monetization survey before it.
 - dc4923e — landing claim fixed: "Trusted by 2,000+ DJs & producers" →
   "Trusted by 3,500+ SoundCloud users" (backed by the real 3,570 figure).
 - 85c4ad2 — README stats refreshed (3,570 users / 2,032,233 tracks, 2026-08-25)
@@ -34,8 +40,11 @@ are still empty by design.
 2. Run `/verify-deploy` against the live site — landing copy, login round-trip
    (everyone gets logged out once; confirm re-login works), one authenticated
    call. This step is REQUIRED before calling the work done.
-3. Re-run `/handoff` after the deploy verifies, and decide the SongSwipe/rebrand
-   name (`SONGSWIPE_NAME` in BetaSurveyModal.tsx, one line).
+3. `prisma db push` the `RebrandVote` table, deploy the rebrand survey, and let
+   the vote run. Shortlist ranking and the domain caveats behind it are in the
+   PR body — TrackTidy and SortWave need an aftermarket domain purchase;
+   DeckDig and DeckHaul had free .coms at time of writing (re-check at the
+   registrar before buying).
 
 ## Decisions
 - Headline "The Ultimate SoundCloud Toolkit" kept as-is — only subhead copy
@@ -95,3 +104,7 @@ are still empty by design.
   transparent .png") — referenced verbatim in code; renaming breaks pages.
 - No CI runs the Jest suite on push. `npm test` is manual, from the repo root
   (not from frontend-UI, which has no test script).
+- Survey localStorage keys are namespaced by `SURVEY_CAMPAIGN_ID`. Deploying a
+  new survey while the old campaign id is still set in the environment means
+  anyone who hit "Don't show again" on the previous survey never sees the new
+  one. Bump or unset it with every survey swap.

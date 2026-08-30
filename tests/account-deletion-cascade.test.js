@@ -41,6 +41,7 @@ describe('account deletion cascade coverage', () => {
       'BetaSignup',
       'GrowthAction',
       'OperationLog',
+      'RebrandVote',
       'SurveyResponse',
       'Token',
       'chat_conversations',

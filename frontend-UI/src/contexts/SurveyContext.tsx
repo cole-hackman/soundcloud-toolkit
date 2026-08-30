@@ -12,9 +12,9 @@ import {
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import {
-  BetaSurveyModal,
-  type BetaSubmission,
-} from "@/components/BetaSurveyModal";
+  RebrandSurveyModal,
+  type RebrandSubmission,
+} from "@/components/RebrandSurveyModal";
 import {
   dashboardShownThisSession,
   isDontShowAgain,
@@ -35,7 +35,6 @@ export type SurveyContext =
 
 interface MaybeShowOptions {
   context: SurveyContext;
-  trackCount?: number;
 }
 
 interface SurveyApi {
@@ -49,8 +48,6 @@ interface ServerStatus {
   campaignId: string;
   submitted: boolean;
 }
-
-const HEAVY_USER_THRESHOLD = 100;
 
 export function SurveyProvider({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, loading: authLoading } = useAuth();
@@ -101,14 +98,9 @@ export function SurveyProvider({ children }: { children: React.ReactNode }) {
       if (isDontShowAgain(campaignId)) return false;
       if (isSnoozed(campaignId)) return false;
 
-      const isHeavy =
-        opts.context !== "dashboard" &&
-        typeof opts.trackCount === "number" &&
-        opts.trackCount >= HEAVY_USER_THRESHOLD;
-
-      // Global 14-day cooldown — heavy-user post-op operations bypass it
-      // (still respects don't-show / snooze / submitted).
-      if (!isHeavy && isWithinGlobalCooldown(campaignId)) return false;
+      // Every logged-in user is in scope for the rebrand vote, so there is no
+      // heavy-user carve-out here — just the shared re-prompt cooldown.
+      if (isWithinGlobalCooldown(campaignId)) return false;
 
       if (opts.context === "dashboard") {
         // Dashboard is lower priority — once per session.
@@ -154,7 +146,7 @@ export function SurveyProvider({ children }: { children: React.ReactNode }) {
   }, [status]);
 
   const handleSubmit = useCallback(
-    async (data: BetaSubmission) => {
+    async (data: RebrandSubmission) => {
       if (!status) return;
       setSubmitting(true);
       setErrorMessage(null);
@@ -163,22 +155,9 @@ export function SurveyProvider({ children }: { children: React.ReactNode }) {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            rekordboxUse: data.rekordboxUse,
-            platform: data.platform ?? undefined,
-            cullMethod: data.cullMethod ?? undefined,
-            featuresWanted: data.featuresWanted.length
-              ? data.featuresWanted.join(",")
-              : undefined,
-            editHesitations: data.editHesitations.length
-              ? data.editHesitations.join(",")
-              : undefined,
-            trustDirectWrite: data.trustDirectWrite ?? undefined,
-            interest: data.interest,
-            wantsBeta: data.wantsBeta,
-            email: data.email || undefined,
-            wantsCall: data.wantsCall,
-            suggestions: data.suggestions || undefined,
+            nameChoice: data.nameChoice,
             nameIdea: data.nameIdea || undefined,
+            featureIdea: data.featureIdea || undefined,
             context: activeContext,
           }),
         });
@@ -211,7 +190,7 @@ export function SurveyProvider({ children }: { children: React.ReactNode }) {
   return (
     <SurveyContextObj.Provider value={api}>
       {children}
-      <BetaSurveyModal
+      <RebrandSurveyModal
         open={open}
         submitting={submitting}
         errorMessage={errorMessage}

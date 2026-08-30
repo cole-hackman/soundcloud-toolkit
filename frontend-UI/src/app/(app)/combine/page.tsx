@@ -57,12 +57,7 @@ export default function CombinePlaylistsPage() {
 
   useEffect(() => {
     if (!isComplete) return;
-    const trackCount =
-      result?.stats?.totalTracks ??
-      result?.stats?.finalCount ??
-      result?.totalTracks ??
-      0;
-    survey.maybeShow({ context: "post-merge", trackCount });
+    survey.maybeShow({ context: "post-merge" });
   }, [isComplete, result, survey]);
 
   const openPlaylistPicker = (event: React.MouseEvent<HTMLButtonElement>) => {

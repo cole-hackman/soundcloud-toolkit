@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "";
@@ -763,6 +763,10 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [lastRefresh, setLastRefresh] = useState(new Date());
+  // Bumped on every fetchData call; a response whose generation is stale
+  // (period or filters changed mid-flight) is discarded instead of
+  // overwriting fresher data.
+  const fetchGenerationRef = useRef(0);
 
   useEffect(() => {
     try {
@@ -799,6 +803,8 @@ export default function AdminDashboard() {
 
   // Fetch admin endpoints
   const fetchData = useCallback(async () => {
+    const generation = ++fetchGenerationRef.current;
+    const isStale = () => generation !== fetchGenerationRef.current;
     setLoading(true);
     setError(null);
     try {
@@ -819,31 +825,38 @@ export default function AdminDashboard() {
         throw new Error(`API error: ${[statsRes, dailyRes, opsRes].find(r => !r.ok)?.status}`);
       }
       const [s, d, o] = await Promise.all([statsRes.json(), dailyRes.json(), opsRes.json()]);
+      if (isStale()) return;
       setStats(s);
       setDaily(d.daily || []);
       setOperations(o.operations || []);
 
       if (fbSummaryRes.ok) {
         const fb = await fbSummaryRes.json();
+        if (isStale()) return;
         setFeedbackSummary(fb);
       }
       if (fbListRes.ok) {
         const fb = await fbListRes.json();
+        if (isStale()) return;
         setFeedbackResponses(fb.responses || []);
       }
       if (rbSummaryRes.ok) {
-        setRebrandSummary(await rbSummaryRes.json());
+        const rb = await rbSummaryRes.json();
+        if (isStale()) return;
+        setRebrandSummary(rb);
       }
       if (rbListRes.ok) {
         const rb = await rbListRes.json();
+        if (isStale()) return;
         setRebrandResponses(rb.responses || []);
       }
 
       setLastRefresh(new Date());
     } catch (e) {
+      if (isStale()) return;
       setError(e.message || "Failed to load analytics data");
     } finally {
-      setLoading(false);
+      if (!isStale()) setLoading(false);
     }
   }, [period, statusFilter, searchQuery]);
 

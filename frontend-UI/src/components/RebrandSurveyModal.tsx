@@ -91,6 +91,10 @@ export function RebrandSurveyModal({
   const [nameIdea, setNameIdea] = useState("");
   const [featureIdea, setFeatureIdea] = useState("");
   const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  // The control that had focus when the modal opened, so it can be handed
+  // focus back on close.
+  const previouslyFocusedRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     if (open) {
@@ -101,13 +105,47 @@ export function RebrandSurveyModal({
   }, [open]);
 
   useEffect(() => {
-    if (open) closeButtonRef.current?.focus();
+    if (!open) return;
+    previouslyFocusedRef.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    closeButtonRef.current?.focus();
+    return () => {
+      // Hand focus back where it came from, so dismissing the modal doesn't
+      // dump a keyboard user at the top of the page.
+      previouslyFocusedRef.current?.focus();
+    };
   }, [open]);
 
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !submitting) onClose();
+      if (e.key === "Escape" && !submitting) {
+        onClose();
+        return;
+      }
+      // aria-modal alone doesn't stop Tab reaching the page behind the
+      // dialog, so cycle focus within the panel by hand.
+      if (e.key !== "Tab") return;
+      const panel = panelRef.current;
+      if (!panel) return;
+      const focusable = Array.from(
+        panel.querySelectorAll<HTMLElement>(
+          'button, [href], input, textarea, select, [tabindex]:not([tabindex="-1"])',
+        ),
+      ).filter((el) => !el.hasAttribute("disabled") && el.tabIndex !== -1);
+      if (focusable.length === 0) return;
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = document.activeElement;
+
+      if (e.shiftKey && (active === first || !panel.contains(active))) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && (active === last || !panel.contains(active))) {
+        e.preventDefault();
+        first.focus();
+      }
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
@@ -142,6 +180,7 @@ export function RebrandSurveyModal({
       />
 
       <div
+        ref={panelRef}
         className="relative w-full max-w-lg bg-card rounded-2xl shadow-2xl border-2 border-border animate-in fade-in zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >

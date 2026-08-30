@@ -7,10 +7,12 @@ name or domain, so the rename is compliance work, not marketing — this survey
 puts the ranked shortlist to every logged-in user and collects a vote plus two
 optional write-ins (their own name, a feature request).
 
-**Not deployed.** It needs `prisma db push` for the new `RebrandVote` table
-before the backend ships, and `SURVEY_CAMPAIGN_ID` must be unset (or set to
-`2026-rebrand-name-v1`) so the previous campaign's localStorage snooze state
-doesn't suppress the new prompt.
+**Schema is applied; the backend is not deployed.** The `rebrand_votes` table
+was created in Neon by running `docs/sql/2026-rebrand-votes.sql` directly rather
+than `prisma db push` — see the landmine below. Still outstanding: deploy the
+backend (its build runs `prisma generate`), and unset `SURVEY_CAMPAIGN_ID` (or
+set it to `2026-rebrand-name-v1`) so the previous campaign's localStorage snooze
+state doesn't suppress the new prompt.
 
 ## Just done
 - Rebrand name vote shipped to the branch: `RebrandVote` model,
@@ -40,9 +42,9 @@ doesn't suppress the new prompt.
 2. Run `/verify-deploy` against the live site — landing copy, login round-trip
    (everyone gets logged out once; confirm re-login works), one authenticated
    call. This step is REQUIRED before calling the work done.
-3. `prisma db push` the `RebrandVote` table, deploy the rebrand survey, and let
-   the vote run. Shortlist ranking and the domain caveats behind it are in the
-   PR body — TrackTidy and SortWave need an aftermarket domain purchase;
+3. Deploy the rebrand survey backend and let the vote run (the `rebrand_votes`
+   table already exists). Shortlist ranking and the domain caveats behind it are
+   in the PR body — TrackTidy and SortWave need an aftermarket domain purchase;
    DeckDig and DeckHaul had free .coms at time of writing (re-check at the
    registrar before buying).
 
@@ -108,3 +110,9 @@ doesn't suppress the new prompt.
   new survey while the old campaign id is still set in the environment means
   anyone who hit "Don't show again" on the previous survey never sees the new
   one. Bump or unset it with every survey swap.
+- Additive schema changes go in as raw SQL via the Neon console (see
+  `docs/sql/`), generated with `prisma migrate diff`. That sidesteps the
+  `db push` drop hazard above entirely — SQL cannot drop what it does not
+  mention. It does leave Prisma's migration history and the database out of
+  step, which is inert while this project uses `db push` (no migration table)
+  and would only matter on a switch to `prisma migrate`.

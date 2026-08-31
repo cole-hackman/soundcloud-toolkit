@@ -7,7 +7,7 @@ import {
   validateGrowthCheckFollowbacks,
   validateGrowthEngageBatch,
   validateReverseGrowthActions,
-  validateBetaSignup,
+  validateRebrandVote,
   validateEvent,
   validateBulkLike,
 } from '../server/middleware/validation.js';
@@ -201,68 +201,50 @@ describe('growth discovery validators', () => {
   });
 });
 
-describe('beta signup validator', () => {
-  test('accepts a feedback-only response without email', async () => {
-    const result = await runValidation(validateBetaSignup, {
-      body: {
-        rekordboxUse: 'rekordbox_primary',
-        interest: 'somewhat',
-        wantsBeta: false,
-        context: 'dashboard',
-      },
+describe('rebrand vote validator', () => {
+  test('accepts a vote with no write-ins', async () => {
+    const result = await runValidation(validateRebrandVote, {
+      body: { nameChoice: 'tracktidy', context: 'dashboard' },
     });
     expect(result.statusCode).toBeNull();
   });
 
-  test('requires email when wantsBeta is true', async () => {
-    const result = await runValidation(validateBetaSignup, {
+  test('accepts a vote with a write-in name and a feature request', async () => {
+    const result = await runValidation(validateRebrandVote, {
       body: {
-        rekordboxUse: 'rekordbox_primary',
-        interest: 'very',
-        wantsBeta: true,
+        nameChoice: 'none',
+        nameIdea: 'Cratewerk',
+        featureIdea: 'Sort a playlist by BPM',
         context: 'post-merge',
       },
     });
-    expect(result.statusCode).toBe(400);
-  });
-
-  test('accepts a full beta signup with valid email', async () => {
-    const result = await runValidation(validateBetaSignup, {
-      body: {
-        rekordboxUse: 'rekordbox_primary',
-        platform: 'mac',
-        cullMethod: 'tedious',
-        featuresWanted: 'swipe_cull,waveform_cue',
-        editHesitations: 'corrupt_db',
-        trustDirectWrite: 'yes',
-        interest: 'very',
-        wantsBeta: true,
-        email: 'dj@example.com',
-        wantsCall: true,
-        suggestions: 'BPM sorting please',
-        nameIdea: 'CrateCull',
-        context: 'dashboard',
-      },
-    });
     expect(result.statusCode).toBeNull();
   });
 
-  test('rejects an invalid rekordboxUse value', async () => {
-    const result = await runValidation(validateBetaSignup, {
-      body: { rekordboxUse: 'serato', interest: 'very', context: 'dashboard' },
+  test('rejects a nameChoice outside the shortlist', async () => {
+    const result = await runValidation(validateRebrandVote, {
+      body: { nameChoice: 'cratekit', context: 'dashboard' },
     });
     expect(result.statusCode).toBe(400);
   });
 
-  test('rejects a malformed email even when provided', async () => {
-    const result = await runValidation(validateBetaSignup, {
-      body: {
-        rekordboxUse: 'rekordbox_primary',
-        interest: 'very',
-        wantsBeta: true,
-        email: 'not-an-email',
-        context: 'dashboard',
-      },
+  test('requires a nameChoice', async () => {
+    const result = await runValidation(validateRebrandVote, {
+      body: { nameIdea: 'Something', context: 'dashboard' },
+    });
+    expect(result.statusCode).toBe(400);
+  });
+
+  test('rejects an over-long nameIdea', async () => {
+    const result = await runValidation(validateRebrandVote, {
+      body: { nameChoice: 'deckdig', nameIdea: 'x'.repeat(121), context: 'dashboard' },
+    });
+    expect(result.statusCode).toBe(400);
+  });
+
+  test('rejects an unknown context', async () => {
+    const result = await runValidation(validateRebrandVote, {
+      body: { nameChoice: 'deckdig', context: 'settings' },
     });
     expect(result.statusCode).toBe(400);
   });

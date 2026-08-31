@@ -1,13 +1,18 @@
 /**
- * Local cooldown state for the monetization survey.
+ * Local cooldown state for the in-app survey.
  *
  * Server is the source of truth for "already submitted"; localStorage tracks
  * client-side snooze + global cooldown so we don't prompt twice in a session.
+ * Every key is namespaced by campaign id, so bumping SURVEY_CAMPAIGN_ID gives
+ * a new survey a clean slate for every user.
+ *
+ * The rebrand vote is time-boxed (the name gets picked once), so the cooldowns
+ * are shorter than the 14 days the earlier open-ended surveys used.
  */
 
 const KEY_PREFIX = "sc-toolkit-survey";
-const GLOBAL_COOLDOWN_MS = 14 * 24 * 60 * 60 * 1000; // 14 days
-const SNOOZE_MS = 14 * 24 * 60 * 60 * 1000; // 14 days
+const GLOBAL_COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
+const SNOOZE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 function key(name: string, campaignId: string) {
   return `${KEY_PREFIX}:${campaignId}:${name}`;

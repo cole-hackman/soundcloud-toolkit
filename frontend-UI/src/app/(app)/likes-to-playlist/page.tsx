@@ -86,8 +86,7 @@ export default function LikesToPlaylistPage() {
 
   useEffect(() => {
     if (!success || !result) return;
-    const trackCount = result.totalTracks ?? result.addedCount ?? selectedTracks.size ?? 0;
-    survey.maybeShow({ context: "post-from-likes", trackCount });
+    survey.maybeShow({ context: "post-from-likes" });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [success, result]);
 

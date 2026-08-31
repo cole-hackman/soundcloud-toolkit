@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "";
@@ -36,6 +36,34 @@ const GREEN = "#2ECC71";
 const RED = "#E74C3C";
 const YELLOW = "#F1C40F";
 const CYAN = "#00D4AA";
+
+// Rebrand name-vote shortlist. Order matches the ranking shown in
+// RebrandSurveyModal.tsx; keep the slugs in sync with REBRAND_NAME_SLUGS
+// in server/middleware/validation.js.
+const REBRAND_NAME_ORDER = [
+  "tracktidy",
+  "deckdig",
+  "sortwave",
+  "deckhaul",
+  "tracktoolkit",
+  "none",
+];
+const REBRAND_NAME_LABELS = {
+  tracktidy: "TrackTidy",
+  deckdig: "DeckDig",
+  sortwave: "SortWave",
+  deckhaul: "DeckHaul",
+  tracktoolkit: "Track Toolkit",
+  none: "None of these",
+};
+const REBRAND_NAME_COLORS = {
+  tracktidy: ORANGE,
+  deckdig: CYAN,
+  sortwave: GREEN,
+  deckhaul: YELLOW,
+  tracktoolkit: "#9B59B6",
+  none: RED,
+};
 
 // --- SVG Chart Components ---
 
@@ -730,9 +758,15 @@ export default function AdminDashboard() {
   const [operations, setOperations] = useState([]);
   const [feedbackSummary, setFeedbackSummary] = useState(null);
   const [feedbackResponses, setFeedbackResponses] = useState([]);
+  const [rebrandSummary, setRebrandSummary] = useState(null);
+  const [rebrandResponses, setRebrandResponses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [lastRefresh, setLastRefresh] = useState(new Date());
+  // Bumped on every fetchData call; a response whose generation is stale
+  // (period or filters changed mid-flight) is discarded instead of
+  // overwriting fresher data.
+  const fetchGenerationRef = useRef(0);
 
   useEffect(() => {
     try {
@@ -769,6 +803,8 @@ export default function AdminDashboard() {
 
   // Fetch admin endpoints
   const fetchData = useCallback(async () => {
+    const generation = ++fetchGenerationRef.current;
+    const isStale = () => generation !== fetchGenerationRef.current;
     setLoading(true);
     setError(null);
     try {
@@ -776,35 +812,51 @@ export default function AdminDashboard() {
         statusFilter !== 'all' ? `&status=${statusFilter}` : ''
       }${searchQuery.trim() ? `&search=${encodeURIComponent(searchQuery.trim())}` : ''}`;
 
-      const [statsRes, dailyRes, opsRes, fbSummaryRes, fbListRes] = await Promise.all([
+      const [statsRes, dailyRes, opsRes, fbSummaryRes, fbListRes, rbSummaryRes, rbListRes] = await Promise.all([
         fetch(`${API_BASE}/api/admin/stats?period=${period}`, { credentials: "include" }),
         fetch(`${API_BASE}/api/admin/daily?period=${period}`, { credentials: "include" }),
         fetch(opsUrl, { credentials: "include" }),
         fetch(`${API_BASE}/api/admin/feedback/summary?period=${period}`, { credentials: "include" }),
         fetch(`${API_BASE}/api/admin/feedback?period=${period}&limit=50`, { credentials: "include" }),
+        fetch(`${API_BASE}/api/admin/rebrand/summary?period=${period}`, { credentials: "include" }),
+        fetch(`${API_BASE}/api/admin/rebrand?period=${period}&limit=50`, { credentials: "include" }),
       ]);
       if (!statsRes.ok || !dailyRes.ok || !opsRes.ok) {
         throw new Error(`API error: ${[statsRes, dailyRes, opsRes].find(r => !r.ok)?.status}`);
       }
       const [s, d, o] = await Promise.all([statsRes.json(), dailyRes.json(), opsRes.json()]);
+      if (isStale()) return;
       setStats(s);
       setDaily(d.daily || []);
       setOperations(o.operations || []);
 
       if (fbSummaryRes.ok) {
         const fb = await fbSummaryRes.json();
+        if (isStale()) return;
         setFeedbackSummary(fb);
       }
       if (fbListRes.ok) {
         const fb = await fbListRes.json();
+        if (isStale()) return;
         setFeedbackResponses(fb.responses || []);
+      }
+      if (rbSummaryRes.ok) {
+        const rb = await rbSummaryRes.json();
+        if (isStale()) return;
+        setRebrandSummary(rb);
+      }
+      if (rbListRes.ok) {
+        const rb = await rbListRes.json();
+        if (isStale()) return;
+        setRebrandResponses(rb.responses || []);
       }
 
       setLastRefresh(new Date());
     } catch (e) {
+      if (isStale()) return;
       setError(e.message || "Failed to load analytics data");
     } finally {
-      setLoading(false);
+      if (!isStale()) setLoading(false);
     }
   }, [period, statusFilter, searchQuery]);
 
@@ -1318,10 +1370,90 @@ export default function AdminDashboard() {
         {/* Music Catalog */}
         <MusicCatalogSection period={period} palette={P} />
 
-        {/* SongSwipe Beta Survey */}
+        {/* Rebrand Name Vote — the live survey */}
         <div style={{ marginTop: 20 }}>
           <SectionCard
-            title={`SongSwipe Beta Survey — ${periodTitleLabel(period)} Period`}
+            title={`Rebrand Name Vote — ${periodTitleLabel(period)} Period`}
+            delay={0.5}
+            palette={P}
+          >
+            {loading ? (
+              <SkeletonBlock height={200} palette={P} />
+            ) : !rebrandSummary || rebrandSummary.total === 0 ? (
+              <div style={{ padding: "24px 0", textAlign: "center", color: P.textDim, fontFamily: "'JetBrains Mono', monospace", fontSize: 12 }}>
+                No votes yet in this period.
+              </div>
+            ) : (
+              <>
+                <FeedbackBreakdown
+                  title="Name choice"
+                  counts={rebrandSummary.nameChoice || {}}
+                  total={rebrandSummary.total}
+                  order={REBRAND_NAME_ORDER}
+                  labels={REBRAND_NAME_LABELS}
+                  colors={REBRAND_NAME_COLORS}
+                  palette={P}
+                />
+
+                <div style={{ display: "flex", gap: 16, marginTop: 14, fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: P.textDim }}>
+                  <span>Write-in names: <span style={{ color: P.text, fontWeight: 600 }}>{rebrandSummary.nameIdeaCount ?? 0}</span></span>
+                  <span>Feature requests: <span style={{ color: P.text, fontWeight: 600 }}>{rebrandSummary.featureIdeaCount ?? 0}</span></span>
+                </div>
+
+                <div style={{ marginTop: 16, paddingTop: 14, borderTop: `1px solid ${P.cardBorder}` }}>
+                  <div style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr 0.9fr 1.2fr 2fr 0.7fr",
+                    gap: 8,
+                    padding: "0 0 8px",
+                    borderBottom: `1px solid ${P.cardBorder}`,
+                    marginBottom: 4,
+                  }}>
+                    {["User", "Voted", "Their name", "Feature request", "When"].map(h => (
+                      <span key={h} style={{ fontSize: 9, color: P.textDim, fontFamily: "'JetBrains Mono', monospace", textTransform: "uppercase", letterSpacing: 0.8 }}>{h}</span>
+                    ))}
+                  </div>
+                  {rebrandResponses.length === 0 ? (
+                    <div style={{ padding: "16px 0", color: P.textDim, fontFamily: "'JetBrains Mono', monospace", fontSize: 11, textAlign: "center" }}>
+                      Aggregates only — no detail rows in this window.
+                    </div>
+                  ) : (
+                    rebrandResponses.map((r, i) => (
+                      <div
+                        key={r.id}
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "1fr 0.9fr 1.2fr 2fr 0.7fr",
+                          gap: 8,
+                          padding: "9px 0",
+                          borderBottom: i < rebrandResponses.length - 1 ? `1px solid ${P.cardBorder}33` : "none",
+                          alignItems: "center",
+                          fontSize: 11,
+                          fontFamily: "'JetBrains Mono', monospace",
+                        }}
+                      >
+                        <span style={{ color: ORANGE, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>@{r.user.username}</span>
+                        <span style={{ color: P.text, fontWeight: 600 }}>{REBRAND_NAME_LABELS[r.nameChoice] || r.nameChoice}</span>
+                        <span style={{ color: P.textMid, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={r.nameIdea || ""}>
+                          {r.nameIdea || <span style={{ color: P.textDim }}>—</span>}
+                        </span>
+                        <span style={{ color: P.textMid, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={r.featureIdea || ""}>
+                          {r.featureIdea || <span style={{ color: P.textDim }}>—</span>}
+                        </span>
+                        <span style={{ color: P.textDim }}>{timeAgo(r.createdAt)}</span>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </>
+            )}
+          </SectionCard>
+        </div>
+
+        {/* SongSwipe Beta Survey — retired, kept read-only for history */}
+        <div style={{ marginTop: 20 }}>
+          <SectionCard
+            title={`SongSwipe Beta Survey (retired) — ${periodTitleLabel(period)} Period`}
             delay={0.55}
             palette={P}
             action={

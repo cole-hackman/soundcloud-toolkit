@@ -640,10 +640,102 @@ router.get('/catalog/tracks/:id/operations', authenticateUser, adminAuth, async 
 });
 
 /**
+ * GET /api/admin/rebrand/summary?period=30d&campaignId=<id>
+ *
+ * Live survey: vote tally for the rename shortlist, plus how many people
+ * left a name of their own or a feature request.
+ */
+router.get('/rebrand/summary', authenticateUser, adminAuth, async (req, res) => {
+  try {
+    const period = validPeriod(req.query.period);
+    const cutoff = periodToCutoff(period);
+    const campaignId = typeof req.query.campaignId === 'string' && req.query.campaignId.trim()
+      ? req.query.campaignId.trim()
+      : null;
+
+    const where = { createdAt: { gte: cutoff } };
+    if (campaignId) where.campaignId = campaignId;
+
+    const [total, byChoice, withNameIdea, withFeatureIdea] = await Promise.all([
+      prisma.rebrandVote.count({ where }),
+      prisma.rebrandVote.groupBy({ by: ['nameChoice'], where, _count: { id: true } }),
+      prisma.rebrandVote.count({ where: { ...where, nameIdea: { not: null } } }),
+      prisma.rebrandVote.count({ where: { ...where, featureIdea: { not: null } } }),
+    ]);
+
+    const nameChoice = byChoice.reduce((acc, row) => {
+      acc[row.nameChoice ?? 'unanswered'] = row._count.id;
+      return acc;
+    }, {});
+
+    res.json({
+      period,
+      campaignId,
+      total,
+      nameChoice,
+      nameIdeaCount: withNameIdea,
+      featureIdeaCount: withFeatureIdea,
+    });
+  } catch (err) {
+    logger.error('[admin/rebrand/summary] Error:', safeError(err));
+    res.status(500).json({ error: 'Failed to fetch rebrand summary' });
+  }
+});
+
+/**
+ * GET /api/admin/rebrand?period=30d&limit=50&campaignId=<id>
+ * Individual votes, newest first — this is where the write-in names and
+ * feature requests are read.
+ */
+router.get('/rebrand', authenticateUser, adminAuth, async (req, res) => {
+  try {
+    const period = validPeriod(req.query.period);
+    const cutoff = periodToCutoff(period);
+    const limit = Math.min(parseInt(req.query.limit) || 50, 200);
+    const campaignId = typeof req.query.campaignId === 'string' && req.query.campaignId.trim()
+      ? req.query.campaignId.trim()
+      : null;
+
+    const where = { createdAt: { gte: cutoff } };
+    if (campaignId) where.campaignId = campaignId;
+
+    const rows = await prisma.rebrandVote.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+      include: {
+        user: { select: { username: true, displayName: true, avatarUrl: true } },
+      },
+    });
+
+    res.json({
+      responses: rows.map(r => ({
+        id: r.id,
+        user: {
+          username: r.user.username,
+          displayName: r.user.displayName,
+          avatarUrl: r.user.avatarUrl,
+        },
+        soundcloudId: r.soundcloudId,
+        campaignId: r.campaignId,
+        nameChoice: r.nameChoice,
+        nameIdea: r.nameIdea,
+        featureIdea: r.featureIdea,
+        context: r.context,
+        createdAt: r.createdAt.toISOString(),
+      })),
+    });
+  } catch (err) {
+    logger.error('[admin/rebrand] Error:', safeError(err));
+    res.status(500).json({ error: 'Failed to fetch rebrand votes' });
+  }
+});
+
+/**
  * GET /api/admin/feedback/summary?period=30d&campaignId=<id>
  *
- * Aggregate counts for the SongSwipe beta survey: interest, Rekordbox use,
- * platform, and beta opt-in count.
+ * RETIRED survey — kept read-only for history. Aggregate counts for the
+ * SongSwipe beta survey: interest, Rekordbox use, platform, beta opt-in count.
  */
 router.get('/feedback/summary', authenticateUser, adminAuth, async (req, res) => {
   try {

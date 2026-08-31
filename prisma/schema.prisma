@@ -24,6 +24,7 @@ model User {
   surveyResponses  SurveyResponse[]
   growthActions    GrowthAction[]
   betaSignups      BetaSignup[]
+  rebrandVotes     RebrandVote[]
   // Tables owned by other feature branches (AI library chat, library indexing).
   // Declared here so `prisma db push` from this branch does not drop live
   // production data. Keep in sync when those branches change their schema.
@@ -55,6 +56,28 @@ model SurveyResponse {
   @@index([lifetimeInterest])
   @@index([soundcloudId])
   @@map("survey_responses")
+}
+
+model RebrandVote {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  soundcloudId BigInt
+  campaignId   String
+  // Slug of the shortlisted name they picked, or 'none' / 'no_preference'.
+  nameChoice   String
+  // Their own suggestion — free text, independent of nameChoice.
+  nameIdea     String?
+  // Feature request / anything they want built next.
+  featureIdea  String?  @db.Text
+  context      String   // dashboard | post-merge | post-from-likes
+  createdAt    DateTime @default(now())
+
+  @@unique([userId, campaignId])
+  @@index([campaignId, createdAt])
+  @@index([nameChoice])
+  @@index([soundcloudId])
+  @@map("rebrand_votes")
 }
 
 model BetaSignup {

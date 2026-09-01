@@ -756,8 +756,6 @@ export default function AdminDashboard() {
   const [stats, setStats] = useState(null);
   const [daily, setDaily] = useState([]);
   const [operations, setOperations] = useState([]);
-  const [feedbackSummary, setFeedbackSummary] = useState(null);
-  const [feedbackResponses, setFeedbackResponses] = useState([]);
   const [rebrandSummary, setRebrandSummary] = useState(null);
   const [rebrandResponses, setRebrandResponses] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -812,12 +810,10 @@ export default function AdminDashboard() {
         statusFilter !== 'all' ? `&status=${statusFilter}` : ''
       }${searchQuery.trim() ? `&search=${encodeURIComponent(searchQuery.trim())}` : ''}`;
 
-      const [statsRes, dailyRes, opsRes, fbSummaryRes, fbListRes, rbSummaryRes, rbListRes] = await Promise.all([
+      const [statsRes, dailyRes, opsRes, rbSummaryRes, rbListRes] = await Promise.all([
         fetch(`${API_BASE}/api/admin/stats?period=${period}`, { credentials: "include" }),
         fetch(`${API_BASE}/api/admin/daily?period=${period}`, { credentials: "include" }),
         fetch(opsUrl, { credentials: "include" }),
-        fetch(`${API_BASE}/api/admin/feedback/summary?period=${period}`, { credentials: "include" }),
-        fetch(`${API_BASE}/api/admin/feedback?period=${period}&limit=50`, { credentials: "include" }),
         fetch(`${API_BASE}/api/admin/rebrand/summary?period=${period}`, { credentials: "include" }),
         fetch(`${API_BASE}/api/admin/rebrand?period=${period}&limit=50`, { credentials: "include" }),
       ]);
@@ -830,16 +826,6 @@ export default function AdminDashboard() {
       setDaily(d.daily || []);
       setOperations(o.operations || []);
 
-      if (fbSummaryRes.ok) {
-        const fb = await fbSummaryRes.json();
-        if (isStale()) return;
-        setFeedbackSummary(fb);
-      }
-      if (fbListRes.ok) {
-        const fb = await fbListRes.json();
-        if (isStale()) return;
-        setFeedbackResponses(fb.responses || []);
-      }
       if (rbSummaryRes.ok) {
         const rb = await rbSummaryRes.json();
         if (isStale()) return;
@@ -1443,127 +1429,6 @@ export default function AdminDashboard() {
                         <span style={{ color: P.textDim }}>{timeAgo(r.createdAt)}</span>
                       </div>
                     ))
-                  )}
-                </div>
-              </>
-            )}
-          </SectionCard>
-        </div>
-
-        {/* SongSwipe Beta Survey — retired, kept read-only for history */}
-        <div style={{ marginTop: 20 }}>
-          <SectionCard
-            title={`SongSwipe Beta Survey (retired) — ${periodTitleLabel(period)} Period`}
-            delay={0.55}
-            palette={P}
-            action={
-              <a
-                href={`${API_BASE}/api/admin/feedback/beta-emails`}
-                style={{
-                  fontSize: 11,
-                  fontFamily: "'JetBrains Mono', monospace",
-                  color: ORANGE,
-                  textDecoration: "none",
-                  border: `1px solid ${ORANGE}55`,
-                  borderRadius: 6,
-                  padding: "5px 10px",
-                }}
-              >
-                ↓ Export beta emails ({feedbackSummary?.wantsBetaCount ?? 0})
-              </a>
-            }
-          >
-            {loading ? (
-              <SkeletonBlock height={200} palette={P} />
-            ) : !feedbackSummary || feedbackSummary.total === 0 ? (
-              <div style={{ textAlign: "center", padding: "32px 0", color: P.textDim, fontFamily: "'JetBrains Mono', monospace", fontSize: 12 }}>
-                No survey responses yet in this period.
-              </div>
-            ) : (
-              <>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16, marginBottom: 14 }}>
-                  <FeedbackBreakdown
-                    title="Interest"
-                    palette={P}
-                    counts={feedbackSummary.interest || {}}
-                    total={feedbackSummary.total}
-                    order={["very", "somewhat", "not"]}
-                    labels={{ very: "Very interested", somewhat: "Somewhat", not: "Not for me" }}
-                    colors={{ very: GREEN, somewhat: YELLOW, not: RED }}
-                  />
-                  <FeedbackBreakdown
-                    title="Rekordbox use"
-                    palette={P}
-                    counts={feedbackSummary.rekordboxUse || {}}
-                    total={feedbackSummary.total}
-                    order={["rekordbox_primary", "rekordbox_sometimes", "other_software", "no"]}
-                    labels={{
-                      rekordbox_primary: "Primary",
-                      rekordbox_sometimes: "Sometimes",
-                      other_software: "Other software",
-                      no: "No",
-                    }}
-                    colors={{ rekordbox_primary: ORANGE, rekordbox_sometimes: YELLOW, other_software: CYAN, no: RED }}
-                  />
-                  <FeedbackBreakdown
-                    title="Platform"
-                    palette={P}
-                    counts={feedbackSummary.platform || {}}
-                    total={feedbackSummary.total}
-                    order={["mac", "windows", "both", "unanswered"]}
-                    labels={{ mac: "macOS", windows: "Windows", both: "Both", unanswered: "—" }}
-                    colors={{ mac: CYAN, windows: ORANGE, both: GREEN, unanswered: P.textDim }}
-                  />
-                </div>
-
-                <div style={{ borderTop: `1px solid ${P.cardBorder}`, paddingTop: 12 }}>
-                  <div style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr 1.4fr 0.7fr 0.6fr 0.5fr 2fr 0.7fr",
-                    gap: 8,
-                    padding: "0 0 8px",
-                    borderBottom: `1px solid ${P.cardBorder}`,
-                    marginBottom: 4,
-                  }}>
-                    {["User", "Email", "Interest", "Beta", "Plat", "Ideas / name", "When"].map(h => (
-                      <span key={h} style={{ fontSize: 9, color: P.textDim, fontFamily: "'JetBrains Mono', monospace", textTransform: "uppercase", letterSpacing: 0.8 }}>{h}</span>
-                    ))}
-                  </div>
-                  {feedbackResponses.length === 0 ? (
-                    <div style={{ padding: "16px 0", color: P.textDim, fontFamily: "'JetBrains Mono', monospace", fontSize: 11, textAlign: "center" }}>
-                      Aggregates only — no detail rows in this window.
-                    </div>
-                  ) : (
-                    feedbackResponses.map((r, i) => {
-                      const ideas = [r.suggestions, r.nameIdea ? `name: ${r.nameIdea}` : null].filter(Boolean).join(" · ");
-                      return (
-                        <div
-                          key={r.id}
-                          style={{
-                            display: "grid",
-                            gridTemplateColumns: "1fr 1.4fr 0.7fr 0.6fr 0.5fr 2fr 0.7fr",
-                            gap: 8,
-                            padding: "9px 0",
-                            borderBottom: i < feedbackResponses.length - 1 ? `1px solid ${P.cardBorder}33` : "none",
-                            alignItems: "center",
-                            fontSize: 11,
-                            fontFamily: "'JetBrains Mono', monospace",
-                          }}
-                        >
-                          <span style={{ color: ORANGE, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>@{r.user.username}</span>
-                          <span style={{ color: P.textMid, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={r.email || ""}>
-                            {r.email || <span style={{ color: P.textDim }}>—</span>}
-                          </span>
-                          <span style={{ color: P.text, fontWeight: 600 }}>{r.interest}</span>
-                          <span style={{ color: r.wantsBeta ? GREEN : P.textDim }}>{r.wantsBeta ? "✓" : "—"}</span>
-                          <span style={{ color: P.textDim }}>{r.platform || "—"}</span>
-                          <span style={{ color: P.textMid, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={ideas}>
-                            {ideas || <span style={{ color: P.textDim }}>—</span>}
-                          </span>
-                          <span style={{ color: P.textDim }}>{timeAgo(r.createdAt)}</span>
-                        </div>
-                      );
-                    })
                   )}
                 </div>
               </>

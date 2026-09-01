@@ -1,20 +1,19 @@
 # STATE
 
 ## Now
-Branch `claude/rebrand-survey-names-3ue8dk` replaces the live in-app survey with
-the **rebrand name vote**. SoundCloud's API terms forbid "SoundCloud" in an app
-name or domain, so the rename is compliance work, not marketing — this survey
-puts the ranked shortlist to every logged-in user and collects a vote plus two
-optional write-ins (their own name, a feature request).
+The rebrand name vote is **live**. PR #31 merged (6de4ff1), the `rebrand_votes`
+table exists in Neon, and the backend is deployed. Every logged-in user now sees
+the shortlist modal on the dashboard and after a merge / likes-to-playlist.
 
-**Schema is applied; the backend is not deployed.** The `rebrand_votes` table
-was created in Neon by running `docs/sql/2026-rebrand-votes.sql` directly rather
-than `prisma db push` — see the landmine below. Still outstanding: deploy the
-backend (its build runs `prisma generate`), and unset `SURVEY_CAMPAIGN_ID` (or
-set it to `2026-rebrand-name-v1`) so the previous campaign's localStorage snooze
-state doesn't suppress the new prompt.
+Read results at `/admin` — the "Rebrand Name Vote" card shows the tally plus
+every write-in name and feature request. Verify `SURVEY_CAMPAIGN_ID` is unset or
+`2026-rebrand-name-v1` in DigitalOcean; a stale `2026-songswipe-beta-v1` would
+silently suppress the prompt for anyone who dismissed the beta survey.
 
 ## Just done
+- Admin dashboard drops the retired SongSwipe beta-survey card; the rebrand vote
+  is the only survey section. Its `/api/admin/feedback*` endpoints still work —
+  including the beta-emails CSV — they are just no longer linked from the page.
 - Rebrand name vote shipped to the branch: `RebrandVote` model,
   `validateRebrandVote`, rewritten `routes/feedback.js`, `RebrandSurveyModal.tsx`
   (replaces `BetaSurveyModal.tsx`), `/api/admin/rebrand{,/summary}` + an admin

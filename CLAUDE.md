@@ -431,9 +431,14 @@ is registered without the pair.
 | `GET` | `/api/admin/catalog/tracks/:id/operations` | Operations touching one track |
 | `GET` | `/api/admin/rebrand/summary` | Rebrand name-vote tally + write-in counts |
 | `GET` | `/api/admin/rebrand` | Rebrand vote list (write-in names, feature requests) |
-| `GET` | `/api/admin/feedback/summary` | Beta-survey aggregates |
-| `GET` | `/api/admin/feedback` | Beta-survey response list |
-| `GET` | `/api/admin/feedback/beta-emails` | CSV export of beta opt-in emails |
+| `GET` | `/api/admin/feedback/summary` | Retired beta-survey aggregates (API only) |
+| `GET` | `/api/admin/feedback` | Retired beta-survey response list (API only) |
+| `GET` | `/api/admin/feedback/beta-emails` | CSV export of beta opt-in emails (API only) |
+
+The three `/feedback/*` routes serve the retired SongSwipe beta survey. They
+still work, but nothing calls them — the admin dashboard shows only the live
+rebrand vote. Reach them by URL when the historical data or the beta invite
+list is wanted.
 
 ### Account
 

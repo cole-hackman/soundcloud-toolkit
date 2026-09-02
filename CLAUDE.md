@@ -612,6 +612,56 @@ snooze / don't-show-again state over. **Unset it (or set it to
 - Client-side filters for `blocked_at !== null` or `streamable === false`
 - Calls `PUT /api/playlists/:id` with cleaned track list
 
+### 10. Rekordbox Sync
+
+**User-facing**: Drop a rekordbox collection XML export (`File → Export Collection
+in xml format`), pick your likes and/or playlists, and get four reports: tracks
+you saved on SoundCloud but never imported, ambiguous matches worth reviewing,
+per-playlist drift, and collection tracks nothing on SoundCloud accounted for.
+Each list exports to CSV.
+
+**Frontend**: `frontend-UI/src/app/(app)/rekordbox-sync/page.tsx`
+
+**Runs entirely in the browser.** The XML is never uploaded — it carries absolute
+paths to the user's own music files, and the comparison needs no server. This also
+sidesteps body-size limits (a 20k-track export runs to tens of MB) and costs the
+backend nothing. The only network calls are the existing `GET /api/likes` and
+`GET /api/playlists/:id`.
+
+**Logic** (in `server/lib/`, imported by the page across the directory boundary so
+Jest exercises the same code the browser runs — the build resolves this because
+Vercel builds from the repo root):
+
+| Module | Responsibility |
+|--------|----------------|
+| `rekordbox-xml.js` | Dependency-free scanner for the collection export → `{ tracks, playlists, meta }`. Handles XML entities, UTF-8 BOM, self-closing nodes, and nested playlist folders. |
+| `rekordbox-match.js` | Normalization + tiered matching. |
+| `rekordbox-report.js` | Diffing, playlist pairing, and the assembled sync report. |
+
+**Matching**: the two sides share no ID, so matches are inferred from text.
+rekordbox has clean ID3 artist/title fields; SoundCloud has one free-text title
+plus an uploader who is often a label or promo channel. Each SoundCloud track
+therefore yields several candidate readings (uploader-as-artist, artist-split-
+from-title, and the reverse) and the best-scoring one wins.
+
+Normalization folds accents, expands `&` → `and`, strips promo decoration
+(`[PREMIERE]`, `FREE DOWNLOAD |`, catalogue numbers like `[WARP001]`), and pulls
+featured artists out separately.
+
+Version text is extracted and compared as its own field, so an original and a
+remix never match each other — reporting one as the other is worse than reporting
+a miss. `Original Mix` normalizes to "no version" so it agrees with a bare title.
+
+Tiers: `exact` (all fields equal) → `strong` (title and version equal, artist
+close or absent) → `fuzzy` (blended similarity, or an exact title with a
+disagreeing artist) → no match. `exact`/`strong` count as owned; `fuzzy` goes to
+the review bucket. Runtime disagreement over 20s penalizes a match, which is what
+separates a radio edit from an extended mix.
+
+Comparing every track against every track is O(n·m) — 5k likes against a 20k
+collection is 100M comparisons, too slow for a browser — so candidates are
+narrowed by shared title token via an inverted index, preferring rare tokens.
+
 ---
 
 ## Environment Variables
@@ -780,6 +830,10 @@ Before the OAuth redirect, the frontend pings `/health` (with 1.2s timeout) to w
 9. **SoundCloud Track Filtering**: Blocked (`blocked_at` set) and non-streamable tracks are silently excluded from merges. Users won't see an explicit count of what was filtered (only `acceptedTotal` vs `fetchedTotal` in the stats).
 
 10. **Playlist Verification**: After creating a merged playlist, the app re-fetches it to verify the track count. If SC returns a lower count than expected (e.g., due to SC-side deduplication or delayed indexing), this is reported in stats but not retried.
+
+11. **Rekordbox Matching Is Inferential**: SoundCloud and rekordbox share no track identifier, so every match is a text judgement and some will be wrong in both directions. Untagged or badly tagged rekordbox files (empty `Artist`, filename-as-title) match poorly; a track uploaded to SoundCloud under a wholly different name won't match at all. The `fuzzy` review bucket exists to make the uncertain cases visible rather than silently deciding them, and match decisions are not persisted — re-running re-derives everything.
+
+12. **Rekordbox Sync Is Read-Only and Manual**: The collection XML is a point-in-time export, so the report reflects whenever the user last exported. There is no live connection to rekordbox and nothing writes back to it — acting on a report means downloading tracks and importing them by hand.
 
 ---
 

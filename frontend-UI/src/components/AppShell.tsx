@@ -25,6 +25,7 @@ import {
   Stethoscope,
   ListChecks,
   ClipboardCheck,
+  Disc3,
   Download,
   Copy,
   Repeat,
@@ -67,6 +68,7 @@ const NAV: NavEntry[] = [
   { href: "/downloads", label: "Downloads", icon: Download },
   { href: "/export", label: "Export", icon: FileUp },
   { href: "/library-audit", label: "Library Audit", icon: ClipboardCheck },
+  { href: "/rekordbox-sync", label: "Rekordbox Sync", icon: Disc3 },
   {
     label: "Playlists",
     items: [

@@ -6,7 +6,6 @@ import {
   useContext,
   useEffect,
   useMemo,
-  useRef,
   useState,
 } from "react";
 import { apiFetch } from "@/lib/api";
@@ -15,18 +14,7 @@ import {
   RebrandSurveyModal,
   type RebrandSubmission,
 } from "@/components/RebrandSurveyModal";
-import {
-  dashboardShownThisSession,
-  isDontShowAgain,
-  isSnoozed,
-  isSubmittedLocal,
-  isWithinGlobalCooldown,
-  markDashboardShownThisSession,
-  markDontShowAgain,
-  markPromptedNow,
-  markSubmitted,
-  snooze,
-} from "@/lib/survey-storage";
+import { isSubmittedLocal, markSubmitted } from "@/lib/survey-storage";
 
 export type SurveyContext =
   | "dashboard"
@@ -58,10 +46,6 @@ export function SurveyProvider({ children }: { children: React.ReactNode }) {
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Track whether we've already prompted in this React session so a quick
-  // navigation between dashboard/post-op can't double-fire.
-  const promptedThisRenderRef = useRef(false);
-
   // Fetch server status once we know who the user is.
   useEffect(() => {
     if (authLoading || !isAuthenticated) {
@@ -89,61 +73,34 @@ export function SurveyProvider({ children }: { children: React.ReactNode }) {
     };
   }, [isAuthenticated, authLoading]);
 
-  const canShow = useCallback(
-    (opts: MaybeShowOptions): boolean => {
-      if (!status || !status.enabled) return false;
-      if (status.submitted) return false;
-      const { campaignId } = status;
-      if (isSubmittedLocal(campaignId)) return false;
-      if (isDontShowAgain(campaignId)) return false;
-      if (isSnoozed(campaignId)) return false;
-
-      // Every logged-in user is in scope for the rebrand vote, so there is no
-      // heavy-user carve-out here — just the shared re-prompt cooldown.
-      if (isWithinGlobalCooldown(campaignId)) return false;
-
-      if (opts.context === "dashboard") {
-        // Dashboard is lower priority — once per session.
-        if (dashboardShownThisSession()) return false;
-      }
-
-      if (promptedThisRenderRef.current && opts.context === "dashboard") {
-        // Don't override a higher-priority post-op prompt with dashboard.
-        return false;
-      }
-
-      return true;
-    },
-    [status],
-  );
+  const canShow = useCallback((): boolean => {
+    if (!status || !status.enabled) return false;
+    // Server truth first, local mirror second — both mean "already voted".
+    if (status.submitted) return false;
+    if (isSubmittedLocal(status.campaignId)) return false;
+    // Nothing else gates it. The vote is mandatory, so snooze, don't-show-again
+    // and the re-prompt cooldown are all gone: honouring them would let anyone
+    // who dismissed an earlier build skip the prompt permanently.
+    return true;
+  }, [status]);
 
   const maybeShow = useCallback(
     (opts: MaybeShowOptions) => {
-      if (!canShow(opts)) return;
-      promptedThisRenderRef.current = true;
+      if (!canShow()) return;
       setActiveContext(opts.context);
       setErrorMessage(null);
       setOpen(true);
-      if (status) markPromptedNow(status.campaignId);
-      if (opts.context === "dashboard") markDashboardShownThisSession();
     },
-    [canShow, status],
+    [canShow],
   );
 
-  const closeModal = useCallback(() => {
+  // Offered only after a submit has failed — see RebrandSurveyModal. This
+  // closes the modal for the current page view without recording a vote, so
+  // the prompt returns on the next navigation once the backend recovers.
+  const handleGiveUp = useCallback(() => {
     if (submitting) return;
     setOpen(false);
   }, [submitting]);
-
-  const handleSnooze = useCallback(() => {
-    if (status) snooze(status.campaignId);
-    setOpen(false);
-  }, [status]);
-
-  const handleDontShowAgain = useCallback(() => {
-    if (status) markDontShowAgain(status.campaignId);
-    setOpen(false);
-  }, [status]);
 
   const handleSubmit = useCallback(
     async (data: RebrandSubmission) => {
@@ -195,9 +152,7 @@ export function SurveyProvider({ children }: { children: React.ReactNode }) {
         submitting={submitting}
         errorMessage={errorMessage}
         onSubmit={handleSubmit}
-        onSnooze={handleSnooze}
-        onDontShowAgain={handleDontShowAgain}
-        onClose={closeModal}
+        onGiveUp={handleGiveUp}
       />
     </SurveyContextObj.Provider>
   );

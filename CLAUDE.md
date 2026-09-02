@@ -469,19 +469,34 @@ paths and modals are gone.
 | `GET` | `/api/admin/rebrand/summary` | Admin-only tally by `nameChoice`, plus write-in and feature-request counts |
 | `GET` | `/api/admin/rebrand` | Admin-only paginated vote list with user info and both write-in fields |
 
-`nameChoice` is one of the shortlist slugs — `tracktidy`, `deckdig`,
-`sortwave`, `deckhaul`, `tracktoolkit` — or `none`. The list is defined in
+`nameChoice` is one of the shortlist slugs — `tracktidy`, `tracktoolkit`,
+`deckdig`, `sortwave`, `deckhaul` — or `none`. The list is defined in
 three places that must stay in sync: `REBRAND_NAME_SLUGS`
 ([`validation.js`](server/middleware/validation.js)), `NAME_OPTIONS`
 ([`RebrandSurveyModal.tsx`](frontend-UI/src/components/RebrandSurveyModal.tsx)),
 and `REBRAND_NAME_ORDER` in the admin page.
 
 Responses live in the `RebrandVote` table (`@@unique([userId, campaignId])`),
-linked to `userId` + snapshotted `soundcloudId`. The modal is gated by
-[`SurveyContext.tsx`](frontend-UI/src/contexts/SurveyContext.tsx) using
-server-truth submission plus client-side snooze / cooldown. Unlike the beta
-survey there is **no qualifier gate and no heavy-user carve-out** — every
-authenticated user is in scope. Triggers fire on the dashboard, post-merge
+linked to `userId` + snapshotted `soundcloudId`.
+
+**The modal is mandatory.** There is no close button, no Escape, no backdrop
+dismiss and no snooze — submitting a vote is the only way past it, and `none`
+("None of these") is the pressure valve. The single exception is a failed
+submit: once `errorMessage` is set the modal offers "Skip for now", so a
+backend outage cannot lock users out of the app. That escape records nothing,
+so the prompt returns on the next navigation.
+
+Because of that, [`SurveyContext.tsx`](frontend-UI/src/contexts/SurveyContext.tsx)
+gates on **only** the kill switch and whether the user has already voted
+(server truth plus a localStorage mirror). Snooze, don't-show-again and the
+re-prompt cooldown were removed — honouring a stale dismissal would let anyone
+who dismissed an earlier build skip the vote forever. There is also no
+qualifier gate and no heavy-user carve-out; every authenticated user is in
+scope.
+
+Option order in the modal is Cole's preference (TrackTidy and Track Toolkit
+first), not the research ranking. First position attracts votes, so read the
+gap between the top two and the rest as soft. Triggers fire on the dashboard, post-merge
 success, and post-likes-to-playlist success. Default campaign is
 `2026-rebrand-name-v1`.
 

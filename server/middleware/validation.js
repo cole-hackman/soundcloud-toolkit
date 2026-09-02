@@ -612,10 +612,10 @@ export const validateEvent = [
  */
 export const REBRAND_NAME_SLUGS = [
   'tracktidy',
+  'tracktoolkit',
   'deckdig',
   'sortwave',
   'deckhaul',
-  'tracktoolkit',
   'none',
 ];
 

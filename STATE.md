@@ -11,6 +11,15 @@ every write-in name and feature request. Verify `SURVEY_CAMPAIGN_ID` is unset or
 silently suppress the prompt for anyone who dismissed the beta survey.
 
 ## Just done
+- Rebrand vote is now a **mandatory** modal: no close, Escape, backdrop click
+  or snooze. Submitting is the only way out; "None of these" is the pressure
+  valve; a failed submit reveals "Skip for now" so an outage can't lock anyone
+  out. Snooze / don't-show / cooldown gating removed from SurveyContext and
+  survey-storage, since honouring a stale dismissal would exempt earlier
+  dismissers permanently.
+- Option order changed to Cole's preference — TrackTidy, Track Toolkit, then
+  DeckDig, SortWave, DeckHaul, None. Synced across the modal, the validator
+  and the admin chart.
 - Admin dashboard drops the retired SongSwipe beta-survey card; the rebrand vote
   is the only survey section. Its `/api/admin/feedback*` endpoints still work —
   including the beta-emails CSV — they are just no longer linked from the page.
@@ -115,3 +124,7 @@ silently suppress the prompt for anyone who dismissed the beta survey.
   mention. It does leave Prisma's migration history and the database out of
   step, which is inert while this project uses `db push` (no migration table)
   and would only matter on a switch to `prisma migrate`.
+- Forced-choice + favourites-on-top is a known bias in the live vote: people
+  who just want the modal gone click the top option, which is exactly what the
+  result is meant to test. Read the top-two margin as soft. Randomising option
+  order per user would fix it without giving up mandatory.

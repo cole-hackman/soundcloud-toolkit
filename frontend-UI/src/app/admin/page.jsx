@@ -37,15 +37,16 @@ const RED = "#E74C3C";
 const YELLOW = "#F1C40F";
 const CYAN = "#00D4AA";
 
-// Rebrand name-vote shortlist. Order matches the ranking shown in
-// RebrandSurveyModal.tsx; keep the slugs in sync with REBRAND_NAME_SLUGS
-// in server/middleware/validation.js.
+// Rebrand name-vote shortlist. Order matches the modal's option order in
+// RebrandSurveyModal.tsx, so the bars read in the same sequence voters saw;
+// keep the slugs in sync with REBRAND_NAME_SLUGS in
+// server/middleware/validation.js.
 const REBRAND_NAME_ORDER = [
   "tracktidy",
+  "tracktoolkit",
   "deckdig",
   "sortwave",
   "deckhaul",
-  "tracktoolkit",
   "none",
 ];
 const REBRAND_NAME_LABELS = {

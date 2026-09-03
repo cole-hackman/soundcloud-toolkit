@@ -44,8 +44,10 @@ snapshot exists.
 | `POST /resolve/batch` (50 urls) | 50–150 serial | 50–150 over 5 lanes | fewer, 5-min resolve cache | Bounded concurrency; no double-cost retry on 429 |
 | `POST /playlists/merge` (10 sources) | 10 serial + 3.0s of sleeps | 10 over 5 lanes, no read sleeps | — | Read phase was serial *and* paced with the write constant |
 | Followed-library page click | ⌈2000/200⌉ + 1 = **11** | **1** | **1** | Authorization check now reads the cache it was bypassing |
-| `GET /likes` | 25 serial | 25 serial | 0 | Unavoidable when cold; the snapshot removes the repeat |
-| `GET /likes/paged` | 1 | 1 | 1 | Now actually reachable from the UI |
+| `GET /likes` | 25 serial | 25 serial | 0 | Still the cost of a full crawl; the snapshot removes the repeat |
+| Like Manager first rows | 25 serial | **1** | **1** | Pages 200 at a time; the rest fills in behind an interactive list |
+| Following Manager first rows | ⌈F/200⌉ ×2 serial | **2** | **2** | Followings + followers both paged |
+| Repost Manager first rows | 2 full crawls | **1** | **1** | Offset-paged off the snapshot |
 | `GET /me` + `/dashboard/summary` | 2 | 1 | 0 | Shared cache entry |
 
 The two entries that did not improve when cold — `library/audit` and

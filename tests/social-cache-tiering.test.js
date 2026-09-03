@@ -103,6 +103,34 @@ describe('memory -> Postgres -> SoundCloud tiering', () => {
     expect(crawl).toHaveBeenCalled();
   });
 
+  test('the response does not wait on the snapshot write', async () => {
+    // Persisting a 20k-item library is ~100 INSERTs in one transaction.
+    // Awaiting it would hand the cold path a fresh delay in exchange for
+    // removing a future one, making this change a net regression.
+    readSnapshot.mockResolvedValue(null);
+    let settleWrite;
+    writeSnapshot.mockImplementationOnce(() => new Promise((r) => { settleWrite = r; }));
+
+    const payload = await loadUserCollection(
+      req, 'likes', () => Promise.resolve([{ id: 1 }]), shape,
+    );
+
+    // Resolved while the write is still outstanding.
+    expect(payload.collection).toEqual([{ id: 1 }]);
+    expect(writeSnapshot).toHaveBeenCalledTimes(1);
+    settleWrite({ pages: 1, items: 1 });
+  });
+
+  test('a failing snapshot write does not fail the request', async () => {
+    readSnapshot.mockResolvedValue(null);
+    writeSnapshot.mockRejectedValueOnce(new Error('disk full'));
+
+    await expect(
+      loadUserCollection(req, 'likes', () => Promise.resolve([{ id: 1 }]), shape),
+    ).resolves.toMatchObject({ collection: [{ id: 1 }] });
+    await flush();
+  });
+
   test('a truncated crawl is reported as truncated, not as a whole library', async () => {
     readSnapshot.mockResolvedValue(null);
     const items = [{ id: 1 }];

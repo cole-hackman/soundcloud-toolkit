@@ -196,9 +196,14 @@ export async function loadUserCollection(req, resource, crawl, shape) {
   return getCachedUserPayload(resource, userId, 'default', async () => {
     const items = await crawl();
     const payload = { ...shape(items), truncated: items?.truncated === true };
-    // Persist for the next process, but never let a snapshot write failure
-    // fail the request that produced the data.
-    await writeSnapshot(userId, resource, items, { truncated: items?.truncated === true });
+    // Fire-and-forget, deliberately NOT awaited. Persisting a 20,000-item
+    // library is ~100 INSERTs in one transaction; making the response wait on
+    // that would hand the cold path a fresh delay in exchange for removing a
+    // future one. The caller already has its data — the snapshot is for the
+    // NEXT reader. Same posture as harvestTracks.
+    Promise.resolve(writeSnapshot(userId, resource, items, {
+      truncated: items?.truncated === true,
+    })).catch(() => {});
     return payload;
   }, CACHE_TTL[resource] ?? 60_000);
 }

@@ -124,8 +124,9 @@ soundcloud-tool/
 │   └── package.json
 ├── tests/                        # Jest suites — lib units plus tests/routes/ (supertest authz/CSRF boundaries)
 ├── prisma/
-│   └── schema.prisma             # Single source of truth for the schema (13 models)
-├── docs/                         # Engineering review, SECURITY.md, plans, incident notes, api.json
+│   └── schema.prisma             # Single source of truth for the schema (15 models)
+├── docs/                         # Engineering review, SECURITY.md, perf audit, plans, incidents,
+│                                 #   sql/ migrations, api.json (SoundCloud's upstream spec)
 ├── .do/app.yaml                  # DigitalOcean App Platform deployment config
 ├── package.json                  # Root scripts (dev, build, server, test)
 ├── STATE.md                      # Session state + decision log (read this first)
@@ -452,9 +453,11 @@ list is wanted.
 |--------|------|-------------|
 | `DELETE` | `/api/auth/account` | Delete the account and cascade-delete all owned rows |
 
-> `docs/api.json` is the machine-readable inventory. It is generated, not
-> hand-maintained — re-check it against `grep -n "router\." server/routes/*.js`
-> before trusting it.
+> `docs/api.json` is **SoundCloud's own OpenAPI spec** (68 upstream paths under
+> `https://api.soundcloud.com`), kept as a reference for what the upstream API
+> offers. It documents none of this app's endpoints and is not an inventory of
+> them. The authoritative list of what this server exposes is the source:
+> `grep -n "router\." server/routes/*.js`.
 
 ### Feedback Survey (rebrand name vote)
 

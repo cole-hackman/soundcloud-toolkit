@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useMemo, useRef, useSyncExternalStore } from "react";
-import { useQueryClient, useSuspenseQueries } from "@tanstack/react-query";
+import { useState, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Users, Search, UserMinus, Loader2, Check, ExternalLink } from "lucide-react";
 import {
@@ -12,17 +12,14 @@ import {
   PageContainer,
   PageHeader,
   SelectionBanner,
+  Skeleton,
   Card,
   Input
 } from "@/components/ui";
 import { ProgressiveBlur } from "@/components/ui/ProgressiveBlur";
 import { apiFetch } from "@/lib/api";
-import {
-  invalidateDashboardSummary,
-  removeUsersFromFollowingsCache,
-  followingsQueryOptions,
-  followersQueryOptions
-} from "@/lib/queries";
+import { invalidateDashboardSummary, removeUsersFromFollowingsCache } from "@/lib/queries";
+import { useProgressiveFollowings, useProgressiveFollowers, progressiveStatus, selectAllLabel } from "@/lib/progressive";
 import { useDebouncedValue } from "@/lib/useDebouncedValue";
 
 interface Following {
@@ -72,25 +69,21 @@ export default function FollowingManagerPage() {
   const [showUnfollowConfirm, setShowUnfollowConfirm] = useState(false);
   const [notice, setNotice] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
-  const [
-    { data: followingsData },
-    { data: followersData }
-  ] = useSuspenseQueries({
-    queries: [
-      followingsQueryOptions(),
-      followersQueryOptions(),
-    ]
-  });
+  const followingsState = useProgressiveFollowings<Following>();
+  const followersState = useProgressiveFollowers<Following>();
 
-  const followings = useMemo(
-    () => (followingsData?.collection || []) as unknown as Following[],
-    [followingsData?.collection],
-  );
+  const followings = followingsState.items;
   const followers = useMemo(
-    () => new Set<number>(((followersData?.collection || []) as unknown as Following[]).map((u) => u.id)),
-    [followersData?.collection],
+    () => new Set<number>(followersState.items.map((u) => u.id)),
+    [followersState.items],
   );
   const [lastSelectedIndex, setLastSelectedIndex] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (followingsState.error) {
+      setNotice({ type: "error", text: `Couldn't load who you follow: ${followingsState.error.message}` });
+    }
+  }, [followingsState.error]);
 
   const toggleUser = (id: number, index: number, currentFilteredFollowings: Following[], event?: React.MouseEvent | React.KeyboardEvent) => {
     const isShiftKey = event && 'shiftKey' in event && event.shiftKey;
@@ -301,6 +294,17 @@ export default function FollowingManagerPage() {
       }));
   }, [followings, selected, showUnfollowConfirm]);
 
+  // "Not Following Back" is a negative claim about every remaining following —
+  // it's only honest once the followers set (used to check each one) is
+  // fully loaded, so the toggle stays disabled until then.
+  const followersReady = followersState.isComplete;
+  const hasActiveFilter = Boolean(debouncedSearch) || filterMode !== "all";
+  const followingsStatus = progressiveStatus(
+    followingsState,
+    "followings",
+    hasActiveFilter ? { filteredCount: filteredFollowings.length } : {},
+  );
+
   return (
     <PageContainer maxWidth="wide" className={selected.size > 0 ? "pb-28" : ""}>
         <PageHeader
@@ -318,7 +322,25 @@ export default function FollowingManagerPage() {
           </InlineAlert>
         )}
 
-        {followings.length === 0 ? (
+        {followingsState.isLoadingFirstPage ? (
+          <Card className="p-6">
+            <div className="flex items-center gap-3 mb-4 flex-wrap">
+              <Skeleton className="h-10 flex-1 min-w-[200px] rounded-lg" />
+              <Skeleton className="h-10 w-32 rounded-lg" />
+              <div className="flex p-1 rounded-lg">
+                <Skeleton className="h-9 w-16" />
+                <Skeleton className="h-9 w-32" />
+              </div>
+              <Skeleton className="h-6 w-20" />
+            </div>
+            <Skeleton className="h-4 w-32 mb-2" />
+            <div className="grid md:grid-cols-2 gap-3">
+              {Array.from({ length: 8 }).map((_, i) => (
+                <Skeleton key={i} className="h-[76px] w-full rounded-xl" />
+              ))}
+            </div>
+          </Card>
+        ) : followings.length === 0 ? (
           <Card className="p-8">
             <EmptyState
               icon={<Users className="w-12 h-12" />}
@@ -362,26 +384,36 @@ export default function FollowingManagerPage() {
                   All
                 </button>
                 <button
-                  onClick={() => setFilterMode("not-following-back")}
-                  className={`px-3 py-1 rounded-md text-sm font-medium transition-all ${
+                  onClick={() => followersReady && setFilterMode("not-following-back")}
+                  disabled={!followersReady}
+                  title={!followersReady ? "Still loading followers — who follows you back isn't known yet." : undefined}
+                  className={`px-3 py-1 rounded-md text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
                     filterMode === "not-following-back" ? "bg-card text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"
                   }`}
                 >
                   Not Following Back
                 </button>
               </div>
+              {!followersReady && (
+                <span className="text-xs text-muted-foreground/70 flex items-center gap-1.5">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  Loading followers…
+                </span>
+              )}
 
               <button
                 onClick={selectAll}
                 className="text-sm text-primary hover:text-primary/80 font-medium whitespace-nowrap"
               >
-                {selected.size === filteredFollowings.length ? "Deselect All" : "Select All"}
+                {selected.size === filteredFollowings.length
+                  ? "Deselect All"
+                  : selectAllLabel(followingsState, filteredFollowings.length)}
               </button>
             </div>
 
-            <div className="text-sm text-muted-foreground mb-2">
-              {filteredFollowings.length} of {followings.length} followings
-            </div>
+            {followingsStatus && (
+              <div className="text-sm text-muted-foreground mb-2">{followingsStatus}</div>
+            )}
 
             <ProgressiveBlur
               ref={listScrollRef}
@@ -480,6 +512,13 @@ export default function FollowingManagerPage() {
                 })}
               </div>
             </ProgressiveBlur>
+
+            {followingsState.isLoadingMore && (
+              <div className="flex items-center justify-center gap-2 pt-3 text-xs text-muted-foreground">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                Loading more…
+              </div>
+            )}
           </Card>
         )}
       <SelectionBanner

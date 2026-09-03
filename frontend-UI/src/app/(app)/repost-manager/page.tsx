@@ -24,7 +24,8 @@ import {
   Skeleton,
 } from "@/components/ui";
 import { apiFetch } from "@/lib/api";
-import { removeItemsFromRepostsCache, useRepostsQuery } from "@/lib/queries";
+import { removeItemsFromRepostsCache } from "@/lib/queries";
+import { useProgressiveReposts, progressiveStatus, selectAllLabel } from "@/lib/progressive";
 import { useDebouncedValue } from "@/lib/useDebouncedValue";
 
 interface Repost {
@@ -63,18 +64,15 @@ export default function RepostManagerPage() {
   const [limitInput, setLimitInput] = useState("");
   const [showAutoSelect, setShowAutoSelect] = useState(false);
 
-  const repostsQuery = useRepostsQuery();
-  const reposts = useMemo(
-    () => (repostsQuery.data?.collection || []) as unknown as Repost[],
-    [repostsQuery.data?.collection],
-  );
-  const loading = repostsQuery.isLoading;
+  const repostsState = useProgressiveReposts<Repost>();
+  const reposts = repostsState.items;
+  const loading = repostsState.isLoadingFirstPage;
 
   useEffect(() => {
-    if (repostsQuery.isError) {
+    if (repostsState.error) {
       setNotice({ type: "error", text: "Couldn’t load your reposts. Try refreshing the page." });
     }
-  }, [repostsQuery.isError]);
+  }, [repostsState.error]);
 
   const [lastSelectedIndex, setLastSelectedIndex] = useState<number | null>(null);
 
@@ -273,6 +271,13 @@ export default function RepostManagerPage() {
       }));
   }, [reposts, selected, showRemoveConfirm]);
 
+  const hasActiveFilter = Boolean(debouncedSearch);
+  const repostsStatus = progressiveStatus(
+    repostsState,
+    "reposts",
+    hasActiveFilter ? { filteredCount: filteredReposts.length } : {},
+  );
+
   return (
     <PageContainer maxWidth="wide" className={selected.size > 0 ? "pb-28" : ""}>
         <PageHeader
@@ -332,7 +337,9 @@ export default function RepostManagerPage() {
                 disabled={loading}
                 className="text-sm text-primary hover:text-primary font-medium whitespace-nowrap disabled:opacity-50"
               >
-                {selected.size === filteredReposts.length ? "Deselect All" : "Select All"}
+                {selected.size === filteredReposts.length
+                  ? "Deselect All"
+                  : selectAllLabel(repostsState, filteredReposts.length)}
               </button>
               <button
                 onClick={() => setShowAutoSelect((v) => !v)}
@@ -381,15 +388,14 @@ export default function RepostManagerPage() {
                   </button>
                   <span className="text-xs text-muted-foreground/70">
                     {keptCount} kept · {removableReposts.length} removable in view
+                    {!repostsState.isComplete && " (more still loading)"}
                   </span>
                 </div>
               </div>
             )}
 
-            {!loading && (
-              <div className="text-sm text-muted-foreground/70 mb-2">
-                {filteredReposts.length} of {reposts.length} reposts
-              </div>
+            {!loading && repostsStatus && (
+              <div className="text-sm text-muted-foreground/70 mb-2">{repostsStatus}</div>
             )}
 
             {loading ? (
@@ -485,6 +491,13 @@ export default function RepostManagerPage() {
                 })}
               </div>
             </div>
+            )}
+
+            {!loading && repostsState.isLoadingMore && (
+              <div className="flex items-center justify-center gap-2 pt-3 text-xs text-muted-foreground/70">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                Loading more…
+              </div>
             )}
           </div>
         )}

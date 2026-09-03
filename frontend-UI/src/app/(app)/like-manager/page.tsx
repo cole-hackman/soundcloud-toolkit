@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useRef } from "react";
-import { useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Heart, Search, Trash2, Loader2 } from "lucide-react";
 import {
@@ -13,6 +13,7 @@ import {
   PageContainer,
   PageHeader,
   SelectionBanner,
+  Skeleton,
   TrackRow,
   Card,
   Input,
@@ -20,7 +21,8 @@ import {
 } from "@/components/ui";
 import { ProgressiveBlur } from "@/components/ui/ProgressiveBlur";
 import { apiFetch } from "@/lib/api";
-import { invalidateDashboardSummary, removeTracksFromLikesCache, likesQueryOptions } from "@/lib/queries";
+import { invalidateDashboardSummary, removeTracksFromLikesCache } from "@/lib/queries";
+import { useProgressiveLikes, progressiveStatus, selectAllLabel } from "@/lib/progressive";
 import { useDebouncedValue } from "@/lib/useDebouncedValue";
 
 interface Track {
@@ -59,29 +61,33 @@ export default function LikeManagerPage() {
     totalBatches: number;
   } | null>(null);
   
-  const { data } = useSuspenseQuery(likesQueryOptions());
+  const likesState = useProgressiveLikes<{ track?: Track; created_at?: string } & Track>();
 
   const likes: Like[] = useMemo(
     () =>
-      ((data?.collection || []) as unknown as Array<{ track?: Track; created_at?: string } & Track>).map(
-        (item, index) => {
-          if (item.track) {
-            return {
-              track: item.track,
-              liked_at: item.created_at || "",
-              liked_order: index,
-            };
-          }
-
+      likesState.items.map((item, index) => {
+        if (item.track) {
           return {
-            track: item,
-            liked_at: "",
+            track: item.track,
+            liked_at: item.created_at || "",
             liked_order: index,
           };
-        },
-      ),
-    [data?.collection],
+        }
+
+        return {
+          track: item,
+          liked_at: "",
+          liked_order: index,
+        };
+      }),
+    [likesState.items],
   );
+
+  useEffect(() => {
+    if (likesState.error) {
+      setNotice({ type: "error", text: `Couldn't load your liked tracks: ${likesState.error.message}` });
+    }
+  }, [likesState.error]);
 
   const toggleTrack = (id: number, index: number, currentFilteredLikes: Like[], event?: React.MouseEvent | React.KeyboardEvent) => {
     const isShiftKey = event && 'shiftKey' in event && event.shiftKey;
@@ -268,6 +274,16 @@ export default function LikeManagerPage() {
       }));
   }, [likes, selected, showUnlikeConfirm]);
 
+  // Only pass a filteredCount through to progressiveStatus when a filter is
+  // actually narrowing the list — otherwise "Matching N of N loaded" reads as
+  // noise where "Showing N — still loading…" says the same thing more plainly.
+  const hasActiveFilter = Boolean(debouncedSearch) || genreFilter !== "All" || durationFilter !== "All";
+  const likesStatus = progressiveStatus(
+    likesState,
+    "tracks",
+    hasActiveFilter ? { filteredCount: filteredLikes.length } : {},
+  );
+
   return (
     <PageContainer maxWidth="wide" className={selected.size > 0 ? "pb-28" : ""}>
         <PageHeader
@@ -299,7 +315,23 @@ export default function LikeManagerPage() {
           </div>
         )}
 
-        {likes.length === 0 ? (
+        {likesState.isLoadingFirstPage ? (
+          <Card className="p-6">
+            <div className="flex items-center gap-3 mb-4 flex-wrap">
+              <Skeleton className="h-10 flex-1 min-w-[200px] rounded-lg" />
+              <Skeleton className="h-10 w-32 rounded-lg" />
+              <Skeleton className="h-10 w-32 rounded-lg" />
+              <Skeleton className="h-10 w-32 rounded-lg" />
+              <Skeleton className="h-6 w-20" />
+            </div>
+            <Skeleton className="h-4 w-32 mb-2" />
+            <div className="space-y-2">
+              {Array.from({ length: 8 }).map((_, i) => (
+                <Skeleton key={i} className="h-16 w-full rounded-xl" />
+              ))}
+            </div>
+          </Card>
+        ) : likes.length === 0 ? (
           <Card className="p-8">
             <EmptyState
               icon={<Heart className="w-12 h-12" />}
@@ -359,13 +391,15 @@ export default function LikeManagerPage() {
                 onClick={selectAll}
                 className="text-sm text-primary hover:text-primary/80 font-medium whitespace-nowrap"
               >
-                {selected.size === filteredLikes.length ? "Deselect All" : "Select All"}
+                {selected.size === filteredLikes.length
+                  ? "Deselect All"
+                  : selectAllLabel(likesState, filteredLikes.length)}
               </button>
             </div>
 
-            <div className="text-sm text-muted-foreground mb-2">
-              {filteredLikes.length} of {likes.length} tracks
-            </div>
+            {likesStatus && (
+              <div className="text-sm text-muted-foreground mb-2">{likesStatus}</div>
+            )}
 
             <ProgressiveBlur
               ref={listScrollRef}
@@ -407,6 +441,13 @@ export default function LikeManagerPage() {
                 })}
               </div>
             </ProgressiveBlur>
+
+            {likesState.isLoadingMore && (
+              <div className="flex items-center justify-center gap-2 pt-3 text-xs text-muted-foreground">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                Loading more…
+              </div>
+            )}
           </Card>
         )}
       <SelectionBanner

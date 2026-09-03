@@ -2,6 +2,7 @@
 
 import { useQuery, type QueryClient, type UseQueryOptions } from "@tanstack/react-query";
 import { apiFetchJson } from "@/lib/api";
+import { progressiveKeys } from "@/lib/progressive";
 
 type QueryOverrides<T> = Omit<
   UseQueryOptions<T, Error, T, readonly unknown[]>,
@@ -294,6 +295,38 @@ function getTrackId(item: Record<string, unknown>) {
   return nestedTrack?.id ?? directId;
 }
 
+/**
+ * Progressive (useInfiniteQuery) caches store `{ pages: Page[], pageParams }`
+ * instead of a single collection. Patch every already-fetched page in place
+ * so a mutation's removed rows disappear immediately without invalidating the
+ * query — invalidating would refetch the whole paginated crawl from page one
+ * and flicker rows back in while it revalidates, which defeats the point of
+ * loading progressively. Pages the hook hasn't fetched yet are unaffected and
+ * will simply reflect the mutation naturally once they do load, since the
+ * mutation already happened server-side.
+ */
+type ProgressivePage = { collection?: Array<Record<string, unknown>>; total?: number };
+type ProgressiveCache = { pages: ProgressivePage[]; pageParams: unknown[] };
+
+function patchProgressiveCollection(
+  queryClient: QueryClient,
+  queryKey: readonly unknown[],
+  isRemoved: (item: Record<string, unknown>) => boolean,
+  removedCount: number,
+) {
+  queryClient.setQueryData<ProgressiveCache>(queryKey, (old) => {
+    if (!old) return old;
+    return {
+      ...old,
+      pages: old.pages.map((page) => ({
+        ...page,
+        collection: (page.collection || []).filter((item) => !isRemoved(item)),
+        total: typeof page.total === "number" ? Math.max(0, page.total - removedCount) : page.total,
+      })),
+    };
+  });
+}
+
 export function removeTracksFromLikesCache(queryClient: QueryClient, removedIds: Set<number>) {
   queryClient.setQueryData<CollectionResponse<Record<string, unknown>>>(queryKeys.likes(), (current) => {
     if (!current) return current;
@@ -325,6 +358,16 @@ export function removeTracksFromLikesCache(queryClient: QueryClient, removedIds:
       }),
     });
   });
+
+  patchProgressiveCollection(
+    queryClient,
+    progressiveKeys.likes(),
+    (item) => {
+      const trackId = getTrackId(item);
+      return trackId != null && removedIds.has(trackId);
+    },
+    removedIds.size,
+  );
 }
 
 export function removeUsersFromFollowingsCache(queryClient: QueryClient, removedIds: Set<number>) {
@@ -338,6 +381,13 @@ export function removeUsersFromFollowingsCache(queryClient: QueryClient, removed
         typeof current.total === "number" ? Math.max(0, current.total - removedIds.size) : current.total,
     };
   });
+
+  patchProgressiveCollection(
+    queryClient,
+    progressiveKeys.followings(),
+    (item) => removedIds.has(Number(item.id)),
+    removedIds.size,
+  );
 }
 
 export function removeItemsFromRepostsCache(queryClient: QueryClient, removedIds: Set<number>) {
@@ -351,6 +401,13 @@ export function removeItemsFromRepostsCache(queryClient: QueryClient, removedIds
         typeof current.total_results === "number" ? Math.max(0, current.total_results - removedIds.size) : current.total_results,
     };
   });
+
+  patchProgressiveCollection(
+    queryClient,
+    progressiveKeys.reposts(),
+    (item) => removedIds.has(Number(item.id)),
+    removedIds.size,
+  );
 }
 
 export async function invalidatePlaylistCaches(queryClient: QueryClient, playlistId?: number | null) {

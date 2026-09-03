@@ -2,7 +2,7 @@ import prisma from './prisma.js';
 import logger from './logger.js';
 import { soundcloudClient } from './soundcloud-client.js';
 import { upsertTrackRows, mapTrackForCatalog } from './catalog.js';
-import { sleep } from './pacing.js';
+import { sleep, SC_WRITE_PACING_MS } from './pacing.js';
 
 // Piggyback enrichment: resolve bare track IDs to catalog metadata using the
 // requesting user's own token context, fire-and-forget, with the app's
@@ -10,7 +10,6 @@ import { sleep } from './pacing.js';
 // on real requests (plus the manual, flag-gated backfill script).
 
 const BATCH_SIZE = 50; // GET /tracks?ids= comma-list size
-const PACING_MS = 300;
 const MAX_BATCHES_PER_REQUEST = 4; // bound the work piggybacked on one request
 const MAX_RESOLVE_ATTEMPTS = 3;
 
@@ -56,7 +55,7 @@ export async function enrichTrackIds(trackIds, accessToken, refreshToken, { maxB
   try {
     for (let i = 0; i < candidates.length; i += BATCH_SIZE) {
       const batch = candidates.slice(i, i + BATCH_SIZE);
-      if (i > 0) await sleep(PACING_MS);
+      if (i > 0) await sleep(SC_WRITE_PACING_MS);
 
       const tracks = await soundcloudClient.getTracksByIds(accessToken, refreshToken, batch);
       const rows = tracks.map(mapTrackForCatalog).filter(Boolean);

@@ -1,5 +1,5 @@
 import express from 'express';
-import { soundcloudClient } from '../lib/soundcloud-client.js';
+import { soundcloudClient, fetchWithTimeout } from '../lib/soundcloud-client.js';
 import prisma from '../lib/prisma.js';
 import { heavyOperationRateLimiter } from '../middleware/rateLimiter.js';
 import { authenticateUser } from '../middleware/auth.js';
@@ -7,7 +7,14 @@ import { logOperation, startOperationTimer, extractClientInfo, instrumentRead } 
 import { harvestTracks, harvestPlaylists } from '../lib/catalog.js';
 import { piggybackEnrichment } from '../lib/enrichment.js';
 import logger from '../lib/logger.js';
-import { sleep, SC_WRITE_PACING_MS } from '../lib/pacing.js';
+import {
+  sleep,
+  SC_WRITE_PACING_MS,
+  SC_PLAYLIST_PACING_MS,
+  SC_BULK_PACING_MS,
+  SC_READ_CONCURRENCY,
+  mapWithConcurrency,
+} from '../lib/pacing.js';
 import { extractNumericId, normalizeResource, normalizeResourceV2, normalizeTrackForLibraryBrowser, normalizePlaylistForLibraryBrowser } from '../lib/normalize.js';
 import { getCachedResolve, setCachedResolve } from '../lib/resolve-cache.js';
 import {
@@ -16,6 +23,7 @@ import {
   invalidateUserNamespaces,
   loadCachedFollowings,
   loadCachedFollowers,
+  loadCachedMe,
   invalidatePlaylistState,
 } from '../lib/social-cache.js';
 import { safeError } from '../lib/safe-error.js';
@@ -63,6 +71,22 @@ function playlistDescriptionWithToolkit(operationDescription) {
   return `${body}\n\n${SC_TOOLKIT_PLAYLIST_FOOTER}`;
 }
 
+/**
+ * Whether a failed authenticated resolve is worth retrying against the public
+ * endpoint. Rate limiting and timeouts are properties of the connection, not
+ * of our credentials, so retrying them publicly just spends the budget twice
+ * on the request that was already struggling.
+ */
+const OEMBED_TIMEOUT_MS = 4000;
+
+function shouldRetryPublicly(error) {
+  const message = String(error?.message || '');
+  if (error?.name === 'AbortError' || /abort/i.test(message)) return false;
+  if (/\b429\b/.test(message)) return false;
+  if (/\b5\d\d\b/.test(message)) return false;
+  return true;
+}
+
 function sanitizeUrl(input = '') {
   let url = String(input).trim();
   if (!url) return '';
@@ -105,7 +129,12 @@ function getPlayableTrackIds(tracks = []) {
 }
 
 async function assertFollowedUser(req, targetUserId) {
-  const followings = await soundcloudClient.getFollowings(req.accessToken, req.refreshToken);
+  // Must go through the cache, not the raw client: this authorization check
+  // runs before EVERY followed-library page fetch, and a raw call re-crawls
+  // the whole followings list each time — 10+ SoundCloud round trips to
+  // authorize a request that returns 50 items.
+  const payload = await loadCachedFollowings(req);
+  const followings = Array.isArray(payload?.collection) ? payload.collection : [];
   const followed = followings.find((user) => Number(user?.id) === Number(targetUserId));
   if (!followed) {
     const error = new Error('Followed user not found');
@@ -122,16 +151,7 @@ async function assertFollowedUser(req, targetUserId) {
  */
 router.get('/me', authenticateUser, instrumentRead('me'), async (req, res) => {
   try {
-    const userInfo = await soundcloudClient.getMe(req.accessToken, req.refreshToken);
-    logger.info('[/api/me] SC response keys:', Object.keys(userInfo));
-    logger.info('[/api/me] Stats fields:', {
-      followers_count: userInfo.followers_count,
-      followings_count: userInfo.followings_count,
-      public_favorites_count: userInfo.public_favorites_count,
-      likes_count: userInfo.likes_count,
-      playlist_count: userInfo.playlist_count,
-      track_count: userInfo.track_count,
-    });
+    const userInfo = await loadCachedMe(req);
     res.json(userInfo);
   } catch (error) {
     logger.error('Get me error:', safeError(error));
@@ -141,7 +161,9 @@ router.get('/me', authenticateUser, instrumentRead('me'), async (req, res) => {
 
 router.get('/dashboard/summary', authenticateUser, instrumentRead('dashboard-summary'), async (req, res) => {
   try {
-    const me = await soundcloudClient.getMe(req.accessToken, req.refreshToken);
+    // Shares the cache entry with GET /api/me — the dashboard load previously
+    // fetched this profile twice.
+    const me = await loadCachedMe(req);
     const userId = req.user.id;
     const likesCount = me?.public_favorites_count ?? me?.likes_count;
 
@@ -201,13 +223,19 @@ router.get('/dashboard/summary', authenticateUser, instrumentRead('dashboard-sum
         ? getCachedUserPayload(
             'playlists',
             userId,
-            'limit=50&offset=0',
-            async () => soundcloudClient.getPlaylists(
-              req.accessToken,
-              req.refreshToken,
-              50,
-              0,
-            ),
+            // Same key as GET /api/playlists so a dashboard load warms the
+            // playlists page and vice versa. These were 'default' and
+            // 'limit=50&offset=0', which meant two entries for overlapping
+            // data and no sharing between them.
+            'default',
+            async () => {
+              const playlists = await soundcloudClient.getAllPlaylists(req.accessToken, req.refreshToken);
+              const collection = playlists.map((p) => {
+                const idNum = typeof p.id === 'string' ? parseInt(p.id, 10) : p.id;
+                return { ...p, id: idNum, coverUrl: p.artwork_url || p.user?.avatar_url || '' };
+              });
+              return { collection, total: collection.length };
+            },
             CACHE_TTL.playlists,
           )
         : Promise.resolve(undefined),
@@ -229,16 +257,19 @@ router.get('/library/audit', authenticateUser, instrumentRead('library-audit'), 
       : Array.isArray(playlistPage)
         ? playlistPage
         : [];
-    const fullPlaylists = [];
-
-    for (const playlist of playlists) {
+    // These fetches are independent of each other, so the serial loop this
+    // replaces cost one round trip per playlist end to end: ~21 at the default
+    // limit of 20 and ~51 at the maximum, all inside one held-open request.
+    const settled = await mapWithConcurrency(playlists, SC_READ_CONCURRENCY, async (playlist) => {
       try {
-        const full = await soundcloudClient.getPlaylistWithTracks(req.accessToken, req.refreshToken, playlist.id);
-        fullPlaylists.push(full);
+        return await soundcloudClient.getPlaylistWithTracks(req.accessToken, req.refreshToken, playlist.id);
       } catch (error) {
         logger.warn('Library audit playlist fetch failed:', { playlistId: playlist.id, error: safeError(error) });
+        return null;
       }
-    }
+    });
+    // Order is preserved by mapWithConcurrency; failures drop out as before.
+    const fullPlaylists = settled.filter(Boolean);
 
     harvestTracks(fullPlaylists.flatMap(p => (Array.isArray(p.tracks) ? p.tracks : [])));
     harvestPlaylists(fullPlaylists);
@@ -318,19 +349,19 @@ router.get('/playlists', authenticateUser, instrumentRead('playlists'), async (r
       'default',
       async () => {
         const playlists = await soundcloudClient.getAllPlaylists(req.accessToken, req.refreshToken);
-        const collection = await Promise.all(playlists.map(async (p) => {
+        // Cover art is derived from what the list response already carries.
+        // This used to fall back to getPlaylistWithTracks for every artwork-less
+        // playlist, in an unbounded Promise.all — 50 simultaneous requests each
+        // returning up to 500 full track objects, to read one artwork_url off
+        // tracks[0]. That fan-out was the dominant cost of this endpoint and its
+        // swallowed errors turned the resulting 429s into silently missing
+        // covers. Clients that want a real per-playlist cover can ask for one
+        // lazily; the owner avatar is a fine placeholder in a list view.
+        const collection = playlists.map((p) => {
           const idNum = typeof p.id === 'string' ? parseInt(p.id, 10) : p.id;
-          let coverUrl = p.artwork_url || '';
-          if (!coverUrl) {
-            try {
-              const full = await soundcloudClient.getPlaylistWithTracks(req.accessToken, req.refreshToken, idNum);
-              const first = Array.isArray(full.tracks) && full.tracks.length ? full.tracks[0] : null;
-              coverUrl = first?.artwork_url || first?.user?.avatar_url || '';
-            } catch {}
-          }
-          if (!coverUrl) coverUrl = p.user?.avatar_url || '';
+          const coverUrl = p.artwork_url || p.user?.avatar_url || '';
           return { ...p, id: idNum, coverUrl };
-        }));
+        });
         return { collection, total: collection.length };
       },
       CACHE_TTL.playlists,
@@ -412,7 +443,7 @@ router.post('/playlists/clone', authenticateUser, heavyOperationRateLimiter, val
           initialBatch
         );
 
-        await sleep(500);
+        await sleep(SC_PLAYLIST_PACING_MS);
 
         let addIndex = mergeBatchSize;
         while (addIndex < batch.length) {
@@ -433,7 +464,7 @@ router.post('/playlists/clone', authenticateUser, heavyOperationRateLimiter, val
         });
 
         if (i < numPlaylists - 1) {
-          await sleep(500);
+          await sleep(SC_PLAYLIST_PACING_MS);
         }
       }
 
@@ -465,7 +496,7 @@ router.post('/playlists/clone', authenticateUser, heavyOperationRateLimiter, val
         initialBatch
       );
 
-      await sleep(500);
+      await sleep(SC_PLAYLIST_PACING_MS);
 
       let addIndex = mergeBatchSize;
       while (addIndex < trackIdsArray.length) {
@@ -678,7 +709,10 @@ router.get('/likes', authenticateUser, instrumentRead('likes'), async (req, res)
           200
         ));
         harvestTracks(items);
-        return { collection: items, total_results: items.length };
+        // `truncated` rides along from paginate() when the crawl hit its page
+        // or time budget. Surfacing it lets the client say "showing N of more"
+        // instead of presenting a partial library as the whole thing.
+        return { collection: items, total_results: items.length, truncated: items.truncated === true };
       },
       CACHE_TTL.likes,
     );
@@ -790,7 +824,15 @@ async function handleResolve(req, res) {
 
     // Optional oEmbed supplement (best effort)
     try {
-      const oembedRes = await fetch(`https://soundcloud.com/oembed?format=json&url=${encodeURIComponent(cleaned)}`);
+      // fetchWithTimeout, not bare fetch: this is a third-party call in the hot
+      // path of /resolve, and the surrounding try/catch handles rejection but
+      // not hanging — without an AbortController a stuck oEmbed holds the
+      // whole response open. Short deadline; the supplement is best-effort.
+      const oembedRes = await fetchWithTimeout(
+        `https://soundcloud.com/oembed?format=json&url=${encodeURIComponent(cleaned)}`,
+        {},
+        OEMBED_TIMEOUT_MS,
+      );
       if (oembedRes.ok) {
         const oem = await oembedRes.json();
         if (normalized.type === 'track' || normalized.type === 'playlist') {
@@ -896,19 +938,28 @@ router.post('/playlists/merge', authenticateUser, heavyOperationRateLimiter, val
     const { sourcePlaylistIds, title, targetPlaylistId, deleteAfterMerge } = req.body;
     // Validation middleware already checked the input
 
-    // Helper to slow down between API calls
+    // Read phase. These fetches are independent, so they run concurrently —
+    // the loop this replaces was serial AND paced itself with the *write*
+    // constant, costing ~700ms per source playlist before a single write.
+    // Dedup order still follows sourcePlaylistIds because mapWithConcurrency
+    // preserves input order.
+    const sourcePlaylists = await mapWithConcurrency(
+      sourcePlaylistIds,
+      SC_READ_CONCURRENCY,
+      (playlistId) => soundcloudClient.getPlaylistWithTracks(
+        req.accessToken,
+        req.refreshToken,
+        playlistId
+      ),
+    );
 
-    // Get all tracks from source playlists (with tracks included)
     const perPlaylistCounts = [];
     let fetchedTotal = 0;
     let acceptedTotal = 0;
     const trackIdSet = new Set();
-    for (const playlistId of sourcePlaylistIds) {
-      const playlist = await soundcloudClient.getPlaylistWithTracks(
-        req.accessToken,
-        req.refreshToken,
-        playlistId
-      );
+    for (let i = 0; i < sourcePlaylists.length; i += 1) {
+      const playlist = sourcePlaylists[i];
+      const playlistId = sourcePlaylistIds[i];
       const all = Array.isArray(playlist.tracks) ? playlist.tracks : [];
       const filtered = all.filter(t => t && !t.blocked_at && t.streamable !== false);
       harvestTracks(all); // blocked/preview tracks are catalog signal too
@@ -919,7 +970,6 @@ router.post('/playlists/merge', authenticateUser, heavyOperationRateLimiter, val
       for (const t of filtered) {
         if (t.id != null) trackIdSet.add(t.id);
       }
-      await sleep(SC_WRITE_PACING_MS); // small pause between playlist fetches
     }
 
     // ── MERGE INTO EXISTING PLAYLIST ──────────────────────────────────────────
@@ -1101,7 +1151,7 @@ router.post('/playlists/merge', authenticateUser, heavyOperationRateLimiter, val
           initialBatch
         );
 
-        await sleep(500);
+        await sleep(SC_PLAYLIST_PACING_MS);
 
         let finalCount = initialBatch.length;
         let addIndex = mergeBatchSize;
@@ -1195,7 +1245,7 @@ router.post('/playlists/merge', authenticateUser, heavyOperationRateLimiter, val
       );
 
       logger.info('[merge] created playlist', { id: newPlaylist.id, initialCount: initialBatch.length });
-      await sleep(500);
+      await sleep(SC_PLAYLIST_PACING_MS);
 
       let finalCount = initialBatch.length;
       let addIndex = mergeBatchSize;
@@ -1356,7 +1406,7 @@ async function createOrAppendTrackIds({ accessToken, refreshToken, trackIds, tit
     const overflowPlaylists = [];
     const baseTitle = targetPlaylist.title || title || 'Playlist';
     for (let i = 0; i < overflowChunks.length; i++) {
-      await sleep(500);
+      await sleep(SC_PLAYLIST_PACING_MS);
       const overflowTitle = `${baseTitle} (overflow ${i + 1})`;
       const overflowPlaylist = await createPlaylistFromTrackIds(
         accessToken,
@@ -1410,7 +1460,7 @@ async function createOrAppendTrackIds({ accessToken, refreshToken, trackIds, tit
       permalink_url: newPlaylist.permalink_url,
       trackCount: chunks[i].length,
     });
-    if (i < chunks.length - 1) await sleep(500);
+    if (i < chunks.length - 1) await sleep(SC_PLAYLIST_PACING_MS);
   }
 
   return {
@@ -1744,7 +1794,7 @@ router.post('/playlists/from-likes', authenticateUser, heavyOperationRateLimiter
       const overflowPlaylists = [];
       const baseTitle = targetPlaylist.title || 'Playlist';
       for (let j = 0; j < overflowChunks.length; j++) {
-        await sleep(500);
+        await sleep(SC_PLAYLIST_PACING_MS);
         const overflowTitle = `${baseTitle} (overflow ${j + 1})`;
         const overflowPlaylist = await createPlaylistFromTrackIds(
           req.accessToken,
@@ -1834,7 +1884,7 @@ router.post('/playlists/from-likes', authenticateUser, heavyOperationRateLimiter
         trackCount: chunk.length
       });
 
-      if (i < numPlaylists - 1) await sleep(500);
+      if (i < numPlaylists - 1) await sleep(SC_PLAYLIST_PACING_MS);
     }
 
     res.json({
@@ -1947,50 +1997,52 @@ router.post('/resolve/batch', authenticateUser, heavyOperationRateLimiter, valid
     // v1-normalized resources for logging + harvest, regardless of response version
     const resolvedResources = [];
 
-    // Process sequentially to avoid SoundCloud rate limits
-    for (let index = 0; index < urls.length; index += 1) {
-      const rawUrl = urls[index];
+    // Bounded concurrency rather than one-at-a-time. These resolves are
+    // independent, and the previous serial loop cost up to 50 round trips
+    // (each potentially a 302 double-hop) inside a single request.
+    const settled = await mapWithConcurrency(urls, SC_READ_CONCURRENCY, async (rawUrl, index) => {
       const url = sanitizeUrl(rawUrl);
       if (!url) {
-        const invalidResult = { url: rawUrl, status: 'error', error: 'Invalid SoundCloud URL' };
-        results.push(useV2 ? { ...invalidResult, index } : invalidResult);
-        continue;
+        return { result: { url: rawUrl, status: 'error', error: 'Invalid SoundCloud URL' }, index };
       }
 
       // Check cache first
       const cached = getCachedResolve(url);
       if (cached) {
-        resolvedResources.push(cached);
         const cachedData = useV2 ? (normalizeResourceV2(cached) || cached) : cached;
-        const okResult = { url: rawUrl, status: 'ok', data: cachedData };
-        results.push(useV2 ? { ...okResult, index } : okResult);
-        continue;
+        return { result: { url: rawUrl, status: 'ok', data: cachedData }, index, resource: cached };
       }
 
       try {
         let resource;
         try {
           resource = await soundcloudClient.resolveAny(req.accessToken, req.refreshToken, url);
-        } catch {
+        } catch (authErr) {
+          // Only retry publicly when a public resolve could plausibly succeed.
+          // Retrying on a 429 or a timeout doubles the cost of exactly the
+          // situation that produced the failure.
+          if (!shouldRetryPublicly(authErr)) throw authErr;
           resource = await soundcloudClient.resolvePublic(url);
         }
         const normalizedV1 = normalizeResource(resource);
         if (normalizedV1) {
-          resolvedResources.push(normalizedV1);
           if (normalizedV1.type === 'track') harvestTracks([resource]);
           else if (normalizedV1.type === 'playlist') harvestPlaylists([resource]);
           setCachedResolve(url, normalizedV1);
           const payload = useV2 ? normalizeResourceV2(resource) : normalizedV1;
-          const okResult = { url: rawUrl, status: 'ok', data: payload };
-          results.push(useV2 ? { ...okResult, index } : okResult);
-        } else {
-          const badResult = { url: rawUrl, status: 'error', error: 'Could not parse resource' };
-          results.push(useV2 ? { ...badResult, index } : badResult);
+          return { result: { url: rawUrl, status: 'ok', data: payload }, index, resource: normalizedV1 };
         }
+        return { result: { url: rawUrl, status: 'error', error: 'Could not parse resource' }, index };
       } catch (err) {
-        const errorResult = { url: rawUrl, status: 'error', error: err.message || 'Resolve failed' };
-        results.push(useV2 ? { ...errorResult, index } : errorResult);
+        return { result: { url: rawUrl, status: 'error', error: err.message || 'Resolve failed' }, index };
       }
+    });
+
+    // mapWithConcurrency preserves input order, so results and the harvest list
+    // come out in request order regardless of which resolve finished first.
+    for (const entry of settled) {
+      if (entry.resource) resolvedResources.push(entry.resource);
+      results.push(useV2 ? { ...entry.result, index: entry.index } : entry.result);
     }
 
     const failures = results.filter(r => r.status === 'error').length;
@@ -2099,6 +2151,9 @@ router.post('/likes/tracks/bulk-unlike', authenticateUser, heavyOperationRateLim
       } catch (err) {
         results.push({ trackId, status: 'error', error: err.message || 'Unlike failed' });
       }
+      // Paced like the other bulk loops: an unpaced 100-item DELETE run was
+      // the most 429-prone path in the app.
+      await sleep(SC_BULK_PACING_MS);
     }
 
     res.json({ results });
@@ -2165,7 +2220,7 @@ router.post('/likes/tracks/bulk-like', authenticateUser, heavyOperationRateLimit
       } catch (err) {
         results.push({ trackId, status: 'error', error: err.message || 'Like failed' });
       }
-      await sleep(150);
+      await sleep(SC_BULK_PACING_MS);
     }
 
     res.json({ results });
@@ -2253,6 +2308,9 @@ router.post('/followings/bulk-unfollow', authenticateUser, heavyOperationRateLim
       } catch (err) {
         results.push({ userId, status: 'error', error: err.message || 'Unfollow failed' });
       }
+      // Paced like the other bulk loops: an unpaced 100-item DELETE run was
+      // the most 429-prone path in the app.
+      await sleep(SC_BULK_PACING_MS);
     }
 
     res.json({ results });
@@ -2383,6 +2441,9 @@ router.post('/reposts/bulk-remove', authenticateUser, heavyOperationRateLimiter,
       } catch (err) {
         results.push({ id: item.id, resourceType: item.resourceType, status: 'error', error: err.message || 'Remove failed' });
       }
+      // Paced like the other bulk loops: an unpaced 100-item DELETE run was
+      // the most 429-prone path in the app.
+      await sleep(SC_BULK_PACING_MS);
     }
 
     res.json({ results });

@@ -4,6 +4,7 @@ import { encrypt } from './crypto.js';
 import logger from './logger.js';
 import prisma from './prisma.js';
 import { getTokenContext, countScCall } from './token-context.js';
+import { invalidateCachedAuth } from './auth-cache.js';
 
 /**
  * Safely parse a fetch Response body as JSON.
@@ -30,10 +31,16 @@ async function parseScJson(response, { context = 'SoundCloud API', allowEmpty = 
 
 const SC_FETCH_TIMEOUT_MS = Number(process.env.SC_FETCH_TIMEOUT_MS) || 30_000;
 
+/** Default ceilings for a full paginate() crawl. At the 200-item page size the
+ * client uses everywhere, 200 pages is 40,000 items — far beyond any real
+ * library, so these bound pathological cases without truncating normal ones. */
+const SC_MAX_CRAWL_PAGES = Number(process.env.SC_MAX_CRAWL_PAGES) || 200;
+const SC_MAX_CRAWL_MS = Number(process.env.SC_MAX_CRAWL_MS) || 120_000;
+
 /** fetch that cannot hang: aborts after timeoutMs. SoundCloud has no SLA on
  * slow sockets; without this a single stuck request holds the response open
  * indefinitely. */
-async function fetchWithTimeout(url, options = {}, timeoutMs = SC_FETCH_TIMEOUT_MS) {
+export async function fetchWithTimeout(url, options = {}, timeoutMs = SC_FETCH_TIMEOUT_MS) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   countScCall();
@@ -175,6 +182,10 @@ class SoundCloudClient {
           updatedAt: new Date(),
         },
       });
+      // The auth memo is now holding the tokens we just replaced. SoundCloud
+      // rotates the refresh token on every exchange, so serving the memo after
+      // this point would hand out a refresh token that no longer works.
+      invalidateCachedAuth(userId);
     }
 
     return newTokens;
@@ -306,15 +317,30 @@ class SoundCloudClient {
   /**
    * Get all items from a paginated endpoint.
    *
-   * `limit` is the page size. By default every page is fetched until
-   * next_href is exhausted; pass `options` to bound the crawl:
+   * `limit` is the page size. Pass `options` to bound the crawl:
    *   maxItems      stop once this many items are collected (result is sliced)
+   *   maxPages      stop after this many pages (default SC_MAX_CRAWL_PAGES)
    *   deadlineAt    epoch ms; stop and return what's collected once reached
+   *                 (defaults to now + SC_MAX_CRAWL_MS)
    *   max429Retries bounded Retry-After retries per page (resets each page)
+   *   max401Retries bounded token refreshes for the whole crawl
+   *
+   * The defaults matter. The per-fetch AbortController deadline resets on every
+   * page, so an unbounded crawl of a large library had a worst case measured in
+   * minutes while holding one HTTP response open. Bounding pages and total wall
+   * time makes a slow SoundCloud degrade into a partial result instead.
    */
   async paginate(endpoint, accessToken, refreshToken, limit = 50, options = {}) {
-    const { maxItems = Infinity, deadlineAt = null, max429Retries = 3 } = options;
+    const {
+      maxItems = Infinity,
+      maxPages = SC_MAX_CRAWL_PAGES,
+      deadlineAt = Date.now() + SC_MAX_CRAWL_MS,
+      max429Retries = 3,
+      max401Retries = 2,
+    } = options;
     const allItems = [];
+    let pagesFetched = 0;
+    let retries401 = 0;
     // Prefer cursor-based pagination via next_href to avoid deprecated offset limits
     let nextUrl = `${this.baseUrl}${endpoint}?${new URLSearchParams({
       limit: limit.toString(),
@@ -324,7 +350,12 @@ class SoundCloudClient {
     let currentAccessToken = accessToken;
     let retries429 = 0;
 
-    while (nextUrl && allItems.length < maxItems && (deadlineAt === null || Date.now() < deadlineAt)) {
+    while (
+      nextUrl
+      && allItems.length < maxItems
+      && pagesFetched < maxPages
+      && (deadlineAt === null || Date.now() < deadlineAt)
+    ) {
       const res = await fetchWithTimeout(nextUrl, {
         headers: {
           'Authorization': `OAuth ${currentAccessToken}`,
@@ -333,7 +364,13 @@ class SoundCloudClient {
       });
 
       if (res.status === 401) {
-        // refresh once
+        // Bounded: this `continue` retries the same URL without consuming a
+        // page, so an endpoint that keeps 401-ing after a successful refresh
+        // would otherwise spin forever, burning a token exchange each pass.
+        if (retries401 >= max401Retries) {
+          throw new Error('API request failed: 401');
+        }
+        retries401++;
         const refreshed = await this.refreshTokensAndPersist(refreshToken);
         currentAccessToken = refreshed.access_token;
         refreshToken = refreshed.refresh_token || refreshToken;
@@ -361,6 +398,8 @@ class SoundCloudClient {
       }
 
       retries429 = 0;
+      retries401 = 0;
+      pagesFetched++;
       const data = (await parseScJson(res, { context: endpoint })) || {};
       if (Array.isArray(data.collection)) {
         allItems.push(...data.collection);
@@ -368,7 +407,29 @@ class SoundCloudClient {
       nextUrl = data.next_href || null;
     }
 
-    return maxItems === Infinity ? allItems : allItems.slice(0, maxItems);
+    const items = maxItems === Infinity ? allItems : allItems.slice(0, maxItems);
+
+    // A crawl that stopped early because it ran out of page budget or wall
+    // clock has NOT returned the user's whole library. Callers that render a
+    // list must be able to say so rather than silently showing a subset, so
+    // the flag rides along on the array: existing callers keep treating this
+    // as a plain array (JSON.stringify ignores the extra property), and
+    // callers that care can read `.truncated`.
+    const hitPageCap = pagesFetched >= maxPages && Boolean(nextUrl);
+    const hitDeadline = deadlineAt !== null && Date.now() >= deadlineAt && Boolean(nextUrl);
+    if (hitPageCap || hitDeadline) {
+      Object.defineProperty(items, 'truncated', {
+        value: true, enumerable: false, configurable: true,
+      });
+      Object.defineProperty(items, 'truncatedReason', {
+        value: hitPageCap ? 'page-cap' : 'deadline', enumerable: false, configurable: true,
+      });
+      logger.warn('SoundCloud crawl truncated', {
+        endpoint, pagesFetched, collected: items.length,
+        reason: hitPageCap ? 'page-cap' : 'deadline',
+      });
+    }
+    return items;
   }
 
   /**

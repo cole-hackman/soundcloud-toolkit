@@ -126,25 +126,32 @@ function useProgressive<T>(
 
   const isComplete = Boolean(query.data) && !query.hasNextPage && !query.isFetchingNextPage;
 
+  // Destructured so the effect below depends on stable values rather than the
+  // query object, which React Query returns fresh on every render — depending
+  // on it would re-run the effect on every render for no reason.
+  const { hasNextPage, isFetchingNextPage, isError, fetchNextPage } = query;
+
   // Keep pulling pages in the background so the list fills in on its own.
-  // Guarded on isFetchingNextPage so this fires one page at a time rather
-  // than stacking requests.
+  // Guarded on isFetchingNextPage so this advances one page at a time instead
+  // of stacking requests; stops on error so a failing page cannot spin.
   useEffect(() => {
     if (!autoLoadAll || !enabled) return;
-    if (query.hasNextPage && !query.isFetchingNextPage && !query.isError) {
-      void query.fetchNextPage();
+    if (hasNextPage && !isFetchingNextPage && !isError) {
+      void fetchNextPage();
     }
-  }, [autoLoadAll, enabled, query.hasNextPage, query.isFetchingNextPage, query.isError, query]);
+  }, [autoLoadAll, enabled, hasNextPage, isFetchingNextPage, isError, fetchNextPage]);
 
   const ensureComplete = useCallback(async () => {
     // Sequential by necessity: the next cursor only exists once the previous
-    // page has come back.
+    // page has come back. The guard bounds a pathological cursor that never
+    // terminates — 500 pages is 100,000 items at PAGE_SIZE.
     let guard = 0;
-    while (query.hasNextPage && guard < 500) {
-      await query.fetchNextPage();
+    let result = await fetchNextPage();
+    while (result.hasNextPage && guard < 500) {
+      result = await fetchNextPage();
       guard += 1;
     }
-  }, [query]);
+  }, [fetchNextPage]);
 
   return {
     items,

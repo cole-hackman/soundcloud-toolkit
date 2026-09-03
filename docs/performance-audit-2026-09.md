@@ -129,6 +129,70 @@ These were not performance bugs, but the audit surfaced them.
   fire-and-forget; no caller awaits them. They are not in the request path and
   should not be "optimised".
 
+## The frontend half
+
+Two separate problems: the page couldn't start fetching, and once it had data it
+couldn't render it cheaply.
+
+### The waterfall
+
+`AppLayout` rendered nothing — not even the sidebar — until `GET /api/auth/me`
+resolved. Because children never mounted, no page's react-query hooks could
+fire, so auth and data were strictly serialized on every cold load. Children now
+mount eagerly in the browser so the two race.
+
+That change has a sharp edge worth recording, because it cost a build cycle to
+find: mounting children during the **static export prerender** makes the
+`useSuspenseQuery` pages suspend on a fetch that can never resolve there, and
+`next build` times out after 60 seconds *per page* — dashboard, combine,
+like-manager and following-manager all failed this way. `tsc` does not catch it;
+only a real build does. Mounting is therefore gated on a hydration flag, which
+keeps the prerender childless and still mounts eagerly on the client.
+
+**This repo has no Jest CI** (`.github/workflows/` contains only a keep-warm
+cron), so Vercel's build is the only automated gate. A typecheck-clean frontend
+change can still be broken. Run `npm run build` before pushing frontend work.
+
+### Render cost
+
+Every browse tool rebuilt its whole pipeline on every render and put every row in
+the DOM.
+
+| Page | What it did per render | Fix |
+|---|---|---|
+| like-manager | map + 3 filters + a sort over the entire library, allocating two `Date`s per comparison, on every keystroke | `useMemo`, precomputed sort key, 150ms debounce |
+| playlist-modifier | `tracks.indexOf(track)` **inside** the render map — ~125,000 comparisons for a 500-track playlist | `id → index` Map |
+| repost-manager | compiled a `RegExp` per keep-list line, then rescanned every repost | memoized, debounced |
+| TrackExportCard | serialized the **entire** library to show 10 preview lines | memoized over the first 20 tracks |
+| 11+ list sites | every row in the DOM; `max-h-[600px]` caps visible height, not DOM cost | `@tanstack/react-virtual` on the four worst |
+
+Virtualization has one non-obvious constraint: shift-click range selection uses
+the row index, so the index handed to a row must remain the index into the
+*filtered* array, not the virtual window. That is verified in all four lists.
+
+Also: `growth` was the only `useSuspenseQuery` page with no `loading.tsx`, so
+navigating to it held the previous page on screen and read as a dead click; its
+inline queries bypassed `lib/queries.ts` and so inherited `staleTime: 0`; and a
+1Hz ticker re-rendered the whole ~1,500-line component every second.
+
+### Progressive loading
+
+The browse tools now page 200 items at a time against the `/paged` routes rather
+than waiting on a full server-side crawl, so the first rows paint after one round
+trip.
+
+The fetching is the easy half. The hard half is not lying about it. A count, a
+search result or a "select all" derived from a partially loaded collection has to
+say what it is actually derived from:
+
+- the status line reads *"Showing 1,200 of 5,431 — still loading…"*, and only
+  prints "of N" when the server actually reported a total — `totalCount` is
+  `null`, not a guess, otherwise;
+- select-all reads *"Select all 1,200 loaded"* until the collection is complete;
+- `ensureComplete()` exists for the paths where a partial set produces a **wrong
+  artifact rather than a slow one** — exports and playlist creation. Those stay
+  on the full-load path.
+
 ## Instrumentation
 
 The audit's own recommendation is that the next round of this work be driven by
@@ -193,6 +257,14 @@ crawls exactly as it did before.
 6. **Rate limiting is still per-IP and in-memory.** It resets on deploy and is
    shared by users behind the same NAT. Raising the ceiling to 600/15min makes
    progressive loading viable but does not fix that shape.
+7. **Progressive loading trades one slow wait for a longer fill.** The first rows
+   arrive after one round trip instead of twenty-five, but the *whole* library
+   still takes the same twenty-five to finish arriving — it just does so behind
+   an interactive page. Search and sort over a partially loaded set are honest
+   about their scope, not complete.
+8. **Exports and playlist creation still pay the full crawl**, deliberately.
+   Partial data there produces a silently wrong file or playlist, which is worse
+   than a slow one.
 
 ## Running the tests
 

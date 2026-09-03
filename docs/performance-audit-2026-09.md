@@ -5,11 +5,14 @@
 An audit of why the web tools are slow, and the fixes that came out of it.
 
 **On numbers in this document.** Round-trip counts are exact: they were derived
-by reading every code path and are reproducible from the source. Wall-clock
-figures are *estimates* — a round trip to the SoundCloud API is assumed at
-250–400ms, which matches the ranges recorded in `docs/engineering-review-2026-08-25.md`.
-Nothing here was measured against production, because that measurement did not
-exist when the audit started. Producing it is the first change in this branch
+by reading every code path and are reproducible from the source. Database-side
+timings are measured — see [Measured against a real
+database](#measured-against-a-real-database), run on a throwaway PostgreSQL 16
+instance with the production schema. **SoundCloud wall-clock figures are still
+estimates**: a round trip is assumed at 250–400 ms, matching the ranges in
+`docs/engineering-review-2026-08-25.md`. No SoundCloud latency was measured
+against production, because that measurement did not exist when the audit
+started. Producing it is the first change in this branch
 (see [Instrumentation](#instrumentation)); real p95s will be readable at
 `/admin` a few days after deploy, and this document should be revisited then.
 
@@ -209,6 +212,37 @@ production data rather than code reading.
 - `/api/admin/stats` gained a per-action **p95** ranking (`readLatency`). The
   existing breakdown only computed a mean, which hides the tail users complain
   about.
+
+## Measured against a real database
+
+Everything above about SoundCloud latency is still an estimate. The *database*
+side is not — these are from a throwaway PostgreSQL 16 instance running the
+production schema, with `docs/sql/2026-library-cache.sql` applied to it.
+
+| Measurement | Result |
+|---|---|
+| Migration on a `main`-schema database | applies clean; second run is a true no-op |
+| 20,000-item library → page rows | 100 rows, **928 kB** on disk after TOAST |
+| Snapshot write (20k items, 100 rows, one transaction) | **1,801 ms** |
+| Snapshot read (20k items reassembled) | **275 ms** |
+| `authenticateUser` cold (real DB round trip) | **68 ms** |
+| `authenticateUser` warm (memo hit) | **4 ms** |
+| `ON DELETE CASCADE` on account deletion | pages and state rows both go to 0 |
+
+Two things worth drawing out.
+
+**The 1.8 s write is why the snapshot write is fire-and-forget.** Awaiting it
+would have added that to the cold path — the request that was already the
+slowest — in exchange for removing a *future* cost. That was a real regression
+caught while re-reading the diff, and the number confirms it mattered.
+
+**275 ms to read a 20,000-item library, against 25 sequential SoundCloud round
+trips to crawl it.** That gap is the whole argument for the persistent tier.
+
+The 68 ms → 4 ms auth figure is from a local Unix-socket Postgres. Production
+uses Neon, which is network-attached and serverless, so the cold number there is
+larger and the memo saves more — but that also means this measurement is a
+*lower* bound on the benefit, not a promise about production.
 
 ## Caching model
 

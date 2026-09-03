@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { ArrowLeft, X, Combine, Check, Music, Trash2, AlertTriangle } from "lucide-react";
@@ -24,7 +24,10 @@ export default function CombinePlaylistsPage() {
   const survey = useSurvey();
   
   const { data: playlistsData } = useSuspenseQuery(playlistsQueryOptions());
-  const userPlaylists = (playlistsData?.collection || []) as unknown as Playlist[];
+  const userPlaylists = useMemo(
+    () => (playlistsData?.collection || []) as unknown as Playlist[],
+    [playlistsData?.collection],
+  );
 
   const [selectedPlaylists, setSelectedPlaylists] = useState<Playlist[]>([]);
   const [newPlaylistTitle, setNewPlaylistTitle] = useState("");
@@ -139,8 +142,9 @@ export default function CombinePlaylistsPage() {
   };
 
   // Playlists available as merge target (exclude selected sources)
-  const availableTargets = userPlaylists.filter(
-    (p) => !selectedPlaylists.some((s) => Number(s.id) === Number(p.id))
+  const availableTargets = useMemo(
+    () => userPlaylists.filter((p) => !selectedPlaylists.some((s) => Number(s.id) === Number(p.id))),
+    [userPlaylists, selectedPlaylists],
   );
 
   const canMerge =
@@ -198,9 +202,9 @@ export default function CombinePlaylistsPage() {
     }
   };
 
-  const totalTracks = selectedPlaylists.reduce(
-    (sum, playlist) => sum + (playlist.track_count || 0),
-    0
+  const totalTracks = useMemo(
+    () => selectedPlaylists.reduce((sum, playlist) => sum + (playlist.track_count || 0), 0),
+    [selectedPlaylists],
   );
 
   // ── SUCCESS SCREEN ──────────────────────────────────────────────────────────
@@ -338,6 +342,10 @@ export default function CombinePlaylistsPage() {
                         <img
                           src={playlist.artwork_url || playlist.coverUrl || "/SC Toolkit Icon.png"}
                           alt={playlist.title}
+                          width={48}
+                          height={48}
+                          loading="lazy"
+                          decoding="async"
                           className="w-12 h-12 rounded-lg object-cover"
                         />
                         <div className="flex-1 text-left">
@@ -390,6 +398,10 @@ export default function CombinePlaylistsPage() {
                         <img
                           src={playlist.artwork_url || playlist.coverUrl || "/SC Toolkit Icon.png"}
                           alt={playlist.title}
+                          width={28}
+                          height={28}
+                          loading="lazy"
+                          decoding="async"
                           className="w-7 h-7 rounded object-cover shrink-0"
                         />
                         <span className="text-sm truncate flex-1 text-foreground">
@@ -481,6 +493,10 @@ export default function CombinePlaylistsPage() {
                       <img
                         src={targetPlaylist.coverUrl || targetPlaylist.artwork_url || "/SC Toolkit Icon.png"}
                         alt={targetPlaylist.title}
+                        width={40}
+                        height={40}
+                        loading="lazy"
+                        decoding="async"
                         className="w-10 h-10 rounded-lg object-cover"
                       />
                       <div className="flex-1 min-w-0">
@@ -626,6 +642,10 @@ export default function CombinePlaylistsPage() {
                       <img
                         src={playlist.coverUrl || playlist.artwork_url || "/SC Toolkit Icon.png"}
                         alt={playlist.title}
+                        width={48}
+                        height={48}
+                        loading="lazy"
+                        decoding="async"
                         className="w-12 h-12 rounded-lg object-cover"
                       />
                       <div className="flex-1 text-left min-w-0">

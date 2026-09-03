@@ -417,6 +417,10 @@ export default function LikesToPlaylistPage() {
                       <img
                         src={targetPlaylist.coverUrl || targetPlaylist.artwork_url || "/SC Toolkit Icon.png"}
                         alt={targetPlaylist.title}
+                        width={40}
+                        height={40}
+                        loading="lazy"
+                        decoding="async"
                         className="w-10 h-10 rounded-lg object-cover"
                       />
                       <div className="flex-1 min-w-0">
@@ -508,6 +512,10 @@ export default function LikesToPlaylistPage() {
                     <img
                       src={playlist.coverUrl || playlist.artwork_url || "/SC Toolkit Icon.png"}
                       alt={playlist.title}
+                      width={48}
+                      height={48}
+                      loading="lazy"
+                      decoding="async"
                       className="w-12 h-12 rounded-lg object-cover"
                     />
                     <div className="flex-1 text-left min-w-0">

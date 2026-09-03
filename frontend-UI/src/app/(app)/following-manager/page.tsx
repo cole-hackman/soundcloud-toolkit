@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo, useRef, useSyncExternalStore } from "react";
 import { useQueryClient, useSuspenseQueries } from "@tanstack/react-query";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { Users, Search, UserMinus, Loader2, Check, ExternalLink } from "lucide-react";
 import {
   ConfirmDialog,
@@ -22,6 +23,7 @@ import {
   followingsQueryOptions,
   followersQueryOptions
 } from "@/lib/queries";
+import { useDebouncedValue } from "@/lib/useDebouncedValue";
 
 interface Following {
   id: number;
@@ -35,6 +37,29 @@ interface Following {
 }
 
 type SortOption = "alpha" | "followers" | "tracks" | "reposts" | "last_modified";
+
+// The list renders as a responsive CSS grid (1 column, 2 columns at
+// Tailwind's `md` breakpoint). Virtualizing a grid means virtualizing rows
+// of N cards rather than individual cards, so we need to know the current
+// column count in JS. useSyncExternalStore keeps this correct without a
+// hydration-mismatch flash: the server snapshot assumes 1 column (matching
+// the mobile-first CSS), and the client re-syncs to the real value.
+const MD_BREAKPOINT_QUERY = "(min-width: 768px)";
+
+function subscribeToMediaQuery(query: string, onChange: () => void) {
+  const mql = window.matchMedia(query);
+  mql.addEventListener("change", onChange);
+  return () => mql.removeEventListener("change", onChange);
+}
+
+function useGridColumnCount() {
+  const isWide = useSyncExternalStore(
+    (onChange) => subscribeToMediaQuery(MD_BREAKPOINT_QUERY, onChange),
+    () => window.matchMedia(MD_BREAKPOINT_QUERY).matches,
+    () => false,
+  );
+  return isWide ? 2 : 1;
+}
 
 export default function FollowingManagerPage() {
   const queryClient = useQueryClient();
@@ -57,8 +82,14 @@ export default function FollowingManagerPage() {
     ]
   });
 
-  const followings = (followingsData?.collection || []) as unknown as Following[];
-  const followers = new Set<number>(((followersData?.collection || []) as unknown as Following[]).map((u) => u.id));
+  const followings = useMemo(
+    () => (followingsData?.collection || []) as unknown as Following[],
+    [followingsData?.collection],
+  );
+  const followers = useMemo(
+    () => new Set<number>(((followersData?.collection || []) as unknown as Following[]).map((u) => u.id)),
+    [followersData?.collection],
+  );
   const [lastSelectedIndex, setLastSelectedIndex] = useState<number | null>(null);
 
   const toggleUser = (id: number, index: number, currentFilteredFollowings: Following[], event?: React.MouseEvent | React.KeyboardEvent) => {
@@ -207,33 +238,68 @@ export default function FollowingManagerPage() {
     }
   };
 
-  const filteredFollowings = followings
-    .filter((f) => {
-      const matchesSearch = !search || f.username?.toLowerCase().includes(search.toLowerCase());
-      const matchesFilter = filterMode === "all" || !followers.has(f.id);
-      return matchesSearch && matchesFilter;
-    })
-    .sort((a, b) => {
-      if (sort === "alpha") return (a.username || "").localeCompare(b.username || "");
-      if (sort === "followers") return (b.followers_count || 0) - (a.followers_count || 0);
-      if (sort === "tracks") return (b.track_count || 0) - (a.track_count || 0);
-      if (sort === "reposts") return (b.reposts_count || 0) - (a.reposts_count || 0);
-      if (sort === "last_modified") {
-        const getParseableTime = (d?: string | null) => {
-          if (!d) return 0;
-          let parsed = new Date(d);
-          if (isNaN(parsed.getTime()) && typeof d === 'string' && d.includes('/')) {
-            parsed = new Date(d.replace(/\//g, '-').replace(' ', 'T'));
-          }
-          const time = parsed.getTime();
-          return isNaN(time) ? 0 : time;
-        };
-        const dateA = getParseableTime(a.last_modified);
-        const dateB = getParseableTime(b.last_modified);
-        return dateB - dateA; // Newest first
+  const debouncedSearch = useDebouncedValue(search, 150);
+
+  const filteredFollowings = useMemo(() => {
+    const query = debouncedSearch.toLowerCase();
+
+    const getParseableTime = (d?: string | null) => {
+      if (!d) return 0;
+      let parsed = new Date(d);
+      if (isNaN(parsed.getTime()) && typeof d === 'string' && d.includes('/')) {
+        parsed = new Date(d.replace(/\//g, '-').replace(' ', 'T'));
       }
+      const time = parsed.getTime();
+      return isNaN(time) ? 0 : time;
+    };
+
+    // Precompute the last-modified timestamp once instead of re-parsing it
+    // (with the Safari fallback regex) twice per comparison inside .sort().
+    const withSortKey = followings
+      .filter((f) => {
+        const matchesSearch = !query || f.username?.toLowerCase().includes(query);
+        const matchesFilter = filterMode === "all" || !followers.has(f.id);
+        return matchesSearch && matchesFilter;
+      })
+      .map((f) => ({ following: f, lastModifiedMs: getParseableTime(f.last_modified) }));
+
+    withSortKey.sort((a, b) => {
+      if (sort === "alpha") return (a.following.username || "").localeCompare(b.following.username || "");
+      if (sort === "followers") return (b.following.followers_count || 0) - (a.following.followers_count || 0);
+      if (sort === "tracks") return (b.following.track_count || 0) - (a.following.track_count || 0);
+      if (sort === "reposts") return (b.following.reposts_count || 0) - (a.following.reposts_count || 0);
+      if (sort === "last_modified") return b.lastModifiedMs - a.lastModifiedMs; // Newest first
       return 0;
     });
+
+    return withSortKey.map((entry) => entry.following);
+  }, [followings, followers, debouncedSearch, filterMode, sort]);
+
+  // Virtualize the grid by row (each row holds `columns` cards). A card's
+  // flat index — used for shift-click range selection — is `rowStart + col`,
+  // i.e. still its position in `filteredFollowings`, not a virtual-row index.
+  const columns = useGridColumnCount();
+  const listScrollRef = useRef<HTMLDivElement>(null);
+  const rowCount = Math.ceil(filteredFollowings.length / columns);
+  const rowVirtualizer = useVirtualizer({
+    count: rowCount,
+    getScrollElement: () => listScrollRef.current,
+    estimateSize: () => 92,
+    overscan: 6,
+  });
+
+  // Only computed while the confirm dialog is open — no point building this
+  // on every render while it's closed.
+  const unfollowReviewItems = useMemo(() => {
+    if (!showUnfollowConfirm) return [];
+    return followings
+      .filter((following) => selected.has(following.id))
+      .map((following) => ({
+        id: following.id,
+        label: following.username,
+        meta: `${following.followers_count?.toLocaleString?.() || 0} followers`,
+      }));
+  }, [followings, selected, showUnfollowConfirm]);
 
   return (
     <PageContainer maxWidth="wide" className={selected.size > 0 ? "pb-28" : ""}>
@@ -318,73 +384,101 @@ export default function FollowingManagerPage() {
             </div>
 
             <ProgressiveBlur
-              className="grid md:grid-cols-2 gap-3 max-h-[600px] overflow-y-auto"
+              ref={listScrollRef}
+              className="max-h-[600px] overflow-y-auto"
               active={filteredFollowings.length > 8}
               fadeHeight={72}
             >
-              {filteredFollowings.map((user, index) => {
-                const isSelected = selected.has(user.id);
-                return (
-                  <div
-                    key={user.id}
-                    className={`flex items-center gap-3 p-3 rounded-xl transition-all ${
-                      isSelected
-                        ? "bg-destructive/5 border-2 border-destructive/30"
-                        : "bg-secondary/20 border-2 border-transparent hover:border-border"
-                    }`}
-                    onClick={(e) => toggleUser(user.id, index, filteredFollowings, e)}
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        toggleUser(user.id, index, filteredFollowings, e);
-                      }
-                    }}
-                  >
-                    <button
-                      className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${
-                        isSelected ? "bg-destructive text-destructive-foreground" : "bg-secondary"
-                      }`}
+              <div style={{ height: rowVirtualizer.getTotalSize(), position: "relative" }}>
+                {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+                  const rowStart = virtualRow.index * columns;
+                  const rowUsers = filteredFollowings.slice(rowStart, rowStart + columns);
+                  return (
+                    <div
+                      key={virtualRow.key}
+                      data-index={virtualRow.index}
+                      ref={rowVirtualizer.measureElement}
+                      style={{
+                        position: "absolute",
+                        top: 0,
+                        left: 0,
+                        width: "100%",
+                        transform: `translateY(${virtualRow.start}px)`,
+                      }}
+                      className="grid md:grid-cols-2 gap-3 pb-3"
                     >
-                      {isSelected && <Check className="w-3.5 h-3.5" />}
-                    </button>
-                    <img
-                      src={user.avatar_url || "/SC Toolkit Icon.png"}
-                      alt={user.username}
-                      className="w-12 h-12 rounded-full object-cover"
-                    />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <div className="font-semibold text-foreground text-sm truncate">
-                          {user.username}
-                        </div>
-                        {user.last_modified && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-secondary/80 text-muted-foreground">
-                             Active: {formatDate(user.last_modified)}
-                          </span>
-                        )}
-                      </div>
-                      <div className="text-xs text-muted-foreground mt-0.5 flex flex-wrap gap-x-3">
-                        <span>{formatNumber(user.followers_count || 0)} followers</span>
-                        <span>{formatNumber(user.track_count || 0)} tracks</span>
-                        {user.reposts_count !== undefined && (
-                          <span>{formatNumber(user.reposts_count)} reposts</span>
-                        )}
-                      </div>
+                      {rowUsers.map((user, col) => {
+                        const index = rowStart + col;
+                        const isSelected = selected.has(user.id);
+                        return (
+                          <div
+                            key={user.id}
+                            className={`flex items-center gap-3 p-3 rounded-xl transition-all ${
+                              isSelected
+                                ? "bg-destructive/5 border-2 border-destructive/30"
+                                : "bg-secondary/20 border-2 border-transparent hover:border-border"
+                            }`}
+                            onClick={(e) => toggleUser(user.id, index, filteredFollowings, e)}
+                            role="button"
+                            tabIndex={0}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault();
+                                toggleUser(user.id, index, filteredFollowings, e);
+                              }
+                            }}
+                          >
+                            <button
+                              className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${
+                                isSelected ? "bg-destructive text-destructive-foreground" : "bg-secondary"
+                              }`}
+                            >
+                              {isSelected && <Check className="w-3.5 h-3.5" />}
+                            </button>
+                            <img
+                              src={user.avatar_url || "/SC Toolkit Icon.png"}
+                              alt={user.username}
+                              width={48}
+                              height={48}
+                              loading="lazy"
+                              decoding="async"
+                              className="w-12 h-12 rounded-full object-cover"
+                            />
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <div className="font-semibold text-foreground text-sm truncate">
+                                  {user.username}
+                                </div>
+                                {user.last_modified && (
+                                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-secondary/80 text-muted-foreground">
+                                     Active: {formatDate(user.last_modified)}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-xs text-muted-foreground mt-0.5 flex flex-wrap gap-x-3">
+                                <span>{formatNumber(user.followers_count || 0)} followers</span>
+                                <span>{formatNumber(user.track_count || 0)} tracks</span>
+                                {user.reposts_count !== undefined && (
+                                  <span>{formatNumber(user.reposts_count)} reposts</span>
+                                )}
+                              </div>
+                            </div>
+                            <a
+                              href={user.permalink_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-primary hover:text-primary/80 flex-shrink-0"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <ExternalLink className="w-4 h-4" />
+                            </a>
+                          </div>
+                        );
+                      })}
                     </div>
-                    <a
-                      href={user.permalink_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-primary hover:text-primary/80 flex-shrink-0"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <ExternalLink className="w-4 h-4" />
-                    </a>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </ProgressiveBlur>
           </Card>
         )}
@@ -410,13 +504,7 @@ export default function FollowingManagerPage() {
           action="unfollowing"
           warning="This removes accounts from your following list. Export the selection if you need a record."
           exportFilename="users-to-unfollow.csv"
-          items={followings
-            .filter((following) => selected.has(following.id))
-            .map((following) => ({
-              id: following.id,
-              label: following.username,
-              meta: `${following.followers_count?.toLocaleString?.() || 0} followers`,
-            }))}
+          items={unfollowReviewItems}
         />
       </ConfirmDialog>
     </PageContainer>

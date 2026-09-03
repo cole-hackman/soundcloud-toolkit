@@ -48,6 +48,10 @@ export const queryKeys = {
   reposts: () => ["reposts"] as const,
   recentlyPlayed: () => ["recently-played"] as const,
   activities: (limit = 200) => ["activities", limit] as const,
+  growthHistory: () => ["growth", "history"] as const,
+  growthStats: () => ["growth", "stats"] as const,
+  growthLimits: () => ["growth", "limits"] as const,
+  growthAnalytics: () => ["growth", "analytics"] as const,
 };
 
 const timings = {
@@ -61,6 +65,13 @@ const timings = {
   reposts: { staleTime: 60 * 1000, gcTime: 10 * 60 * 1000 },
   recentlyPlayed: { staleTime: 60 * 1000, gcTime: 10 * 60 * 1000 },
   activities: { staleTime: 60 * 1000, gcTime: 10 * 60 * 1000 },
+  // Growth data changes as the user runs discovery/engagement actions, but
+  // not on every render — short staleTimes keep tab-switches snappy without
+  // going stale for long.
+  growthHistory: { staleTime: 30 * 1000, gcTime: 5 * 60 * 1000 },
+  growthStats: { staleTime: 30 * 1000, gcTime: 5 * 60 * 1000 },
+  growthLimits: { staleTime: 15 * 1000, gcTime: 5 * 60 * 1000 },
+  growthAnalytics: { staleTime: 60 * 1000, gcTime: 10 * 60 * 1000 },
 };
 
 export function meQueryOptions() {
@@ -156,6 +167,65 @@ export function recentlyPlayedQueryOptions() {
   };
 }
 
+export interface GrowthHistoryResponse {
+  actions: Array<Record<string, unknown>>;
+  sessions: Array<Record<string, unknown>>;
+}
+
+export function growthHistoryQueryOptions() {
+  return {
+    queryKey: queryKeys.growthHistory(),
+    queryFn: () => apiFetchJson<GrowthHistoryResponse>("/api/growth/history"),
+    ...timings.growthHistory,
+  };
+}
+
+export interface GrowthStatsResponse {
+  totalFollowed: number;
+  totalLiked: number;
+  followedBackRate: number;
+  activeFollows: number;
+  reversedFollows: number;
+  uncheckedFollows: number;
+}
+
+export function growthStatsQueryOptions() {
+  return {
+    queryKey: queryKeys.growthStats(),
+    queryFn: () => apiFetchJson<GrowthStatsResponse>("/api/growth/stats"),
+    ...timings.growthStats,
+  };
+}
+
+export interface GrowthLimitsResponse {
+  dailyCap: number;
+  used24h: number;
+  remaining: number;
+  cooldownRemainingMs: number;
+}
+
+export function growthLimitsQueryOptions() {
+  return {
+    queryKey: queryKeys.growthLimits(),
+    queryFn: () => apiFetchJson<GrowthLimitsResponse>("/api/growth/limits"),
+    ...timings.growthLimits,
+  };
+}
+
+export interface GrowthAnalyticsResponse {
+  perSeed: Array<Record<string, unknown>>;
+  followBackCurve: Array<Record<string, unknown>>;
+  totalFollows: number;
+}
+
+export function growthAnalyticsQueryOptions() {
+  return {
+    queryKey: queryKeys.growthAnalytics(),
+    queryFn: () => apiFetchJson<GrowthAnalyticsResponse>("/api/growth/analytics"),
+    ...timings.growthAnalytics,
+  };
+}
+
 export function useMeQuery(options?: QueryOverrides<Record<string, unknown>>) {
   return useQuery({ ...meQueryOptions(), ...options });
 }
@@ -200,6 +270,22 @@ export function useActivitiesQuery(
 
 export function useRecentlyPlayedQuery(options?: QueryOverrides<CollectionResponse<Record<string, unknown>>>) {
   return useQuery({ ...recentlyPlayedQueryOptions(), ...options });
+}
+
+export function useGrowthHistoryQuery(options?: QueryOverrides<GrowthHistoryResponse>) {
+  return useQuery({ ...growthHistoryQueryOptions(), ...options });
+}
+
+export function useGrowthStatsQuery(options?: QueryOverrides<GrowthStatsResponse>) {
+  return useQuery({ ...growthStatsQueryOptions(), ...options });
+}
+
+export function useGrowthLimitsQuery(options?: QueryOverrides<GrowthLimitsResponse>) {
+  return useQuery({ ...growthLimitsQueryOptions(), ...options });
+}
+
+export function useGrowthAnalyticsQuery(options?: QueryOverrides<GrowthAnalyticsResponse>) {
+  return useQuery({ ...growthAnalyticsQueryOptions(), ...options });
 }
 
 function getTrackId(item: Record<string, unknown>) {

@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { Heart, Search, Trash2, Loader2 } from "lucide-react";
 import {
   ConfirmDialog,
@@ -20,6 +21,7 @@ import {
 import { ProgressiveBlur } from "@/components/ui/ProgressiveBlur";
 import { apiFetch } from "@/lib/api";
 import { invalidateDashboardSummary, removeTracksFromLikesCache, likesQueryOptions } from "@/lib/queries";
+import { useDebouncedValue } from "@/lib/useDebouncedValue";
 
 interface Track {
   id: number;
@@ -59,22 +61,26 @@ export default function LikeManagerPage() {
   
   const { data } = useSuspenseQuery(likesQueryOptions());
 
-  const likes: Like[] = ((data?.collection || []) as unknown as Array<{ track?: Track; created_at?: string } & Track>).map(
-    (item, index) => {
-      if (item.track) {
-        return {
-          track: item.track,
-          liked_at: item.created_at || "",
-          liked_order: index,
-        };
-      }
+  const likes: Like[] = useMemo(
+    () =>
+      ((data?.collection || []) as unknown as Array<{ track?: Track; created_at?: string } & Track>).map(
+        (item, index) => {
+          if (item.track) {
+            return {
+              track: item.track,
+              liked_at: item.created_at || "",
+              liked_order: index,
+            };
+          }
 
-      return {
-        track: item,
-        liked_at: "",
-        liked_order: index,
-      };
-    },
+          return {
+            track: item,
+            liked_at: "",
+            liked_order: index,
+          };
+        },
+      ),
+    [data?.collection],
   );
 
   const toggleTrack = (id: number, index: number, currentFilteredLikes: Like[], event?: React.MouseEvent | React.KeyboardEvent) => {
@@ -102,9 +108,10 @@ export default function LikeManagerPage() {
     }
   };
 
-  const uniqueGenres = Array.from(
-    new Set(likes.map((l) => l.track.genre).filter(Boolean))
-  ) as string[];
+  const uniqueGenres = useMemo(
+    () => Array.from(new Set(likes.map((l) => l.track.genre).filter(Boolean))) as string[],
+    [likes],
+  );
 
   const selectAll = () => {
     if (selected.size === filteredLikes.length) {
@@ -192,36 +199,74 @@ export default function LikeManagerPage() {
     return `${minutes}:${seconds.toString().padStart(2, "0")}`;
   };
 
-  const filteredLikes = likes
-    .filter(
-      (l) =>
-        !search ||
-        l.track.title.toLowerCase().includes(search.toLowerCase()) ||
-        l.track.user?.username?.toLowerCase().includes(search.toLowerCase())
-    )
-    .filter((l) => genreFilter === "All" || l.track.genre === genreFilter)
-    .filter((l) => {
-      if (durationFilter === "All") return true;
-      const mins = l.track.duration / 60000;
-      if (durationFilter === "< 3 mins") return mins < 3;
-      if (durationFilter === "3-5 mins") return mins >= 3 && mins <= 5;
-      if (durationFilter === "5-10 mins") return mins > 5 && mins <= 10;
-      if (durationFilter === "> 10 mins") return mins > 10;
-      return true;
-    })
-    .sort((a, b) => {
-      if (sort === "alpha") return a.track.title.localeCompare(b.track.title);
+  const debouncedSearch = useDebouncedValue(search, 150);
 
-      if (a.liked_at && b.liked_at) {
-        const aLikedAt = new Date(a.liked_at).getTime();
-        const bLikedAt = new Date(b.liked_at).getTime();
-        if (sort === "oldest") return aLikedAt - bLikedAt;
-        return bLikedAt - aLikedAt;
+  const filteredLikes = useMemo(() => {
+    const query = debouncedSearch.toLowerCase();
+
+    // Precompute each track's sort key once instead of parsing `liked_at`
+    // into a Date twice per comparison inside .sort().
+    const withSortKey = likes
+      .filter(
+        (l) =>
+          !query ||
+          l.track.title.toLowerCase().includes(query) ||
+          l.track.user?.username?.toLowerCase().includes(query)
+      )
+      .filter((l) => genreFilter === "All" || l.track.genre === genreFilter)
+      .filter((l) => {
+        if (durationFilter === "All") return true;
+        const mins = l.track.duration / 60000;
+        if (durationFilter === "< 3 mins") return mins < 3;
+        if (durationFilter === "3-5 mins") return mins >= 3 && mins <= 5;
+        if (durationFilter === "5-10 mins") return mins > 5 && mins <= 10;
+        if (durationFilter === "> 10 mins") return mins > 10;
+        return true;
+      })
+      .map((l) => ({
+        like: l,
+        likedAtMs: l.liked_at ? new Date(l.liked_at).getTime() : null,
+      }));
+
+    withSortKey.sort((a, b) => {
+      if (sort === "alpha") return a.like.track.title.localeCompare(b.like.track.title);
+
+      if (a.likedAtMs != null && b.likedAtMs != null) {
+        if (sort === "oldest") return a.likedAtMs - b.likedAtMs;
+        return b.likedAtMs - a.likedAtMs;
       }
 
-      if (sort === "oldest") return b.liked_order - a.liked_order;
-      return a.liked_order - b.liked_order;
+      if (sort === "oldest") return b.like.liked_order - a.like.liked_order;
+      return a.like.liked_order - b.like.liked_order;
     });
+
+    return withSortKey.map((entry) => entry.like);
+  }, [likes, debouncedSearch, genreFilter, durationFilter, sort]);
+
+  // Virtualize the list — only the rows actually scrolled into view get
+  // mounted. `virtualRow.index` is the row's index into `filteredLikes`
+  // itself (react-virtual indexes by full-list position, not by visible
+  // window), so it's exactly the index shift-click range-selection needs.
+  const listScrollRef = useRef<HTMLDivElement>(null);
+  const rowVirtualizer = useVirtualizer({
+    count: filteredLikes.length,
+    getScrollElement: () => listScrollRef.current,
+    estimateSize: () => 72, // 64px TrackRow (h-16) + 8px gap
+    overscan: 8,
+  });
+
+  // Only computed while the confirm dialog is open (or about to be) — no
+  // point building this on every keystroke/re-render while it's closed.
+  const unlikeReviewItems = useMemo(() => {
+    if (!showUnlikeConfirm) return [];
+    return likes
+      .filter((like) => selected.has(like.track.id))
+      .map((like) => ({
+        id: like.track.id,
+        label: like.track.title,
+        meta: like.track.user?.username,
+      }));
+  }, [likes, selected, showUnlikeConfirm]);
 
   return (
     <PageContainer maxWidth="wide" className={selected.size > 0 ? "pb-28" : ""}>
@@ -323,26 +368,41 @@ export default function LikeManagerPage() {
             </div>
 
             <ProgressiveBlur
+              ref={listScrollRef}
               className="max-h-[600px] overflow-y-auto"
               active={filteredLikes.length > 8}
               fadeHeight={72}
             >
-              <div className="space-y-2">
-                {filteredLikes.map((like, index) => {
+              <div style={{ height: rowVirtualizer.getTotalSize(), position: "relative" }}>
+                {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+                  const like = filteredLikes[virtualRow.index];
                   const track = like.track;
                   const isSelected = selected.has(track.id);
                   return (
-                    <TrackRow
-                      key={track.id}
-                      track={{ ...track, subtitle: track.user?.username }}
-                      isSelected={isSelected}
-                      onToggle={(e) => toggleTrack(track.id, index, filteredLikes, e)}
-                      rightSlot={
-                        <span className="text-xs text-muted-foreground">
-                          {formatDuration(track.duration)}
-                        </span>
-                      }
-                    />
+                    <div
+                      key={virtualRow.key}
+                      data-index={virtualRow.index}
+                      ref={rowVirtualizer.measureElement}
+                      style={{
+                        position: "absolute",
+                        top: 0,
+                        left: 0,
+                        width: "100%",
+                        transform: `translateY(${virtualRow.start}px)`,
+                      }}
+                      className="pb-2"
+                    >
+                      <TrackRow
+                        track={{ ...track, subtitle: track.user?.username }}
+                        isSelected={isSelected}
+                        onToggle={(e) => toggleTrack(track.id, virtualRow.index, filteredLikes, e)}
+                        rightSlot={
+                          <span className="text-xs text-muted-foreground">
+                            {formatDuration(track.duration)}
+                          </span>
+                        }
+                      />
+                    </div>
                   );
                 })}
               </div>
@@ -371,13 +431,7 @@ export default function LikeManagerPage() {
           action="unliking"
           warning="SoundCloud does not provide a reliable undo for bulk unlikes. Export the selection if you want a record first."
           exportFilename="tracks-to-unlike.csv"
-          items={likes
-            .filter((like) => selected.has(like.track.id))
-            .map((like) => ({
-              id: like.track.id,
-              label: like.track.title,
-              meta: like.track.user?.username,
-            }))}
+          items={unlikeReviewItems}
         />
       </ConfirmDialog>
     </PageContainer>

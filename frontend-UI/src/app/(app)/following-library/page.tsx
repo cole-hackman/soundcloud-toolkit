@@ -369,6 +369,10 @@ export default function FollowingLibraryPage() {
                       <img
                         src={user.avatar_url || "/SC Toolkit Icon.png"}
                         alt={user.username}
+                        width={36}
+                        height={36}
+                        loading="lazy"
+                        decoding="async"
                         className="h-9 w-9 rounded-full object-cover"
                       />
                       <div className="min-w-0 flex-1">
@@ -407,6 +411,10 @@ export default function FollowingLibraryPage() {
                     <img
                       src={selectedUser.avatar_url || "/SC Toolkit Icon.png"}
                       alt={selectedUser.username}
+                      width={48}
+                      height={48}
+                      loading="lazy"
+                      decoding="async"
                       className="h-12 w-12 shrink-0 rounded-full object-cover ring-2 ring-border/60"
                     />
                     <div className="min-w-0">
@@ -578,6 +586,10 @@ export default function FollowingLibraryPage() {
                               <img
                                 src={playlist.artwork_url || "/SC Toolkit Icon.png"}
                                 alt={playlist.title}
+                                width={48}
+                                height={48}
+                                loading="lazy"
+                                decoding="async"
                                 className="h-12 w-12 rounded-lg object-cover"
                               />
                               <div className="min-w-0 flex-1">

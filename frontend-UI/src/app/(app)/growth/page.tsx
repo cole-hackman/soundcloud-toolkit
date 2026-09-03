@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, type KeyboardEvent } from "react";
-import { useQuery, useMutation, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
+import { useMutation, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 import {
   Sparkles,
   History,
@@ -38,7 +38,11 @@ import { apiFetch } from "@/lib/api";
 import { downloadCsv } from "@/lib/csv";
 import {
   followingsQueryOptions,
-  invalidateDashboardSummary
+  invalidateDashboardSummary,
+  useGrowthAnalyticsQuery,
+  useGrowthHistoryQuery,
+  useGrowthLimitsQuery,
+  useGrowthStatsQuery,
 } from "@/lib/queries";
 
 const RISK_ACK_KEY = "sc-toolkit-growth-risk-ack";
@@ -155,6 +159,39 @@ interface SeedConversion {
   rate: number | null;
 }
 
+function formatDuration(seconds: number) {
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  return minutes > 0 ? `${minutes}:${remainingSeconds.toString().padStart(2, "0")}` : `${remainingSeconds}s`;
+}
+
+/**
+ * Ticks its own "elapsed" display once a second while a discovery request
+ * is in flight. Kept as its own component (with its own interval + state)
+ * so the 1Hz tick re-renders only this small block instead of the entire
+ * ~1500-line GrowthPage tree.
+ */
+function DiscoveryElapsedTimer({
+  startedAt,
+  estimatedSeconds,
+}: {
+  startedAt: number;
+  estimatedSeconds: number;
+}) {
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+
+  useEffect(() => {
+    const updateElapsed = () => setElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000));
+    updateElapsed();
+    const interval = setInterval(updateElapsed, 1000);
+    return () => clearInterval(interval);
+  }, [startedAt]);
+
+  return (
+    <div>Elapsed: {formatDuration(elapsedSeconds)} · usually about {formatDuration(estimatedSeconds)}</div>
+  );
+}
+
 export default function GrowthPage() {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<"discover" | "history" | "analytics">("discover");
@@ -167,7 +204,6 @@ export default function GrowthPage() {
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [discoveryStats, setDiscoveryStats] = useState<DiscoveryStats | null>(null);
   const [discoveryStartedAt, setDiscoveryStartedAt] = useState<number | null>(null);
-  const [discoveryElapsedSeconds, setDiscoveryElapsedSeconds] = useState(0);
   const [selectedSuggestions, setSelectedSuggestions] = useState<Set<number>>(new Set());
   const [likeTracks, setLikeTracks] = useState(false); // auto-like is opt-in
   const [recentEngagedCount, setRecentEngagedCount] = useState({ followed: 0, liked: 0 });
@@ -189,63 +225,37 @@ export default function GrowthPage() {
   const [notice, setNotice] = useState<{ type: "success" | "error" | "info" | "warning"; text: string } | null>(null);
 
   // Fetch followings for Step 1
-  const { data: followingsData, isLoading: isLoadingFollowings } = useSuspenseQuery(followingsQueryOptions());
+  const { data: followingsData } = useSuspenseQuery(followingsQueryOptions());
   const followings = (followingsData?.collection || []) as unknown as Following[];
 
   // Fetch History & Stats
-  const { data: historyData, refetch: refetchHistory } = useQuery({
-    queryKey: ['growth', 'history'],
-    queryFn: async () => {
-      const res = await apiFetch("/api/growth/history");
-      return res.json() as Promise<{ actions: GrowthAction[]; sessions: SessionGroup[] }>;
-    },
-    enabled: activeTab === 'history',
-  });
+  const historyQuery = useGrowthHistoryQuery({ enabled: activeTab === 'history' });
+  const historyData = historyQuery.data as unknown as
+    | { actions: GrowthAction[]; sessions: SessionGroup[] }
+    | undefined;
+  const refetchHistory = historyQuery.refetch;
 
-  const { data: statsData, refetch: refetchStats } = useQuery({
-    queryKey: ['growth', 'stats'],
-    queryFn: async () => {
-      const res = await apiFetch("/api/growth/stats");
-      return res.json() as Promise<{
-        totalFollowed: number;
-        totalLiked: number;
-        followedBackRate: number;
-        activeFollows: number;
-        reversedFollows: number;
-        uncheckedFollows: number;
-      }>;
-    },
+  const { data: statsData, refetch: refetchStats } = useGrowthStatsQuery({
     enabled: activeTab === 'history' || activeTab === 'analytics',
   });
 
   // Daily follow budget + cooldown
-  const { data: budget, refetch: refetchBudget } = useQuery({
-    queryKey: ['growth', 'limits'],
-    queryFn: async () => {
-      const res = await apiFetch("/api/growth/limits");
-      return res.json() as Promise<GrowthBudget>;
-    },
-  });
+  const { data: budget, refetch: refetchBudget } = useGrowthLimitsQuery();
 
   // Per-seed conversion analytics
-  const { data: analytics } = useQuery({
-    queryKey: ['growth', 'analytics'],
-    queryFn: async () => {
-      const res = await apiFetch("/api/growth/analytics");
-      return res.json() as Promise<{
+  const analyticsQuery = useGrowthAnalyticsQuery({ enabled: activeTab === 'analytics' });
+  const analytics = analyticsQuery.data as unknown as
+    | {
         perSeed: SeedConversion[];
         followBackCurve: { bucket: string; followedBack: number; notFollowedBack: number }[];
         totalFollows: number;
-      }>;
-    },
-    enabled: activeTab === 'analytics',
-  });
+      }
+    | undefined;
 
   // Discovery Mutation
   const discoverMutation = useMutation({
     mutationFn: async (payload: { inspirationUserIds: number[]; strategy: string }) => {
       setDiscoveryStartedAt(Date.now());
-      setDiscoveryElapsedSeconds(0);
       setDiscoveryStep(2);
       const res = await apiFetch("/api/growth/discover", {
         method: "POST",
@@ -276,16 +286,9 @@ export default function GrowthPage() {
   });
 
   // A discovery request is intentionally synchronous so results are complete
-  // when displayed. Keep the wait visible instead of leaving a static spinner.
-  useEffect(() => {
-    if (!discoveryStartedAt) return;
-    const updateElapsed = () => setDiscoveryElapsedSeconds(
-      Math.floor((Date.now() - discoveryStartedAt) / 1000)
-    );
-    updateElapsed();
-    const interval = setInterval(updateElapsed, 1000);
-    return () => clearInterval(interval);
-  }, [discoveryStartedAt]);
+  // when displayed. The elapsed-time readout while waiting lives in its own
+  // <DiscoveryElapsedTimer> component (below) so its 1Hz tick doesn't
+  // re-render this whole page.
 
   // Start a server-paced engagement batch. The server enforces the daily
   // cap + cooldown and runs the follows in the background; we poll status.
@@ -478,12 +481,6 @@ export default function GrowthPage() {
     if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
     if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
     return n.toString();
-  };
-
-  const formatDuration = (seconds: number) => {
-    const minutes = Math.floor(seconds / 60);
-    const remainingSeconds = seconds % 60;
-    return minutes > 0 ? `${minutes}:${remainingSeconds.toString().padStart(2, "0")}` : `${remainingSeconds}s`;
   };
 
   // The server samples each seed's most recent SEED_SAMPLE_CAP followers
@@ -742,6 +739,10 @@ export default function GrowthPage() {
                       <img
                         src={user.avatar_url || "/SC Toolkit Icon.png"}
                         alt={user.username}
+                        width={40}
+                        height={40}
+                        loading="lazy"
+                        decoding="async"
                         className="w-10 h-10 rounded-full object-cover shrink-0"
                       />
                       <div className="min-w-0 flex-1">
@@ -791,7 +792,12 @@ export default function GrowthPage() {
                 )}
               </p>
               <div className="mt-6 space-y-1 text-xs text-primary font-mono">
-                <div>Elapsed: {formatDuration(discoveryElapsedSeconds)} · usually about {formatDuration(estimatedDiscoverySeconds)}</div>
+                {discoveryStartedAt != null && (
+                  <DiscoveryElapsedTimer
+                    startedAt={discoveryStartedAt}
+                    estimatedSeconds={estimatedDiscoverySeconds}
+                  />
+                )}
                 <div className="animate-pulse">Fetching profile signals in small, rate-limit-safe batches…</div>
               </div>
               <p className="mt-3 max-w-md text-xs text-muted-foreground">
@@ -891,6 +897,10 @@ export default function GrowthPage() {
                             <img
                               src={sug.user.avatar_url || "/SC Toolkit Icon.png"}
                               alt={sug.user.username}
+                              width={48}
+                              height={48}
+                              loading="lazy"
+                              decoding="async"
                               className="w-12 h-12 rounded-full object-cover shrink-0"
                             />
                             <div className="min-w-0 flex-1">
@@ -939,6 +949,10 @@ export default function GrowthPage() {
                               <img
                                 src={sug.suggestedTrack.artwork_url || "/SC Toolkit Icon.png"}
                                 alt={sug.suggestedTrack.title}
+                                width={40}
+                                height={40}
+                                loading="lazy"
+                                decoding="async"
                                 className="w-10 h-10 rounded object-cover shrink-0"
                               />
                               <div className="min-w-0 flex-1">
@@ -1267,6 +1281,10 @@ export default function GrowthPage() {
                             <img
                               src={act.targetAvatar || "/SC Toolkit Icon.png"}
                               alt={act.targetName || "Target"}
+                              width={40}
+                              height={40}
+                              loading="lazy"
+                              decoding="async"
                               className={`w-10 h-10 object-cover shrink-0 ${act.actionType === 'follow' ? 'rounded-full' : 'rounded-lg'}`}
                             />
 

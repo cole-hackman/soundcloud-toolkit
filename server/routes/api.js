@@ -47,6 +47,7 @@ import {
   validatePlaylistTrackTransfer,
   validateCreateFromLikes,
   validateLikesPagination,
+  validateOffsetPagination,
   validateBatchResolve,
   validateActivities,
   validateBulkUnlike,
@@ -727,35 +728,95 @@ router.get('/likes', authenticateUser, instrumentRead('likes'), async (req, res)
  * Returns one page of likes with cursor-based pagination
  * Query: limit (default 50), next (optional next_href from previous page)
  */
-router.get('/likes/paged', authenticateUser, instrumentRead('likes-paged'), validateLikesPagination, async (req, res) => {
-  try {
-    const { limit = 50, next } = req.query;
-    let endpoint;
-    if (next) {
-      try {
-        const u = new URL(String(next));
-        endpoint = `${u.pathname}${u.search}`;
-      } catch {
-        return res.status(400).json({ error: 'Invalid next cursor' });
-      }
-    } else {
-      const params = new URLSearchParams({
-        limit: String(parseInt(limit)),
-        linked_partitioning: '1'
-      });
-      endpoint = `/me/likes/tracks?${params.toString()}`;
-    }
+/**
+ * Cursor-paged reads of the authenticated user's own collections.
+ *
+ * These exist so a browse tool can paint its first rows after ONE round trip
+ * instead of waiting out a full crawl. `next` is the opaque next_href from the
+ * previous page; only its path and query are used, so a caller cannot redirect
+ * the request at another host.
+ */
+const PAGED_COLLECTIONS = {
+  likes: { endpoint: '/me/likes/tracks', harvest: true },
+  followings: { endpoint: '/me/followings', harvest: false },
+  followers: { endpoint: '/me/followers', harvest: false },
+};
 
-    const page = await soundcloudClient.scRequest(endpoint, req.accessToken, req.refreshToken);
-    harvestTracks(Array.isArray(page.collection) ? page.collection : []);
+function pagedCollectionHandler(name) {
+  const { endpoint: baseEndpoint, harvest } = PAGED_COLLECTIONS[name];
+  return async (req, res) => {
+    try {
+      const { limit = 50, next } = req.query;
+      let endpoint;
+      if (next) {
+        try {
+          const u = new URL(String(next));
+          // Path + query only: never follow the cursor's host.
+          endpoint = `${u.pathname}${u.search}`;
+        } catch {
+          return res.status(400).json({ error: 'Invalid next cursor' });
+        }
+      } else {
+        const params = new URLSearchParams({
+          limit: String(parseInt(limit)),
+          linked_partitioning: '1',
+        });
+        endpoint = `${baseEndpoint}?${params.toString()}`;
+      }
+
+      const page = await soundcloudClient.scRequest(endpoint, req.accessToken, req.refreshToken);
+      const collection = Array.isArray(page.collection) ? page.collection : [];
+      if (harvest) harvestTracks(collection);
+      res.json({
+        collection,
+        next_href: page.next_href || null,
+        total: page.total_results || undefined,
+      });
+    } catch (error) {
+      logger.error(`Get ${name} paged error:`, safeError(error));
+      res.status(500).json({ error: `Failed to get ${name} page` });
+    }
+  };
+}
+
+router.get('/likes/paged', authenticateUser, instrumentRead('likes-paged'), validateLikesPagination, pagedCollectionHandler('likes'));
+router.get('/followings/paged', authenticateUser, instrumentRead('followings-paged'), validateLikesPagination, pagedCollectionHandler('followings'));
+router.get('/followers/paged', authenticateUser, instrumentRead('followers-paged'), validateLikesPagination, pagedCollectionHandler('followers'));
+
+/**
+ * GET /api/reposts/paged
+ * Offset-paged, not cursor-paged: reposts are assembled from two separate
+ * SoundCloud crawls (tracks + playlists) merged and sorted, so there is no
+ * upstream cursor to hand back. The first request pays the crawl once and the
+ * snapshot tier serves every page after it.
+ * Query: limit (default 50), offset (default 0)
+ */
+router.get('/reposts/paged', authenticateUser, instrumentRead('reposts-paged'), validateOffsetPagination, async (req, res) => {
+  try {
+    const limit = Math.min(Math.max(parseInt(req.query.limit ?? 50, 10) || 50, 1), 200);
+    const offset = Math.max(parseInt(req.query.offset ?? 0, 10) || 0, 0);
+
+    const payload = await loadUserCollection(
+      req,
+      'reposts',
+      () => soundcloudClient.getReposts(req.accessToken, req.refreshToken),
+      (reposts) => ({ collection: reposts, total_results: reposts.length }),
+    );
+
+    const all = Array.isArray(payload.collection) ? payload.collection : [];
+    const slice = all.slice(offset, offset + limit);
     res.json({
-      collection: Array.isArray(page.collection) ? page.collection : [],
-      next_href: page.next_href || null,
-      total: page.total_results || undefined
+      collection: slice,
+      total: all.length,
+      offset,
+      limit,
+      has_more: offset + slice.length < all.length,
+      stale: payload.stale === true,
+      truncated: payload.truncated === true,
     });
   } catch (error) {
-    logger.error('Get likes paged error:', safeError(error));
-    res.status(500).json({ error: 'Failed to get likes page' });
+    logger.error('Get reposts paged error:', safeError(error));
+    res.status(500).json({ error: 'Failed to get reposts page' });
   }
 });
 

@@ -3,7 +3,7 @@ dotenv.config();
 import { encrypt } from './crypto.js';
 import logger from './logger.js';
 import prisma from './prisma.js';
-import { getTokenContext } from './token-context.js';
+import { getTokenContext, countScCall } from './token-context.js';
 
 /**
  * Safely parse a fetch Response body as JSON.
@@ -36,6 +36,7 @@ const SC_FETCH_TIMEOUT_MS = Number(process.env.SC_FETCH_TIMEOUT_MS) || 30_000;
 async function fetchWithTimeout(url, options = {}, timeoutMs = SC_FETCH_TIMEOUT_MS) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
+  countScCall();
   try {
     return await fetch(url, { ...options, signal: controller.signal });
   } finally {

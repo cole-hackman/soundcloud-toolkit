@@ -3,7 +3,7 @@ import { soundcloudClient } from '../lib/soundcloud-client.js';
 import prisma from '../lib/prisma.js';
 import { heavyOperationRateLimiter } from '../middleware/rateLimiter.js';
 import { authenticateUser } from '../middleware/auth.js';
-import { logOperation, startOperationTimer, extractClientInfo } from '../lib/analytics.js';
+import { logOperation, startOperationTimer, extractClientInfo, instrumentRead } from '../lib/analytics.js';
 import { harvestTracks, harvestPlaylists } from '../lib/catalog.js';
 import { piggybackEnrichment } from '../lib/enrichment.js';
 import logger from '../lib/logger.js';
@@ -120,7 +120,7 @@ async function assertFollowedUser(req, targetUserId) {
  * GET /api/me
  * Get current user information
  */
-router.get('/me', authenticateUser, async (req, res) => {
+router.get('/me', authenticateUser, instrumentRead('me'), async (req, res) => {
   try {
     const userInfo = await soundcloudClient.getMe(req.accessToken, req.refreshToken);
     logger.info('[/api/me] SC response keys:', Object.keys(userInfo));
@@ -139,7 +139,7 @@ router.get('/me', authenticateUser, async (req, res) => {
   }
 });
 
-router.get('/dashboard/summary', authenticateUser, async (req, res) => {
+router.get('/dashboard/summary', authenticateUser, instrumentRead('dashboard-summary'), async (req, res) => {
   try {
     const me = await soundcloudClient.getMe(req.accessToken, req.refreshToken);
     const userId = req.user.id;
@@ -220,7 +220,7 @@ router.get('/dashboard/summary', authenticateUser, async (req, res) => {
   }
 });
 
-router.get('/library/audit', authenticateUser, heavyOperationRateLimiter, async (req, res) => {
+router.get('/library/audit', authenticateUser, instrumentRead('library-audit'), heavyOperationRateLimiter, async (req, res) => {
   try {
     const limit = Math.min(Math.max(Number(req.query.limit) || 20, 1), 50);
     const playlistPage = await soundcloudClient.getPlaylists(req.accessToken, req.refreshToken, limit, 0);
@@ -310,7 +310,7 @@ router.post('/playlists/compare', authenticateUser, heavyOperationRateLimiter, a
  * GET /api/playlists
  * Get all of the user's playlists (fully paginated — see getAllPlaylists)
  */
-router.get('/playlists', authenticateUser, async (req, res) => {
+router.get('/playlists', authenticateUser, instrumentRead('playlists'), async (req, res) => {
   try {
     const withCovers = await getCachedUserPayload(
       'playlists',
@@ -659,7 +659,7 @@ router.put('/playlists/:id', authenticateUser, validateUpdatePlaylist, async (re
  * GET /api/likes
  * Get user's liked tracks
  */
-router.get('/likes', authenticateUser, async (req, res) => {
+router.get('/likes', authenticateUser, instrumentRead('likes'), async (req, res) => {
   try {
     const payload = await getCachedUserPayload(
       'likes',
@@ -694,7 +694,7 @@ router.get('/likes', authenticateUser, async (req, res) => {
  * Returns one page of likes with cursor-based pagination
  * Query: limit (default 50), next (optional next_href from previous page)
  */
-router.get('/likes/paged', authenticateUser, validateLikesPagination, async (req, res) => {
+router.get('/likes/paged', authenticateUser, instrumentRead('likes-paged'), validateLikesPagination, async (req, res) => {
   try {
     const { limit = 50, next } = req.query;
     let endpoint;
@@ -2037,7 +2037,7 @@ router.post('/resolve/batch', authenticateUser, heavyOperationRateLimiter, valid
  * GET /api/activities
  * Get the user's activity/stream feed
  */
-router.get('/activities', authenticateUser, validateActivities, async (req, res) => {
+router.get('/activities', authenticateUser, instrumentRead('activities'), validateActivities, async (req, res) => {
   try {
     const limit = req.query.limit || 200;
     const payload = await getCachedUserPayload(
@@ -2211,7 +2211,7 @@ router.post('/likes/tracks/bulk-like', authenticateUser, heavyOperationRateLimit
  * GET /api/followers
  * Get the user's followers list
  */
-router.get('/followers', authenticateUser, async (req, res) => {
+router.get('/followers', authenticateUser, instrumentRead('followers'), async (req, res) => {
   try {
     const payload = await loadCachedFollowers(req);
     res.json(payload);
@@ -2225,7 +2225,7 @@ router.get('/followers', authenticateUser, async (req, res) => {
  * GET /api/followings
  * Get the user's followings list
  */
-router.get('/followings', authenticateUser, async (req, res) => {
+router.get('/followings', authenticateUser, instrumentRead('followings'), async (req, res) => {
   try {
     const payload = await loadCachedFollowings(req);
     res.json(payload);
@@ -2291,7 +2291,7 @@ router.post('/followings/bulk-unfollow', authenticateUser, heavyOperationRateLim
  * GET /api/reposts
  * Get the authenticated user's reposts (tracks + playlists) via activity feed.
  */
-router.get('/reposts', authenticateUser, async (req, res) => {
+router.get('/reposts', authenticateUser, instrumentRead('reposts'), async (req, res) => {
   try {
     const payload = await getCachedUserPayload(
       'reposts',
@@ -2315,7 +2315,7 @@ router.get('/reposts', authenticateUser, async (req, res) => {
  * GET /api/recently-played
  * Get the authenticated user's recently played tracks.
  */
-router.get('/recently-played', authenticateUser, async (req, res) => {
+router.get('/recently-played', authenticateUser, instrumentRead('recently-played'), async (req, res) => {
   try {
     const payload = await getCachedUserPayload(
       'recently-played',

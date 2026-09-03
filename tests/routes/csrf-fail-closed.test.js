@@ -22,6 +22,8 @@ jest.unstable_mockModule('../../server/lib/analytics.js', () => ({
   startOperationTimer: jest.fn(() => () => 42),
   extractClientInfo: jest.fn(() => ({})),
   getAnalyticsWriteHealth: jest.fn().mockResolvedValue({ healthy: true }),
+  // Pass-through: read instrumentation must not alter routing behaviour.
+  instrumentRead: () => (req, res, next) => next(),
 }));
 jest.unstable_mockModule('../../server/lib/enrichment.js', () => ({
   piggybackEnrichment: jest.fn(),

@@ -52,5 +52,5 @@ export async function authenticateUser(req, res, next) {
     return res.status(401).json({ error: 'Authentication failed' });
   }
 
-  runWithTokenContext({ userId: req.user.id }, next);
+  runWithTokenContext({ userId: req.user.id, metrics: req.scMetrics }, next);
 }

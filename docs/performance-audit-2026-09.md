@@ -65,6 +65,20 @@ unchanged. The distinction matters for rate limiting.
 | `/dashboard/summary` cached playlists under `limit=50&offset=0`, `/playlists` under `default` | `routes/api.js` | Two entries for overlapping data, never shared |
 | `getCachedUserPayload` only deduped *finished* work | `lib/social-cache.js` | Two concurrent cold readers both ran the full crawl |
 
+#### One visible trade-off
+
+Dropping the cover-art fan-out changes what a playlist with **no artwork of its
+own** looks like in list views: it now shows the owner's avatar instead of the
+first track's artwork. Playlists that have their own `artwork_url` — the large
+majority — are unaffected.
+
+This was judged worth it: the old path spent up to 50 concurrent requests, each
+pulling as many as 500 track objects, to read a single field, and its swallowed
+errors meant the covers frequently failed to load anyway. If the real cover
+matters, the right shape is a small dedicated endpoint the client calls lazily
+for the cards actually on screen, rather than resolving all of them eagerly on
+every playlist list load.
+
 ### Fixed — serial that needn't be
 
 `library/audit`, `resolve/batch` and the merge read phase all became bounded

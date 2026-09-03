@@ -117,9 +117,11 @@ who dismissed the beta survey.
 - Licensed MIT, © 2026 Cole Hackman (2026-08-25).
 
 ## Landmines
-- **`npm test` needs SoundCloud env vars** or five suites fail to load their
-  modules. This is a harness requirement, not a real failure — the exact
-  command is at the bottom of `docs/performance-audit-2026-09.md`.
+- `npm test` is self-contained again: `tests/setup-env.js` supplies dummy
+  SoundCloud credentials via jest `setupFiles`, because five suites validate
+  them at module scope and otherwise fail to LOAD on a fresh clone — which
+  looks like a broken suite. It uses `||=`, so a real `server/.env` still wins.
+  Don't remove it without re-checking a clean `npm test`.
 - The auth memo (`server/lib/auth-cache.js`) holds **decrypted tokens** in
   process memory for 30s. It is invalidated at the single token-refresh choke
   point (`refreshTokensAndPersist`) and on account deletion. If you add another

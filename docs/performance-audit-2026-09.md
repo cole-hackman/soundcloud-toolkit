@@ -270,16 +270,14 @@ crawls exactly as it did before.
 
 ## Running the tests
 
-`npm test` from the repo root. The suite needs SoundCloud environment variables
-present or five suites fail to load their modules — this is a test-harness
-requirement, not a real failure:
+`npm test` from the repo root. 41 suites, 301 tests.
 
-```
-SOUNDCLOUD_CLIENT_ID=test SOUNDCLOUD_CLIENT_SECRET=test \
-SOUNDCLOUD_REDIRECT_URI=http://localhost:3001/api/auth/callback \
-ENCRYPTION_KEY=$(printf 'x%.0s' {1..32}) \
-SESSION_SECRET=$(printf 'y%.0s' {1..36}) \
-npm test
-```
+Until this branch, that command reported five failed suites on a fresh clone.
+They were not failing — they could not *load*, because they import modules that
+validate SoundCloud credentials at module scope, so their 33 tests never ran and
+the output read as a broken suite. It misled a reader during this very audit.
+`tests/setup-env.js` (wired in via `setupFiles`) now supplies dummy values, and
+never overrides a value that is already set, so a real `server/.env` still wins.
 
-No CI runs this.
+No CI runs this — see the note in **The frontend half** about Vercel's build
+being the only automated gate.

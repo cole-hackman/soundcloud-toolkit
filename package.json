@@ -51,6 +51,9 @@
       "js",
       "json"
     ],
-    "verbose": false
+    "verbose": false,
+    "setupFiles": [
+      "<rootDir>/tests/setup-env.js"
+    ]
   }
 }

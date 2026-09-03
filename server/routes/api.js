@@ -24,6 +24,8 @@ import {
   loadCachedFollowings,
   loadCachedFollowers,
   loadCachedMe,
+  loadUserCollection,
+  invalidateUserCollections,
   invalidatePlaylistState,
 } from '../lib/social-cache.js';
 import { safeError } from '../lib/safe-error.js';
@@ -343,12 +345,11 @@ router.post('/playlists/compare', authenticateUser, heavyOperationRateLimiter, a
  */
 router.get('/playlists', authenticateUser, instrumentRead('playlists'), async (req, res) => {
   try {
-    const withCovers = await getCachedUserPayload(
+    const withCovers = await loadUserCollection(
+      req,
       'playlists',
-      req.user.id,
-      'default',
-      async () => {
-        const playlists = await soundcloudClient.getAllPlaylists(req.accessToken, req.refreshToken);
+      () => soundcloudClient.getAllPlaylists(req.accessToken, req.refreshToken),
+      (playlists) => {
         // Cover art is derived from what the list response already carries.
         // This used to fall back to getPlaylistWithTracks for every artwork-less
         // playlist, in an unbounded Promise.all — 50 simultaneous requests each
@@ -364,7 +365,6 @@ router.get('/playlists', authenticateUser, instrumentRead('playlists'), async (r
         });
         return { collection, total: collection.length };
       },
-      CACHE_TTL.playlists,
     );
     res.json(withCovers);
   } catch (error) {
@@ -692,10 +692,9 @@ router.put('/playlists/:id', authenticateUser, validateUpdatePlaylist, async (re
  */
 router.get('/likes', authenticateUser, instrumentRead('likes'), async (req, res) => {
   try {
-    const payload = await getCachedUserPayload(
+    const payload = await loadUserCollection(
+      req,
       'likes',
-      req.user.id,
-      'default',
       async () => {
         const items = await soundcloudClient.paginate(
           '/me/likes/tracks',
@@ -709,12 +708,12 @@ router.get('/likes', authenticateUser, instrumentRead('likes'), async (req, res)
           200
         ));
         harvestTracks(items);
-        // `truncated` rides along from paginate() when the crawl hit its page
-        // or time budget. Surfacing it lets the client say "showing N of more"
-        // instead of presenting a partial library as the whole thing.
-        return { collection: items, total_results: items.length, truncated: items.truncated === true };
+        return items;
       },
-      CACHE_TTL.likes,
+      // `truncated` rides along from paginate() when the crawl hit its page or
+      // time budget; loadUserCollection surfaces it so the client can say
+      // "showing N of more" rather than presenting a partial library as whole.
+      (items) => ({ collection: items, total_results: items.length }),
     );
     res.json(payload);
   } catch (error) {
@@ -2179,7 +2178,7 @@ router.post('/likes/tracks/bulk-unlike', authenticateUser, heavyOperationRateLim
       const processed = new Set(trackIds);
       harvestTracks(cachedLikes.collection.filter(t => t && processed.has(t.id)));
     }
-    invalidateUserNamespaces(req.user.id, ['likes']);
+    invalidateUserCollections(req.user.id, ['likes']);
     // Cold-cache IDs still get names via enrichment (no-ops when already known)
     piggybackEnrichment(trackIds, req.accessToken, req.refreshToken);
   } catch (error) {
@@ -2244,7 +2243,7 @@ router.post('/likes/tracks/bulk-like', authenticateUser, heavyOperationRateLimit
       const processed = new Set(trackIds);
       harvestTracks(cachedLikes.collection.filter(t => t && processed.has(t.id)));
     }
-    invalidateUserNamespaces(req.user.id, ['likes']);
+    invalidateUserCollections(req.user.id, ['likes']);
     piggybackEnrichment(trackIds, req.accessToken, req.refreshToken);
   } catch (error) {
     logger.error('Bulk like error:', safeError(error));
@@ -2328,7 +2327,7 @@ router.post('/followings/bulk-unfollow', authenticateUser, heavyOperationRateLim
       errorMessage: failed > 0 && succeeded === 0 ? results.find(r => r.status === 'error')?.error : undefined,
       metadata: { total: results.length, succeeded, failed },
     });
-    invalidateUserNamespaces(req.user.id, ['followings']);
+    invalidateUserCollections(req.user.id, ['followings']);
   } catch (error) {
     logger.error('Bulk unfollow error:', safeError(error));
     logOperation({
@@ -2351,16 +2350,11 @@ router.post('/followings/bulk-unfollow', authenticateUser, heavyOperationRateLim
  */
 router.get('/reposts', authenticateUser, instrumentRead('reposts'), async (req, res) => {
   try {
-    const payload = await getCachedUserPayload(
+    const payload = await loadUserCollection(
+      req,
       'reposts',
-      req.user.id,
-      'default',
-      async () => {
-        const reposts = await soundcloudClient.getReposts(req.accessToken, req.refreshToken);
-        logger.info(`[GET /api/reposts] returning ${reposts.length} reposts`);
-        return { collection: reposts, total_results: reposts.length };
-      },
-      CACHE_TTL.reposts,
+      () => soundcloudClient.getReposts(req.accessToken, req.refreshToken),
+      (reposts) => ({ collection: reposts, total_results: reposts.length }),
     );
     res.json(payload);
   } catch (error) {
@@ -2471,7 +2465,7 @@ router.post('/reposts/bulk-remove', authenticateUser, heavyOperationRateLimiter,
       harvestTracks(touched.filter(r => r.resourceType === 'track'));
       harvestPlaylists(touched.filter(r => r.resourceType === 'playlist'));
     }
-    invalidateUserNamespaces(req.user.id, ['reposts']);
+    invalidateUserCollections(req.user.id, ['reposts']);
     piggybackEnrichment(items.filter(i => i.resourceType === 'track').map(i => i.id), req.accessToken, req.refreshToken);
   } catch (error) {
     logger.error('Bulk unrepost error:', safeError(error));

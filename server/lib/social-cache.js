@@ -5,6 +5,13 @@
  */
 import { requestCache } from './request-cache.js';
 import { soundcloudClient } from './soundcloud-client.js';
+import logger from './logger.js';
+import {
+  readSnapshot,
+  writeSnapshot,
+  invalidateSnapshot,
+  SNAPSHOT_RESOURCES,
+} from './snapshot-cache.js';
 
 export const CACHE_TTL = {
   me: 60 * 1000,
@@ -86,17 +93,21 @@ export function invalidateUserNamespaces(userId, namespaces) {
  * growth discovery use the same namespace/key/payload shape, so whichever
  * runs first warms the cache for the other. */
 export function loadCachedFollowings(req) {
-  return getCachedUserPayload('followings', req.user.id, 'default', async () => {
-    const followings = await soundcloudClient.getFollowings(req.accessToken, req.refreshToken);
-    return { collection: followings, total: followings.length, truncated: followings.truncated === true };
-  }, CACHE_TTL.followings);
+  return loadUserCollection(
+    req,
+    'followings',
+    () => soundcloudClient.getFollowings(req.accessToken, req.refreshToken),
+    (followings) => ({ collection: followings, total: followings.length }),
+  );
 }
 
 export function loadCachedFollowers(req) {
-  return getCachedUserPayload('followers', req.user.id, 'default', async () => {
-    const followers = await soundcloudClient.getFollowers(req.accessToken, req.refreshToken);
-    return { collection: followers, total: followers.length, truncated: followers.truncated === true };
-  }, CACHE_TTL.followers);
+  return loadUserCollection(
+    req,
+    'followers',
+    () => soundcloudClient.getFollowers(req.accessToken, req.refreshToken),
+    (followers) => ({ collection: followers, total: followers.length }),
+  );
 }
 
 /** The authenticated user's own SoundCloud profile. Short TTL: it carries the
@@ -111,4 +122,92 @@ export function loadCachedMe(req) {
 
 export function invalidatePlaylistState(userId) {
   invalidateUserNamespaces(userId, ['playlists']);
+}
+
+/* ── Read-through across both cache tiers ───────────────────────────────── */
+
+/** Background refreshes in flight, so a stale-while-revalidate burst does not
+ *  start one crawl per request. */
+const revalidating = new Map();
+
+function revalidateInBackground(userId, resource, crawl, shape) {
+  const key = `${resource}::${userId}`;
+  if (revalidating.has(key)) return;
+
+  const done = Promise.resolve()
+    .then(async () => {
+      const items = await crawl();
+      await writeSnapshot(userId, resource, items, { truncated: items?.truncated === true });
+      // Refresh the in-memory tier too, so the next request does not read a
+      // payload older than the snapshot we just wrote.
+      requestCache.set(resource, userId, 'default', shape(items), CACHE_TTL[resource] ?? 60_000);
+    })
+    .catch((error) => {
+      // A failed refresh is not a user-visible error: the stale snapshot they
+      // were already served remains valid until the next attempt.
+      logger.warn('[snapshot-cache] background revalidate failed', {
+        resource, error: error?.message,
+      });
+    })
+    .finally(() => { revalidating.delete(key); });
+
+  revalidating.set(key, done);
+}
+
+/**
+ * Read a user collection through memory -> Postgres -> SoundCloud.
+ *
+ * `shape` turns the raw item array into the payload the route returns, and is
+ * applied consistently at every tier so a cache hit and a cold crawl are
+ * indistinguishable to the caller.
+ *
+ * @param {object}   req
+ * @param {string}   resource  one of SNAPSHOT_RESOURCES
+ * @param {Function} crawl     () => Promise<items[]>  (the SoundCloud crawl)
+ * @param {Function} shape     (items) => payload
+ */
+export async function loadUserCollection(req, resource, crawl, shape) {
+  if (!SNAPSHOT_RESOURCES.includes(resource)) {
+    throw new Error(`Unknown snapshot resource: ${resource}`);
+  }
+  const userId = req.user.id;
+
+  // Tier 1: in-memory.
+  const memo = requestCache.get(resource, userId, 'default');
+  if (memo !== undefined) return memo;
+
+  // Tier 2: Postgres. Serve it even when stale, and refresh behind it — a
+  // stale answer now beats a correct answer after a 25-page crawl.
+  const snapshot = await readSnapshot(userId, resource);
+  if (snapshot) {
+    const payload = {
+      ...shape(snapshot.items),
+      cachedAt: snapshot.syncedAt,
+      stale: snapshot.stale,
+      truncated: snapshot.truncated,
+    };
+    requestCache.set(resource, userId, 'default', payload, CACHE_TTL[resource] ?? 60_000);
+    if (snapshot.stale) revalidateInBackground(userId, resource, crawl, shape);
+    return payload;
+  }
+
+  // Tier 3: SoundCloud. getCachedUserPayload provides the single-flight so
+  // concurrent cold readers share one crawl.
+  return getCachedUserPayload(resource, userId, 'default', async () => {
+    const items = await crawl();
+    const payload = { ...shape(items), truncated: items?.truncated === true };
+    // Persist for the next process, but never let a snapshot write failure
+    // fail the request that produced the data.
+    await writeSnapshot(userId, resource, items, { truncated: items?.truncated === true });
+    return payload;
+  }, CACHE_TTL[resource] ?? 60_000);
+}
+
+/** Invalidate BOTH tiers. Every existing invalidateUserNamespaces call site
+ *  gets the persistent tier for free by routing through here. */
+export function invalidateUserCollections(userId, resources) {
+  invalidateUserNamespaces(userId, resources);
+  // Fire-and-forget: the in-memory tier is already clear, so a slow database
+  // must not hold up the mutation response.
+  invalidateSnapshot(userId, resources)?.catch?.(() => {});
 }

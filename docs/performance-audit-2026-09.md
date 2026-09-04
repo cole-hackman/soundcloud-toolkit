@@ -244,6 +244,55 @@ uses Neon, which is network-attached and serverless, so the cold number there is
 larger and the memo saves more — but that also means this measurement is a
 *lower* bound on the benefit, not a promise about production.
 
+## Verified in a real browser
+
+Run against a full local stack: the real backend and the real static-export
+frontend, a real PostgreSQL 16, and a stand-in for `api.soundcloud.com` serving
+5,000 likes / 2,000 followings / 1,500 followers / 60 playlists with per-page
+latency. Driven with Chromium via Playwright.
+
+| Check | Result |
+|---|---|
+| App chrome painted | **245–592 ms** across ten tools — the auth→data waterfall fix |
+| `GET /playlists`, 60 playlists (most artwork-less) | **`sc=1`** — the fan-out is gone |
+| `GET /likes` cold, 5,000 likes | **3,258 ms, `sc=25`** — 25 serial round trips, as predicted |
+| `GET /likes` **after a backend restart** | **202 ms, `sc=0`** — snapshot tier survives a deploy |
+| Snapshot rows written | 25 (5,000 @ 200/page) |
+| Like Manager DOM with 5,000 items | **17 rows / ~540 nodes**, unchanged after scrolling 4,000 px |
+| Shift-click range selection (rows 2→8) | **7 selected**, and survives virtualizer unmount/remount |
+| Row markup | `loading="lazy" decoding="async" width height` present |
+| Ten tool pages | all render, no error boundary |
+| Console errors | none from the app (only Vercel analytics 404s, absent locally) |
+
+The restart row is the one to notice: **3,258 ms → 202 ms and 25 SoundCloud
+calls → 0, across a process restart**. That is the entire argument for the
+Postgres tier, measured rather than asserted.
+
+### What the browser caught that nothing else did
+
+`progressiveStatus` appended a shared `of ${totalCount}` tail to both of its
+scopes. That reads correctly after `Showing 4,400`, but the filtered scope
+already ends in "loaded", so a search while loading rendered:
+
+> Matching 1 of 4,400 loaded **of** 5,000 — still loading…
+
+The same tail also swallowed the noun whenever a total was known ("Showing
+4,400 of 5,000 — still loading…" never said *what*). Both fixed by building each
+case whole instead of appending a suffix that only fits one of them. All four
+states re-verified in the browser afterwards:
+
+| State | Renders |
+|---|---|
+| loading | `Showing 2,400 of 5,000 tracks — still loading…` |
+| loading + filtered | `Matching 1 of 3,600 tracks loaded (5,000 total) — still loading…` |
+| complete | *(no status line — the plain count is the truth)* |
+| complete + filtered | `1 of 5,000 tracks` |
+
+`progressive.ts`'s pure helpers have **no unit tests**, because the repo has no
+frontend test runner — only the root Jest suite, which does not transform TS.
+A one-line copy bug shipping through `tsc`, `eslint` and `next build` is the
+cost of that gap. Worth closing separately.
+
 ## Caching model
 
 ```

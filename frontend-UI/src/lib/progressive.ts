@@ -214,13 +214,22 @@ export function progressiveStatus(
       ? `${filteredCount.toLocaleString()} of ${loadedCount.toLocaleString()} ${noun}`
       : null;
   }
+  // Each case is built whole rather than by appending a suffix. A shared
+  // `of ${totalCount}` tail reads correctly after "Showing 4,400" but produces
+  // "Matching 1 of 4,400 loaded of 5,000" after the filtered scope, and the
+  // noun silently vanished whenever a total was known.
   const loaded = loadedCount.toLocaleString();
-  const scope = filteredCount != null
-    ? `Matching ${filteredCount.toLocaleString()} of ${loaded} loaded`
-    : `Showing ${loaded}`;
-  return totalCount != null
-    ? `${scope} of ${totalCount.toLocaleString()} — still loading…`
-    : `${scope} ${noun} — still loading…`;
+  const total = totalCount != null ? totalCount.toLocaleString() : null;
+
+  if (filteredCount != null) {
+    const matching = `Matching ${filteredCount.toLocaleString()} of ${loaded} ${noun} loaded`;
+    return total
+      ? `${matching} (${total} total) — still loading…`
+      : `${matching} — still loading…`;
+  }
+  return total
+    ? `Showing ${loaded} of ${total} ${noun} — still loading…`
+    : `Showing ${loaded} ${noun} — still loading…`;
 }
 
 /** Label for a select-all control, carrying what it will actually select. */

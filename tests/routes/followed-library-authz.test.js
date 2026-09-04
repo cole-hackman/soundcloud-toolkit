@@ -18,6 +18,9 @@ jest.unstable_mockModule('../../server/lib/soundcloud-client.js', () => ({
     getUserPlaylistsPage,
     getUserLikedPlaylistsPage,
   },
+  // routes/api.js imports this alongside soundcloudClient for the oEmbed
+  // supplement; the mock must provide it or the module fails to link.
+  fetchWithTimeout: jest.fn(async () => ({ ok: false, status: 503 })),
 }));
 jest.unstable_mockModule('../../server/middleware/auth.js', () => ({
   authenticateUser: (req, res, next) => {
@@ -29,6 +32,9 @@ jest.unstable_mockModule('../../server/middleware/auth.js', () => ({
 }));
 
 const { default: apiRoutes } = await import('../../server/routes/api.js');
+// Not mocked: the authorization check reads the real per-user cache, so each
+// test has to start from a cold one or it inherits the previous test's answer.
+const { requestCache } = await import('../../server/lib/request-cache.js');
 
 const app = express();
 app.use(express.json());
@@ -41,6 +47,7 @@ const PAGED_ROUTES = [
 ];
 
 beforeEach(() => {
+  requestCache.invalidateUser('user-a');
   getFollowings.mockClear();
   getUserLikedTracksPage.mockClear().mockResolvedValue({ collection: [], next_href: null });
   getUserPlaylistsPage.mockClear().mockResolvedValue({ collection: [], next_href: null });
@@ -89,5 +96,34 @@ describe('followed-user library pages are gated on an actual following edge', ()
     getFollowings.mockResolvedValue([{ id: '999', username: 'friend' }]);
     const res = await request(app).get('/api/followings/999/likes/paged');
     expect(res.status).toBe(200);
+  });
+
+  test('the followings list is fetched once and reused across page requests', async () => {
+    // The reason this check is cached at all: it runs before every page fetch,
+    // and an uncached crawl costs ceil(followings/200) SoundCloud calls to
+    // authorize a request that returns 50 items.
+    getFollowings.mockResolvedValue([{ id: 999, username: 'friend' }]);
+
+    for (let i = 0; i < 3; i += 1) {
+      const res = await request(app).get('/api/followings/999/likes/paged');
+      expect(res.status).toBe(200);
+    }
+
+    expect(getFollowings).toHaveBeenCalledTimes(1);
+    expect(getUserLikedTracksPage).toHaveBeenCalledTimes(3);
+  });
+
+  test('invalidating the followings cache re-checks against SoundCloud', async () => {
+    // Bulk-unfollow and growth-reverse both call invalidateUserNamespaces with
+    // 'followings'; this asserts that revoking access actually takes effect
+    // rather than waiting out the TTL.
+    getFollowings.mockResolvedValue([{ id: 999, username: 'friend' }]);
+    expect((await request(app).get('/api/followings/999/likes/paged')).status).toBe(200);
+
+    requestCache.invalidateUser('user-a');
+    getFollowings.mockResolvedValue([]); // unfollowed
+
+    expect((await request(app).get('/api/followings/999/likes/paged')).status).toBe(403);
+    expect(getFollowings).toHaveBeenCalledTimes(2);
   });
 });

@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   ArrowLeft,
   Shuffle,
@@ -93,14 +94,39 @@ export default function PlaylistModifierPage() {
   const [likedDurationFilter, setLikedDurationFilter] = useState("All");
   const [alsoUnlike, setAlsoUnlike] = useState(false);
 
-  const filteredTracks = tracks.filter((t) => {
+  const filteredTracks = useMemo(() => tracks.filter((t) => {
     if (trackFilter === "downloadable") return Boolean(t.downloadable) || t.downloadable === "true";
     if (trackFilter === "buylink") return !!t.purchase_url;
     return true;
-  });
+  }), [tracks, trackFilter]);
 
-  const downloadCount = tracks.filter((t) => Boolean(t.downloadable) || t.downloadable === "true").length;
-  const buyLinkCount = tracks.filter((t) => !!t.purchase_url).length;
+  // id -> index within the full (unfiltered) track list, built once per
+  // `tracks` change instead of calling tracks.indexOf(track) inside the
+  // render loop (O(n) per row => O(n^2) for the whole list).
+  const trackIndexById = useMemo(() => {
+    const map = new Map<number, number>();
+    tracks.forEach((t, i) => map.set(t.id, i));
+    return map;
+  }, [tracks]);
+
+  const downloadCount = useMemo(
+    () => tracks.filter((t) => Boolean(t.downloadable) || t.downloadable === "true").length,
+    [tracks],
+  );
+
+  // Virtualize the track editor list — only rows scrolled into view get
+  // mounted. `virtualRow.index` is the row's index into `filteredTracks`
+  // itself, used only to look up the row's data; `globalIndex` (derived
+  // from `trackIndexById` below) is still what drives numbering,
+  // move-up/down, and removal.
+  const listScrollRef = useRef<HTMLDivElement>(null);
+  const rowVirtualizer = useVirtualizer({
+    count: filteredTracks.length,
+    getScrollElement: () => listScrollRef.current,
+    estimateSize: () => 72,
+    overscan: 8,
+  });
+  const buyLinkCount = useMemo(() => tracks.filter((t) => !!t.purchase_url).length, [tracks]);
 
   const playlistsQuery = usePlaylistsQuery();
   const playlists = useMemo(
@@ -450,6 +476,28 @@ export default function PlaylistModifierPage() {
     }
   };
 
+  // Both only computed while their confirm dialog is open — no point
+  // building these on every render while closed.
+  const removeTrackReviewItems = useMemo(() => {
+    if (trackToRemove === null) return [];
+    return tracks
+      .filter((track) => track.id === trackToRemove)
+      .map((track) => ({
+        id: track.id,
+        label: track.title,
+        meta: track.user?.username,
+      }));
+  }, [tracks, trackToRemove]);
+
+  const saveReviewItems = useMemo(() => {
+    if (!showSaveConfirm) return [];
+    return tracks.map((track, index) => ({
+      id: track.id,
+      label: `${index + 1}. ${track.title}`,
+      meta: track.user?.username,
+    }));
+  }, [tracks, showSaveConfirm]);
+
   return (
     <PageContainer maxWidth="wide">
         <PageHeader
@@ -529,6 +577,10 @@ export default function PlaylistModifierPage() {
                     <img
                       src={playlist.coverUrl || playlist.artwork_url || "/SC Toolkit Icon.png"}
                       alt={playlist.title}
+                      width={64}
+                      height={64}
+                      loading="lazy"
+                      decoding="async"
                       className="w-16 h-16 rounded-lg object-cover"
                     />
                     <div>
@@ -652,6 +704,10 @@ export default function PlaylistModifierPage() {
                       <img
                         src={track.artwork_url || "/SC Toolkit Icon.png"}
                         alt={track.title}
+                        width={48}
+                        height={48}
+                        loading="lazy"
+                        decoding="async"
                         className="w-12 h-12 rounded-lg object-cover"
                       />
                       <div className="flex-1 min-w-0">
@@ -818,12 +874,26 @@ export default function PlaylistModifierPage() {
                   description="Try a different filter."
                 />
               ) : (
-                <div className="space-y-2">
-                  {filteredTracks.map((track, index) => {
-                    const globalIndex = tracks.indexOf(track);
+                <div ref={listScrollRef} className="max-h-[600px] overflow-y-auto">
+                <div style={{ height: rowVirtualizer.getTotalSize(), position: "relative" }}>
+                  {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+                    const track = filteredTracks[virtualRow.index];
+                    const globalIndex = trackIndexById.get(track.id) ?? virtualRow.index;
                     return (
                     <div
-                      key={track.id}
+                      key={virtualRow.key}
+                      data-index={virtualRow.index}
+                      ref={rowVirtualizer.measureElement}
+                      style={{
+                        position: "absolute",
+                        top: 0,
+                        left: 0,
+                        width: "100%",
+                        transform: `translateY(${virtualRow.start}px)`,
+                      }}
+                      className="pb-2"
+                    >
+                    <div
                       className="flex items-center gap-4 p-3 rounded-xl bg-gray-50 dark:bg-secondary/20 group"
                     >
                       <span className="w-8 text-center text-sm text-muted-foreground/70">
@@ -832,6 +902,10 @@ export default function PlaylistModifierPage() {
                       <img
                         src={track.artwork_url || "/SC Toolkit Icon.png"}
                         alt={track.title}
+                        width={48}
+                        height={48}
+                        loading="lazy"
+                        decoding="async"
                         className="w-12 h-12 rounded-lg object-cover"
                       />
                       <div className="flex-1 min-w-0">
@@ -934,8 +1008,10 @@ export default function PlaylistModifierPage() {
                         </button>
                       </div>
                     </div>
+                    </div>
                     );
                   })}
+                </div>
                 </div>
               )}
             </div>
@@ -1051,13 +1127,7 @@ export default function PlaylistModifierPage() {
         <BulkReviewDetails
           action="removing"
           warning="This removes the track locally first. The playlist is not changed on SoundCloud until you save."
-          items={tracks
-            .filter((track) => track.id === trackToRemove)
-            .map((track) => ({
-              id: track.id,
-              label: track.title,
-              meta: track.user?.username,
-            }))}
+          items={removeTrackReviewItems}
         />
       </ConfirmDialog>
       <ConfirmDialog
@@ -1072,11 +1142,7 @@ export default function PlaylistModifierPage() {
           action="saving"
           warning="This writes the visible playlist order to SoundCloud. Export the current track list first if you want a record."
           exportFilename="playlist-save-review.csv"
-          items={tracks.map((track, index) => ({
-            id: track.id,
-            label: `${index + 1}. ${track.title}`,
-            meta: track.user?.username,
-          }))}
+          items={saveReviewItems}
         />
       </ConfirmDialog>
     </PageContainer>

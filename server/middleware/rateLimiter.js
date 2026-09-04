@@ -14,12 +14,20 @@ const createLimiter = (options) => {
 
 /**
  * General API rate limiter - applies to all API routes
- * Allows 100 requests per 15 minutes per IP
+ * Allows 600 requests per 15 minutes per IP
+ *
+ * Raised from 100. Progressive loading pages a library 200 items at a time,
+ * so a user with 20,000 likes spends 100 requests browsing ONE tool — the old
+ * ceiling was a quarter of that and would have cut them off mid-scroll. This
+ * limiter is also per-IP, so anyone behind shared NAT divides it further.
+ * The heavy-operation limiter (20/hour) still guards the expensive writes,
+ * which is where abuse actually costs something.
+ *
  * Uses default keyGenerator which handles IPv6 correctly when Express trust proxy is configured
  */
 export const apiRateLimiter = createLimiter({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // Limit each IP to 100 requests per windowMs
+  max: 600, // Limit each IP to 600 requests per windowMs
   message: {
     error: 'Too many requests from this IP, please try again later.',
   },

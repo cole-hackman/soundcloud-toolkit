@@ -8,7 +8,7 @@ import { heavyOperationRateLimiter } from '../middleware/rateLimiter.js';
 import { soundcloudClient } from '../lib/soundcloud-client.js';
 import { sleep } from '../lib/pacing.js';
 import {
-  invalidateUserNamespaces,
+  invalidateUserCollections,
   loadCachedFollowings,
   loadCachedFollowers,
 } from '../lib/social-cache.js';
@@ -137,7 +137,7 @@ router.post('/growth/engage', authenticateUser, heavyOperationRateLimiter, valid
       inspirationNames,
     });
 
-    invalidateUserNamespaces(req.user.id, ['followings', 'likes']);
+    invalidateUserCollections(req.user.id, ['followings', 'likes']);
     res.status(202).json({ job: serializeJob(job), budget });
     logOperation({
       userId: req.user.id,
@@ -383,7 +383,7 @@ router.post('/growth/check-followbacks', authenticateUser, heavyOperationRateLim
       else didNotFollowBack++;
     }
 
-    invalidateUserNamespaces(req.user.id, ['followers']);
+    invalidateUserCollections(req.user.id, ['followers']);
 
     res.json({
       checked,
@@ -472,7 +472,7 @@ router.post('/growth/reverse', authenticateUser, validateReverseGrowthActions, a
       await sleep(SC_WRITE_PACING_MS);
     }
 
-    invalidateUserNamespaces(req.user.id, ['followings', 'likes']);
+    invalidateUserCollections(req.user.id, ['followings', 'likes']);
 
     res.json({
       reversed,

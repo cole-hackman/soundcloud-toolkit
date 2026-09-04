@@ -1,11 +1,19 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { ArrowLeft, Download, Heart, ListMusic, Trash2, X, CheckSquare, Search, Zap } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
-import { Button, BulkReviewDetails, ConfirmDialog, EmptyState, Input, LoadingSpinner, PageContainer, PageHeader, TrackRow } from "@/components/ui";
+import { Button, BulkReviewDetails, ConfirmDialog, EmptyState, Input, LoadingSpinner, PageContainer, PageHeader, Skeleton, TrackRow } from "@/components/ui";
+import {
+  invalidatePlaylistCaches,
+  useLikesQuery,
+  useMeQuery,
+  usePlaylistDetailQuery,
+  usePlaylistsQuery,
+} from "@/lib/queries";
 
 interface Playlist {
   id: number;
@@ -52,17 +60,14 @@ const isHypedditUrl = (url?: string) =>
 const hasGateUrl = (url?: string) => !!url;
 
 export default function DownloadsPage() {
+  const queryClient = useQueryClient();
   const { user } = useAuth();
   // Gated server-side: /api/auth/me returns canDownload based on the
   // DOWNLOAD_ALLOWLIST env (SoundCloud IDs) + admins.
   const isOwner = !!user?.canDownload;
 
-  const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [selectedSource, setSelectedSource] = useState<Playlist | null>(null);
   const [tracks, setTracks] = useState<Track[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadingTracks, setLoadingTracks] = useState(false);
-  const [likesCount, setLikesCount] = useState<number | null>(null);
   const [sourceSearch, setSourceSearch] = useState("");
 
   // Selection mode (remove from playlist)
@@ -82,10 +87,42 @@ export default function DownloadsPage() {
   const [hypedditProgress, setHypedditProgress] = useState<HypedditProgress | null>(null);
   const [queueSent, setQueueSent] = useState(false);
 
+  const playlistsQuery = usePlaylistsQuery();
+  const meQuery = useMeQuery();
+  const isLikedSource = selectedSource?.id === LIKED_TRACKS_ID;
+  const likesQuery = useLikesQuery({ enabled: isLikedSource });
+  const playlistDetailQuery = usePlaylistDetailQuery(selectedSource?.id ?? 0, {
+    enabled: selectedSource != null && !isLikedSource,
+  });
+
+  const loading = playlistsQuery.isLoading;
+  const loadingTracks =
+    selectedSource != null && (isLikedSource ? likesQuery.isLoading : playlistDetailQuery.isLoading);
+
+  const playlists = useMemo(
+    () => (playlistsQuery.data?.collection || []) as unknown as Playlist[],
+    [playlistsQuery.data?.collection],
+  );
+  const likesCount =
+    (meQuery.data?.public_favorites_count as number | undefined) ??
+    (meQuery.data?.likes_count as number | undefined) ??
+    null;
+
+  // Keep a local, mutable copy of the current source's tracks — synced from
+  // whichever query is active for the selected source, and updated directly
+  // after a remove so the UI reflects it immediately (same pattern as
+  // playlist-health-check).
   useEffect(() => {
-    fetchPlaylists();
-    fetchLikesCount();
-  }, []);
+    if (!selectedSource) {
+      setTracks([]);
+      return;
+    }
+    if (isLikedSource) {
+      setTracks((likesQuery.data?.collection || []) as unknown as Track[]);
+    } else if (playlistDetailQuery.data) {
+      setTracks((playlistDetailQuery.data.tracks || []) as unknown as Track[]);
+    }
+  }, [selectedSource, isLikedSource, likesQuery.data, playlistDetailQuery.data]);
 
   useEffect(() => {
     const urlParam = new URLSearchParams(window.location.search).get("url");
@@ -115,57 +152,8 @@ export default function DownloadsPage() {
     }
   }, [selectedSource]);
 
-  const fetchPlaylists = async () => {
-    try {
-      const response = await apiFetch("/api/playlists");
-      if (response.ok) {
-        const data = await response.json();
-        setPlaylists(data.collection || []);
-      }
-    } catch (error) {
-      console.error("Failed to fetch playlists:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchLikesCount = async () => {
-    try {
-      const response = await apiFetch("/api/me");
-      if (response.ok) {
-        const data = await response.json();
-        setLikesCount(data.public_favorites_count ?? data.likes_count ?? null);
-      }
-    } catch {
-      // non-critical — card just shows "All your likes"
-    }
-  };
-
-  const fetchTracks = async (source: Playlist) => {
-    setLoadingTracks(true);
-    setTracks([]);
-    try {
-      const endpoint =
-        source.id === LIKED_TRACKS_ID
-          ? "/api/likes"
-          : `/api/playlists/${source.id}`;
-      const response = await apiFetch(endpoint);
-      if (response.ok) {
-        const data = await response.json();
-        setTracks(
-          source.id === LIKED_TRACKS_ID ? data.collection || [] : data.tracks || []
-        );
-      }
-    } catch (error) {
-      console.error("Failed to fetch tracks:", error);
-    } finally {
-      setLoadingTracks(false);
-    }
-  };
-
   const handleSelectSource = (p: Playlist) => {
     setSelectedSource(p);
-    fetchTracks(p);
     setSelectionMode(false);
     setHypedditMode(false);
     setSelectedTrackIds(new Set());
@@ -243,13 +231,7 @@ export default function DownloadsPage() {
         setTracks(remainingTracks);
         setSelectedTrackIds(new Set());
         setSelectionMode(false);
-        setPlaylists((prev) =>
-          prev.map((p) =>
-            p.id === selectedSource.id
-              ? { ...p, track_count: remainingTracks.length }
-              : p
-          )
-        );
+        await invalidatePlaylistCaches(queryClient, selectedSource.id);
       } else {
         setInlineError("Failed to update playlist. Please try again.");
       }
@@ -307,15 +289,23 @@ export default function DownloadsPage() {
     setHypedditProgress(null);
   };
 
-  const downloadableTracks = tracks.filter(
-    (t) => Boolean(t.downloadable) || t.downloadable === "true" || !!t.download_url || !!t.purchase_url
+  const downloadableTracks = useMemo(
+    () =>
+      tracks.filter(
+        (t) => Boolean(t.downloadable) || t.downloadable === "true" || !!t.download_url || !!t.purchase_url
+      ),
+    [tracks],
   );
 
   // Any track with a purchase_url can be queued — Hypeddit, ToneDen, link trees, etc.
-  const hypedditTracks = downloadableTracks.filter((t) => isHypedditUrl(t.purchase_url));
+  const hypedditTracks = useMemo(
+    () => downloadableTracks.filter((t) => isHypedditUrl(t.purchase_url)),
+    [downloadableTracks],
+  );
 
-  const filteredPlaylists = playlists.filter((p) =>
-    p.title.toLowerCase().includes(sourceSearch.toLowerCase())
+  const filteredPlaylists = useMemo(
+    () => playlists.filter((p) => p.title.toLowerCase().includes(sourceSearch.toLowerCase())),
+    [playlists, sourceSearch],
   );
 
   const formatDuration = (ms: number) => {
@@ -375,6 +365,19 @@ export default function DownloadsPage() {
   const hdFailed = hypedditProgress?.failed ?? 0;
   const showProgressBanner = hdTotal > 0;
 
+  // Only computed while the confirm dialog is open — no point building this
+  // on every render while it's closed.
+  const removeReviewItems = useMemo(() => {
+    if (!showRemoveConfirm) return [];
+    return tracks
+      .filter((track) => selectedTrackIds.has(track.id))
+      .map((track) => ({
+        id: track.id,
+        label: track.title,
+        meta: track.user?.username,
+      }));
+  }, [tracks, selectedTrackIds, showRemoveConfirm]);
+
   return (
     <PageContainer maxWidth="default">
         <PageHeader
@@ -391,7 +394,7 @@ export default function DownloadsPage() {
             {loading ? (
               <div className="space-y-3">
                 {Array.from({ length: 3 }).map((_, i) => (
-                  <div key={i} className="h-16 bg-gray-100 dark:bg-secondary/50 rounded-lg animate-pulse" />
+                  <Skeleton key={i} className="h-16 rounded-lg bg-gray-100 dark:bg-secondary/50" />
                 ))}
               </div>
             ) : (
@@ -448,6 +451,10 @@ export default function DownloadsPage() {
                       <img
                         src={playlist.coverUrl || playlist.artwork_url || "/SC Toolkit Icon.png"}
                         alt={playlist.title}
+                        width={64}
+                        height={64}
+                        loading="lazy"
+                        decoding="async"
                         className="w-16 h-16 rounded-lg object-cover shrink-0"
                       />
                       <div>
@@ -670,7 +677,7 @@ export default function DownloadsPage() {
               {loadingTracks ? (
                 <div className="space-y-3">
                   {Array.from({ length: 5 }).map((_, i) => (
-                    <div key={i} className="h-16 bg-gray-100 dark:bg-secondary/50 rounded-lg animate-pulse" />
+                    <Skeleton key={i} className="h-16 rounded-lg bg-gray-100 dark:bg-secondary/50" />
                   ))}
                 </div>
               ) : downloadableTracks.length === 0 ? (
@@ -752,6 +759,10 @@ export default function DownloadsPage() {
                         <img
                           src={track.artwork_url || "/SC Toolkit Icon.png"}
                           alt={track.title}
+                          width={40}
+                          height={40}
+                          loading="lazy"
+                          decoding="async"
                           className="h-10 w-10 rounded-lg object-cover"
                         />
                         <div className="min-w-0 flex-1">
@@ -802,13 +813,7 @@ export default function DownloadsPage() {
           action="removing"
           warning="This updates the playlist on SoundCloud. Export the selection first if you need a record."
           exportFilename="downloads-remove-selection.csv"
-          items={tracks
-            .filter((track) => selectedTrackIds.has(track.id))
-            .map((track) => ({
-              id: track.id,
-              label: track.title,
-              meta: track.user?.username,
-            }))}
+          items={removeReviewItems}
         />
       </ConfirmDialog>
     </PageContainer>

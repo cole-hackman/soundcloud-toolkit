@@ -16,12 +16,17 @@ const getPlaylistWithTracks = jest.fn().mockResolvedValue({ tracks: [] });
 jest.unstable_mockModule('../../server/lib/prisma.js', () => ({ default: {} }));
 jest.unstable_mockModule('../../server/lib/soundcloud-client.js', () => ({
   soundcloudClient: { unlikeTrack, getPlaylistWithTracks },
+  // routes/api.js imports this alongside soundcloudClient for the oEmbed
+  // supplement; the mock must provide it or the module fails to link.
+  fetchWithTimeout: jest.fn(async () => ({ ok: false, status: 503 })),
 }));
 jest.unstable_mockModule('../../server/lib/analytics.js', () => ({
   logOperation: jest.fn(),
   startOperationTimer: jest.fn(() => () => 42),
   extractClientInfo: jest.fn(() => ({})),
   getAnalyticsWriteHealth: jest.fn().mockResolvedValue({ healthy: true }),
+  // Pass-through: read instrumentation must not alter routing behaviour.
+  instrumentRead: () => (req, res, next) => next(),
 }));
 jest.unstable_mockModule('../../server/lib/enrichment.js', () => ({
   piggybackEnrichment: jest.fn(),

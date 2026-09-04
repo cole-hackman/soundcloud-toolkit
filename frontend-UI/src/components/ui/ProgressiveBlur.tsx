@@ -1,5 +1,6 @@
 "use client";
 
+import { forwardRef } from "react";
 import { cn } from "@/lib/utils";
 
 interface ProgressiveBlurProps {
@@ -14,27 +15,28 @@ interface ProgressiveBlurProps {
 /**
  * Wraps a scrollable list and adds a bottom fade-to-blur overlay
  * to signal there's more content below — cleaner than a hard cutoff.
+ *
+ * Forwards its ref to the scrollable div itself (not a wrapper) so callers
+ * that virtualize their list (e.g. via @tanstack/react-virtual) can use it
+ * directly as the virtualizer's scroll element.
  */
-export function ProgressiveBlur({
-  children,
-  className,
-  fadeHeight = 80,
-  active = true,
-}: ProgressiveBlurProps) {
-  return (
-    <div className={cn("relative", className)}>
-      {children}
-      {active && (
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute bottom-0 left-0 right-0 z-10"
-          style={{
-            height: fadeHeight,
-            background:
-              "linear-gradient(to bottom, transparent, var(--color-surface, hsl(var(--background))))",
-          }}
-        />
-      )}
-    </div>
-  );
-}
+export const ProgressiveBlur = forwardRef<HTMLDivElement, ProgressiveBlurProps>(
+  function ProgressiveBlur({ children, className, fadeHeight = 80, active = true }, ref) {
+    return (
+      <div ref={ref} className={cn("relative", className)}>
+        {children}
+        {active && (
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute bottom-0 left-0 right-0 z-10"
+            style={{
+              height: fadeHeight,
+              background:
+                "linear-gradient(to bottom, transparent, var(--color-surface, hsl(var(--background))))",
+            }}
+          />
+        )}
+      </div>
+    );
+  },
+);

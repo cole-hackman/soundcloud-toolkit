@@ -22,6 +22,7 @@ import { apiRateLimiter, authRateLimiter, heavyOperationRateLimiter, healthCheck
 import { securityHeaders, preventKeyLeakage, validateEnv, rejectUntrustedOrigin } from './middleware/security.js';
 import logger from './lib/logger.js';
 import { safeError } from './lib/safe-error.js';
+import { createScMetrics } from './lib/token-context.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -89,13 +90,20 @@ app.use(cors({
 // Response compression
 app.use(compression());
 
-// Lightweight request timing logger (helps spot slow endpoints)
+// Lightweight request timing logger (helps spot slow endpoints).
+// `sc=` is the number of SoundCloud round trips the request made — the metric
+// that actually explains a slow endpoint, since wall time here is dominated by
+// serial upstream calls rather than our own work.
 app.use((req, res, next) => {
   const startedAtMs = Date.now();
+  // Owned here, not read from AsyncLocalStorage: this listener is registered
+  // before authenticateUser establishes the token context, so it would see an
+  // empty store. authenticateUser passes this same bag into the context.
+  req.scMetrics = createScMetrics();
   res.on('finish', () => {
     const durationMs = Date.now() - startedAtMs;
     // Keep logs concise in production
-    logger.info(`${res.statusCode} ${req.method} ${req.originalUrl} ${durationMs}ms`);
+    logger.info(`${res.statusCode} ${req.method} ${req.originalUrl} ${durationMs}ms sc=${req.scMetrics.scCalls}`);
   });
   next();
 });

@@ -120,13 +120,16 @@ export async function moveTrackBetweenPlaylists(deps) {
     return { ok: false, error: 'Source and target playlist must be different' };
   }
 
-  const [source, target] = await Promise.all([
-    client.getPlaylistWithTracks(accessToken, refreshToken, sourcePlaylistId),
-    client.getPlaylistWithTracks(accessToken, refreshToken, targetPlaylistId),
+  // Both lists are PUT back in full below, so both reads are guarded: a short
+  // read of either side would delete whatever it dropped. Throws on a short
+  // read; the route maps that to a 409 rather than a generic failure.
+  const [
+    { playlist: source, ids: sourceIds },
+    { playlist: target, ids: targetIds },
+  ] = await Promise.all([
+    readPlaylistForRewrite(client, accessToken, refreshToken, sourcePlaylistId),
+    readPlaylistForRewrite(client, accessToken, refreshToken, targetPlaylistId),
   ]);
-
-  const sourceIds = extractOrderedTrackIds(source);
-  const targetIds = extractOrderedTrackIds(target);
 
   if (!sourceIds.includes(trackId)) {
     return {

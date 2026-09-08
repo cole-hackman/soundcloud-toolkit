@@ -896,6 +896,11 @@ router.post(
 
       return res.status(400).json({ ok: false, error: 'Invalid action' });
     } catch (error) {
+      // A short read is a refusal with a reason, not a failure: the same 409
+      // bulk-add and PUT /playlists/:id return, so the client can show it.
+      if (error instanceof PlaylistReadIncompleteError) {
+        return res.status(409).json({ ok: false, error: error.message });
+      }
       logger.error('Playlist transfer error:', safeError(error));
       res.status(500).json({ ok: false, error: 'Playlist transfer failed' });
     }

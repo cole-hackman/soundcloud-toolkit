@@ -7,7 +7,9 @@ process.env.NODE_ENV = 'development';
 
 const getPlaylists = jest.fn();
 // The paged tools slice the cached full playlist list (getAllPlaylists, cursor
-// paginated) rather than asking for a SoundCloud offset page. getPlaylists is
+// paginated) rather than asking for a SoundCloud offset page. getPlaylists no
+// longer exists on the client; it stays in this mock only so the assertions
+// below can prove nothing reintroduces a call to it. getPlaylists is
 // kept in the mock so the tests can assert it is NOT called any more.
 const getAllPlaylists = jest.fn();
 const getPlaylistWithTracks = jest.fn();

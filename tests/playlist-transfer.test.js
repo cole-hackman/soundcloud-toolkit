@@ -133,6 +133,24 @@ describe('playlist-transfer', () => {
     );
   });
 
+  test('move refuses when either playlist read came back short', async () => {
+    // Move does two full-list PUTs, so a short read on EITHER side deletes
+    // whatever that read dropped. Source is complete here; target is not.
+    const client = {
+      getPlaylistWithTracks: jest.fn(async (_a, _r, id) => (id === 1
+        ? { id: 1, title: 'src', track_count: 2, tracks: [{ id: 10 }, { id: 11 }] }
+        : { id: 2, title: 'dst', track_count: 3, tracks: [{ id: 20 }, { id: 'x' }] })),
+      addTracksToPlaylist: jest.fn(),
+    };
+
+    await expect(moveTrackBetweenPlaylists({
+      accessToken, refreshToken, client, trackId: 10, sourcePlaylistId: 1, targetPlaylistId: 2,
+    })).rejects.toBeInstanceOf(PlaylistReadIncompleteError);
+
+    // Nothing was written to either playlist.
+    expect(client.addTracksToPlaylist).not.toHaveBeenCalled();
+  });
+
   test('move rejects same source and target', async () => {
     const client = {
       getPlaylistWithTracks: jest.fn(),

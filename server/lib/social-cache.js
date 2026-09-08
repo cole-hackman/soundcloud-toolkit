@@ -35,7 +35,7 @@ export const CACHE_TTL = {
 const inFlightLoads = new Map();
 
 /**
- * When each (user, resource) was last invalidated.
+ * When each (user, resource) was last invalidated: `{ rev, at }`.
  *
  * `cancelInFlight` only reaches loads registered in `inFlightLoads`, and only
  * guards the in-memory write. That left three ways for a crawl that started
@@ -47,24 +47,68 @@ const inFlightLoads = new Map();
  * A monotonic mark closes all three, and does it SYNCHRONOUSLY — no waiting on
  * the database. A crawl records the mark when it starts and refuses to publish
  * if the mark has moved; a reader refuses a snapshot older than the mark.
+ *
+ * Two different values, because the two comparisons want different things:
+ *
+ *   - `rev` is a process-wide counter that strictly increases on EVERY
+ *     invalidation. `Date.now()` does not: two mutations inside the same
+ *     millisecond produce the same timestamp, so a crawl that started between
+ *     them would compare equal to the later one and publish pre-mutation data.
+ *     Equality against a counter cannot collide that way.
+ *   - `at` is the wall clock, and is only ever compared against a `syncedAt`
+ *     that Postgres wrote. A counter is meaningless in that comparison.
  */
+let invalidationRev = 0;
 const invalidatedAt = new Map();
 
 const markKey = (userId, resource) => `${resource}::${userId}`;
 
-/** Latest invalidation time for a (user, resource); 0 when never invalidated. */
+/** Monotonic revision of the last invalidation; 0 when never invalidated. */
 export function invalidationMark(userId, resource) {
-  return invalidatedAt.get(markKey(userId, resource)) ?? 0;
+  return invalidatedAt.get(markKey(userId, resource))?.rev ?? 0;
+}
+
+/** Wall-clock time of the last invalidation, for comparing against a stored
+ *  `syncedAt`; 0 when never invalidated. */
+export function invalidationTime(userId, resource) {
+  return invalidatedAt.get(markKey(userId, resource))?.at ?? 0;
 }
 
 function recordInvalidation(userId, resources) {
-  const now = Date.now();
-  for (const resource of resources) invalidatedAt.set(markKey(userId, resource), now);
+  const at = Date.now();
+  for (const resource of resources) {
+    invalidatedAt.set(markKey(userId, resource), { rev: ++invalidationRev, at });
+  }
 }
 
 /** True when nothing has invalidated this resource since `mark` was taken. */
 function stillCurrent(userId, resource, mark) {
   return invalidationMark(userId, resource) === mark;
+}
+
+/**
+ * Persist a crawl, then make sure a mutation did not race the write.
+ *
+ * Checking the mark BEFORE the write cannot make the write atomic with
+ * invalidation: `writeSnapshot` is a transaction round trip, and a mutation
+ * landing during it runs `invalidateSnapshot` against the row this writer is
+ * about to overwrite. The mutation marks it `stale`; this (older) writer then
+ * upserts it back to `complete` with a FRESH `syncedAt` — which also defeats
+ * the reader's `syncedAt <= invalidated` guard, because that timestamp records
+ * when the row was written, not when the items were fetched.
+ *
+ * Re-checking afterwards and re-invalidating converges: any writer that finds
+ * the mark moved leaves the row stale, so the next read re-crawls. The failure
+ * direction is a needless crawl, never a served-stale snapshot.
+ *
+ * @returns {Promise<boolean>} true when the snapshot was published and is current
+ */
+async function publishSnapshot(userId, resource, items, mark, { truncated }) {
+  await writeSnapshot(userId, resource, items, { truncated });
+  if (stillCurrent(userId, resource, mark)) return true;
+  logger.info('[snapshot-cache] invalidated during snapshot write; re-marking stale', { resource });
+  await invalidateSnapshot(userId, [resource]);
+  return false;
 }
 
 export function getCachedUserPayload(namespace, userId, key, load, ttlMs) {
@@ -193,10 +237,10 @@ function revalidateInBackground(userId, resource, crawl, shape) {
         return;
       }
       const truncated = items?.truncated === true;
-      await writeSnapshot(userId, resource, items, { truncated });
-      // Re-check: writeSnapshot is a round trip, and a mutation can land during
-      // it. Losing the memo write is harmless; publishing stale data is not.
-      if (!stillCurrent(userId, resource, mark)) return;
+      // Publishes and then re-checks: writeSnapshot is a round trip, and a
+      // mutation can land during it. Losing the memo write is harmless;
+      // leaving a stale snapshot marked 'complete' is not.
+      if (!(await publishSnapshot(userId, resource, items, mark, { truncated }))) return;
       // Same payload shape as the other tiers — a bare shape(items) here would
       // silently drop `truncated` after any background refresh.
       requestCache.set(
@@ -251,7 +295,7 @@ export async function loadUserCollection(req, resource, crawl, shape) {
   // if its row still says 'complete'. This is the synchronous guard that makes
   // invalidateSnapshot's fire-and-forget UPDATE safe: the read does not have to
   // wait for that write to commit.
-  const invalidated = invalidationMark(userId, resource);
+  const invalidated = invalidationTime(userId, resource);
   const supersededByMutation = snapshot
     && invalidated > 0
     && snapshot.syncedAt instanceof Date
@@ -289,7 +333,7 @@ export async function loadUserCollection(req, resource, crawl, shape) {
     // that would hand the cold path a fresh delay in exchange for removing a
     // future one. The caller already has its data — the snapshot is for the
     // NEXT reader. Same posture as harvestTracks.
-    Promise.resolve(writeSnapshot(userId, resource, items, {
+    Promise.resolve(publishSnapshot(userId, resource, items, mark, {
       truncated: items?.truncated === true,
     })).catch(() => {});
     return payload;

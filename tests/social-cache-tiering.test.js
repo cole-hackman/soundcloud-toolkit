@@ -263,6 +263,88 @@ describe('memory -> Postgres -> SoundCloud tiering', () => {
     expect(payload.collection).toEqual([{ id: 'fresh' }]);
   });
 
+  /* ── Regression: invalidation must beat the WRITE, not just the crawl ───
+   * The four above all check the mark before the write starts. That is not
+   * enough on its own: `Date.now()` can hand two mutations the same mark, and
+   * `writeSnapshot` is a transaction round trip that a mutation can land in
+   * the middle of. Both let a stale snapshot end up marked 'complete'.
+   */
+
+  test('two invalidations inside ONE millisecond are still distinguishable', async () => {
+    // The mark used to be Date.now(). Under a frozen clock the second
+    // invalidation produced the SAME mark as the first, so a crawl that
+    // started between them compared equal and published pre-mutation data.
+    // A strictly increasing revision cannot collide that way.
+    const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000);
+    try {
+      readSnapshot.mockResolvedValue(null);
+      invalidateUserCollections('u1', ['likes']);          // mutation 1
+
+      const gate = deferred();
+      const crawl = jest.fn(() => gate.promise);
+      const inflight = loadUserCollection(req, 'likes', crawl, shape);
+      await flush();
+      expect(crawl).toHaveBeenCalledTimes(1);              // crawl is RUNNING
+
+      invalidateUserCollections('u1', ['likes']);          // mutation 2, same ms
+      gate.resolve([{ id: 'pre-mutation' }]);
+      await inflight;
+      await flush();
+
+      expect(writeSnapshot).not.toHaveBeenCalled();
+      expect(requestCache.get('likes', 'u1', 'default')).toBeUndefined();
+    } finally {
+      nowSpy.mockRestore();
+    }
+  });
+
+  test('a mutation landing DURING the snapshot write re-marks it stale', async () => {
+    // invalidateSnapshot marks the old row stale, then this older writer's
+    // transaction commits and upserts it back to 'complete' with a fresh
+    // syncedAt — which also defeats the reader's syncedAt guard, because that
+    // timestamp records the write, not the fetch. The writer has to notice.
+    readSnapshot.mockResolvedValue(null);
+    const write = deferred();
+    writeSnapshot.mockImplementationOnce(() => write.promise);
+
+    await loadUserCollection(req, 'likes', () => Promise.resolve([{ id: 1 }]), shape);
+    expect(writeSnapshot).toHaveBeenCalledTimes(1);
+    expect(invalidateSnapshot).not.toHaveBeenCalled();
+
+    invalidateUserCollections('u1', ['likes']);            // lands mid-write
+    expect(invalidateSnapshot).toHaveBeenCalledTimes(1);   // the mutation's own
+
+    write.resolve({ pages: 1, items: 1 });
+    await flush();
+
+    // The writer re-invalidates after its commit, so the row does not survive
+    // as 'complete'. Worst case is a needless re-crawl; never a served stale.
+    expect(invalidateSnapshot).toHaveBeenCalledTimes(2);
+    expect(invalidateSnapshot).toHaveBeenLastCalledWith('u1', ['likes']);
+  });
+
+  test('a background revalidate raced mid-write publishes to neither tier', async () => {
+    readSnapshot.mockResolvedValue({
+      items: [{ id: 'old' }], complete: true, stale: true, truncated: false,
+      syncedAt: new Date(Date.now() - 3_600_000), totalItems: 1,
+    });
+    const gate = deferred();
+    const write = deferred();
+    writeSnapshot.mockImplementationOnce(() => write.promise);
+
+    await loadUserCollection(req, 'likes', () => gate.promise, shape);
+    gate.resolve([{ id: 'pre-mutation' }]);
+    await flush();
+    expect(writeSnapshot).toHaveBeenCalledTimes(1);        // write is in flight
+
+    invalidateUserCollections('u1', ['likes']);
+    write.resolve({ pages: 1, items: 1 });
+    await flush();
+
+    expect(invalidateSnapshot).toHaveBeenCalledTimes(2);   // mutation + writer
+    expect(requestCache.get('likes', 'u1', 'default')).toBeUndefined();
+  });
+
   test('an unknown resource is rejected rather than silently cached', async () => {
     await expect(loadUserCollection(req, 'bananas', jest.fn(), shape))
       .rejects.toThrow(/Unknown snapshot resource/);

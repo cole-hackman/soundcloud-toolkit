@@ -194,8 +194,13 @@ export async function writeSnapshot(userId, resource, items, { truncated = false
  * while it refreshes; see `stale` on readSnapshot's result.
  *
  * This UPDATE is a network round trip, so callers must not depend on it having
- * committed. `invalidationMark` in social-cache.js is the synchronous guard
+ * committed. `invalidationTime` in social-cache.js is the synchronous guard
  * that covers the window until it does.
+ *
+ * It is also not ordered against writeSnapshot: a crawl whose transaction was
+ * already open can commit `status='complete'` after this runs. social-cache's
+ * `publishSnapshot` re-checks the invalidation mark after its write and calls
+ * back in here when it lost the race, so the row does not survive as complete.
  */
 export async function invalidateSnapshot(userId, resources) {
   const list = (Array.isArray(resources) ? resources : [resources])

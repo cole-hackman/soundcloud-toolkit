@@ -6,13 +6,17 @@ const ORIGINAL_NODE_ENV = process.env.NODE_ENV;
 process.env.NODE_ENV = 'development';
 
 const getPlaylists = jest.fn();
+// The paged tools slice the cached full playlist list (getAllPlaylists, cursor
+// paginated) rather than asking for a SoundCloud offset page. getPlaylists is
+// kept in the mock so the tests can assert it is NOT called any more.
+const getAllPlaylists = jest.fn();
 const getPlaylistWithTracks = jest.fn();
 const addTracksToPlaylist = jest.fn();
 const logOperation = jest.fn();
 
 jest.unstable_mockModule('../../server/lib/prisma.js', () => ({ default: {} }));
 jest.unstable_mockModule('../../server/lib/soundcloud-client.js', () => ({
-  soundcloudClient: { getPlaylists, getPlaylistWithTracks, addTracksToPlaylist },
+  soundcloudClient: { getPlaylists, getAllPlaylists, getPlaylistWithTracks, addTracksToPlaylist },
   // routes/api.js imports this alongside soundcloudClient for the oEmbed
   // supplement; the mock must provide it or the module fails to link.
   fetchWithTimeout: jest.fn(async () => ({ ok: false, status: 503 })),
@@ -44,6 +48,11 @@ jest.unstable_mockModule('../../server/middleware/auth.js', () => ({
 }));
 
 const { default: apiRoutes } = await import('../../server/routes/api.js');
+// Real, not mocked: the playlist list is cached per user across the whole
+// module lifetime, so without an explicit reset the second test in this file
+// would be served the first test's playlists.
+const { requestCache } = await import('../../server/lib/request-cache.js');
+const { __resetCacheCoordinationForTests } = await import('../../server/lib/social-cache.js');
 
 const app = express();
 app.use(express.json());
@@ -53,20 +62,23 @@ afterAll(() => { process.env.NODE_ENV = ORIGINAL_NODE_ENV; });
 
 beforeEach(() => {
   getPlaylists.mockReset();
+  getAllPlaylists.mockReset();
   getPlaylistWithTracks.mockReset();
   addTracksToPlaylist.mockReset();
   logOperation.mockReset();
+  requestCache.invalidateUser('user-a');
+  __resetCacheCoordinationForTests();
 });
+
+/** N playlist stubs, ids 1..N — what getAllPlaylists hands back. */
+const stubs = (n) => Array.from({ length: n }, (_, i) => ({ id: i + 1, title: `P${i + 1}` }));
 
 const playlist = (id, title, tracks) => ({ id, title, tracks });
 const track = (id, title, artist = 'Someone') => ({ id, title, user: { username: artist } });
 
 describe('GET /api/playlists/search-tracks', () => {
   test('finds matches across a page of playlists', async () => {
-    getPlaylists.mockResolvedValue({
-      collection: [{ id: 1 }, { id: 2 }],
-      next_href: null,
-    });
+    getAllPlaylists.mockResolvedValue(stubs(2));
     getPlaylistWithTracks
       .mockResolvedValueOnce(playlist(1, 'Warmup', [track(10, 'Deep Bootleg'), track(11, 'Nope')]))
       .mockResolvedValueOnce(playlist(2, 'Peak', [track(12, 'Another Bootleg')]));
@@ -80,14 +92,18 @@ describe('GET /api/playlists/search-tracks', () => {
   });
 
   test('honours offset so a big library can be walked page by page', async () => {
-    getPlaylists.mockResolvedValue({ collection: [{ id: 5 }], next_href: 'x' });
+    // 61 playlists, so the 41st through 60th are a full page with more behind
+    // them. The offset is applied to the cached list here, not sent to
+    // SoundCloud, whose /me/playlists ignores it.
+    getAllPlaylists.mockResolvedValue(stubs(61));
     getPlaylistWithTracks.mockResolvedValue(playlist(5, 'Later', [track(50, 'Bootleg')]));
 
     const res = await request(app).get('/api/playlists/search-tracks?q=bootleg&limit=20&offset=40');
 
     expect(res.status).toBe(200);
-    expect(getPlaylists).toHaveBeenCalledWith('at', 'rt', 20, 40);
-    expect(res.body.page).toMatchObject({ offset: 40, from: 41, to: 41, hasMore: true });
+    expect(getAllPlaylists).toHaveBeenCalledTimes(1);
+    expect(getPlaylists).not.toHaveBeenCalled();
+    expect(res.body.page).toMatchObject({ offset: 40, from: 41, to: 60, total: 61, hasMore: true });
   });
 
   test('searches a single playlist without listing the library', async () => {
@@ -97,12 +113,13 @@ describe('GET /api/playlists/search-tracks', () => {
 
     expect(res.status).toBe(200);
     expect(getPlaylists).not.toHaveBeenCalled();
+    expect(getAllPlaylists).not.toHaveBeenCalled();
     expect(res.body.page).toBeNull();
     expect(res.body.matches[0].playlistId).toBe(7);
   });
 
   test('one unreadable playlist does not sink the search', async () => {
-    getPlaylists.mockResolvedValue({ collection: [{ id: 1 }, { id: 2 }], next_href: null });
+    getAllPlaylists.mockResolvedValue(stubs(2));
     getPlaylistWithTracks
       .mockRejectedValueOnce(new Error('boom'))
       .mockResolvedValueOnce(playlist(2, 'Peak', [track(12, 'Bootleg')]));
@@ -111,18 +128,34 @@ describe('GET /api/playlists/search-tracks', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.matches).toHaveLength(1);
+    // Named, not silently dropped — otherwise a partial search reads as a
+    // complete one that found less.
+    expect(res.body.failed).toHaveLength(1);
+    expect(res.body.stats.playlistsFailed).toBe(1);
+  });
+
+  test('every playlist failing is still a 200, with the failures named', async () => {
+    getAllPlaylists.mockResolvedValue(stubs(3));
+    getPlaylistWithTracks.mockRejectedValue(new Error('nope'));
+
+    const res = await request(app).get('/api/playlists/search-tracks?q=bootleg');
+
+    expect(res.status).toBe(200);
+    expect(res.body.matches).toEqual([]);
+    expect(res.body.failed).toHaveLength(3);
+    expect(res.body.stats.playlistsFailed).toBe(3);
   });
 
   test('an empty playlistId means "not scoped", not a playlist with id ""', async () => {
     // validatePlaylistTrackSearch uses checkFalsy, so `?playlistId=` skips
     // validation and arrives as ''. It must not be read as a scope.
-    getPlaylists.mockResolvedValue({ collection: [{ id: 1 }], next_href: null });
+    getAllPlaylists.mockResolvedValue(stubs(1));
     getPlaylistWithTracks.mockResolvedValue(playlist(1, 'P', [track(10, 'Bootleg')]));
 
     const res = await request(app).get('/api/playlists/search-tracks?q=bootleg&playlistId=');
 
     expect(res.status).toBe(200);
-    expect(getPlaylists).toHaveBeenCalled();
+    expect(getAllPlaylists).toHaveBeenCalled();
     expect(getPlaylistWithTracks).toHaveBeenCalledWith('at', 'rt', 1);
     expect(res.body.page).not.toBeNull();
   });
@@ -130,7 +163,7 @@ describe('GET /api/playlists/search-tracks', () => {
   test('rejects a too-short query before calling SoundCloud', async () => {
     const res = await request(app).get('/api/playlists/search-tracks?q=a');
     expect(res.status).toBe(400);
-    expect(getPlaylists).not.toHaveBeenCalled();
+    expect(getAllPlaylists).not.toHaveBeenCalled();
   });
 });
 
@@ -237,20 +270,34 @@ describe('POST /api/playlists/tracks/bulk-add', () => {
 });
 
 describe('GET /api/library/audit paging', () => {
-  test('passes offset through to SoundCloud and reports the range', async () => {
-    getPlaylists.mockResolvedValue({ collection: [{ id: 1 }], next_href: null });
+  test('slices the cached playlist list instead of asking for an offset page', async () => {
+    getAllPlaylists.mockResolvedValue(stubs(21));
     getPlaylistWithTracks.mockResolvedValue(playlist(1, 'P', [track(10, 'a')]));
 
     const res = await request(app).get('/api/library/audit?limit=20&offset=20');
 
     expect(res.status).toBe(200);
-    expect(getPlaylists).toHaveBeenCalledWith('at', 'rt', 20, 20);
-    expect(res.body.page).toMatchObject({ offset: 20, from: 21, to: 21, hasMore: false });
+    // /me/playlists declares no offset parameter and marks the shared one
+    // deprecated, so asking for one returns page 1 while the UI says 21-40.
+    expect(getPlaylists).not.toHaveBeenCalled();
+    expect(res.body.page).toMatchObject({ offset: 20, from: 21, to: 21, total: 21, hasMore: false });
+  });
+
+  test('a final short page reports its real range and no more to come', async () => {
+    getAllPlaylists.mockResolvedValue(stubs(45));
+    getPlaylistWithTracks.mockResolvedValue(playlist(1, 'P', [track(10, 'a')]));
+
+    const res = await request(app).get('/api/library/audit?limit=20&offset=40');
+
+    expect(res.status).toBe(200);
+    expect(res.body.page).toMatchObject({
+      returned: 5, hasMore: false, from: 41, to: 45, total: 45,
+    });
   });
 
   test('rejects a negative offset', async () => {
     const res = await request(app).get('/api/library/audit?offset=-5');
     expect(res.status).toBe(400);
-    expect(getPlaylists).not.toHaveBeenCalled();
+    expect(getAllPlaylists).not.toHaveBeenCalled();
   });
 });

@@ -24,13 +24,24 @@ interface AuditPage {
   limit: number;
   offset: number;
   returned: number;
+  total: number;
   hasMore: boolean;
   from: number;
   to: number;
+  /** The playlist list came from cache and is being refreshed behind this response. */
+  stale: boolean;
+  /** The playlist crawl stopped early, so the library is bigger than `total`. */
+  truncated: boolean;
+}
+
+interface AuditFailure {
+  id: number;
+  title: string | null;
 }
 
 interface AuditResult {
   page?: AuditPage;
+  failed?: AuditFailure[];
   summary: {
     playlists: number;
     tracks: number;
@@ -159,6 +170,24 @@ export default function LibraryAuditPage() {
           </div>
         ) : (
           <div className="space-y-6">
+            {result.page?.stale && (
+              <InlineAlert variant="info">
+                This list may be up to 15 minutes old — it is refreshing in the background.
+              </InlineAlert>
+            )}
+            {result.page?.truncated && (
+              <InlineAlert variant="warning">
+                Not all playlists were indexed, so the range below may not cover your whole
+                library.
+              </InlineAlert>
+            )}
+            {result.failed && result.failed.length > 0 && (
+              <InlineAlert variant="warning">
+                {result.failed.length} playlist{result.failed.length === 1 ? "" : "s"} could not be
+                read — these results are incomplete.
+              </InlineAlert>
+            )}
+
             <div className="grid gap-3 md:grid-cols-4">
               <Metric label="Playlists" value={result.summary.playlists} />
               <Metric label="Tracks scanned" value={result.summary.tracks} />

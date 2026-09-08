@@ -23,6 +23,7 @@ import {
   invalidateUserNamespaces,
   loadCachedFollowings,
   loadCachedFollowers,
+  loadCachedPlaylists,
   loadCachedMe,
   loadUserCollection,
   invalidateUserCollections,
@@ -32,6 +33,7 @@ import { safeError } from '../lib/safe-error.js';
 import { isAllowedDownloadRedirectTarget, isAllowedDownloadUrl } from '../lib/download-utils.js';
 import { buildDashboardSummary } from '../lib/dashboard-summary.js';
 import { summarizeLibraryAudit } from '../lib/library-audit.js';
+import { pagePlaylistsWithTracks } from '../lib/playlist-pages.js';
 import { comparePlaylists } from '../lib/playlist-compare.js';
 import {
   duplicateTrackBetweenPlaylists,
@@ -269,42 +271,17 @@ router.get('/library/audit', authenticateUser, instrumentRead('library-audit'), 
     const offset = req.query.offset ?? 0;
     // Auditing pulls every playlist's full track list, so it works a page at a
     // time. offset is what lets a user walk a library bigger than one page —
-    // playlists 20-40, then 40-60, and so on.
-    const playlistPage = await soundcloudClient.getPlaylists(req.accessToken, req.refreshToken, limit, offset);
-    const playlists = Array.isArray(playlistPage?.collection)
-      ? playlistPage.collection
-      : Array.isArray(playlistPage)
-        ? playlistPage
-        : [];
-    // A full page means there is probably another one. next_href is the
-    // authoritative signal when linked_partitioning gives us one.
-    const hasMore = playlistPage?.next_href ? true : playlists.length === limit;
-    // These fetches are independent of each other, so the serial loop this
-    // replaces cost one round trip per playlist end to end: ~21 at the default
-    // limit of 20 and ~51 at the maximum, all inside one held-open request.
-    const settled = await mapWithConcurrency(playlists, SC_READ_CONCURRENCY, async (playlist) => {
-      try {
-        return await soundcloudClient.getPlaylistWithTracks(req.accessToken, req.refreshToken, playlist.id);
-      } catch (error) {
-        logger.warn('Library audit playlist fetch failed:', { playlistId: playlist.id, error: safeError(error) });
-        return null;
-      }
-    });
-    // Order is preserved by mapWithConcurrency; failures drop out as before.
-    const fullPlaylists = settled.filter(Boolean);
+    // playlists 20-40, then 40-60, and so on. The page is a slice of the cached
+    // full playlist list, not a SoundCloud offset query; see playlist-pages.js.
+    const { playlists: fullPlaylists, failed, page } = await pagePlaylistsWithTracks(req, { limit, offset });
 
     harvestTracks(fullPlaylists.flatMap(p => (Array.isArray(p.tracks) ? p.tracks : [])));
     harvestPlaylists(fullPlaylists);
     const audit = summarizeLibraryAudit(fullPlaylists);
-    audit.page = {
-      limit,
-      offset,
-      returned: audit.playlists.length,
-      hasMore,
-      // 1-based inclusive range, for "playlists 21-40" in the UI.
-      from: playlists.length ? offset + 1 : 0,
-      to: offset + playlists.length,
-    };
+    audit.page = page;
+    // Playlists whose read failed are named rather than dropped: an audit that
+    // silently skipped three playlists reads as a clean bill of health.
+    audit.failed = failed;
     logOperation({
       req,
       action: 'library-audit',
@@ -348,35 +325,35 @@ router.get('/playlists/search-tracks', authenticateUser, heavyOperationRateLimit
     const limit = req.query.limit ?? 20;
     const offset = req.query.offset ?? 0;
 
-    let playlistStubs;
-    let hasMore = false;
+    let fullPlaylists;
+    let failed = [];
+    let page = null;
 
     if (singlePlaylistId !== null) {
-      playlistStubs = [{ id: singlePlaylistId }];
+      // Scoped to one playlist: no library listing, and no page — the client
+      // has nothing to walk.
+      try {
+        fullPlaylists = [
+          await soundcloudClient.getPlaylistWithTracks(req.accessToken, req.refreshToken, singlePlaylistId),
+        ];
+      } catch (error) {
+        logger.warn('Keyword search playlist fetch failed:', { playlistId: singlePlaylistId, error: safeError(error) });
+        fullPlaylists = [];
+        failed = [{ id: singlePlaylistId, title: null }];
+      }
     } else {
-      const playlistPage = await soundcloudClient.getPlaylists(req.accessToken, req.refreshToken, limit, offset);
-      playlistStubs = Array.isArray(playlistPage?.collection)
-        ? playlistPage.collection
-        : Array.isArray(playlistPage)
-          ? playlistPage
-          : [];
-      hasMore = playlistPage?.next_href ? true : playlistStubs.length === limit;
+      // A slice of the cached full playlist list, with each playlist's tracks
+      // fetched concurrently. See playlist-pages.js for why not an offset query.
+      const paged = await pagePlaylistsWithTracks(req, { limit, offset });
+      fullPlaylists = paged.playlists;
+      failed = paged.failed;
+      page = paged.page;
     }
 
-    // Same shape as the library audit: independent reads, so fan them out
-    // rather than paying one round trip per playlist end to end.
-    const settled = await mapWithConcurrency(playlistStubs, SC_READ_CONCURRENCY, async (stub) => {
-      try {
-        return await soundcloudClient.getPlaylistWithTracks(req.accessToken, req.refreshToken, stub.id);
-      } catch (error) {
-        // One unreadable playlist shouldn't sink the whole search.
-        logger.warn('Keyword search playlist fetch failed:', { playlistId: stub.id, error: safeError(error) });
-        return null;
-      }
-    });
-    const fullPlaylists = settled.filter(Boolean);
-
     const { matches, stats } = searchTracksInPlaylists(fullPlaylists, keywords);
+    // A search that could not read three playlists is not the same answer as
+    // one that read them and found nothing; the client says so either way.
+    stats.playlistsFailed = failed.length;
 
     logOperation({
       req,
@@ -388,21 +365,7 @@ router.get('/playlists/search-tracks', authenticateUser, heavyOperationRateLimit
       metadata: { keywords: keywords.length, scoped: singlePlaylistId !== null },
     });
 
-    res.json({
-      keywords,
-      matches,
-      stats,
-      page: singlePlaylistId !== null
-        ? null
-        : {
-            limit,
-            offset,
-            returned: fullPlaylists.length,
-            hasMore,
-            from: playlistStubs.length ? offset + 1 : 0,
-            to: offset + playlistStubs.length,
-          },
-    });
+    res.json({ keywords, matches, stats, failed, page });
   } catch (error) {
     logger.error('Playlist keyword search error:', safeError(error));
     res.status(500).json({ error: 'Failed to search playlists' });
@@ -615,27 +578,9 @@ router.post('/playlists/compare', authenticateUser, heavyOperationRateLimiter, a
  */
 router.get('/playlists', authenticateUser, instrumentRead('playlists'), async (req, res) => {
   try {
-    const withCovers = await loadUserCollection(
-      req,
-      'playlists',
-      () => soundcloudClient.getAllPlaylists(req.accessToken, req.refreshToken),
-      (playlists) => {
-        // Cover art is derived from what the list response already carries.
-        // This used to fall back to getPlaylistWithTracks for every artwork-less
-        // playlist, in an unbounded Promise.all — 50 simultaneous requests each
-        // returning up to 500 full track objects, to read one artwork_url off
-        // tracks[0]. That fan-out was the dominant cost of this endpoint and its
-        // swallowed errors turned the resulting 429s into silently missing
-        // covers. Clients that want a real per-playlist cover can ask for one
-        // lazily; the owner avatar is a fine placeholder in a list view.
-        const collection = playlists.map((p) => {
-          const idNum = typeof p.id === 'string' ? parseInt(p.id, 10) : p.id;
-          const coverUrl = p.artwork_url || p.user?.avatar_url || '';
-          return { ...p, id: idNum, coverUrl };
-        });
-        return { collection, total: collection.length };
-      },
-    );
+    // One definition, in social-cache.js: the paged tools slice this same
+    // cached list rather than running their own query.
+    const withCovers = await loadCachedPlaylists(req);
     res.json(withCovers);
   } catch (error) {
     logger.error('Get playlists error:', safeError(error));

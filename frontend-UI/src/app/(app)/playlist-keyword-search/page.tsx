@@ -46,9 +46,19 @@ interface SearchPage {
   limit: number;
   offset: number;
   returned: number;
+  total: number;
   hasMore: boolean;
   from: number;
   to: number;
+  /** The playlist list came from cache and is being refreshed behind this response. */
+  stale: boolean;
+  /** The playlist crawl stopped early, so the library is bigger than `total`. */
+  truncated: boolean;
+}
+
+interface SearchFailure {
+  id: number;
+  title: string | null;
 }
 
 interface SearchResult {
@@ -59,7 +69,9 @@ interface SearchResult {
     tracksScanned: number;
     matchCount: number;
     uniqueTrackCount: number;
+    playlistsFailed: number;
   };
+  failed: SearchFailure[];
   page: SearchPage | null;
 }
 
@@ -350,6 +362,17 @@ export default function PlaylistKeywordSearchPage() {
             time to stay friendly to SoundCloud&apos;s rate limits.
           </p>
         </div>
+
+        {!loading && result?.page?.stale && (
+          <InlineAlert variant="info" className="mb-4">
+            This list may be up to 15 minutes old — it is refreshing in the background.
+          </InlineAlert>
+        )}
+        {!loading && result?.page?.truncated && (
+          <InlineAlert variant="warning" className="mb-4">
+            Not all playlists were indexed, so this search may not cover your whole library.
+          </InlineAlert>
+        )}
 
         {loading ? (
           <div className="rounded-xl border border-border bg-card p-12 text-center">

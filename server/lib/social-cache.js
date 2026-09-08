@@ -191,6 +191,41 @@ export function loadCachedFollowers(req) {
   );
 }
 
+/**
+ * Every playlist the user owns, fully paginated by cursor and cached across
+ * both tiers.
+ *
+ * The paged tools (library audit, keyword search) slice this list rather than
+ * asking SoundCloud for an offset page: `/me/playlists` declares only
+ * `show_tracks`, `linked_partitioning` and `limit`, and the shared `offset`
+ * parameter is marked deprecated — an ignored offset silently returns page one
+ * while the UI claims to be showing playlists 21-40. Cursor pagination has no
+ * such ambiguity, and the crawl is already cached for GET /api/playlists.
+ */
+export function loadCachedPlaylists(req) {
+  return loadUserCollection(
+    req,
+    'playlists',
+    () => soundcloudClient.getAllPlaylists(req.accessToken, req.refreshToken),
+    (playlists) => {
+      // Cover art is derived from what the list response already carries.
+      // This used to fall back to getPlaylistWithTracks for every artwork-less
+      // playlist, in an unbounded Promise.all — 50 simultaneous requests each
+      // returning up to 500 full track objects, to read one artwork_url off
+      // tracks[0]. That fan-out was the dominant cost of this endpoint and its
+      // swallowed errors turned the resulting 429s into silently missing
+      // covers. Clients that want a real per-playlist cover can ask for one
+      // lazily; the owner avatar is a fine placeholder in a list view.
+      const collection = playlists.map((p) => {
+        const idNum = typeof p.id === 'string' ? parseInt(p.id, 10) : p.id;
+        const coverUrl = p.artwork_url || p.user?.avatar_url || '';
+        return { ...p, id: idNum, coverUrl };
+      });
+      return { collection, total: collection.length };
+    },
+  );
+}
+
 /** The authenticated user's own SoundCloud profile. Short TTL: it carries the
  * follower/like/playlist counters the dashboard renders, so it should not go
  * visibly stale, but /api/me and /api/dashboard/summary both want it on the

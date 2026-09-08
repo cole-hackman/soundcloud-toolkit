@@ -26,7 +26,15 @@ import { comparePlaylists } from '../lib/playlist-compare.js';
 import {
   duplicateTrackBetweenPlaylists,
   moveTrackBetweenPlaylists,
+  extractOrderedTrackIds,
+  MAX_PLAYLIST_TRACKS,
 } from '../lib/playlist-transfer.js';
+import {
+  parseKeywords,
+  searchTracksInPlaylists,
+  removeTrackIds,
+  appendTrackIds,
+} from '../lib/playlist-search.js';
 import { requestCache } from '../lib/request-cache.js';
 import { mergeIntoExisting, splitIntoChunks } from '../lib/merge-utils.js';
 import {
@@ -51,6 +59,10 @@ import {
   validateTrackSearch,
   validateDeletePlaylist,
   validateEvent,
+  validateLibraryAudit,
+  validatePlaylistTrackSearch,
+  validateBulkRemovePlaylistTracks,
+  validateBulkAddPlaylistTracks,
 } from '../middleware/validation.js';
 const router = express.Router();
 
@@ -220,15 +232,22 @@ router.get('/dashboard/summary', authenticateUser, async (req, res) => {
   }
 });
 
-router.get('/library/audit', authenticateUser, heavyOperationRateLimiter, async (req, res) => {
+router.get('/library/audit', authenticateUser, heavyOperationRateLimiter, validateLibraryAudit, async (req, res) => {
   try {
-    const limit = Math.min(Math.max(Number(req.query.limit) || 20, 1), 50);
-    const playlistPage = await soundcloudClient.getPlaylists(req.accessToken, req.refreshToken, limit, 0);
+    const limit = req.query.limit ?? 20;
+    const offset = req.query.offset ?? 0;
+    // Auditing pulls every playlist's full track list, so it works a page at a
+    // time. offset is what lets a user walk a library bigger than one page —
+    // playlists 20-40, then 40-60, and so on.
+    const playlistPage = await soundcloudClient.getPlaylists(req.accessToken, req.refreshToken, limit, offset);
     const playlists = Array.isArray(playlistPage?.collection)
       ? playlistPage.collection
       : Array.isArray(playlistPage)
         ? playlistPage
         : [];
+    // A full page means there is probably another one. next_href is the
+    // authoritative signal when linked_partitioning gives us one.
+    const hasMore = playlistPage?.next_href ? true : playlists.length === limit;
     const fullPlaylists = [];
 
     for (const playlist of playlists) {
@@ -243,6 +262,15 @@ router.get('/library/audit', authenticateUser, heavyOperationRateLimiter, async 
     harvestTracks(fullPlaylists.flatMap(p => (Array.isArray(p.tracks) ? p.tracks : [])));
     harvestPlaylists(fullPlaylists);
     const audit = summarizeLibraryAudit(fullPlaylists);
+    audit.page = {
+      limit,
+      offset,
+      returned: audit.playlists.length,
+      hasMore,
+      // 1-based inclusive range, for "playlists 21-40" in the UI.
+      from: playlists.length ? offset + 1 : 0,
+      to: offset + playlists.length,
+    };
     logOperation({
       req,
       action: 'library-audit',
@@ -261,6 +289,242 @@ router.get('/library/audit', authenticateUser, heavyOperationRateLimiter, async 
   } catch (error) {
     logger.error('Library audit error:', safeError(error));
     res.status(500).json({ error: 'Failed to audit library' });
+  }
+});
+
+/**
+ * GET /api/playlists/search-tracks?q=&playlistId=&limit=&offset=
+ *
+ * Find tracks by keyword across playlist track lists. Comma-separated terms
+ * are OR'd. Without playlistId it walks the library a page at a time (same
+ * shape as the audit); with one it searches just that playlist.
+ */
+router.get('/playlists/search-tracks', authenticateUser, heavyOperationRateLimiter, validatePlaylistTrackSearch, async (req, res) => {
+  try {
+    const keywords = parseKeywords(req.query.q);
+    if (keywords.length === 0) {
+      return res.status(400).json({ error: 'Enter at least one keyword' });
+    }
+
+    const singlePlaylistId = req.query.playlistId ?? null;
+    const limit = req.query.limit ?? 20;
+    const offset = req.query.offset ?? 0;
+
+    let playlistStubs;
+    let hasMore = false;
+
+    if (singlePlaylistId !== null) {
+      playlistStubs = [{ id: singlePlaylistId }];
+    } else {
+      const playlistPage = await soundcloudClient.getPlaylists(req.accessToken, req.refreshToken, limit, offset);
+      playlistStubs = Array.isArray(playlistPage?.collection)
+        ? playlistPage.collection
+        : Array.isArray(playlistPage)
+          ? playlistPage
+          : [];
+      hasMore = playlistPage?.next_href ? true : playlistStubs.length === limit;
+    }
+
+    const fullPlaylists = [];
+    for (const stub of playlistStubs) {
+      try {
+        fullPlaylists.push(
+          await soundcloudClient.getPlaylistWithTracks(req.accessToken, req.refreshToken, stub.id)
+        );
+      } catch (error) {
+        // One unreadable playlist shouldn't sink the whole search.
+        logger.warn('Keyword search playlist fetch failed:', { playlistId: stub.id, error: safeError(error) });
+      }
+    }
+
+    const { matches, stats } = searchTracksInPlaylists(fullPlaylists, keywords);
+
+    logOperation({
+      req,
+      action: 'playlist-keyword-search',
+      itemCount: stats.playlistsSearched,
+      trackCount: stats.matchCount,
+      status: 'success',
+      playlistIds: fullPlaylists.map(p => p.id).filter(id => id != null),
+      metadata: { keywords: keywords.length, scoped: singlePlaylistId !== null },
+    });
+
+    res.json({
+      keywords,
+      matches,
+      stats,
+      page: singlePlaylistId !== null
+        ? null
+        : {
+            limit,
+            offset,
+            returned: fullPlaylists.length,
+            hasMore,
+            from: playlistStubs.length ? offset + 1 : 0,
+            to: offset + playlistStubs.length,
+          },
+    });
+  } catch (error) {
+    logger.error('Playlist keyword search error:', safeError(error));
+    res.status(500).json({ error: 'Failed to search playlists' });
+  }
+});
+
+/**
+ * POST /api/playlists/tracks/bulk-remove
+ * Body: { items: [{ playlistId, trackIds: [] }] }
+ *
+ * Removes tracks from playlists by PUTting each playlist's surviving track
+ * list. Per-playlist status is returned so a partial failure is visible rather
+ * than silent.
+ */
+router.post('/playlists/tracks/bulk-remove', authenticateUser, heavyOperationRateLimiter, validateBulkRemovePlaylistTracks, async (req, res) => {
+  const elapsed = startOperationTimer();
+  try {
+    const { items } = req.body;
+    const results = [];
+    let removedTotal = 0;
+
+    for (const item of items) {
+      const { playlistId, trackIds } = item;
+      try {
+        const playlist = await soundcloudClient.getPlaylistWithTracks(
+          req.accessToken,
+          req.refreshToken,
+          playlistId
+        );
+        const currentIds = extractOrderedTrackIds(playlist);
+        const nextIds = removeTrackIds(currentIds, trackIds);
+        const removed = currentIds.length - nextIds.length;
+
+        if (removed === 0) {
+          results.push({
+            playlistId,
+            status: 'skipped',
+            removed: 0,
+            title: playlist.title ?? null,
+            message: 'None of those tracks are in this playlist any more',
+          });
+          continue;
+        }
+
+        await soundcloudClient.addTracksToPlaylist(
+          req.accessToken,
+          req.refreshToken,
+          playlistId,
+          nextIds
+        );
+
+        removedTotal += removed;
+        results.push({
+          playlistId,
+          status: 'success',
+          removed,
+          remaining: nextIds.length,
+          title: playlist.title ?? null,
+        });
+      } catch (error) {
+        logger.warn('Bulk remove failed for playlist:', { playlistId, error: safeError(error) });
+        results.push({
+          playlistId,
+          status: 'error',
+          removed: 0,
+          error: 'Could not update this playlist',
+        });
+      }
+
+      await sleep(SC_WRITE_PACING_MS);
+    }
+
+    invalidatePlaylistState(req.user.id);
+
+    logOperation({
+      req,
+      action: 'playlist-bulk-remove-tracks',
+      itemCount: items.length,
+      trackCount: removedTotal,
+      status: results.some(r => r.status === 'error') ? 'partial' : 'success',
+      durationMs: elapsed(),
+      playlistIds: items.map(i => i.playlistId),
+      trackIds: items.flatMap(i => i.trackIds),
+    });
+
+    res.json({ results, removedTotal });
+  } catch (error) {
+    logger.error('Bulk remove playlist tracks error:', safeError(error));
+    res.status(500).json({ error: 'Failed to remove tracks' });
+  }
+});
+
+/**
+ * POST /api/playlists/tracks/bulk-add
+ * Body: { targetPlaylistId, trackIds: [] }
+ *
+ * Appends tracks to one existing playlist, skipping ones already there and
+ * stopping at SoundCloud's 500-track ceiling.
+ */
+router.post('/playlists/tracks/bulk-add', authenticateUser, heavyOperationRateLimiter, validateBulkAddPlaylistTracks, async (req, res) => {
+  const elapsed = startOperationTimer();
+  try {
+    const { targetPlaylistId, trackIds } = req.body;
+
+    const target = await soundcloudClient.getPlaylistWithTracks(
+      req.accessToken,
+      req.refreshToken,
+      targetPlaylistId
+    );
+    const existingIds = extractOrderedTrackIds(target);
+    const { nextIds, added, alreadyPresent, noRoom } = appendTrackIds(
+      existingIds,
+      trackIds,
+      MAX_PLAYLIST_TRACKS
+    );
+
+    if (added.length === 0) {
+      return res.json({
+        targetPlaylistId,
+        targetTitle: target.title ?? null,
+        added: 0,
+        alreadyPresent: alreadyPresent.length,
+        noRoom: noRoom.length,
+        total: existingIds.length,
+        message: noRoom.length
+          ? `Playlist is full (${MAX_PLAYLIST_TRACKS} tracks max)`
+          : 'Every one of those tracks is already in this playlist',
+      });
+    }
+
+    await soundcloudClient.addTracksToPlaylist(
+      req.accessToken,
+      req.refreshToken,
+      targetPlaylistId,
+      nextIds
+    );
+
+    invalidatePlaylistState(req.user.id);
+
+    logOperation({
+      req,
+      action: 'playlist-bulk-add-tracks',
+      itemCount: 1,
+      trackCount: added.length,
+      status: 'success',
+      durationMs: elapsed(),
+      playlistIds: [targetPlaylistId],
+      trackIds: added,
+    });
+
+    res.json({
+      targetPlaylistId,
+      targetTitle: target.title ?? null,
+      added: added.length,
+      alreadyPresent: alreadyPresent.length,
+      noRoom: noRoom.length,
+      total: nextIds.length,
+    });
+  } catch (error) {
+    logger.error('Bulk add playlist tracks error:', safeError(error));
+    res.status(500).json({ error: 'Failed to add tracks' });
   }
 });
 

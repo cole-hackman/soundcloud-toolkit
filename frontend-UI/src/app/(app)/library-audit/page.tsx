@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { AlertTriangle, CheckCircle, Download, ListChecks, RefreshCw } from "lucide-react";
+import { AlertTriangle, CheckCircle, ChevronLeft, ChevronRight, Download, ListChecks, RefreshCw } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { downloadCsv } from "@/lib/csv";
 import { Button, EmptyState, InlineAlert, LoadingSpinner, PageHeader } from "@/components/ui";
@@ -20,7 +20,17 @@ interface AuditPlaylist {
   };
 }
 
+interface AuditPage {
+  limit: number;
+  offset: number;
+  returned: number;
+  hasMore: boolean;
+  from: number;
+  to: number;
+}
+
 interface AuditResult {
+  page?: AuditPage;
   summary: {
     playlists: number;
     tracks: number;
@@ -33,23 +43,36 @@ interface AuditResult {
   playlists: AuditPlaylist[];
 }
 
+const PAGE_SIZE = 20;
+
 export default function LibraryAuditPage() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<AuditResult | null>(null);
+  const [offset, setOffset] = useState(0);
   const [notice, setNotice] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
-  const runAudit = async () => {
+  // Each run audits one page of playlists. SoundCloud returns them
+  // oldest-first, so walking the offset is how a library larger than one page
+  // gets fully covered.
+  const runAudit = async (nextOffset = 0) => {
     setLoading(true);
     setNotice(null);
     try {
-      const response = await apiFetch("/api/library/audit?limit=20");
+      const response = await apiFetch(`/api/library/audit?limit=${PAGE_SIZE}&offset=${nextOffset}`);
       const data = await response.json();
       if (!response.ok) {
         setNotice({ type: "error", text: data.error || "Could not run the audit." });
         return;
       }
       setResult(data);
-      setNotice({ type: "success", text: `Audited ${data.summary.playlists} playlist${data.summary.playlists === 1 ? "" : "s"}.` });
+      setOffset(nextOffset);
+      const range = data.page ? `${data.page.from}–${data.page.to}` : "";
+      setNotice({
+        type: "success",
+        text: data.summary.playlists === 0
+          ? "No playlists in this range."
+          : `Audited playlist${data.summary.playlists === 1 ? "" : "s"} ${range}.`,
+      });
     } catch (error) {
       console.error("Library audit failed:", error);
       setNotice({ type: "error", text: "Could not run the audit. Try again." });
@@ -73,7 +96,8 @@ export default function LibraryAuditPage() {
         playlist.summary.nearCap ? "yes" : "no",
       ]),
     ];
-    downloadCsv("library-audit.csv", rows);
+    const suffix = result.page ? `-${result.page.from}-${result.page.to}` : "";
+    downloadCsv(`library-audit${suffix}.csv`, rows);
   };
 
   return (
@@ -91,9 +115,9 @@ export default function LibraryAuditPage() {
         )}
 
         <div className="mb-6 flex flex-wrap items-center gap-3 rounded-xl border border-border bg-card p-4">
-          <Button onClick={runAudit} disabled={loading}>
+          <Button onClick={() => runAudit(0)} disabled={loading}>
             {loading ? <LoadingSpinner size="sm" className="border-white" /> : <RefreshCw className="h-4 w-4" />}
-            Run playlist audit
+            {result ? "Restart from the top" : "Run playlist audit"}
           </Button>
           {result && (
             <Button variant="outline" onClick={exportCsv}>
@@ -102,7 +126,8 @@ export default function LibraryAuditPage() {
             </Button>
           )}
           <p className="text-sm text-muted-foreground">
-            The MVP scans up to 20 playlists per run to stay friendly to SoundCloud rate limits.
+            {PAGE_SIZE} playlists per run, to stay friendly to SoundCloud&apos;s rate limits. Use
+            Next to audit the following {PAGE_SIZE}.
           </p>
         </div>
 
@@ -156,6 +181,35 @@ export default function LibraryAuditPage() {
                 })}
               </div>
             </div>
+
+            {result.page && (
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-3">
+                <p className="text-sm text-muted-foreground">
+                  {result.page.from === 0
+                    ? "No playlists in this range"
+                    : `Showing playlists ${result.page.from}–${result.page.to}`}
+                  {result.page.hasMore ? " — more to audit" : " — end of your library"}
+                </p>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => runAudit(Math.max(0, offset - PAGE_SIZE))}
+                    disabled={loading || offset === 0}
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                    Previous {PAGE_SIZE}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => runAudit(offset + PAGE_SIZE)}
+                    disabled={loading || !result.page.hasMore}
+                  >
+                    Next {PAGE_SIZE}
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

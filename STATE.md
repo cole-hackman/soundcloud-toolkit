@@ -1,16 +1,25 @@
 # STATE
 
 ## Now
-The rebrand name vote is **live**. PR #31 merged (6de4ff1), the `rebrand_votes`
-table exists in Neon, and the backend is deployed. Every logged-in user now sees
-the shortlist modal on the dashboard and after a merge / likes-to-playlist.
+Two features off the back of the rebrand-vote feature requests: **library audit
+paging** and **playlist keyword search with bulk remove/copy**. Not deployed.
 
-Read results at `/admin` — the "Rebrand Name Vote" card shows the tally plus
-every write-in name and feature request. Verify `SURVEY_CAMPAIGN_ID` is unset or
-`2026-rebrand-name-v1` in DigitalOcean; a stale `2026-songswipe-beta-v1` would
-silently suppress the prompt for anyone who dismissed the beta survey.
+The vote itself is settled — see the decision note below.
 
 ## Just done
+- Library audit takes `offset`, so a library bigger than one page can be walked
+  (playlists 20-40, 40-60, ...). Previously it only ever audited the first 20 —
+  and `/me/playlists` is oldest-first, so newer playlists were unreachable.
+- New keyword search: `GET /api/playlists/search-tracks` (comma-separated terms
+  OR'd, matches title + artist, scoped to one playlist or paged across all),
+  plus `POST /api/playlists/tracks/bulk-remove` and `.../bulk-add`. Pure
+  matching and list surgery live in `lib/playlist-search.js` with unit tests;
+  route tests cover paging, partial failure and the 500-track cap.
+- **Rebrand vote decided: Track Toolkit** (48/165, 29.1%), ahead of "None of
+  these" (47) and TrackTidy (30). TrackTidy sat in the first option slot and
+  still lost, so position bias ran against the winner rather than for it.
+  Blocker is now domain + trademark, where Track Toolkit is weakest: verify
+  tracktoolkit.com and clear Class 9/42 before spending on branding.
 - Rebrand vote is now a **mandatory** modal: no close, Escape, backdrop click
   or snooze. Submitting is the only way out; "None of these" is the pressure
   valve; a failed submit reveals "Skip for now" so an outage can't lock anyone

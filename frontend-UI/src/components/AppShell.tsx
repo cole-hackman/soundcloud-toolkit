@@ -23,6 +23,7 @@ import {
   ThumbsUp,
   Users,
   Stethoscope,
+  Search,
   ListChecks,
   ClipboardCheck,
   Download,
@@ -75,6 +76,7 @@ const NAV: NavEntry[] = [
       { href: "/playlist-cloner", label: "Playlist Cloner", icon: Copy },
       { href: "/playlist-compare", label: "Playlist Compare", icon: ArrowRightLeft },
       { href: "/playlist-health-check", label: "Health Check", icon: Stethoscope },
+      { href: "/playlist-keyword-search", label: "Keyword Search", icon: Search },
     ],
   },
   {

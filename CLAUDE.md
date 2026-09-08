@@ -90,6 +90,7 @@ soundcloud-tool/
 │   │   │   │   ├── playlist-compare/
 │   │   │   │   ├── playlist-to-likes/
 │   │   │   │   ├── playlist-health-check/
+│   │   │   │   ├── playlist-keyword-search/
 │   │   │   │   ├── link-resolver/
 │   │   │   │   ├── batch-link-resolver/
 │   │   │   │   ├── activity-to-playlist/
@@ -373,7 +374,10 @@ All are `heavyOperationRateLimiter` (20 requests / hour).
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/api/library/audit` | Blocked / non-streamable summary across the user's library |
+| `GET` | `/api/library/audit` | Playlist health summary; paged with `limit` (1–50, default 20) + `offset` so a library larger than one page can be walked |
+| `GET` | `/api/playlists/search-tracks` | Keyword search across playlist track lists; `q` (comma-separated terms are OR'd), optional `playlistId` to scope to one, else `limit`/`offset` paging |
+| `POST` | `/api/playlists/tracks/bulk-remove` | Remove tracks from playlists; body `{ items: [{ playlistId, trackIds }] }` (≤20 playlists, ≤200 tracks total); per-playlist status |
+| `POST` | `/api/playlists/tracks/bulk-add` | Copy tracks into one playlist; body `{ targetPlaylistId, trackIds }` (≤200); skips duplicates, stops at the 500 cap |
 | `GET` | `/api/recently-played` | Recently played tracks |
 | `GET` | `/api/tracks/search` | Track search |
 | `GET` | `/api/users/:id/profile` | Public profile of a SoundCloud user |
@@ -602,6 +606,30 @@ snooze / don't-show-again state over. **Unset it (or set it to
    - Filter to own reposts only (check `user.id === authenticatedUserId`)
 3. Deduplicate by `${resourceType}:${id}` key
 4. Normalize to: `{ id, urn, resourceType, title, user, artwork_url, permalink_url, created_at }`
+
+### 10. Keyword Search & Bulk Playlist Edits
+
+**User-facing**: Search track titles and artist names across playlists by
+keyword, then remove the matches in bulk or copy them into another playlist.
+
+**Frontend**: `frontend-UI/src/app/(app)/playlist-keyword-search/page.tsx`
+
+**Backend**: `GET /api/playlists/search-tracks` fetches a page of playlists with
+their full track lists and matches them via `lib/playlist-search.js`. A match is
+a `(playlistId, trackId)` pair, not a track — the same track in three playlists
+yields three rows, which is what makes "remove from everywhere" possible.
+
+`POST /api/playlists/tracks/bulk-remove` re-PUTs each playlist's surviving track
+list (SoundCloud has no per-track delete), one playlist per write with
+`SC_WRITE_PACING_MS` between them, returning per-playlist status so a partial
+failure is visible. `POST /api/playlists/tracks/bulk-add` appends to one target,
+skipping tracks already present and stopping at 500.
+
+**Both `/api/library/audit` and `/api/playlists/search-tracks` page by `offset`.**
+Each page pulls every listed playlist's full track list, so the page size stays
+small; `offset` is what lets a user cover playlists 20–40, 40–60, and so on
+rather than only ever seeing the first 20. `/me/playlists` returns oldest-first,
+so without paging a large library's newer playlists were unreachable.
 
 ### 9. Playlist Health Check
 

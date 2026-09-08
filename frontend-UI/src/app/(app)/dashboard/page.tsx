@@ -399,6 +399,10 @@ export default function DashboardPage() {
             <img
               src={user.avatar_url}
               alt={user.display_name}
+              width={40}
+              height={40}
+              loading="lazy"
+              decoding="async"
               className="w-10 h-10 rounded-full ring-2 ring-primary/20 shrink-0"
             />
           )}

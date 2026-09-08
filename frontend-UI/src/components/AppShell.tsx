@@ -380,6 +380,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <img
                 src={user?.avatar_url || "/SC Toolkit Icon.png"}
                 alt={user?.display_name || "User"}
+                width={24}
+                height={24}
+                loading="lazy"
+                decoding="async"
                 className="w-6 h-6 rounded-full ring-1 ring-primary/20 shrink-0"
               />
               <span className="text-[13px] font-medium text-foreground truncate flex-1">
@@ -428,6 +432,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <img
               src={user?.avatar_url || "/SC Toolkit Icon.png"}
               alt={user?.display_name || "User"}
+              width={24}
+              height={24}
+              loading="lazy"
+              decoding="async"
               className="w-6 h-6 rounded-full ring-1 ring-primary/20 shrink-0"
             />
             <button

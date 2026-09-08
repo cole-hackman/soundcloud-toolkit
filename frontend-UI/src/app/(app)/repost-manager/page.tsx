@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   Repeat2,
   Music,
@@ -20,9 +21,12 @@ import {
   PageContainer,
   PageHeader,
   SelectionBanner,
+  Skeleton,
 } from "@/components/ui";
 import { apiFetch } from "@/lib/api";
-import { removeItemsFromRepostsCache, useRepostsQuery } from "@/lib/queries";
+import { removeItemsFromRepostsCache } from "@/lib/queries";
+import { useProgressiveReposts, progressiveStatus, selectAllLabel } from "@/lib/progressive";
+import { useDebouncedValue } from "@/lib/useDebouncedValue";
 
 interface Repost {
   id: number;
@@ -37,6 +41,17 @@ interface Repost {
 
 type SortOption = "recent" | "oldest" | "alpha";
 
+
+// Module scope: this closes over nothing, so defining it per render only made
+// it a changing dependency of the memos below.
+function matchesKeepList(
+  r: Repost,
+  matchers: (RegExp | { test: (s: string) => boolean })[],
+) {
+  const haystack = `${r.title} ${r.user?.username ?? ""}`;
+  return matchers.some((m) => m.test(haystack));
+}
+
 export default function RepostManagerPage() {
   const queryClient = useQueryClient();
   const [selected, setSelected] = useState<Set<number>>(new Set());
@@ -49,15 +64,15 @@ export default function RepostManagerPage() {
   const [limitInput, setLimitInput] = useState("");
   const [showAutoSelect, setShowAutoSelect] = useState(false);
 
-  const repostsQuery = useRepostsQuery();
-  const reposts = (repostsQuery.data?.collection || []) as unknown as Repost[];
-  const loading = repostsQuery.isLoading;
+  const repostsState = useProgressiveReposts<Repost>();
+  const reposts = repostsState.items;
+  const loading = repostsState.isLoadingFirstPage;
 
   useEffect(() => {
-    if (repostsQuery.isError) {
+    if (repostsState.error) {
       setNotice({ type: "error", text: "Couldn’t load your reposts. Try refreshing the page." });
     }
-  }, [repostsQuery.isError]);
+  }, [repostsState.error]);
 
   const [lastSelectedIndex, setLastSelectedIndex] = useState<number | null>(null);
 
@@ -161,48 +176,65 @@ export default function RepostManagerPage() {
     }
   };
 
-  const filteredReposts = reposts
-    .filter(
-      (r) =>
-        !search ||
-        r.title.toLowerCase().includes(search.toLowerCase()) ||
-        r.user?.username?.toLowerCase().includes(search.toLowerCase())
-    )
-    .sort((a, b) => {
-      if (sort === "alpha") return a.title.localeCompare(b.title);
-      const aTime = a.created_at ? new Date(a.created_at).getTime() : 0;
-      const bTime = b.created_at ? new Date(b.created_at).getTime() : 0;
-      if (sort === "oldest") return aTime - bTime;
-      return bTime - aTime;
+  const debouncedSearch = useDebouncedValue(search, 150);
+  const debouncedKeepList = useDebouncedValue(keepList, 150);
+
+  const filteredReposts = useMemo(() => {
+    const query = debouncedSearch.toLowerCase();
+
+    // Precompute each repost's sort timestamp once instead of parsing
+    // `created_at` into a Date twice per comparison inside .sort().
+    const withSortKey = reposts
+      .filter(
+        (r) =>
+          !query ||
+          r.title.toLowerCase().includes(query) ||
+          r.user?.username?.toLowerCase().includes(query)
+      )
+      .map((r) => ({
+        repost: r,
+        createdAtMs: r.created_at ? new Date(r.created_at).getTime() : 0,
+      }));
+
+    withSortKey.sort((a, b) => {
+      if (sort === "alpha") return a.repost.title.localeCompare(b.repost.title);
+      if (sort === "oldest") return a.createdAtMs - b.createdAtMs;
+      return b.createdAtMs - a.createdAtMs;
     });
+
+    return withSortKey.map((entry) => entry.repost);
+  }, [reposts, debouncedSearch, sort]);
 
   // Build a matcher for each keep-list entry. Lines wrapped in /slashes/ are
   // treated as regex; everything else is a case-insensitive substring match.
-  // Matched against both the title and the uploader's username.
-  const keepMatchers = keepList
-    .split(/[\n,]+/)
-    .map((s) => s.trim())
-    .filter(Boolean)
-    .map((entry) => {
-      const rx = entry.match(/^\/(.*)\/([a-z]*)$/i);
-      if (rx) {
-        try {
-          return new RegExp(rx[1], rx[2].includes("i") ? rx[2] : rx[2] + "i");
-        } catch {
-          /* fall through to substring on invalid regex */
-        }
-      }
-      const lower = entry.toLowerCase();
-      return { test: (s: string) => s.toLowerCase().includes(lower) } as RegExp;
-    });
-
-  const matchesKeepList = (r: Repost) => {
-    const haystack = `${r.title} ${r.user?.username ?? ""}`;
-    return keepMatchers.some((m) => m.test(haystack));
-  };
+  // Matched against both the title and the uploader's username. Recompiling
+  // a RegExp per line is only worth doing once the keep-list stops changing.
+  const keepMatchers = useMemo(
+    () =>
+      debouncedKeepList
+        .split(/[\n,]+/)
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .map((entry) => {
+          const rx = entry.match(/^\/(.*)\/([a-z]*)$/i);
+          if (rx) {
+            try {
+              return new RegExp(rx[1], rx[2].includes("i") ? rx[2] : rx[2] + "i");
+            } catch {
+              /* fall through to substring on invalid regex */
+            }
+          }
+          const lower = entry.toLowerCase();
+          return { test: (s: string) => s.toLowerCase().includes(lower) } as RegExp;
+        }),
+    [debouncedKeepList],
+  );
 
   // Reposts in the current (search-filtered) view that are NOT protected by the keep-list.
-  const removableReposts = filteredReposts.filter((r) => !matchesKeepList(r));
+  const removableReposts = useMemo(
+    () => filteredReposts.filter((r) => !matchesKeepList(r, keepMatchers)),
+    [filteredReposts, keepMatchers],
+  );
   const keptCount = filteredReposts.length - removableReposts.length;
   const parsedLimit = (() => {
     const n = parseInt(limitInput, 10);
@@ -213,6 +245,38 @@ export default function RepostManagerPage() {
     const targets = removableReposts.slice(0, parsedLimit === Infinity ? undefined : parsedLimit);
     setSelected(new Set(targets.map((r) => r.id)));
   };
+
+  // Virtualize the list — only rows scrolled into view get mounted.
+  // `virtualRow.index` is the row's index into `filteredReposts` itself
+  // (react-virtual indexes by full-list position, not visible window), so
+  // it's exactly the index shift-click range-selection needs.
+  const listScrollRef = useRef<HTMLDivElement>(null);
+  const rowVirtualizer = useVirtualizer({
+    count: filteredReposts.length,
+    getScrollElement: () => listScrollRef.current,
+    estimateSize: () => 72, // ~64px row + 8px gap
+    overscan: 8,
+  });
+
+  // Only computed while the confirm dialog is open — no point building this
+  // on every render while it's closed.
+  const removeReviewItems = useMemo(() => {
+    if (!showRemoveConfirm) return [];
+    return reposts
+      .filter((repost) => selected.has(repost.id))
+      .map((repost) => ({
+        id: repost.id,
+        label: repost.title,
+        meta: `${repost.resourceType} by ${repost.user?.username || "Unknown"}`,
+      }));
+  }, [reposts, selected, showRemoveConfirm]);
+
+  const hasActiveFilter = Boolean(debouncedSearch);
+  const repostsStatus = progressiveStatus(
+    repostsState,
+    "reposts",
+    hasActiveFilter ? { filteredCount: filteredReposts.length } : {},
+  );
 
   return (
     <PageContainer maxWidth="wide" className={selected.size > 0 ? "pb-28" : ""}>
@@ -237,11 +301,7 @@ export default function RepostManagerPage() {
           </InlineAlert>
         )}
 
-        {loading ? (
-          <div className="bg-white dark:bg-card rounded-2xl p-12 border-2 border-gray-200 dark:border-border flex items-center justify-center">
-            <LoadingSpinner />
-          </div>
-        ) : reposts.length === 0 ? (
+        {!loading && reposts.length === 0 ? (
           <div className="bg-white dark:bg-card rounded-2xl p-8 border-2 border-gray-200 dark:border-border">
             <EmptyState
               icon={<Repeat2 className="w-12 h-12" />}
@@ -251,7 +311,7 @@ export default function RepostManagerPage() {
           </div>
         ) : (
           <div className="bg-white dark:bg-card rounded-2xl p-6 border-2 border-gray-200 dark:border-border">
-            {/* Controls */}
+            {/* Controls — stay interactive while the list is still loading */}
             <div className="flex items-center gap-3 mb-4 flex-wrap">
               <div className="relative flex-1 min-w-[200px]">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/70" />
@@ -274,20 +334,24 @@ export default function RepostManagerPage() {
               </select>
               <button
                 onClick={selectAll}
-                className="text-sm text-primary hover:text-primary font-medium whitespace-nowrap"
+                disabled={loading}
+                className="text-sm text-primary hover:text-primary font-medium whitespace-nowrap disabled:opacity-50"
               >
-                {selected.size === filteredReposts.length ? "Deselect All" : "Select All"}
+                {selected.size === filteredReposts.length
+                  ? "Deselect All"
+                  : selectAllLabel(repostsState, filteredReposts.length)}
               </button>
               <button
                 onClick={() => setShowAutoSelect((v) => !v)}
-                className="text-sm text-muted-foreground hover:text-foreground dark:hover:text-foreground font-medium whitespace-nowrap"
+                disabled={loading}
+                className="text-sm text-muted-foreground hover:text-foreground dark:hover:text-foreground font-medium whitespace-nowrap disabled:opacity-50"
               >
                 {showAutoSelect ? "Hide auto-select" : "Auto-select…"}
               </button>
             </div>
 
             {/* Auto-select with a keep-list (everything except matches gets selected) */}
-            {showAutoSelect && (
+            {showAutoSelect && !loading && (
               <div className="mb-4 p-4 rounded-xl bg-gray-50 dark:bg-secondary/20 border-2 border-gray-200 dark:border-border">
                 <div className="text-sm font-semibold text-foreground mb-1">
                   Auto-select everything except your keep-list
@@ -324,80 +388,117 @@ export default function RepostManagerPage() {
                   </button>
                   <span className="text-xs text-muted-foreground/70">
                     {keptCount} kept · {removableReposts.length} removable in view
+                    {!repostsState.isComplete && " (more still loading)"}
                   </span>
                 </div>
               </div>
             )}
 
-            <div className="text-sm text-muted-foreground/70 mb-2">
-              {filteredReposts.length} of {reposts.length} reposts
-            </div>
+            {!loading && repostsStatus && (
+              <div className="text-sm text-muted-foreground/70 mb-2">{repostsStatus}</div>
+            )}
 
-            <div className="space-y-2 max-h-[600px] overflow-y-auto">
-              {filteredReposts.map((repost, index) => {
-                const isSelected = selected.has(repost.id);
-                return (
-                  <button
-                    key={`${repost.resourceType}-${repost.id}`}
-                    onClick={(e) => toggleItem(repost.id, index, filteredReposts, e)}
-                    className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all text-left ${
-                      isSelected
-                        ? "bg-red-50 dark:bg-red-900/10 border-2 border-red-200 dark:border-red-900/30"
-                        : "bg-gray-50 dark:bg-secondary/20 border-2 border-transparent hover:border-gray-200 dark:hover:border-border"
-                    }`}
-                  >
-                    {/* Checkbox indicator */}
+            {loading ? (
+              <div className="space-y-2">
+                {Array.from({ length: 8 }).map((_, i) => (
+                  <Skeleton key={i} className="h-16 rounded-xl" />
+                ))}
+              </div>
+            ) : (
+            <div ref={listScrollRef} className="max-h-[600px] overflow-y-auto">
+              <div style={{ height: rowVirtualizer.getTotalSize(), position: "relative" }}>
+                {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+                  const repost = filteredReposts[virtualRow.index];
+                  const index = virtualRow.index;
+                  const isSelected = selected.has(repost.id);
+                  return (
                     <div
-                      className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${
-                        isSelected
-                          ? "bg-red-500 text-white"
-                          : "bg-gray-200 dark:bg-secondary"
-                      }`}
+                      key={virtualRow.key}
+                      data-index={virtualRow.index}
+                      ref={rowVirtualizer.measureElement}
+                      style={{
+                        position: "absolute",
+                        top: 0,
+                        left: 0,
+                        width: "100%",
+                        transform: `translateY(${virtualRow.start}px)`,
+                      }}
+                      className="pb-2"
                     >
-                      {isSelected && <Check className="w-3.5 h-3.5" />}
-                    </div>
+                      <button
+                        onClick={(e) => toggleItem(repost.id, index, filteredReposts, e)}
+                        className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all text-left ${
+                          isSelected
+                            ? "bg-red-50 dark:bg-red-900/10 border-2 border-red-200 dark:border-red-900/30"
+                            : "bg-gray-50 dark:bg-secondary/20 border-2 border-transparent hover:border-gray-200 dark:hover:border-border"
+                        }`}
+                      >
+                        {/* Checkbox indicator */}
+                        <div
+                          className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${
+                            isSelected
+                              ? "bg-red-500 text-white"
+                              : "bg-gray-200 dark:bg-secondary"
+                          }`}
+                        >
+                          {isSelected && <Check className="w-3.5 h-3.5" />}
+                        </div>
 
-                    {/* Artwork */}
-                    {repost.artwork_url ? (
-                      <img
-                        src={repost.artwork_url}
-                        alt={repost.title}
-                        className="w-10 h-10 rounded-lg object-cover flex-shrink-0"
-                      />
-                    ) : (
-                      <div className="w-10 h-10 rounded-lg bg-gray-200 dark:bg-secondary flex items-center justify-center flex-shrink-0">
-                        {repost.resourceType === "playlist" ? (
-                          <ListMusic className="w-5 h-5 text-muted-foreground/70" />
+                        {/* Artwork */}
+                        {repost.artwork_url ? (
+                          <img
+                            src={repost.artwork_url}
+                            alt={repost.title}
+                            width={40}
+                            height={40}
+                            loading="lazy"
+                            decoding="async"
+                            className="w-10 h-10 rounded-lg object-cover flex-shrink-0"
+                          />
                         ) : (
-                          <Music className="w-5 h-5 text-muted-foreground/70" />
+                          <div className="w-10 h-10 rounded-lg bg-gray-200 dark:bg-secondary flex items-center justify-center flex-shrink-0">
+                            {repost.resourceType === "playlist" ? (
+                              <ListMusic className="w-5 h-5 text-muted-foreground/70" />
+                            ) : (
+                              <Music className="w-5 h-5 text-muted-foreground/70" />
+                            )}
+                          </div>
                         )}
-                      </div>
-                    )}
 
-                    {/* Info */}
-                    <div className="flex-1 min-w-0">
-                      <div className="font-semibold text-foreground text-sm truncate">
-                        {repost.title}
-                      </div>
-                      <div className="text-xs text-muted-foreground truncate">
-                        {repost.user?.username}
-                      </div>
+                        {/* Info */}
+                        <div className="flex-1 min-w-0">
+                          <div className="font-semibold text-foreground text-sm truncate">
+                            {repost.title}
+                          </div>
+                          <div className="text-xs text-muted-foreground truncate">
+                            {repost.user?.username}
+                          </div>
+                        </div>
+
+                        {/* Type badge */}
+                        <span
+                          className={`text-xs font-semibold uppercase tracking-wide px-2 py-1 rounded-full shrink-0 ${
+                            repost.resourceType === "playlist"
+                              ? "bg-purple-100 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400"
+                              : "bg-orange-100 dark:bg-orange-900/20 text-primary"
+                          }`}
+                        >
+                          {repost.resourceType}
+                        </span>
+                      </button>
                     </div>
-
-                    {/* Type badge */}
-                    <span
-                      className={`text-xs font-semibold uppercase tracking-wide px-2 py-1 rounded-full shrink-0 ${
-                        repost.resourceType === "playlist"
-                          ? "bg-purple-100 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400"
-                          : "bg-orange-100 dark:bg-orange-900/20 text-primary"
-                      }`}
-                    >
-                      {repost.resourceType}
-                    </span>
-                  </button>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
+            )}
+
+            {!loading && repostsState.isLoadingMore && (
+              <div className="flex items-center justify-center gap-2 pt-3 text-xs text-muted-foreground/70">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                Loading more…
+              </div>
+            )}
           </div>
         )}
       <SelectionBanner
@@ -422,13 +523,7 @@ export default function RepostManagerPage() {
           action="removing reposts"
           warning="Removed reposts are no longer visible on your profile. Export the selection if you need a record."
           exportFilename="reposts-to-remove.csv"
-          items={reposts
-            .filter((repost) => selected.has(repost.id))
-            .map((repost) => ({
-              id: repost.id,
-              label: repost.title,
-              meta: `${repost.resourceType} by ${repost.user?.username || "Unknown"}`,
-            }))}
+          items={removeReviewItems}
         />
       </ConfirmDialog>
     </PageContainer>

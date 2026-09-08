@@ -11,12 +11,17 @@ const logOperation = jest.fn();
 jest.unstable_mockModule('../../server/lib/prisma.js', () => ({ default: {} }));
 jest.unstable_mockModule('../../server/lib/soundcloud-client.js', () => ({
   soundcloudClient: { likeTrack },
+  // routes/api.js imports this alongside soundcloudClient for the oEmbed
+  // supplement; the mock must provide it or the module fails to link.
+  fetchWithTimeout: jest.fn(async () => ({ ok: false, status: 503 })),
 }));
 jest.unstable_mockModule('../../server/lib/analytics.js', () => ({
   logOperation,
   startOperationTimer: () => () => 42,
   extractClientInfo: () => ({}),
   getAnalyticsWriteHealth: () => ({ status: 'ok' }),
+  // Pass-through: read instrumentation must not alter routing behaviour.
+  instrumentRead: () => (req, res, next) => next(),
 }));
 jest.unstable_mockModule('../../server/lib/enrichment.js', () => ({
   piggybackEnrichment: jest.fn(),

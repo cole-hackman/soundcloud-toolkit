@@ -81,6 +81,10 @@ export function PlaylistSelectGrid({
                 <img
                   src={playlist.coverUrl || playlist.artwork_url || "/SC Toolkit Icon.png"}
                   alt={playlist.title}
+                  width={64}
+                  height={64}
+                  loading="lazy"
+                  decoding="async"
                   className="h-16 w-16 shrink-0 rounded-lg object-cover"
                 />
                 <div>

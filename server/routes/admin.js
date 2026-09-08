@@ -118,11 +118,16 @@ router.get('/stats', authenticateUser, adminAuth, async (req, res) => {
     const period = validPeriod(req.query.period);
     const cutoff = periodToCutoff(period);
 
-    // Page-open signals (`view:*`) are intentionally excluded from operation
-    // metrics. They are reported separately below as feature reach.
+    // Page-open signals (`view:*`) and read-latency probes (`read:*`) are both
+    // excluded from operation metrics: neither is a user-initiated operation,
+    // and counting them would inflate operationsCount and dilute successRate.
+    // `view:*` is reported below as feature reach; `read:*` feeds readLatency.
     const operationWhere = {
       createdAt: { gte: cutoff },
-      action: { not: { startsWith: 'view:' } },
+      AND: [
+        { action: { not: { startsWith: 'view:' } } },
+        { action: { not: { startsWith: 'read:' } } },
+      ],
     };
 
     const [
@@ -137,6 +142,7 @@ router.get('/stats', authenticateUser, adminAuth, async (req, res) => {
       featureReachRows,
       topErrors,
       avgLatencyRows,
+      perActionLatencyRows,
     ] = await Promise.all([
       prisma.user.count(),
       prisma.user.count({ where: { createdAt: { gte: cutoff } } }),
@@ -169,7 +175,8 @@ router.get('/stats', authenticateUser, adminAuth, async (req, res) => {
       prisma.$queryRaw`
         SELECT COUNT(DISTINCT "userId")::int AS count
         FROM operation_logs
-        WHERE "createdAt" >= ${cutoff} AND action NOT LIKE 'view:%'
+        WHERE "createdAt" >= ${cutoff}
+          AND action NOT LIKE 'view:%' AND action NOT LIKE 'read:%'
       `,
       prisma.$queryRaw`
         SELECT
@@ -193,7 +200,30 @@ router.get('/stats', authenticateUser, adminAuth, async (req, res) => {
           PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY "durationMs")::int AS p95,
           AVG("durationMs")::int AS avg
         FROM operation_logs
-        WHERE "createdAt" >= ${cutoff} AND action NOT LIKE 'view:%' AND "durationMs" IS NOT NULL
+        WHERE "createdAt" >= ${cutoff}
+          AND action NOT LIKE 'view:%' AND action NOT LIKE 'read:%'
+          AND "durationMs" IS NOT NULL
+      `,
+      // Per-action p95, including the `read:*` probes. Average alone hides the
+      // tail that users actually complain about, and the existing groupBy at
+      // byAction only computes _avg. `scCalls` is the SoundCloud round-trip
+      // count recorded by instrumentRead — the number that explains the p95.
+      prisma.$queryRaw`
+        SELECT
+          action,
+          COUNT(*)::int AS runs,
+          PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY "durationMs")::int AS p95,
+          AVG("durationMs")::int AS avg,
+          MAX("durationMs")::int AS max,
+          AVG((metadata->>'scCalls')::numeric)::float AS "avgScCalls"
+        FROM operation_logs
+        WHERE "createdAt" >= ${cutoff}
+          AND action NOT LIKE 'view:%'
+          AND "durationMs" IS NOT NULL
+        GROUP BY action
+        HAVING COUNT(*) >= 3
+        ORDER BY p95 DESC
+        LIMIT 25
       `,
     ]);
 
@@ -230,6 +260,18 @@ router.get('/stats', authenticateUser, adminAuth, async (req, res) => {
     }));
 
     const topFeature = featureUsage.length > 0 ? featureUsage[0] : null;
+
+    // Slowest actions first — the ranking the audit needs. Named readLatency
+    // because the `read:*` probes dominate it, but mutations appear here too.
+    const readLatency = (perActionLatencyRows || []).map(row => ({
+      action: row.action,
+      name: ACTION_NAMES[row.action] || row.action.replace(/^read:/, ''),
+      runs: Number(row.runs),
+      p95Ms: Number(row.p95 ?? 0),
+      avgMs: Number(row.avg ?? 0),
+      maxMs: Number(row.max ?? 0),
+      avgScCalls: row.avgScCalls == null ? null : Math.round(Number(row.avgScCalls) * 10) / 10,
+    }));
     const featureReach = featureReachRows.map(row => {
       const slug = row.action.slice('view:'.length);
       return {
@@ -269,6 +311,7 @@ router.get('/stats', authenticateUser, adminAuth, async (req, res) => {
       partialRate,
       partialCount: statusMap['partial'] ?? 0,
       topFeature,
+      readLatency,
       activeUsersPeriod,
       analyticsWriteHealth: getAnalyticsWriteHealth(),
     });

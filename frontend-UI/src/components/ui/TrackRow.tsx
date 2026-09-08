@@ -65,6 +65,10 @@ export function TrackRow({
       <img
         src={track.artwork_url || "/SC Toolkit Icon.png"}
         alt={track.artworkAlt || track.title}
+        width={40}
+        height={40}
+        loading="lazy"
+        decoding="async"
         className="h-10 w-10 shrink-0 rounded-lg object-cover"
       />
 

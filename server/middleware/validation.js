@@ -256,6 +256,24 @@ export const validateCreateFromLikes = [
 /**
  * Validation rules for likes pagination
  */
+/**
+ * Offset pagination for collections that have no upstream cursor (reposts,
+ * which we assemble ourselves from two crawls).
+ */
+export const validateOffsetPagination = [
+  query('limit')
+    .optional()
+    .isInt({ min: 1, max: 200 })
+    .withMessage('Limit must be between 1 and 200')
+    .toInt(),
+  query('offset')
+    .optional()
+    .isInt({ min: 0, max: 100000 })
+    .withMessage('Offset must be between 0 and 100000')
+    .toInt(),
+  handleValidationErrors,
+];
+
 export const validateLikesPagination = [
   query('limit')
     .optional()

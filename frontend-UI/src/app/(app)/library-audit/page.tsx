@@ -4,7 +4,7 @@ import { useState } from "react";
 import { AlertTriangle, CheckCircle, ChevronLeft, ChevronRight, Download, ListChecks, RefreshCw } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { downloadCsv } from "@/lib/csv";
-import { Button, EmptyState, InlineAlert, LoadingSpinner, PageHeader } from "@/components/ui";
+import { Button, EmptyState, InlineAlert, LoadingSpinner, PageHeader, Skeleton } from "@/components/ui";
 
 interface AuditPlaylist {
   id: number;
@@ -44,6 +44,8 @@ interface AuditResult {
 }
 
 const PAGE_SIZE = 20;
+/** Server rejects offsets past this, so the pager must stop there too. */
+const MAX_OFFSET = 10000;
 
 export default function LibraryAuditPage() {
   const [loading, setLoading] = useState(false);
@@ -132,8 +134,20 @@ export default function LibraryAuditPage() {
         </div>
 
         {loading ? (
-          <div className="rounded-xl border border-border bg-card p-12 text-center">
-            <LoadingSpinner />
+          <div className="space-y-6">
+            <div className="grid gap-3 md:grid-cols-4">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="rounded-xl border border-border bg-card p-4">
+                  <Skeleton className="h-8 w-16 mb-2" />
+                  <Skeleton className="h-4 w-24" />
+                </div>
+              ))}
+            </div>
+            <div className="rounded-xl border border-border bg-card p-4 space-y-3">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <Skeleton key={i} className="h-14 rounded-lg" />
+              ))}
+            </div>
           </div>
         ) : !result ? (
           <div className="rounded-xl border border-border bg-card p-8">
@@ -202,7 +216,7 @@ export default function LibraryAuditPage() {
                   <Button
                     variant="outline"
                     onClick={() => runAudit(offset + PAGE_SIZE)}
-                    disabled={loading || !result.page.hasMore}
+                    disabled={loading || !result.page.hasMore || offset + PAGE_SIZE > MAX_OFFSET}
                   >
                     Next {PAGE_SIZE}
                     <ChevronRight className="h-4 w-4" />

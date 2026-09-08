@@ -4,12 +4,26 @@
 Two features off the back of the rebrand-vote feature requests: **library audit
 paging** and **playlist keyword search with bulk remove/copy**. Not deployed.
 
-The vote itself is settled — see the decision note below.
+Merged in the performance-audit work from #34. **Before deploying the backend,
+run `docs/sql/2026-library-cache.sql`** in the Neon console — it adds
+`library_cache_pages` and `library_cache_states`. Additive and idempotent; the
+backend fails soft when the tables are absent, so the ordering is preferred
+rather than load-bearing.
+
+After deploy, leave it a few days and read `/admin` → the per-action p95 panel.
+`docs/performance-audit-2026-09.md` is written against estimated round-trip
+counts, not measured production latency; the instrumentation from #34 is what
+produces the real numbers, and the doc should be revisited once they exist.
+
+Verify `SURVEY_CAMPAIGN_ID` is unset or `2026-rebrand-name-v1` in DigitalOcean;
+a stale `2026-songswipe-beta-v1` would silently suppress the prompt for anyone
+who dismissed the beta survey.
 
 ## Just done
 - Library audit takes `offset`, so a library bigger than one page can be walked
-  (playlists 20-40, 40-60, ...). Previously it only ever audited the first 20 —
-  and `/me/playlists` is oldest-first, so newer playlists were unreachable.
+  (playlists 1-20, then 21-40, 41-60, ...). Previously it only ever audited the
+  first 20 — and `/me/playlists` is oldest-first, so newer playlists were
+  unreachable.
 - New keyword search: `GET /api/playlists/search-tracks` (comma-separated terms
   OR'd, matches title + artist, scoped to one playlist or paged across all),
   plus `POST /api/playlists/tracks/bulk-remove` and `.../bulk-add`. Pure
@@ -103,6 +117,23 @@ The vote itself is settled — see the decision note below.
 - Licensed MIT, © 2026 Cole Hackman (2026-08-25).
 
 ## Landmines
+- `npm test` is self-contained again: `tests/setup-env.js` supplies dummy
+  SoundCloud credentials via jest `setupFiles`, because five suites validate
+  them at module scope and otherwise fail to LOAD on a fresh clone — which
+  looks like a broken suite. It uses `||=`, so a real `server/.env` still wins.
+  Don't remove it without re-checking a clean `npm test`.
+- The auth memo (`server/lib/auth-cache.js`) holds **decrypted tokens** in
+  process memory for 30s. It is invalidated at the single token-refresh choke
+  point (`refreshTokensAndPersist`) and on account deletion. If you add another
+  path that rotates or revokes tokens, it must call `invalidateCachedAuth` or
+  users will be served a dead refresh token until the TTL expires.
+- Snapshot invalidation marks rows **stale** rather than deleting them, and a
+  stale snapshot is still served while it refreshes. If you add a mutation that
+  changes likes/playlists/followings/followers/reposts, route its invalidation
+  through `invalidateUserCollections` (not `invalidateUserNamespaces`) or the
+  Postgres tier will keep serving pre-mutation data for up to its TTL.
+- `library_cache_*` are NOT `library_snapshots`. The latter belongs to the
+  AI-library-chat branch and stores a projected shape. Do not merge them.
 - **PR #29 logs every user out once on deploy.** Legacy session cookies have no
   `iat` and are treated as expired. Expected, one-time, no data loss — but it
   will look like an outage if you forget.

@@ -11,27 +11,29 @@ datasource db {
 }
 
 model User {
-  id          String   @id @default(cuid())
+  id           String   @id @default(cuid())
   soundcloudId Int      @unique
-  username    String
-  displayName String?
-  avatarUrl   String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  username     String
+  displayName  String?
+  avatarUrl    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
-  tokens           Token[]
-  operationLogs    OperationLog[]
-  surveyResponses  SurveyResponse[]
-  growthActions    GrowthAction[]
-  betaSignups      BetaSignup[]
-  rebrandVotes     RebrandVote[]
+  tokens                Token[]
+  operationLogs         OperationLog[]
+  surveyResponses       SurveyResponse[]
+  growthActions         GrowthAction[]
+  betaSignups           BetaSignup[]
+  rebrandVotes          RebrandVote[]
   // Tables owned by other feature branches (AI library chat, library indexing).
   // Declared here so `prisma db push` from this branch does not drop live
   // production data. Keep in sync when those branches change their schema.
-  chatConversations       chat_conversations[]
-  indexedLikes            indexed_likes[]
-  indexedPlaylistTracks   indexed_playlist_tracks[]
-  librarySnapshot         library_snapshots?
+  chatConversations     chat_conversations[]
+  indexedLikes          indexed_likes[]
+  indexedPlaylistTracks indexed_playlist_tracks[]
+  librarySnapshot       library_snapshots?
+  libraryCachePages     LibraryCachePage[]
+  libraryCacheStates    LibraryCacheState[]
 
   @@map("users")
 }
@@ -70,7 +72,7 @@ model RebrandVote {
   nameIdea     String?
   // Feature request / anything they want built next.
   featureIdea  String?  @db.Text
-  context      String   // dashboard | post-merge | post-from-likes
+  context      String // dashboard | post-merge | post-from-likes
   createdAt    DateTime @default(now())
 
   @@unique([userId, campaignId])
@@ -86,19 +88,19 @@ model BetaSignup {
   user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   soundcloudId     BigInt
   campaignId       String
-  email            String?  // PII — required only when wantsBeta is true
-  rekordboxUse     String   // rekordbox_primary | rekordbox_sometimes | other_software | no
-  platform         String?  // mac | windows | both
-  cullMethod       String?  // dont | manual | tedious | other_tool
-  featuresWanted   String?  // comma-separated slugs
-  editHesitations  String?  // comma-separated slugs
-  trustDirectWrite String?  // yes | maybe | xml_only
-  interest         String   // very | somewhat | not
+  email            String? // PII — required only when wantsBeta is true
+  rekordboxUse     String // rekordbox_primary | rekordbox_sometimes | other_software | no
+  platform         String? // mac | windows | both
+  cullMethod       String? // dont | manual | tedious | other_tool
+  featuresWanted   String? // comma-separated slugs
+  editHesitations  String? // comma-separated slugs
+  trustDirectWrite String? // yes | maybe | xml_only
+  interest         String // very | somewhat | not
   wantsBeta        Boolean  @default(false)
   wantsCall        Boolean  @default(false)
   suggestions      String?  @db.Text // ideas for SC Toolkit or SongSwipe
-  nameIdea         String?  // product name suggestion
-  context          String   // dashboard | post-merge | post-from-likes
+  nameIdea         String? // product name suggestion
+  context          String // dashboard | post-merge | post-from-likes
   createdAt        DateTime @default(now())
 
   @@unique([userId, campaignId])
@@ -113,14 +115,14 @@ model Token {
   id        String   @id @default(cuid())
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  encrypted String   // Encrypted access token
-  refresh   String   // Encrypted refresh token
+  encrypted String // Encrypted access token
+  refresh   String // Encrypted refresh token
   expiresAt DateTime
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@map("tokens")
   @@unique([userId])
+  @@map("tokens")
 }
 
 model OperationLog {
@@ -128,8 +130,8 @@ model OperationLog {
   userId       String
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   soundcloudId Int?
-  action       String   // 'merge' | 'from-likes' | 'bulk-unlike' | 'bulk-unfollow' | 'resolve' | 'batch-resolve' | 'proxy-download' | 'bulk-remove-reposts'
-  status       String   @default("success")  // 'success' | 'split' | 'error'
+  action       String // 'merge' | 'from-likes' | 'bulk-unlike' | 'bulk-unfollow' | 'resolve' | 'batch-resolve' | 'proxy-download' | 'bulk-remove-reposts'
+  status       String   @default("success") // 'success' | 'split' | 'error'
   trackCount   Int      @default(0)
   itemCount    Int      @default(0)
   durationMs   Int?
@@ -166,7 +168,7 @@ model Track {
   genre           String?
   genreNormalized String?
   durationMs      Int?
-  access          String?  // playable | preview | blocked | gone (deleted upstream)
+  access          String? // playable | preview | blocked | gone (deleted upstream)
   permalinkUrl    String?
   resolveStatus   String   @default("pending") // pending | resolved | not_found | gone
   resolveAttempts Int      @default(0)
@@ -196,20 +198,20 @@ model GrowthAction {
   id               String    @id @default(cuid())
   userId           String
   user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  actionType       String    // 'follow' | 'like'
-  targetId         BigInt    // SC user ID or track ID — track IDs already exceed int32
+  actionType       String // 'follow' | 'like'
+  targetId         BigInt // SC user ID or track ID — track IDs already exceed int32
   targetName       String?
   targetAvatar     String?
   targetFollowers  Int?
   targetFollowings Int?
-  followedBack     Boolean?  // null = unchecked, true = yes, false = no
+  followedBack     Boolean? // null = unchecked, true = yes, false = no
   checkedAt        DateTime?
   reversed         Boolean   @default(false)
   reversedAt       DateTime?
   sessionId        String?
   sessionLabel     String?
-  inspirationIds   String?   // comma-separated SC user IDs
-  inspirationNames String?   // comma-separated usernames, parallel to inspirationIds
+  inspirationIds   String? // comma-separated SC user IDs
+  inspirationNames String? // comma-separated usernames, parallel to inspirationIds
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
@@ -220,7 +222,6 @@ model GrowthAction {
   @@index([createdAt])
   @@map("growth_actions")
 }
-
 
 // ── Tables owned by other feature branches ──────────────────────────────────
 // Reconstructed via `prisma db pull` from production Neon so that db push /
@@ -296,4 +297,59 @@ model library_snapshots {
   error             String?
   updatedAt         DateTime
   users             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+/// Persisted page of a user's SoundCloud collection.
+///
+/// The in-memory request cache dies on every deploy and is per-process, so a
+/// restart puts every user back on a cold multi-page crawl. This is the tier
+/// that survives that.
+///
+/// Stored one row per page rather than one blob per collection: a blob for a
+/// 20k-like library is tens of megabytes in a single row, and one row per item
+/// means reassembling the array on every read. Page rows also let the crawl
+/// write incrementally, so a reader can have page 1 while page 20 is still in
+/// flight — which is what makes progressive loading possible.
+model LibraryCachePage {
+  id        String   @id @default(cuid())
+  userId    String
+  /// likes | playlists | followings | followers | reposts
+  resource  String
+  pageIndex Int
+  /// The SoundCloud objects for this page, verbatim.
+  items     Json
+  itemCount Int      @default(0)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, resource, pageIndex])
+  @@index([userId, resource])
+  @@map("library_cache_pages")
+}
+
+/// Sync state for one (user, resource) snapshot. Separate from the pages so
+/// invalidation is a single cheap UPDATE that marks the snapshot stale while
+/// leaving it readable — a stale snapshot still beats a cold crawl, and the
+/// refresh happens behind it.
+model LibraryCacheState {
+  id          String    @id @default(cuid())
+  userId      String
+  resource    String
+  /// stale | syncing | complete | error
+  status      String    @default("stale")
+  /// Total items in the completed snapshot; null while it has never completed.
+  totalItems  Int?
+  pagesSynced Int       @default(0)
+  /// True when the underlying crawl hit its page or time budget.
+  truncated   Boolean   @default(false)
+  syncedAt    DateTime?
+  error       String?
+  updatedAt   DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, resource])
+  @@index([userId])
+  @@map("library_cache_states")
 }

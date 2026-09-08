@@ -13,12 +13,23 @@ const logOperation = jest.fn();
 jest.unstable_mockModule('../../server/lib/prisma.js', () => ({ default: {} }));
 jest.unstable_mockModule('../../server/lib/soundcloud-client.js', () => ({
   soundcloudClient: { getPlaylists, getPlaylistWithTracks, addTracksToPlaylist },
+  // routes/api.js imports this alongside soundcloudClient for the oEmbed
+  // supplement; the mock must provide it or the module fails to link.
+  fetchWithTimeout: jest.fn(async () => ({ ok: false, status: 503 })),
+}));
+jest.unstable_mockModule('../../server/lib/snapshot-cache.js', () => ({
+  readSnapshot: jest.fn().mockResolvedValue(null),
+  writeSnapshot: jest.fn().mockResolvedValue({ pages: 1, items: 1 }),
+  invalidateSnapshot: jest.fn().mockResolvedValue({ count: 0 }),
+  dropSnapshots: jest.fn(),
+  SNAPSHOT_RESOURCES: ['likes', 'playlists', 'followings', 'followers', 'reposts'],
 }));
 jest.unstable_mockModule('../../server/lib/analytics.js', () => ({
   logOperation,
   startOperationTimer: () => () => 42,
   extractClientInfo: () => ({}),
   getAnalyticsWriteHealth: () => ({ status: 'ok' }),
+  instrumentRead: () => (req, res, next) => next(),
 }));
 jest.unstable_mockModule('../../server/lib/enrichment.js', () => ({
   piggybackEnrichment: jest.fn(),
@@ -100,6 +111,20 @@ describe('GET /api/playlists/search-tracks', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.matches).toHaveLength(1);
+  });
+
+  test('an empty playlistId means "not scoped", not a playlist with id ""', async () => {
+    // validatePlaylistTrackSearch uses checkFalsy, so `?playlistId=` skips
+    // validation and arrives as ''. It must not be read as a scope.
+    getPlaylists.mockResolvedValue({ collection: [{ id: 1 }], next_href: null });
+    getPlaylistWithTracks.mockResolvedValue(playlist(1, 'P', [track(10, 'Bootleg')]));
+
+    const res = await request(app).get('/api/playlists/search-tracks?q=bootleg&playlistId=');
+
+    expect(res.status).toBe(200);
+    expect(getPlaylists).toHaveBeenCalled();
+    expect(getPlaylistWithTracks).toHaveBeenCalledWith('at', 'rt', 1);
+    expect(res.body.page).not.toBeNull();
   });
 
   test('rejects a too-short query before calling SoundCloud', async () => {

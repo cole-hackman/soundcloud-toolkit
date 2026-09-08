@@ -54,6 +54,10 @@ export default function ExportPlaylistsPage() {
             <img
               src={selectedPlaylist.coverUrl || selectedPlaylist.artwork_url || "/SC Toolkit Icon.png"}
               alt={selectedPlaylist.title}
+              width={48}
+              height={48}
+              loading="lazy"
+              decoding="async"
               className="h-12 w-12 rounded-lg object-cover"
             />
             <div className="min-w-0 flex-1">

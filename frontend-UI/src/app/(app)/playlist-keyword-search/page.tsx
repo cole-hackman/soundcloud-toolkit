@@ -28,6 +28,8 @@ const MAX_REMOVE_TRACKS = 200;
 const MAX_REMOVE_PLAYLISTS = 20;
 /** Server caps a bulk add at 200 tracks per request. */
 const MAX_ADD_TRACKS = 200;
+/** Server rejects offsets past this, so the pager must stop there too. */
+const MAX_OFFSET = 10000;
 
 interface Match {
   trackId: number;
@@ -97,6 +99,9 @@ export default function PlaylistKeywordSearchPage() {
 
   const removeBlocked =
     selectedMatches.length > MAX_REMOVE_TRACKS || affectedPlaylistCount > MAX_REMOVE_PLAYLISTS;
+  // Blocked rather than silently truncated: sending only the first 200 while
+  // the button reads a larger number would quietly drop the rest.
+  const copyBlocked = selectedTrackIds.length > MAX_ADD_TRACKS;
 
   const runSearch = async (nextOffset = 0) => {
     const trimmed = query.trim();
@@ -180,21 +185,32 @@ export default function PlaylistKeywordSearchPage() {
         return;
       }
 
-      const failed = (data.results ?? []).filter(
-        (r: { status: string }) => r.status === "error",
-      ).length;
+      const results: { playlistId: number; status: string }[] = data.results ?? [];
+      const failedPlaylists = new Set(
+        results.filter((r) => r.status === "error").map((r) => r.playlistId),
+      );
       setNotice({
-        type: failed ? "error" : "success",
-        text: failed
-          ? `Removed ${data.removedTotal} track${data.removedTotal === 1 ? "" : "s"}, but ${failed} playlist${failed === 1 ? "" : "s"} could not be updated.`
+        type: failedPlaylists.size ? "error" : "success",
+        text: failedPlaylists.size
+          ? `Removed ${data.removedTotal} track${data.removedTotal === 1 ? "" : "s"}. ${failedPlaylists.size} playlist${failedPlaylists.size === 1 ? "" : "s"} could not be updated — those matches are still listed and selected, so you can retry.`
           : `Removed ${data.removedTotal} track${data.removedTotal === 1 ? "" : "s"}.`,
       });
 
-      // Drop what we just removed instead of re-running the whole search.
+      // Drop only what actually went. Matches in a playlist whose write failed
+      // are still in SoundCloud, so clearing them here would tell the user the
+      // removal succeeded when it did not.
+      const wasRemoved = (m: Match) => selected.has(matchKey(m)) && !failedPlaylists.has(m.playlistId);
       setResult((prev) =>
-        prev ? { ...prev, matches: prev.matches.filter((m) => !selected.has(matchKey(m))) } : prev,
+        prev ? { ...prev, matches: prev.matches.filter((m) => !wasRemoved(m)) } : prev,
       );
-      setSelected(new Set());
+      // Keep the failed ones selected so a retry is one click.
+      setSelected((prev) => {
+        const next = new Set<string>();
+        for (const m of selectedMatches) {
+          if (failedPlaylists.has(m.playlistId) && prev.has(matchKey(m))) next.add(matchKey(m));
+        }
+        return next;
+      });
     } catch (error) {
       console.error("Bulk remove failed:", error);
       setNotice({ type: "error", text: "Could not remove those tracks. Try again." });
@@ -204,7 +220,7 @@ export default function PlaylistKeywordSearchPage() {
   };
 
   const copySelected = async () => {
-    if (copyTarget === "" || selectedTrackIds.length === 0) return;
+    if (copyTarget === "" || selectedTrackIds.length === 0 || copyBlocked) return;
     setWorking(true);
     setNotice(null);
     try {
@@ -213,7 +229,7 @@ export default function PlaylistKeywordSearchPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           targetPlaylistId: Number(copyTarget),
-          trackIds: selectedTrackIds.slice(0, MAX_ADD_TRACKS),
+          trackIds: selectedTrackIds,
         }),
       });
       const data = await response.json();
@@ -253,6 +269,37 @@ export default function PlaylistKeywordSearchPage() {
       ]),
     ]);
   };
+
+  // Rendered on every result — including a page with no matches, where the
+  // user still needs Next to reach the playlists further down their library.
+  const pager = result?.page ? (
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-3">
+      <p className="text-sm text-muted-foreground">
+        Searched playlists {result.page.from}–{result.page.to}
+        {result.page.hasMore ? " — more to search" : " — end of your library"}
+      </p>
+      <div className="flex gap-2">
+        <Button
+          variant="outline"
+          onClick={() => runSearch(Math.max(0, offset - PAGE_SIZE))}
+          disabled={loading || working || offset === 0}
+        >
+          <ChevronLeft className="h-4 w-4" />
+          Previous {PAGE_SIZE}
+        </Button>
+        <Button
+          variant="outline"
+          onClick={() => runSearch(offset + PAGE_SIZE)}
+          // The validator rejects offsets past MAX_OFFSET, so stop before
+          // asking for one the API would 400 on.
+          disabled={loading || working || !result.page.hasMore || offset + PAGE_SIZE > MAX_OFFSET}
+        >
+          Next {PAGE_SIZE}
+          <ChevronRight className="h-4 w-4" />
+        </Button>
+      </div>
+    </div>
+  ) : null;
 
   return (
     <div className="min-h-screen bg-background">
@@ -317,16 +364,19 @@ export default function PlaylistKeywordSearchPage() {
             />
           </div>
         ) : result.matches.length === 0 ? (
-          <div className="rounded-xl border border-border bg-card p-8">
-            <EmptyState
-              icon={<Search className="h-12 w-12" />}
-              title="No matches"
-              description={
-                result.page?.hasMore
-                  ? "Nothing in this batch of playlists. Try Next to search the following ones."
-                  : "Nothing matched those keywords."
-              }
-            />
+          <div className="space-y-4">
+            <div className="rounded-xl border border-border bg-card p-8">
+              <EmptyState
+                icon={<Search className="h-12 w-12" />}
+                title="No matches"
+                description={
+                  result.page?.hasMore
+                    ? "Nothing in this batch of playlists. Use Next to search the following ones."
+                    : "Nothing matched those keywords."
+                }
+              />
+            </div>
+            {pager}
           </div>
         ) : (
           <div className="space-y-4">
@@ -362,7 +412,7 @@ export default function PlaylistKeywordSearchPage() {
                 <Button
                   variant="outline"
                   onClick={copySelected}
-                  disabled={working || copyTarget === "" || selectedTrackIds.length === 0}
+                  disabled={working || copyTarget === "" || selectedTrackIds.length === 0 || copyBlocked}
                 >
                   <Copy className="h-4 w-4" />
                   Copy {selectedTrackIds.length || ""}
@@ -380,8 +430,14 @@ export default function PlaylistKeywordSearchPage() {
 
             {removeBlocked && (
               <InlineAlert variant="error">
-                Too many at once — remove up to {MAX_REMOVE_TRACKS} tracks across{" "}
+                Too many to remove at once — up to {MAX_REMOVE_TRACKS} tracks across{" "}
                 {MAX_REMOVE_PLAYLISTS} playlists per batch. Deselect some and repeat.
+              </InlineAlert>
+            )}
+            {copyBlocked && (
+              <InlineAlert variant="error">
+                Too many to copy at once — up to {MAX_ADD_TRACKS} unique tracks per batch.
+                Deselect some and repeat.
               </InlineAlert>
             )}
 
@@ -419,32 +475,7 @@ export default function PlaylistKeywordSearchPage() {
               </div>
             </div>
 
-            {result.page && (
-              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-3">
-                <p className="text-sm text-muted-foreground">
-                  Searched playlists {result.page.from}–{result.page.to}
-                  {result.page.hasMore ? " — more to search" : " — end of your library"}
-                </p>
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    onClick={() => runSearch(Math.max(0, offset - PAGE_SIZE))}
-                    disabled={loading || working || offset === 0}
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                    Previous {PAGE_SIZE}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => runSearch(offset + PAGE_SIZE)}
-                    disabled={loading || working || !result.page.hasMore}
-                  >
-                    Next {PAGE_SIZE}
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            )}
+            {pager}
           </div>
         )}
       </div>

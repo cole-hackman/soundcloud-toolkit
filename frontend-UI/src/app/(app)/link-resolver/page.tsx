@@ -69,7 +69,15 @@ function RelatedArtists({ userUrn }: { userUrn: string }) {
                 className="flex flex-col items-center gap-2 p-3 rounded-lg hover:bg-secondary/50 transition text-center"
               >
                 {artist.avatar_url ? (
-                  <img src={artist.avatar_url} alt={artist.username} className="w-16 h-16 rounded-full object-cover" />
+                  <img
+                    src={artist.avatar_url}
+                    alt={artist.username}
+                    width={64}
+                    height={64}
+                    loading="lazy"
+                    decoding="async"
+                    className="w-16 h-16 rounded-full object-cover"
+                  />
                 ) : (
                   <div className="w-16 h-16 rounded-full bg-secondary flex items-center justify-center text-muted-foreground">
                     <Users className="w-6 h-6" />
@@ -203,6 +211,10 @@ function LinkResolverContent() {
               <img
                 src={imageUrl || "/SC Toolkit Icon.png"}
                 alt={title}
+                width={128}
+                height={128}
+                loading="lazy"
+                decoding="async"
                 className="w-32 h-32 rounded-xl object-cover"
               />
               <div className="flex-1">

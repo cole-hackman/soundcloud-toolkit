@@ -165,6 +165,46 @@ describe('GET /api/playlists/search-tracks', () => {
     expect(res.status).toBe(400);
     expect(getAllPlaylists).not.toHaveBeenCalled();
   });
+
+  test('rejects a one-character keyword hiding inside a long enough query', async () => {
+    // "a,b" clears the 2-200 bound on the whole string and then splits into two
+    // one-character terms that match most of a library.
+    const res = await request(app).get('/api/playlists/search-tracks?q=a,b');
+    expect(res.status).toBe(400);
+    expect(getAllPlaylists).not.toHaveBeenCalled();
+  });
+
+  test('accepts a multi-term query whose terms all clear the floor', async () => {
+    getAllPlaylists.mockResolvedValue(stubs(1));
+    getPlaylistWithTracks.mockResolvedValue(playlist(1, 'P', [track(10, 'Bootleg')]));
+
+    const res = await request(app).get('/api/playlists/search-tracks?q=bootleg,remix');
+    expect(res.status).toBe(200);
+  });
+
+  test('caps a runaway result set instead of returning tens of thousands of rows', async () => {
+    const many = Array.from({ length: 2500 }, (_, i) => track(i + 1, `Bootleg ${i}`));
+    getAllPlaylists.mockResolvedValue(stubs(1));
+    getPlaylistWithTracks.mockResolvedValue(playlist(1, 'Huge', many));
+
+    const res = await request(app).get('/api/playlists/search-tracks?q=bootleg');
+
+    expect(res.status).toBe(200);
+    expect(res.body.matches).toHaveLength(2000);
+    expect(res.body.capped).toBe(true);
+    // The stats still report what was really there, so the client can say how
+    // much it is not showing.
+    expect(res.body.stats.matchCount).toBe(2500);
+  });
+
+  test('a result set under the cap is not marked capped', async () => {
+    getAllPlaylists.mockResolvedValue(stubs(1));
+    getPlaylistWithTracks.mockResolvedValue(playlist(1, 'P', [track(10, 'Bootleg')]));
+
+    const res = await request(app).get('/api/playlists/search-tracks?q=bootleg');
+
+    expect(res.body.capped).toBe(false);
+  });
 });
 
 describe('POST /api/playlists/tracks/bulk-remove', () => {

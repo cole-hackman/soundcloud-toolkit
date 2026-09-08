@@ -1,4 +1,5 @@
 import { body, param, query, validationResult } from 'express-validator';
+import { parseKeywords } from '../lib/playlist-search.js';
 
 function validateSoundCloudUrl(value) {
   if (!value) return true;
@@ -666,7 +667,12 @@ export const validatePlaylistTrackSearch = [
     .withMessage('q is required')
     .trim()
     .isLength({ min: 2, max: 200 })
-    .withMessage('q must be 2-200 characters'),
+    .withMessage('q must be 2-200 characters')
+    // The whole-string bound above is not the bound that matters: "a,b" is
+    // four characters and passes it, then splits into two one-character terms
+    // that match most of the library. Each term has to clear the floor.
+    .custom((q) => parseKeywords(q).every((keyword) => keyword.length >= 2))
+    .withMessage('each keyword must be at least 2 characters'),
   query('playlistId')
     .optional({ nullable: true, checkFalsy: true })
     .isInt({ min: 1 })

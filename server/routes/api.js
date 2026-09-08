@@ -81,6 +81,17 @@ import {
 const router = express.Router();
 
 const SC_TOOLKIT_PLAYLIST_SITE = 'www.soundcloudtoolkit.com';
+
+/**
+ * Ceiling on the matches one keyword search returns.
+ *
+ * A one-letter term against fifty full playlists can match tens of thousands
+ * of tracks; serialising and rendering that is a slow response and a slower
+ * page, for a result nobody can act on — the bulk endpoints cap out at 200
+ * tracks anyway. Over the cap the client is told to narrow the search rather
+ * than handed a truncated list it thinks is complete.
+ */
+const MAX_SEARCH_MATCHES = 2000;
 const SC_TOOLKIT_PLAYLIST_FOOTER = `Created using SC Toolkit. Try it for free ${SC_TOOLKIT_PLAYLIST_SITE}`;
 
 /** Operation summary only; standard toolkit footer is appended for SoundCloud playlist descriptions. */
@@ -351,7 +362,10 @@ router.get('/playlists/search-tracks', authenticateUser, heavyOperationRateLimit
       page = paged.page;
     }
 
-    const { matches, stats } = searchTracksInPlaylists(fullPlaylists, keywords);
+    const { matches: allMatches, stats } = searchTracksInPlaylists(fullPlaylists, keywords);
+    // stats keeps the true count; `matches` is what the client can act on.
+    const capped = allMatches.length > MAX_SEARCH_MATCHES;
+    const matches = capped ? allMatches.slice(0, MAX_SEARCH_MATCHES) : allMatches;
     // A search that could not read three playlists is not the same answer as
     // one that read them and found nothing; the client says so either way.
     stats.playlistsFailed = failed.length;
@@ -366,7 +380,7 @@ router.get('/playlists/search-tracks', authenticateUser, heavyOperationRateLimit
       metadata: { keywords: keywords.length, scoped: singlePlaylistId !== null },
     });
 
-    res.json({ keywords, matches, stats, failed, page });
+    res.json({ keywords, matches, stats, failed, capped, page });
   } catch (error) {
     logger.error('Playlist keyword search error:', safeError(error));
     res.status(500).json({ error: 'Failed to search playlists' });

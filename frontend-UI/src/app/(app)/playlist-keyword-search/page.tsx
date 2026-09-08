@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   ChevronLeft,
   ChevronRight,
@@ -31,6 +32,8 @@ const MAX_REMOVE_PLAYLISTS = 20;
 const MAX_ADD_TRACKS = 200;
 /** Server rejects offsets past this, so the pager must stop there too. */
 const MAX_OFFSET = 10000;
+/** Server stops emitting matches past this; the page says so when it happens. */
+const MAX_SEARCH_MATCHES = 2000;
 
 interface Match {
   trackId: number;
@@ -75,6 +78,8 @@ interface SearchResult {
     playlistsFailed: number;
   };
   failed: SearchFailure[];
+  /** True when `matches` was truncated at MAX_SEARCH_MATCHES. */
+  capped: boolean;
   page: SearchPage | null;
 }
 
@@ -182,6 +187,17 @@ export default function PlaylistKeywordSearchPage() {
   }, [result]);
 
   const siblingsOf = (m: Match) => siblingIndex.get(trackKey(m)) ?? [m];
+
+  // Virtualize the list. A broad keyword against fifty full playlists returns
+  // up to MAX_SEARCH_MATCHES rows, and mounting two thousand labelled
+  // checkboxes at once is what makes the page unusable rather than slow.
+  const listScrollRef = useRef<HTMLDivElement>(null);
+  const rowVirtualizer = useVirtualizer({
+    count: result?.matches.length ?? 0,
+    getScrollElement: () => listScrollRef.current,
+    estimateSize: () => 65, // ~64px row + 1px divider
+    overscan: 8,
+  });
 
   const toggle = (m: Match) => {
     const key = matchKey(m);
@@ -519,44 +535,63 @@ export default function PlaylistKeywordSearchPage() {
                 Deselect some and repeat.
               </InlineAlert>
             )}
+            {result.capped && (
+              <InlineAlert variant="warning">
+                Showing the first {MAX_SEARCH_MATCHES.toLocaleString()} matches of{" "}
+                {result.stats.matchCount.toLocaleString()} — narrow the search.
+              </InlineAlert>
+            )}
 
             <div className="rounded-xl border border-border bg-card">
               <div className="border-b border-border px-4 py-3 text-sm font-semibold text-foreground">
                 Matches
               </div>
-              <div className="divide-y divide-border">
-                {result.matches.map((m) => {
-                  const key = matchKey(m);
-                  const copies = siblingsOf(m).length;
-                  return (
-                    <label
-                      key={key}
-                      className="flex cursor-pointer items-center gap-3 px-4 py-3 hover:bg-secondary/20"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selected.has(key)}
-                        onChange={() => toggle(m)}
-                        disabled={working}
-                        className="h-4 w-4 accent-primary"
-                      />
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate font-medium text-foreground">{m.title}</div>
-                        <div className="truncate text-sm text-muted-foreground">
-                          {m.artist} • in {m.playlistTitle}
-                        </div>
+              <div ref={listScrollRef} className="max-h-[600px] overflow-y-auto">
+                <div style={{ height: rowVirtualizer.getTotalSize(), position: "relative" }}>
+                  {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+                    const m = result.matches[virtualRow.index];
+                    const key = matchKey(m);
+                    const copies = siblingsOf(m).length;
+                    return (
+                      <div
+                        key={key}
+                        data-index={virtualRow.index}
+                        ref={rowVirtualizer.measureElement}
+                        style={{
+                          position: "absolute",
+                          top: 0,
+                          left: 0,
+                          width: "100%",
+                          transform: `translateY(${virtualRow.start}px)`,
+                        }}
+                      >
+                        <label className="flex cursor-pointer items-center gap-3 border-b border-border px-4 py-3 hover:bg-secondary/20">
+                          <input
+                            type="checkbox"
+                            checked={selected.has(key)}
+                            onChange={() => toggle(m)}
+                            disabled={working}
+                            className="h-4 w-4 accent-primary"
+                          />
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate font-medium text-foreground">{m.title}</div>
+                            <div className="truncate text-sm text-muted-foreground">
+                              {m.artist} • in {m.playlistTitle}
+                            </div>
+                          </div>
+                          {copies > 1 && (
+                            <span className="shrink-0 rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-xs text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-100">
+                              ×{copies} in this playlist — removing removes every copy
+                            </span>
+                          )}
+                          <span className="shrink-0 rounded-md border border-border bg-secondary/20 px-2 py-1 text-xs text-muted-foreground">
+                            {m.keyword} in {m.matchedIn}
+                          </span>
+                        </label>
                       </div>
-                      {copies > 1 && (
-                        <span className="shrink-0 rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-xs text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-100">
-                          ×{copies} in this playlist — removing removes every copy
-                        </span>
-                      )}
-                      <span className="shrink-0 rounded-md border border-border bg-secondary/20 px-2 py-1 text-xs text-muted-foreground">
-                        {m.keyword} in {m.matchedIn}
-                      </span>
-                    </label>
-                  );
-                })}
+                    );
+                  })}
+                </div>
               </div>
             </div>
 

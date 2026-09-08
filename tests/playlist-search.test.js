@@ -95,6 +95,26 @@ describe('searchTracksInPlaylists', () => {
     expect(stats.playlistsSearched).toBe(2);
   });
 
+  test('skips a playlist whose own id is unusable', () => {
+    // Such a playlist used to emit matches carrying playlistId: null. They were
+    // selectable, and a single one of them 400s the whole bulk-remove batch —
+    // so every other playlist's removal failed with it.
+    const bad = [{ id: 'abc', title: 'Broken', tracks: [{ id: 10, title: 'Bootleg' }] }];
+    const { matches, stats } = searchTracksInPlaylists(bad, ['bootleg']);
+    expect(matches).toEqual([]);
+    expect(stats.playlistsSearched).toBe(0);
+  });
+
+  test('a broken playlist does not stop the ones after it', () => {
+    const mixed = [
+      { id: null, title: 'Broken', tracks: [{ id: 10, title: 'Bootleg' }] },
+      { id: 7, title: 'Fine', tracks: [{ id: 11, title: 'Bootleg' }] },
+    ];
+    const { matches } = searchTracksInPlaylists(mixed, ['bootleg']);
+    expect(matches).toHaveLength(1);
+    expect(matches[0].playlistId).toBe(7);
+  });
+
   test('skips tracks with an unusable id', () => {
     const bad = [{ id: 3, title: 'x', tracks: [{ id: null, title: 'Bootleg' }, { id: 0, title: 'Bootleg' }] }];
     expect(searchTracksInPlaylists(bad, ['bootleg']).matches).toHaveLength(0);

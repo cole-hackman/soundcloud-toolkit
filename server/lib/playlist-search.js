@@ -44,7 +44,9 @@ export function matchTrack(track, keywords) {
   return null;
 }
 
-function toTrackId(value) {
+/** A usable SoundCloud resource id, or null. Used for both track and playlist
+ *  ids, which is why it is not named after either. */
+function toPositiveInt(value) {
   const id = typeof value === 'number' ? value : parseInt(value, 10);
   return Number.isInteger(id) && id >= 1 ? id : null;
 }
@@ -62,13 +64,22 @@ export function searchTracksInPlaylists(playlists, keywords) {
 
   for (const playlist of Array.isArray(playlists) ? playlists : []) {
     if (!playlist) continue;
+
+    // Resolved once, before the track loop, and the playlist is skipped when it
+    // does not resolve. This used to be evaluated per match, so a playlist with
+    // an unusable id emitted rows carrying playlistId: null — selectable in the
+    // UI, and a single one of them 400s the whole bulk-remove batch, taking
+    // every other playlist's removal down with it.
+    const playlistId = toPositiveInt(playlist.id);
+    if (playlistId === null) continue;
+
     playlistsSearched += 1;
     const tracks = Array.isArray(playlist.tracks) ? playlist.tracks : [];
 
     for (let position = 0; position < tracks.length; position += 1) {
       const track = tracks[position];
       tracksScanned += 1;
-      const trackId = toTrackId(track?.id);
+      const trackId = toPositiveInt(track?.id);
       if (trackId === null) continue;
 
       const hit = matchTrack(track, keywords);
@@ -82,7 +93,7 @@ export function searchTracksInPlaylists(playlists, keywords) {
         permalink_url: track.permalink_url || null,
         duration: track.duration ?? null,
         position,
-        playlistId: toTrackId(playlist.id),
+        playlistId,
         playlistTitle: playlist.title || 'Untitled playlist',
         keyword: hit.keyword,
         matchedIn: hit.matchedIn,

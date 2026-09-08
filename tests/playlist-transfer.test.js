@@ -1,6 +1,8 @@
 import { jest } from '@jest/globals';
 import {
   extractOrderedTrackIds,
+  readPlaylistForRewrite,
+  PlaylistReadIncompleteError,
   duplicateTrackBetweenPlaylists,
   moveTrackBetweenPlaylists,
 } from '../server/lib/playlist-transfer.js';
@@ -15,6 +17,69 @@ describe('playlist-transfer', () => {
         tracks: [{ id: 3 }, { id: '5' }, { id: 3 }],
       })
     ).toEqual([3, 5, 3]);
+  });
+
+  test('readPlaylistForRewrite refuses a playlist it could not fully read', async () => {
+    // 98 usable ids out of a declared 100. Writing this list back would delete
+    // the two entries the read dropped, while reporting a clean success.
+    const tracks = Array.from({ length: 98 }, (_, i) => ({ id: i + 1 }));
+    const client = {
+      getPlaylistWithTracks: jest.fn().mockResolvedValue({
+        id: 1, title: 'Short', track_count: 100, tracks,
+      }),
+    };
+
+    await expect(
+      readPlaylistForRewrite(client, accessToken, refreshToken, 1)
+    ).rejects.toThrow(PlaylistReadIncompleteError);
+
+    const error = await readPlaylistForRewrite(client, accessToken, refreshToken, 1).catch((e) => e);
+    expect(error.seen).toBe(98);
+    expect(error.expected).toBe(100);
+    expect(error.message).toMatch(/saw 98 of 100/);
+  });
+
+  test('readPlaylistForRewrite returns the ids when the counts agree', async () => {
+    const client = {
+      getPlaylistWithTracks: jest.fn().mockResolvedValue({
+        id: 1, title: 'Whole', track_count: 3, tracks: [{ id: 7 }, { id: 8 }, { id: 9 }],
+      }),
+    };
+
+    const { playlist, ids } = await readPlaylistForRewrite(client, accessToken, refreshToken, 1);
+
+    expect(ids).toEqual([7, 8, 9]);
+    expect(playlist.title).toBe('Whole');
+  });
+
+  test('readPlaylistForRewrite does not guard a playlist with no track_count', async () => {
+    // No number to compare against. Inventing one would refuse valid writes.
+    const client = {
+      getPlaylistWithTracks: jest.fn().mockResolvedValue({
+        id: 1, title: 'Countless', tracks: [{ id: 7 }, { id: 'nope' }],
+      }),
+    };
+
+    const { ids } = await readPlaylistForRewrite(client, accessToken, refreshToken, 1);
+
+    expect(ids).toEqual([7]);
+  });
+
+  test('duplicate refuses to append to a playlist it could not fully read', async () => {
+    const client = {
+      getPlaylistWithTracks: jest.fn().mockResolvedValue({
+        id: 10, title: 'Short', track_count: 5, tracks: [{ id: 1 }, { id: 2 }],
+      }),
+      addTracksToPlaylist: jest.fn(),
+    };
+
+    await expect(
+      duplicateTrackBetweenPlaylists({
+        accessToken, refreshToken, client, trackId: 99, targetPlaylistId: 10,
+      })
+    ).rejects.toThrow(PlaylistReadIncompleteError);
+
+    expect(client.addTracksToPlaylist).not.toHaveBeenCalled();
   });
 
   test('duplicate noop when track already in target', async () => {

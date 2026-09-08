@@ -211,6 +211,31 @@ describe('POST /api/playlists/tracks/bulk-remove', () => {
     expect(res.body.removedTotal).toBe(1);
   });
 
+  test('refuses a playlist whose read came back short, and still does the rest', async () => {
+    // A read that returned 2 of a declared 100 tracks. Removing one and PUTting
+    // the survivors would delete the other 98 while reporting "removed: 1".
+    getPlaylistWithTracks
+      .mockResolvedValueOnce({
+        id: 1, title: 'Short', track_count: 100, tracks: [track(10, 'a'), track(11, 'b')],
+      })
+      .mockResolvedValueOnce({
+        id: 2, title: 'Whole', track_count: 2, tracks: [track(20, 'a'), track(21, 'b')],
+      });
+    addTracksToPlaylist.mockResolvedValue({});
+
+    const res = await request(app)
+      .post('/api/playlists/tracks/bulk-remove')
+      .send({ items: [{ playlistId: 1, trackIds: [10] }, { playlistId: 2, trackIds: [21] }] });
+
+    expect(res.status).toBe(200);
+    expect(res.body.results[0]).toMatchObject({ playlistId: 1, status: 'error', removed: 0 });
+    expect(res.body.results[0].error).toMatch(/saw 2 of 100/);
+    // The short playlist is not rewritten; the intact one still is.
+    expect(addTracksToPlaylist).toHaveBeenCalledTimes(1);
+    expect(addTracksToPlaylist).toHaveBeenCalledWith('at', 'rt', 2, [20]);
+    expect(res.body.removedTotal).toBe(1);
+  });
+
   test('rejects the same playlist listed twice', async () => {
     const res = await request(app)
       .post('/api/playlists/tracks/bulk-remove')
@@ -254,6 +279,20 @@ describe('POST /api/playlists/tracks/bulk-add', () => {
     expect(res.body.added).toBe(0);
   });
 
+  test('refuses to append to a playlist whose read came back short', async () => {
+    getPlaylistWithTracks.mockResolvedValue({
+      id: 9, title: 'Short', track_count: 10, tracks: [track(1, 'a')],
+    });
+
+    const res = await request(app)
+      .post('/api/playlists/tracks/bulk-add')
+      .send({ targetPlaylistId: 9, trackIds: [2] });
+
+    expect(res.status).toBe(409);
+    expect(res.body.error).toMatch(/saw 1 of 10/);
+    expect(addTracksToPlaylist).not.toHaveBeenCalled();
+  });
+
   test('refuses to exceed the 500-track cap', async () => {
     const full = Array.from({ length: 500 }, (_, i) => track(i + 1, `t${i}`));
     getPlaylistWithTracks.mockResolvedValue(playlist(9, 'Full', full));
@@ -266,6 +305,39 @@ describe('POST /api/playlists/tracks/bulk-add', () => {
     expect(addTracksToPlaylist).not.toHaveBeenCalled();
     expect(res.body).toMatchObject({ added: 0, noRoom: 1 });
     expect(res.body.message).toMatch(/full/i);
+  });
+});
+
+describe('PUT /api/playlists/:id', () => {
+  test('refuses to overwrite a playlist it could not fully read', async () => {
+    // The client's replacement list came from the same kind of read, so a short
+    // one here means the list it sent is short too — and this PUT is a full
+    // replace, so writing it would delete the difference.
+    getPlaylistWithTracks.mockResolvedValue({
+      id: 3, title: 'Short', track_count: 50, tracks: [track(1, 'a'), track(2, 'b')],
+    });
+
+    const res = await request(app)
+      .put('/api/playlists/3')
+      .send({ tracks: [1, 2] });
+
+    expect(res.status).toBe(409);
+    expect(res.body.error).toMatch(/saw 2 of 50/);
+    expect(addTracksToPlaylist).not.toHaveBeenCalled();
+  });
+
+  test('writes the list when the read is whole', async () => {
+    getPlaylistWithTracks.mockResolvedValue({
+      id: 3, title: 'Whole', track_count: 2, tracks: [track(1, 'a'), track(2, 'b')],
+    });
+    addTracksToPlaylist.mockResolvedValue({ id: 3, title: 'Whole' });
+
+    const res = await request(app)
+      .put('/api/playlists/3')
+      .send({ tracks: [2, 1] });
+
+    expect(res.status).toBe(200);
+    expect(addTracksToPlaylist).toHaveBeenCalledWith('at', 'rt', 3, [2, 1]);
   });
 });
 

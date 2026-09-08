@@ -12,6 +12,50 @@ export function extractOrderedTrackIds(playlist) {
 }
 
 /**
+ * A playlist whose track list came back shorter than its own track_count.
+ *
+ * Carries both numbers so the caller can say which playlist it refused and by
+ * how much it was short.
+ */
+export class PlaylistReadIncompleteError extends Error {
+  constructor(seen, expected) {
+    super(`Playlist read was incomplete (saw ${seen} of ${expected} tracks); not modified`);
+    this.name = 'PlaylistReadIncompleteError';
+    this.seen = seen;
+    this.expected = expected;
+  }
+}
+
+/**
+ * Read a playlist for an operation that will PUT its track list back.
+ *
+ * Every write in this file — and in the bulk remove/add routes — replaces the
+ * playlist's ENTIRE list. extractOrderedTrackIds silently drops entries whose
+ * id is unusable, and nothing compared what survived against what the playlist
+ * says it holds. A 100-track playlist returning 2 unusable entries yields 98
+ * ids; removing one track then PUTs 97, and the other two are deleted from the
+ * user's playlist for good while the response cheerfully reports "removed: 1".
+ *
+ * A short read is not a recoverable condition here — there is no way to write
+ * back a list we do not fully have — so this refuses rather than guessing.
+ * Playlists with no track_count are left alone: the check needs a number to
+ * compare against, and inventing one would refuse valid writes.
+ *
+ * @returns {Promise<{ playlist: object, ids: number[] }>}
+ * @throws {PlaylistReadIncompleteError}
+ */
+export async function readPlaylistForRewrite(client, accessToken, refreshToken, playlistId) {
+  const playlist = await client.getPlaylistWithTracks(accessToken, refreshToken, playlistId);
+  const ids = extractOrderedTrackIds(playlist);
+
+  if (Number.isInteger(playlist?.track_count) && ids.length !== playlist.track_count) {
+    throw new PlaylistReadIncompleteError(ids.length, playlist.track_count);
+  }
+
+  return { playlist, ids };
+}
+
+/**
  * @param {object} deps
  * @param {string} deps.accessToken
  * @param {string} deps.refreshToken
@@ -26,8 +70,12 @@ export async function duplicateTrackBetweenPlaylists(deps) {
     return { ok: false, error: 'Target playlist is required' };
   }
 
-  const target = await client.getPlaylistWithTracks(accessToken, refreshToken, targetPlaylistId);
-  const targetIds = extractOrderedTrackIds(target);
+  // Throws on a short read rather than appending to a truncated list, which
+  // would delete whatever the read dropped. The route's catch turns it into an
+  // error response.
+  const { playlist: target, ids: targetIds } = await readPlaylistForRewrite(
+    client, accessToken, refreshToken, targetPlaylistId,
+  );
 
   if (targetIds.includes(trackId)) {
     return {

@@ -38,7 +38,8 @@ import { comparePlaylists } from '../lib/playlist-compare.js';
 import {
   duplicateTrackBetweenPlaylists,
   moveTrackBetweenPlaylists,
-  extractOrderedTrackIds,
+  readPlaylistForRewrite,
+  PlaylistReadIncompleteError,
   MAX_PLAYLIST_TRACKS,
 } from '../lib/playlist-transfer.js';
 import {
@@ -390,12 +391,12 @@ router.post('/playlists/tracks/bulk-remove', authenticateUser, heavyOperationRat
     for (const item of items) {
       const { playlistId, trackIds } = item;
       try {
-        const playlist = await soundcloudClient.getPlaylistWithTracks(
-          req.accessToken,
-          req.refreshToken,
-          playlistId
+        // Refuses rather than PUTting a list we only partly have — see
+        // readPlaylistForRewrite. Removing one track from a short read would
+        // silently delete every entry the read dropped.
+        const { playlist, ids: currentIds } = await readPlaylistForRewrite(
+          soundcloudClient, req.accessToken, req.refreshToken, playlistId,
         );
-        const currentIds = extractOrderedTrackIds(playlist);
         const nextIds = removeTrackIds(currentIds, trackIds);
         const removed = currentIds.length - nextIds.length;
 
@@ -431,7 +432,9 @@ router.post('/playlists/tracks/bulk-remove', authenticateUser, heavyOperationRat
           playlistId,
           status: 'error',
           removed: 0,
-          error: 'Could not update this playlist',
+          error: error instanceof PlaylistReadIncompleteError
+            ? error.message
+            : 'Could not update this playlist',
         });
       }
 
@@ -470,12 +473,20 @@ router.post('/playlists/tracks/bulk-add', authenticateUser, heavyOperationRateLi
   try {
     const { targetPlaylistId, trackIds } = req.body;
 
-    const target = await soundcloudClient.getPlaylistWithTracks(
-      req.accessToken,
-      req.refreshToken,
-      targetPlaylistId
-    );
-    const existingIds = extractOrderedTrackIds(target);
+    // Appending to a short read would drop whatever the read missed, so a
+    // playlist we cannot fully see is refused outright.
+    let target;
+    let existingIds;
+    try {
+      ({ playlist: target, ids: existingIds } = await readPlaylistForRewrite(
+        soundcloudClient, req.accessToken, req.refreshToken, targetPlaylistId,
+      ));
+    } catch (error) {
+      if (error instanceof PlaylistReadIncompleteError) {
+        return res.status(409).json({ error: error.message });
+      }
+      throw error;
+    }
     const { nextIds, added, alreadyPresent, noRoom } = appendTrackIds(
       existingIds,
       trackIds,
@@ -872,6 +883,20 @@ router.put('/playlists/:id', authenticateUser, validateUpdatePlaylist, async (re
   try {
     const id = req.params.id; // Already validated and converted to int by middleware
     const { tracks, title } = req.body || {};
+
+    // The client sends a full replacement list it derived from its own read of
+    // this playlist. If OUR read comes back short of the playlist's own
+    // track_count, the client's almost certainly did too — and PUTting that
+    // list would permanently delete whatever both reads dropped. Refuse
+    // instead; the read costs one round trip and the write is irreversible.
+    try {
+      await readPlaylistForRewrite(soundcloudClient, req.accessToken, req.refreshToken, id);
+    } catch (error) {
+      if (error instanceof PlaylistReadIncompleteError) {
+        return res.status(409).json({ error: error.message });
+      }
+      throw error;
+    }
 
     // Reuse addTracksToPlaylist to overwrite order by sending full list
     const updated = await soundcloudClient.addTracksToPlaylist(

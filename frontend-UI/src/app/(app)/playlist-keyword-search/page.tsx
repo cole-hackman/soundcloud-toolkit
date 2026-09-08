@@ -152,9 +152,10 @@ export default function PlaylistKeywordSearchPage() {
       setOffset(scope === "all" ? nextOffset : 0);
       // A new result set makes old selections meaningless.
       setSelected(new Set());
+      const unreadable = data.stats.playlistsFailed ?? 0;
       setNotice({
-        type: "success",
-        text: `${data.stats.matchCount} match${data.stats.matchCount === 1 ? "" : "es"} across ${data.stats.playlistsSearched} playlist${data.stats.playlistsSearched === 1 ? "" : "s"} (${data.stats.tracksScanned} tracks scanned).`,
+        type: unreadable > 0 ? "error" : "success",
+        text: `${data.stats.matchCount} match${data.stats.matchCount === 1 ? "" : "es"} across ${data.stats.playlistsSearched} playlist${data.stats.playlistsSearched === 1 ? "" : "s"} (${data.stats.tracksScanned} tracks scanned).${unreadable > 0 ? ` ${unreadable} playlist${unreadable === 1 ? "" : "s"} could not be read.` : ""}`,
       });
     } catch (error) {
       console.error("Keyword search failed:", error);
@@ -413,6 +414,12 @@ export default function PlaylistKeywordSearchPage() {
             Not all playlists were indexed, so this search may not cover your whole library.
           </InlineAlert>
         )}
+        {!loading && result && result.failed.length > 0 && (
+          <InlineAlert variant="warning" className="mb-4">
+            {result.failed.length} playlist{result.failed.length === 1 ? "" : "s"} could not be read
+            — these results are incomplete.
+          </InlineAlert>
+        )}
 
         {loading ? (
           <div className="rounded-xl border border-border bg-card p-12 text-center">
@@ -429,15 +436,24 @@ export default function PlaylistKeywordSearchPage() {
         ) : result.matches.length === 0 ? (
           <div className="space-y-4">
             <div className="rounded-xl border border-border bg-card p-8">
-              <EmptyState
-                icon={<Search className="h-12 w-12" />}
-                title="No matches"
-                description={
-                  result.page?.hasMore
-                    ? "Nothing in this batch of playlists. Use Next to search the following ones."
-                    : "Nothing matched those keywords."
-                }
-              />
+              {/* Nothing was searched is not the same answer as nothing matched. */}
+              {result.stats.playlistsSearched === 0 && result.failed.length > 0 ? (
+                <EmptyState
+                  icon={<Search className="h-12 w-12" />}
+                  title="Nothing could be searched"
+                  description={`None of the ${result.failed.length} playlist${result.failed.length === 1 ? "" : "s"} in this range could be read, so this is not a "no matches" result. Try again in a moment.`}
+                />
+              ) : (
+                <EmptyState
+                  icon={<Search className="h-12 w-12" />}
+                  title="No matches"
+                  description={
+                    result.page?.hasMore
+                      ? "Nothing in this batch of playlists. Use Next to search the following ones."
+                      : "Nothing matched those keywords."
+                  }
+                />
+              )}
             </div>
             {pager}
           </div>

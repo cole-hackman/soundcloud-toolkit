@@ -48,6 +48,7 @@ jest.unstable_mockModule('../../server/middleware/auth.js', () => ({
 }));
 
 const { default: apiRoutes } = await import('../../server/routes/api.js');
+const { SC_WRITE_PACING_MS } = await import('../../server/lib/pacing.js');
 // Real, not mocked: the playlist list is cached per user across the whole
 // module lifetime, so without an explicit reset the second test in this file
 // would be served the first test's playlists.
@@ -274,6 +275,97 @@ describe('POST /api/playlists/tracks/bulk-remove', () => {
     expect(addTracksToPlaylist).toHaveBeenCalledTimes(1);
     expect(addTracksToPlaylist).toHaveBeenCalledWith('at', 'rt', 2, [20]);
     expect(res.body.removedTotal).toBe(1);
+  });
+
+  test('reads every playlist before writing any of them', async () => {
+    const order = [];
+    getPlaylistWithTracks.mockImplementation(async (a, r, id) => {
+      order.push(`read:${id}`);
+      return playlist(id, `P${id}`, [track(id * 10, 'a'), track(id * 10 + 1, 'b')]);
+    });
+    addTracksToPlaylist.mockImplementation(async (a, r, id) => { order.push(`write:${id}`); });
+
+    const res = await request(app)
+      .post('/api/playlists/tracks/bulk-remove')
+      .send({
+        items: [
+          { playlistId: 1, trackIds: [10] },
+          { playlistId: 2, trackIds: [20] },
+          { playlistId: 3, trackIds: [30] },
+        ],
+      });
+
+    expect(res.status).toBe(200);
+    // Reads are independent of each other and of the writes; the old shape
+    // interleaved them, so the last playlist was not even read until two
+    // writes and two 300ms pauses had gone by.
+    expect(order.slice(0, 3).every((step) => step.startsWith('read:'))).toBe(true);
+    expect(order.slice(3).every((step) => step.startsWith('write:'))).toBe(true);
+  });
+
+  test('paces between writes, and only between writes', async () => {
+    // Counts the pacing pauses the route actually schedules. Jest's fake timers
+    // are the obvious tool here and deadlock instead: the route only reaches
+    // sleep() after real network I/O that advanceTimersByTimeAsync cannot
+    // drive, so the faked timer is never advanced and the request never
+    // returns. Spying on setTimeout measures the same thing without freezing
+    // the event loop the request needs.
+    const realSetTimeout = global.setTimeout;
+    const delays = [];
+    global.setTimeout = ((fn, ms, ...rest) => {
+      delays.push(ms);
+      return realSetTimeout(fn, ms, ...rest);
+    });
+
+    try {
+      // Middle item is a no-op, so there are two writes and exactly one gap
+      // between them. Pacing after the skipped row, or after the last write,
+      // would show up as a second or third pause here.
+      getPlaylistWithTracks.mockImplementation(async (a, r, id) => (
+        playlist(id, `P${id}`, [track(id * 10, 'a'), track(id * 10 + 1, 'b')])
+      ));
+      addTracksToPlaylist.mockResolvedValue({});
+
+      const res = await request(app)
+        .post('/api/playlists/tracks/bulk-remove')
+        .send({
+          items: [
+            { playlistId: 1, trackIds: [10] },
+            { playlistId: 2, trackIds: [999] }, // not in the playlist -> skipped
+            { playlistId: 3, trackIds: [30] },
+          ],
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.results.map((r) => r.status)).toEqual(['success', 'skipped', 'success']);
+      expect(addTracksToPlaylist).toHaveBeenCalledTimes(2);
+      expect(delays.filter((ms) => ms === SC_WRITE_PACING_MS)).toEqual([SC_WRITE_PACING_MS]);
+    } finally {
+      global.setTimeout = realSetTimeout;
+    }
+  });
+
+  test('does not pace a batch that writes nothing', async () => {
+    const realSetTimeout = global.setTimeout;
+    const delays = [];
+    global.setTimeout = ((fn, ms, ...rest) => {
+      delays.push(ms);
+      return realSetTimeout(fn, ms, ...rest);
+    });
+
+    try {
+      getPlaylistWithTracks.mockImplementation(async (a, r, id) => playlist(id, `P${id}`, [track(1, 'a')]));
+
+      const res = await request(app)
+        .post('/api/playlists/tracks/bulk-remove')
+        .send({ items: [{ playlistId: 1, trackIds: [999] }, { playlistId: 2, trackIds: [999] }] });
+
+      expect(res.status).toBe(200);
+      expect(addTracksToPlaylist).not.toHaveBeenCalled();
+      expect(delays.filter((ms) => ms === SC_WRITE_PACING_MS)).toEqual([]);
+    } finally {
+      global.setTimeout = realSetTimeout;
+    }
   });
 
   test('rejects the same playlist listed twice', async () => {

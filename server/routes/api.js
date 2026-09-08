@@ -399,10 +399,12 @@ router.post('/playlists/tracks/bulk-remove', authenticateUser, heavyOperationRat
   const elapsed = startOperationTimer();
   try {
     const { items } = req.body;
-    const results = [];
-    let removedTotal = 0;
 
-    for (const item of items) {
+    // Phase 1 — read every playlist, concurrently. The reads are independent
+    // of each other and of the writes, so the old read/write/sleep cycle paid
+    // twenty round trips end to end before the second write even started, all
+    // inside one held-open response.
+    const prepared = await mapWithConcurrency(items, SC_READ_CONCURRENCY, async (item) => {
       const { playlistId, trackIds } = item;
       try {
         // Refuses rather than PUTting a list we only partly have — see
@@ -412,47 +414,80 @@ router.post('/playlists/tracks/bulk-remove', authenticateUser, heavyOperationRat
           soundcloudClient, req.accessToken, req.refreshToken, playlistId,
         );
         const nextIds = removeTrackIds(currentIds, trackIds);
-        const removed = currentIds.length - nextIds.length;
-
-        if (removed === 0) {
-          results.push({
-            playlistId,
-            status: 'skipped',
-            removed: 0,
-            title: playlist.title ?? null,
-            message: 'None of those tracks are in this playlist any more',
-          });
-          continue;
-        }
-
-        await soundcloudClient.addTracksToPlaylist(
-          req.accessToken,
-          req.refreshToken,
+        return {
           playlistId,
-          nextIds
-        );
-
-        removedTotal += removed;
-        results.push({
-          playlistId,
-          status: 'success',
-          removed,
-          remaining: nextIds.length,
           title: playlist.title ?? null,
-        });
+          nextIds,
+          removed: currentIds.length - nextIds.length,
+        };
       } catch (error) {
-        logger.warn('Bulk remove failed for playlist:', { playlistId, error: safeError(error) });
-        results.push({
+        logger.warn('Bulk remove read failed for playlist:', { playlistId, error: safeError(error) });
+        return {
           playlistId,
-          status: 'error',
-          removed: 0,
           error: error instanceof PlaylistReadIncompleteError
             ? error.message
             : 'Could not update this playlist',
-        });
+        };
+      }
+    });
+
+    // Phase 2 — the writes, still sequential and still paced. Pacing exists so
+    // a burst of playlist PUTs does not draw a 429, which means it belongs
+    // BETWEEN writes: never after a row that was skipped or failed its read (no
+    // request was made, so there is nothing to pace away from) and never after
+    // the last one, where it only delays the response by 300ms per batch.
+    const results = [];
+    let removedTotal = 0;
+    let wroteAny = false;
+
+    for (const entry of prepared) {
+      if (entry.error) {
+        results.push({ playlistId: entry.playlistId, status: 'error', removed: 0, error: entry.error });
+        continue;
       }
 
-      await sleep(SC_WRITE_PACING_MS);
+      if (entry.removed === 0) {
+        results.push({
+          playlistId: entry.playlistId,
+          status: 'skipped',
+          removed: 0,
+          title: entry.title,
+          message: 'None of those tracks are in this playlist any more',
+        });
+        continue;
+      }
+
+      if (wroteAny) await sleep(SC_WRITE_PACING_MS);
+      // Set before the attempt, not after it: a PUT that failed still cost
+      // SoundCloud a request, and a 429 is precisely when the next one should
+      // wait.
+      wroteAny = true;
+
+      try {
+        await soundcloudClient.addTracksToPlaylist(
+          req.accessToken,
+          req.refreshToken,
+          entry.playlistId,
+          entry.nextIds
+        );
+
+        removedTotal += entry.removed;
+        results.push({
+          playlistId: entry.playlistId,
+          status: 'success',
+          removed: entry.removed,
+          remaining: entry.nextIds.length,
+          title: entry.title,
+        });
+      } catch (error) {
+        logger.warn('Bulk remove write failed for playlist:', { playlistId: entry.playlistId, error: safeError(error) });
+        results.push({
+          playlistId: entry.playlistId,
+          status: 'error',
+          removed: 0,
+          error: 'Could not update this playlist',
+        });
+      }
     }
 
     invalidatePlaylistState(req.user.id);

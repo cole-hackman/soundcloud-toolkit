@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   ChevronLeft,
   ChevronRight,
@@ -20,7 +21,7 @@ import {
   LoadingSpinner,
   PageHeader,
 } from "@/components/ui";
-import { usePlaylistsQuery } from "@/lib/queries";
+import { invalidatePlaylistCaches, usePlaylistsQuery } from "@/lib/queries";
 
 const PAGE_SIZE = 20;
 /** Server caps a bulk remove at 200 tracks and 20 playlists per request. */
@@ -79,6 +80,7 @@ interface SearchResult {
 const matchKey = (m: Match) => `${m.playlistId}:${m.trackId}`;
 
 export default function PlaylistKeywordSearchPage() {
+  const queryClient = useQueryClient();
   const [query, setQuery] = useState("");
   const [scope, setScope] = useState<number | "all">("all");
   const [offset, setOffset] = useState(0);
@@ -197,6 +199,11 @@ export default function PlaylistKeywordSearchPage() {
         return;
       }
 
+      // Track counts and playlist detail everywhere else in the app are now
+      // wrong. Every other mutating page does this; without it a playlist this
+      // page just edited still renders its pre-edit track list.
+      await invalidatePlaylistCaches(queryClient);
+
       const results: { playlistId: number; status: string }[] = data.results ?? [];
       const failedPlaylists = new Set(
         results.filter((r) => r.status === "error").map((r) => r.playlistId),
@@ -249,6 +256,8 @@ export default function PlaylistKeywordSearchPage() {
         setNotice({ type: "error", text: data.error || "Could not copy those tracks." });
         return;
       }
+      await invalidatePlaylistCaches(queryClient, Number(copyTarget));
+
       const extras = [
         data.alreadyPresent ? `${data.alreadyPresent} already there` : null,
         data.noRoom ? `${data.noRoom} did not fit` : null,

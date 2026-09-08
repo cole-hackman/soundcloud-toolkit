@@ -25,6 +25,7 @@ const TOOL_SLUGS: Record<string, string> = {
   "/following-manager": "following-manager",
   "/following-library": "following-library",
   "/playlist-health-check": "health-check",
+  "/playlist-keyword-search": "playlist-keyword-search",
   "/batch-link-resolver": "batch-resolver",
   "/playlist-cloner": "playlist-cloner",
   "/playlist-compare": "playlist-compare",

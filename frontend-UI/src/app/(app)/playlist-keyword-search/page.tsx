@@ -37,6 +37,8 @@ interface Match {
   title: string;
   artist: string;
   permalink_url: string | null;
+  /** 0-based index of this occurrence within its playlist. */
+  position: number;
   playlistId: number;
   playlistTitle: string;
   keyword: string;
@@ -76,8 +78,15 @@ interface SearchResult {
   page: SearchPage | null;
 }
 
-/** A match is identified by the pair — the same track can match in many playlists. */
-const matchKey = (m: Match) => `${m.playlistId}:${m.trackId}`;
+/**
+ * A match is one occurrence: the same track can appear in many playlists, and
+ * more than once within a single playlist. Keying on the pair alone collapsed
+ * those duplicates into one React key and one selection entry.
+ */
+const matchKey = (m: Match) => `${m.playlistId}:${m.trackId}:${m.position}`;
+
+/** The (playlist, track) pair a set of duplicate rows share. */
+const trackKey = (m: Match) => `${m.playlistId}:${m.trackId}`;
 
 export default function PlaylistKeywordSearchPage() {
   const queryClient = useQueryClient();
@@ -155,12 +164,34 @@ export default function PlaylistKeywordSearchPage() {
     }
   };
 
+  // Rows for the same track in the same playlist, grouped. The removal path can
+  // only name track ids — the API replaces a playlist's whole list, so there is
+  // no way to delete the second copy and keep the first — which means selecting
+  // one copy necessarily selects them all. Making that explicit in the UI beats
+  // letting the user believe otherwise and silently taking both.
+  const siblingIndex = useMemo(() => {
+    const byTrack = new Map<string, Match[]>();
+    for (const m of result?.matches ?? []) {
+      const key = trackKey(m);
+      const group = byTrack.get(key);
+      if (group) group.push(m);
+      else byTrack.set(key, [m]);
+    }
+    return byTrack;
+  }, [result]);
+
+  const siblingsOf = (m: Match) => siblingIndex.get(trackKey(m)) ?? [m];
+
   const toggle = (m: Match) => {
     const key = matchKey(m);
+    const siblings = siblingsOf(m);
     setSelected((prev) => {
       const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
+      const turningOn = !next.has(key);
+      for (const sibling of siblings) {
+        if (turningOn) next.add(matchKey(sibling));
+        else next.delete(matchKey(sibling));
+      }
       return next;
     });
   };
@@ -480,6 +511,7 @@ export default function PlaylistKeywordSearchPage() {
               <div className="divide-y divide-border">
                 {result.matches.map((m) => {
                   const key = matchKey(m);
+                  const copies = siblingsOf(m).length;
                   return (
                     <label
                       key={key}
@@ -498,6 +530,11 @@ export default function PlaylistKeywordSearchPage() {
                           {m.artist} • in {m.playlistTitle}
                         </div>
                       </div>
+                      {copies > 1 && (
+                        <span className="shrink-0 rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-xs text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-100">
+                          ×{copies} in this playlist — removing removes every copy
+                        </span>
+                      )}
                       <span className="shrink-0 rounded-md border border-border bg-secondary/20 px-2 py-1 text-xs text-muted-foreground">
                         {m.keyword} in {m.matchedIn}
                       </span>

@@ -14,7 +14,7 @@ jest.unstable_mockModule('../server/lib/soundcloud-client.js', () => ({
   soundcloudClient: {},
 }));
 
-const { loadUserCollection, invalidateUserCollections } =
+const { loadUserCollection, invalidateUserCollections, invalidatePlaylistState, __resetCacheCoordinationForTests } =
   await import('../server/lib/social-cache.js');
 const { requestCache } = await import('../server/lib/request-cache.js');
 
@@ -22,7 +22,16 @@ const req = { user: { id: 'u1' } };
 const shape = (items) => ({ collection: items, total: items.length });
 const flush = () => new Promise((r) => setImmediate(r));
 
+/** A promise plus its resolver, so a test can hold a crawl open and land a
+ *  mutation while it is still in flight. */
+const deferred = () => {
+  let resolve;
+  const promise = new Promise((r) => { resolve = r; });
+  return { promise, resolve };
+};
+
 beforeEach(() => {
+  __resetCacheCoordinationForTests();
   requestCache.invalidateUser('u1');
   readSnapshot.mockReset();
   writeSnapshot.mockClear();
@@ -151,6 +160,107 @@ describe('memory -> Postgres -> SoundCloud tiering', () => {
 
     expect(requestCache.get('likes', 'u1', 'default')).toBeUndefined();
     expect(invalidateSnapshot).toHaveBeenCalledWith('u1', ['likes']);
+  });
+
+  /* ── Regression: a crawl must never publish pre-mutation data ──────────
+   * These four cover the ways an in-flight crawl could republish a snapshot
+   * the user had already invalidated. The original in-flight guard only
+   * covered the in-memory write, so all four slipped past a green suite.
+   */
+
+  test('a crawl invalidated mid-flight does NOT persist to the snapshot tier', async () => {
+    readSnapshot.mockResolvedValue(null);
+    const gate = deferred();
+    const crawl = jest.fn(() => gate.promise);
+
+    const inflight = loadUserCollection(req, 'likes', crawl, shape);
+    // The crawl must actually be RUNNING before the mutation lands — that is
+    // the hazard. (Invalidating first is a different, benign case: a crawl
+    // started after the mutation is fetching post-mutation data and should
+    // persist.)
+    await flush();
+    expect(crawl).toHaveBeenCalledTimes(1);
+
+    invalidateUserCollections('u1', ['likes']);   // e.g. bulk-unlike lands here
+    gate.resolve([{ id: 'stale' }]);
+    await inflight;
+    await flush();
+
+    // Durable, and survives a restart — so republishing here is worse than the
+    // in-memory case the earlier guard already covered.
+    expect(writeSnapshot).not.toHaveBeenCalled();
+    expect(requestCache.get('likes', 'u1', 'default')).toBeUndefined();
+  });
+
+  test('a background revalidate invalidated mid-crawl publishes to neither tier', async () => {
+    readSnapshot.mockResolvedValue({
+      items: [{ id: 'old' }], complete: true, stale: true, truncated: false,
+      syncedAt: new Date(Date.now() - 3_600_000), totalItems: 1,
+    });
+    const gate = deferred();
+    const crawl = jest.fn(() => gate.promise);
+
+    await loadUserCollection(req, 'likes', crawl, shape);   // serves stale, starts refresh
+    invalidateUserCollections('u1', ['likes']);
+    gate.resolve([{ id: 'pre-mutation' }]);
+    await flush();
+
+    // This path is not in the in-flight registry at all, so only the
+    // invalidation mark can stop it.
+    expect(writeSnapshot).not.toHaveBeenCalled();
+    expect(requestCache.get('likes', 'u1', 'default')).toBeUndefined();
+  });
+
+  test('a snapshot synced before the last mutation is not served, even if the row still says complete', async () => {
+    // invalidateSnapshot's UPDATE is a network round trip and is not awaited.
+    // Until it commits the row still reads 'complete', so the reader needs a
+    // synchronous way to know the data predates a mutation it just made.
+    invalidateUserCollections('u1', ['likes']);
+    readSnapshot.mockResolvedValue({
+      items: [{ id: 'pre-mutation' }], complete: true, stale: false, truncated: false,
+      syncedAt: new Date(Date.now() - 60_000),      // synced BEFORE the invalidation
+      totalItems: 1,
+    });
+    const crawl = jest.fn().mockResolvedValue([{ id: 'fresh' }]);
+
+    const payload = await loadUserCollection(req, 'likes', crawl, shape);
+
+    expect(crawl).toHaveBeenCalledTimes(1);
+    expect(payload.collection).toEqual([{ id: 'fresh' }]);
+  });
+
+  test('a snapshot synced AFTER the last mutation is still served', async () => {
+    // The guard must not make every post-mutation read a cold crawl forever.
+    invalidateUserCollections('u1', ['likes']);
+    readSnapshot.mockResolvedValue({
+      items: [{ id: 'post-mutation' }], complete: true, stale: false, truncated: false,
+      syncedAt: new Date(Date.now() + 1000),        // synced AFTER the invalidation
+      totalItems: 1,
+    });
+    const crawl = jest.fn();
+
+    const payload = await loadUserCollection(req, 'likes', crawl, shape);
+
+    expect(crawl).not.toHaveBeenCalled();
+    expect(payload.collection).toEqual([{ id: 'post-mutation' }]);
+  });
+
+  test('a playlist mutation invalidates the snapshot tier, not just memory', async () => {
+    // GET /api/playlists reads through the snapshot now, so clearing only the
+    // memo left a 'complete' Postgres row serving the pre-mutation list for its
+    // full TTL — a deleted playlist kept rendering and 404'd when opened.
+    invalidatePlaylistState('u1');
+    expect(invalidateSnapshot).toHaveBeenCalledWith('u1', ['playlists']);
+
+    readSnapshot.mockResolvedValue({
+      items: [{ id: 'deleted-playlist' }], complete: true, stale: false, truncated: false,
+      syncedAt: new Date(Date.now() - 60_000), totalItems: 1,
+    });
+    const crawl = jest.fn().mockResolvedValue([{ id: 'fresh' }]);
+    const payload = await loadUserCollection(req, 'playlists', crawl, shape);
+
+    expect(crawl).toHaveBeenCalledTimes(1);
+    expect(payload.collection).toEqual([{ id: 'fresh' }]);
   });
 
   test('an unknown resource is rejected rather than silently cached', async () => {

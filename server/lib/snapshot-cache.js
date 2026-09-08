@@ -182,12 +182,20 @@ export async function writeSnapshot(userId, resource, items, { truncated = false
 }
 
 /**
- * Mark snapshots stale WITHOUT deleting them.
+ * Mark snapshots invalidated after a mutation.
  *
- * A stale snapshot still serves instantly while a refresh runs behind it,
- * which is strictly better than dropping the user back to a cold crawl. The
- * exception is a mutation the user just made: those call this and then rely on
- * the in-memory tier having been invalidated too, so the next read revalidates.
+ * Rows are kept rather than deleted so a later crawl can upsert over them
+ * instead of re-inserting, but an invalidated snapshot is NOT served:
+ * readSnapshot refuses any status other than 'complete'. That is deliberate —
+ * the caller just changed this collection, so serving the old one would show
+ * them their own mutation undone.
+ *
+ * TTL-staleness is the separate, softer case, and that one DOES still serve
+ * while it refreshes; see `stale` on readSnapshot's result.
+ *
+ * This UPDATE is a network round trip, so callers must not depend on it having
+ * committed. `invalidationMark` in social-cache.js is the synchronous guard
+ * that covers the window until it does.
  */
 export async function invalidateSnapshot(userId, resources) {
   const list = (Array.isArray(resources) ? resources : [resources])

@@ -1,5 +1,7 @@
 import { jest } from '@jest/globals';
-import { GrowthEngine, SEED_SAMPLE_MAX } from '../server/lib/growth-engine.js';
+import {
+  GrowthEngine, SEED_SAMPLE_MAX, startEngagementJob, cancelEngagementJob,
+} from '../server/lib/growth-engine.js';
 
 describe('GrowthEngine', () => {
   let mockSoundCloudClient;
@@ -269,5 +271,69 @@ describe('GrowthEngine', () => {
         skipped: false,
       });
     });
+  });
+});
+
+describe('startEngagementJob onSettled', () => {
+  // The route invalidates the followings/likes caches when the job SETTLES,
+  // not only when it starts. Invalidating only at start certified a crawl
+  // that ran mid-job as authoritative and persisted it to the durable tier as
+  // a 'complete' snapshot of a half-finished batch.
+  const flush = () => new Promise((r) => setImmediate(r));
+  const options = (userId, extra = {}) => ({
+    prisma: {}, userId, accessToken: 'a', refreshToken: 'r',
+    targets: [{ userId: 1 }], likeTracks: false, sessionLabel: 's',
+    inspirationIds: [], inspirationNames: [], ...extra,
+  });
+  // A stand-in for GrowthEngine#runEngagementBatch that reaches the same
+  // terminal states the real one does, one tick later.
+  const fakeEngine = () => ({
+    runEngagementBatch: jest.fn(async (job) => {
+      await flush();
+      job.status = job.cancelRequested ? 'cancelled' : 'complete';
+      job.finishedAt = Date.now();
+    }),
+  });
+
+  test('fires once, with the job, on completion', async () => {
+    const onSettled = jest.fn();
+    const job = startEngagementJob(fakeEngine(), options('settle-complete', { onSettled }));
+    expect(onSettled).not.toHaveBeenCalled();             // not at start
+    await flush(); await flush();
+    expect(onSettled).toHaveBeenCalledTimes(1);
+    expect(onSettled).toHaveBeenCalledWith(job);
+    expect(job.status).toBe('complete');
+  });
+
+  test('fires once on cancel', async () => {
+    const onSettled = jest.fn();
+    const job = startEngagementJob(fakeEngine(), options('settle-cancel', { onSettled }));
+    expect(cancelEngagementJob('settle-cancel')).toBe(true);
+    await flush(); await flush();
+    expect(job.status).toBe('cancelled');
+    expect(onSettled).toHaveBeenCalledTimes(1);
+  });
+
+  test('fires once when the batch crashes', async () => {
+    const onSettled = jest.fn();
+    const engine = { runEngagementBatch: jest.fn(async () => { throw new Error('boom'); }) };
+    const job = startEngagementJob(engine, options('settle-crash', { onSettled }));
+    await flush(); await flush();
+    expect(job.status).toBe('error');
+    expect(onSettled).toHaveBeenCalledTimes(1);
+  });
+
+  test('a throwing onSettled neither crashes the job nor changes its status', async () => {
+    const onSettled = jest.fn(() => { throw new Error('cache down'); });
+    const job = startEngagementJob(fakeEngine(), options('settle-throws', { onSettled }));
+    await flush(); await flush();
+    expect(job.status).toBe('complete');
+    expect(onSettled).toHaveBeenCalledTimes(1);
+  });
+
+  test('is optional', async () => {
+    const job = startEngagementJob(fakeEngine(), options('settle-none'));
+    await flush(); await flush();
+    expect(job.status).toBe('complete');
   });
 });

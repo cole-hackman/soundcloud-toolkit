@@ -99,8 +99,9 @@ export async function readSnapshotPage(userId, resource, pageIndex) {
  * Read a whole snapshot.
  *
  * Returns null when there is nothing usable — no state row, no pages, or a
- * snapshot that has never completed (a half-written crawl must not be served
- * as if it were the user's whole library).
+ * status other than 'complete': 'stale' (never completed; a half-written crawl
+ * must not be served as the user's whole library) or 'invalidated' (the user
+ * mutated this collection; see invalidateSnapshot).
  *
  * @returns {Promise<null | {
  *   items: unknown[], complete: boolean, stale: boolean, truncated: boolean,
@@ -147,6 +148,13 @@ export async function readSnapshot(userId, resource, { maxAgeMs } = {}) {
  * Written as delete-then-insert inside one transaction so a shrinking
  * collection cannot leave orphaned tail pages behind — upserting page by page
  * would keep page 9 of a crawl that now only has 4 pages.
+ *
+ * `syncedAt` is stamped ONCE, here, in Node — not by a database default — and
+ * returned. Two things depend on that: social-cache's reader guard compares it
+ * against this process's clock, and publishSnapshot conditions its
+ * compensating invalidation on the exact stamp this write produced.
+ *
+ * @returns {Promise<null | { pages: number, items: number, syncedAt: Date }>}
  */
 export async function writeSnapshot(userId, resource, items, { truncated = false } = {}) {
   assertResource(resource);
@@ -157,6 +165,7 @@ export async function writeSnapshot(userId, resource, items, { truncated = false
     pages.push(list.slice(i, i + SNAPSHOT_PAGE_SIZE));
   }
 
+  const syncedAt = new Date();
   try {
     await prisma.$transaction([
       prisma.libraryCachePage.deleteMany({ where: { userId, resource } }),
@@ -167,49 +176,56 @@ export async function writeSnapshot(userId, resource, items, { truncated = false
         where: { userId_resource: { userId, resource } },
         create: {
           userId, resource, status: 'complete', totalItems: list.length,
-          pagesSynced: pages.length, truncated, syncedAt: new Date(), error: null,
+          pagesSynced: pages.length, truncated, syncedAt, error: null,
         },
         update: {
           status: 'complete', totalItems: list.length,
-          pagesSynced: pages.length, truncated, syncedAt: new Date(), error: null,
+          pagesSynced: pages.length, truncated, syncedAt, error: null,
         },
       }),
     ]);
-    return { pages: pages.length, items: list.length };
+    return { pages: pages.length, items: list.length, syncedAt };
   } catch (error) {
     return softFail('writeSnapshot', error);
   }
 }
 
 /**
- * Mark snapshots invalidated after a mutation.
+ * Mark snapshots invalidated after a mutation: `status = 'invalidated'`.
  *
- * Rows are kept rather than deleted so a later crawl can upsert over them
- * instead of re-inserting, but an invalidated snapshot is NOT served:
- * readSnapshot refuses any status other than 'complete'. That is deliberate —
- * the caller just changed this collection, so serving the old one would show
- * them their own mutation undone.
+ * An invalidated snapshot is not served — readSnapshot refuses any status
+ * other than 'complete' — because the caller just changed this collection and
+ * serving the old one would show them their own mutation undone. The state
+ * row is kept (only its status changes) simply because readSnapshot already
+ * refuses it; the pages are replaced wholesale by the next writeSnapshot.
  *
- * TTL-staleness is the separate, softer case, and that one DOES still serve
- * while it refreshes; see `stale` on readSnapshot's result.
+ * Distinct from TTL-staleness, which is never written to `status`: that is
+ * computed from `syncedAt` on read and DOES still serve while it refreshes.
+ * The default status 'stale' therefore means only "never completed".
  *
  * This UPDATE is a network round trip, so callers must not depend on it having
- * committed. `invalidationTime` in social-cache.js is the synchronous guard
- * that covers the window until it does.
+ * committed. The synchronous invalidation mark in social-cache.js covers the
+ * window until it does.
  *
  * It is also not ordered against writeSnapshot: a crawl whose transaction was
  * already open can commit `status='complete'` after this runs. social-cache's
- * `publishSnapshot` re-checks the invalidation mark after its write and calls
- * back in here when it lost the race, so the row does not survive as complete.
+ * publishSnapshot re-checks the mark after its write and calls back in here
+ * with `syncedAtLte` set to the stamp it wrote, so only its own row (or an
+ * older one) is invalidated — never a newer, correct snapshot that another
+ * crawl committed in the meantime.
  */
-export async function invalidateSnapshot(userId, resources) {
+export async function invalidateSnapshot(userId, resources, { syncedAtLte = null } = {}) {
   const list = (Array.isArray(resources) ? resources : [resources])
     .filter((r) => SNAPSHOT_RESOURCES.includes(r));
   if (list.length === 0) return null;
+  const where = { userId, resource: { in: list } };
+  if (syncedAtLte instanceof Date && Number.isFinite(syncedAtLte.getTime())) {
+    where.syncedAt = { lte: syncedAtLte };
+  }
   try {
     return await prisma.libraryCacheState.updateMany({
-      where: { userId, resource: { in: list } },
-      data: { status: 'stale' },
+      where,
+      data: { status: 'invalidated' },
     });
   } catch (error) {
     return softFail('invalidateSnapshot', error);

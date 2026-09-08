@@ -8,17 +8,16 @@ jest.unstable_mockModule('../server/lib/soundcloud-client.js', () => ({
   soundcloudClient: { getFollowings, getFollowers, getMe },
 }));
 
-const { getCachedUserPayload, invalidateUserNamespaces } =
+const { getCachedUserPayload, invalidateUserNamespaces, __resetCacheCoordinationForTests } =
   await import('../server/lib/social-cache.js');
 const { requestCache } = await import('../server/lib/request-cache.js');
+const { deferred } = await import('./helpers/deferred.js');
 
-const deferred = () => {
-  let resolve;
-  const promise = new Promise((r) => { resolve = r; });
-  return { promise, resolve };
-};
-
-beforeEach(() => {
+beforeEach(async () => {
+  // This suite populates the same module-scope in-flight map the tiering
+  // suite does; without the reset a gate left open here leaks into the next
+  // test that asks for the same (user, resource).
+  await __resetCacheCoordinationForTests();
   requestCache.invalidateUser('u1');
   getFollowings.mockClear();
 });

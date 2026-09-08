@@ -46,6 +46,14 @@ describe('rate limiter tiers are configured as documented', () => {
     });
   });
 
+  test('paged library reads: 60 / hour', () => {
+    // Bounded reads (<= 50 SoundCloud calls each) that used to spend the
+    // heavy budget shared with merge, clone and every bulk write.
+    expect(limiters.libraryReadRateLimiter.options).toMatchObject({
+      windowMs: 60 * MINUTE, max: 60, standardHeaders: true, legacyHeaders: false,
+    });
+  });
+
   test('health check: 60 / minute', () => {
     expect(limiters.healthCheckRateLimiter.options).toMatchObject({
       windowMs: MINUTE, max: 60,
@@ -57,10 +65,16 @@ describe('rate limiter tiers are configured as documented', () => {
       .toBeLessThan(limiters.apiRateLimiter.options.max);
     expect(limiters.heavyOperationRateLimiter.options.max)
       .toBeLessThan(limiters.apiRateLimiter.options.max);
+    // The paged reads sit between the two: looser than the write budget they
+    // used to consume, still far tighter than general API traffic.
+    expect(limiters.heavyOperationRateLimiter.options.max)
+      .toBeLessThan(limiters.libraryReadRateLimiter.options.max);
+    expect(limiters.libraryReadRateLimiter.options.max)
+      .toBeLessThan(limiters.apiRateLimiter.options.max);
   });
 
   test('no limiter defines a custom keyGenerator (default handles IPv6 correctly)', () => {
-    for (const name of ['apiRateLimiter', 'authRateLimiter', 'heavyOperationRateLimiter', 'healthCheckRateLimiter']) {
+    for (const name of ['apiRateLimiter', 'authRateLimiter', 'heavyOperationRateLimiter', 'libraryReadRateLimiter', 'healthCheckRateLimiter']) {
       expect(limiters[name].options.keyGenerator).toBeUndefined();
     }
   });

@@ -1,7 +1,7 @@
 import express from 'express';
 import { soundcloudClient, fetchWithTimeout } from '../lib/soundcloud-client.js';
 import prisma from '../lib/prisma.js';
-import { heavyOperationRateLimiter } from '../middleware/rateLimiter.js';
+import { heavyOperationRateLimiter, libraryReadRateLimiter } from '../middleware/rateLimiter.js';
 import { authenticateUser } from '../middleware/auth.js';
 import { logOperation, startOperationTimer, extractClientInfo, instrumentRead } from '../lib/analytics.js';
 import { harvestTracks, harvestPlaylists } from '../lib/catalog.js';
@@ -277,7 +277,7 @@ router.get('/dashboard/summary', authenticateUser, instrumentRead('dashboard-sum
   }
 });
 
-router.get('/library/audit', authenticateUser, instrumentRead('library-audit'), heavyOperationRateLimiter, validateLibraryAudit, async (req, res) => {
+router.get('/library/audit', authenticateUser, instrumentRead('library-audit'), libraryReadRateLimiter, validateLibraryAudit, async (req, res) => {
   try {
     const limit = req.query.limit ?? 20;
     const offset = req.query.offset ?? 0;
@@ -322,7 +322,7 @@ router.get('/library/audit', authenticateUser, instrumentRead('library-audit'), 
  * are OR'd. Without playlistId it walks the library a page at a time (same
  * shape as the audit); with one it searches just that playlist.
  */
-router.get('/playlists/search-tracks', authenticateUser, heavyOperationRateLimiter, validatePlaylistTrackSearch, async (req, res) => {
+router.get('/playlists/search-tracks', authenticateUser, instrumentRead('playlist-keyword-search'), libraryReadRateLimiter, validatePlaylistTrackSearch, async (req, res) => {
   try {
     const keywords = parseKeywords(req.query.q);
     if (keywords.length === 0) {

@@ -267,9 +267,24 @@ export default function PlaylistKeywordSearchPage() {
       // are still in SoundCloud, so clearing them here would tell the user the
       // removal succeeded when it did not.
       const wasRemoved = (m: Match) => selected.has(matchKey(m)) && !failedPlaylists.has(m.playlistId);
-      setResult((prev) =>
-        prev ? { ...prev, matches: prev.matches.filter((m) => !wasRemoved(m)) } : prev,
-      );
+      setResult((prev) => {
+        if (!prev) return prev;
+        const remaining = prev.matches.filter((m) => !wasRemoved(m));
+        // The header reads "{selected} of {matches.length} selected" off the
+        // list, but the summary line and the capped notice read matchCount off
+        // stats — leaving that untouched had the page claim matches it had just
+        // deleted. Floored at zero because matchCount counts what the server
+        // found, which can exceed what it sent back when the result was capped.
+        const dropped = prev.matches.length - remaining.length;
+        return {
+          ...prev,
+          matches: remaining,
+          stats: {
+            ...prev.stats,
+            matchCount: Math.max(0, prev.stats.matchCount - dropped),
+          },
+        };
+      });
       // Keep the failed ones selected so a retry is one click.
       setSelected((prev) => {
         const next = new Set<string>();
@@ -344,7 +359,11 @@ export default function PlaylistKeywordSearchPage() {
   const pager = result?.page ? (
     <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-3">
       <p className="text-sm text-muted-foreground">
-        Searched playlists {result.page.from}–{result.page.to}
+        {/* from is 0 when the offset is past the end of the library, where
+            "Searched playlists 0–20" is simply false. */}
+        {result.page.from === 0
+          ? "No playlists in this range"
+          : `Searched playlists ${result.page.from}–${result.page.to}`}
         {result.page.hasMore ? " — more to search" : " — end of your library"}
       </p>
       <div className="flex gap-2">

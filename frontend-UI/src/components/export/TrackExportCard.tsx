@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Download, Loader2 } from "lucide-react";
 import { Button, EmptyState, InlineAlert, LoadingSpinner } from "@/components/ui";
@@ -15,6 +15,10 @@ import {
 import { ExportSection } from "./ExportSection";
 
 const PREVIEW_LINE_COUNT = 10;
+// A little slack over PREVIEW_LINE_COUNT so blank/filtered lines still
+// leave enough real lines to fill the preview — but nowhere near the full
+// (possibly tens-of-thousands-long) library.
+const PREVIEW_TRACK_COUNT = 20;
 
 type Phase = "idle" | "loading" | "ready" | "empty" | "error";
 
@@ -79,12 +83,20 @@ export function TrackExportCard({
 
   const handleDownload = () => {
     if (tracks.length === 0) return;
+    // Full content, built fresh on demand — this is the actual download and
+    // must reflect every track, however many there are.
     const { content, extension, mime } = buildExportContent(tracks, format);
     downloadFile(content, buildDatedFilename(filenamePrefix, extension), mime);
   };
 
-  const previewContent = tracks.length > 0 ? buildExportContent(tracks, format).content : "";
-  const previewLines = previewContent.split("\n").filter((l) => l.length > 0).slice(0, PREVIEW_LINE_COUNT);
+  // The on-screen preview only ever shows PREVIEW_LINE_COUNT lines, so build
+  // it from a small slice of the library instead of serializing the whole
+  // thing (which can be tens of thousands of tracks) on every render.
+  const previewLines = useMemo(() => {
+    if (tracks.length === 0) return [];
+    const { content } = buildExportContent(tracks.slice(0, PREVIEW_TRACK_COUNT), format);
+    return content.split("\n").filter((l) => l.length > 0).slice(0, PREVIEW_LINE_COUNT);
+  }, [tracks, format]);
   const isLoading = phase === "loading";
 
   const body = (

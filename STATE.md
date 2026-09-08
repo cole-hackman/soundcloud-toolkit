@@ -1,16 +1,39 @@
 # STATE
 
 ## Now
-The rebrand name vote is **live**. PR #31 merged (6de4ff1), the `rebrand_votes`
-table exists in Neon, and the backend is deployed. Every logged-in user now sees
-the shortlist modal on the dashboard and after a merge / likes-to-playlist.
+Performance audit branch (`claude/web-tool-performance-audit-i9z0n8`) is in
+review. **Before deploying its backend, run `docs/sql/2026-library-cache.sql`
+in the Neon console** — it adds `library_cache_pages` and
+`library_cache_states`. The SQL is additive and idempotent. The backend
+tolerates the tables being absent (snapshot reads/writes fail soft), so the
+ordering is preferred, not load-bearing.
 
-Read results at `/admin` — the "Rebrand Name Vote" card shows the tally plus
-every write-in name and feature request. Verify `SURVEY_CAMPAIGN_ID` is unset or
-`2026-rebrand-name-v1` in DigitalOcean; a stale `2026-songswipe-beta-v1` would
-silently suppress the prompt for anyone who dismissed the beta survey.
+After deploy, leave it a few days and then read `/admin` → the new per-action
+p95 panel. `docs/performance-audit-2026-09.md` is written against estimated
+round-trip counts, not measured production latency; the instrumentation added
+in this branch is what produces the real numbers, and the doc should be
+revisited once they exist.
+
+The rebrand name vote is still **live**. Read results at `/admin`. Verify
+`SURVEY_CAMPAIGN_ID` is unset or `2026-rebrand-name-v1` in DigitalOcean; a
+stale `2026-songswipe-beta-v1` would silently suppress the prompt for anyone
+who dismissed the beta survey.
 
 ## Just done
+- **Performance audit + fixes.** `docs/performance-audit-2026-09.md` has the
+  full write-up. Headline: the followed-library authorization check was
+  re-crawling the entire followings list on every page click (11 SoundCloud
+  round trips to return 50 items); `GET /playlists` was fetching whole
+  playlists — up to 500 tracks each, unbounded and concurrent — to read one
+  `artwork_url`. Both fixed. Serial read loops in `/library/audit`,
+  `/resolve/batch` and the merge read phase became bounded pools. A
+  Postgres-backed snapshot tier now sits under the in-memory cache so caching
+  survives a deploy. Correctness bugs found along the way: `paginate()` could
+  hold a response open for ~12 minutes and could spin forever on a repeated
+  401; a crawl that started before a mutation could write pre-mutation data
+  back into the cache after invalidation; `/resolve`'s oEmbed call had no
+  timeout. `apiRateLimiter` raised 100 → 600/15min to make paged browsing
+  viable.
 - Rebrand vote is now a **mandatory** modal: no close, Escape, backdrop click
   or snooze. Submitting is the only way out; "None of these" is the pressure
   valve; a failed submit reveals "Skip for now" so an outage can't lock anyone
@@ -94,6 +117,23 @@ silently suppress the prompt for anyone who dismissed the beta survey.
 - Licensed MIT, © 2026 Cole Hackman (2026-08-25).
 
 ## Landmines
+- `npm test` is self-contained again: `tests/setup-env.js` supplies dummy
+  SoundCloud credentials via jest `setupFiles`, because five suites validate
+  them at module scope and otherwise fail to LOAD on a fresh clone — which
+  looks like a broken suite. It uses `||=`, so a real `server/.env` still wins.
+  Don't remove it without re-checking a clean `npm test`.
+- The auth memo (`server/lib/auth-cache.js`) holds **decrypted tokens** in
+  process memory for 30s. It is invalidated at the single token-refresh choke
+  point (`refreshTokensAndPersist`) and on account deletion. If you add another
+  path that rotates or revokes tokens, it must call `invalidateCachedAuth` or
+  users will be served a dead refresh token until the TTL expires.
+- Snapshot invalidation marks rows **stale** rather than deleting them, and a
+  stale snapshot is still served while it refreshes. If you add a mutation that
+  changes likes/playlists/followings/followers/reposts, route its invalidation
+  through `invalidateUserCollections` (not `invalidateUserNamespaces`) or the
+  Postgres tier will keep serving pre-mutation data for up to its TTL.
+- `library_cache_*` are NOT `library_snapshots`. The latter belongs to the
+  AI-library-chat branch and stores a projected shape. Do not merge them.
 - **PR #29 logs every user out once on deploy.** Legacy session cookies have no
   `iat` and are treated as expired. Expected, one-time, no data loss — but it
   will look like an outage if you forget.

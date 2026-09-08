@@ -55,7 +55,9 @@ soundcloud-tool/
 │   │   ├── normalize.js          # Pure resource normalizers (track/playlist/user, library-browser shapes)
 │   │   ├── pacing.js             # Shared sleep() + SC_WRITE_PACING_MS (300ms) — the single source for write pacing
 │   │   ├── resolve-cache.js      # In-memory /api/resolve cache (5-min TTL, 1000-entry cap)
-│   │   ├── social-cache.js       # Per-user cached followings/followers/likes/playlists payloads + invalidation
+│   │   ├── social-cache.js       # Per-user collection cache + read-through tiering (loadUserCollection)
+│   │   ├── snapshot-cache.js     # Postgres tier — page rows, stale-while-revalidate, fails soft
+│   │   ├── auth-cache.js         # 30s memo of user + decrypted tokens (see Landmines in STATE.md)
 │   │   ├── request-cache.js      # Generic namespaced per-user TTL cache backing social-cache
 │   │   ├── merge-utils.js        # Dedup + 500-track chunking for merge/from-likes
 │   │   ├── playlist-transfer.js  # Move/duplicate a track between playlists
@@ -122,8 +124,9 @@ soundcloud-tool/
 │   └── package.json
 ├── tests/                        # Jest suites — lib units plus tests/routes/ (supertest authz/CSRF boundaries)
 ├── prisma/
-│   └── schema.prisma             # Single source of truth for the schema (13 models)
-├── docs/                         # Engineering review, SECURITY.md, plans, incident notes, api.json
+│   └── schema.prisma             # Single source of truth for the schema (15 models)
+├── docs/                         # Engineering review, SECURITY.md, perf audit, plans, incidents,
+│                                 #   sql/ migrations, api.json (SoundCloud's upstream spec)
 ├── .do/app.yaml                  # DigitalOcean App Platform deployment config
 ├── package.json                  # Root scripts (dev, build, server, test)
 ├── STATE.md                      # Session state + decision log (read this first)
@@ -225,7 +228,7 @@ expires.
 
 ## Data Model
 
-The schema (`prisma/schema.prisma`) has **13 models**, not two:
+The schema (`prisma/schema.prisma`) has **15 models**, not two:
 
 | Model | Purpose |
 |-------|---------|
@@ -239,6 +242,7 @@ The schema (`prisma/schema.prisma`) has **13 models**, not two:
 | `SurveyResponse` | The retired monetization survey — retained read-only for history |
 | `chat_conversations` / `chat_messages` | AI library chat (owned by `feature/ai-library-chat`; declared here so `prisma db push` does not drop them) |
 | `indexed_likes` / `indexed_playlist_tracks` / `library_snapshots` | Library indexing for that same feature — same db-push caveat |
+| `LibraryCachePage` / `LibraryCacheState` | Persistent tier of the library cache — one row per 200-item page plus a sync-state row. **Not** the same thing as `library_snapshots` above |
 
 The two models this app touches on every request are detailed below.
 
@@ -303,7 +307,10 @@ Rate limited: `authRateLimiter` (5 requests / 15 min)
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET` | `/api/likes` | All liked tracks (fully paginated — may be slow for large libraries) |
-| `GET` | `/api/likes/paged` | Single page of likes; query: `limit` (default 50), `next` (cursor URL from prev response); returns `{ collection, next_href }` |
+| `GET` | `/api/likes/paged` | Single page of likes; query: `limit` (default 50, max 200), `next` (cursor URL from prev response); returns `{ collection, next_href }` |
+| `GET` | `/api/followings/paged` | Single page of followings; same cursor contract |
+| `GET` | `/api/followers/paged` | Single page of followers; same cursor contract |
+| `GET` | `/api/reposts/paged` | Offset-paged (`limit`, `offset`) — reposts are assembled from two crawls, so there is no upstream cursor |
 | `POST` | `/api/likes/tracks/bulk-unlike` | Unlike multiple tracks; body: `{ trackIds: number[] }` (max 100); returns `{ results: { trackId, status, error? }[] }` |
 
 ### Activities & Reposts
@@ -446,9 +453,11 @@ list is wanted.
 |--------|------|-------------|
 | `DELETE` | `/api/auth/account` | Delete the account and cascade-delete all owned rows |
 
-> `docs/api.json` is the machine-readable inventory. It is generated, not
-> hand-maintained — re-check it against `grep -n "router\." server/routes/*.js`
-> before trusting it.
+> `docs/api.json` is **SoundCloud's own OpenAPI spec** (68 upstream paths under
+> `https://api.soundcloud.com`), kept as a reference for what the upstream API
+> offers. It documents none of this app's endpoints and is not an inventory of
+> them. The authoritative list of what this server exposes is the source:
+> `grep -n "router\." server/routes/*.js`.
 
 ### Feedback Survey (rebrand name vote)
 
@@ -771,7 +780,7 @@ Before the OAuth redirect, the frontend pings `/health` (with 1.2s timeout) to w
 
 5. **Cross-Origin Cookie Requirement**: Production uses `SameSite=None; Secure` cookies. This requires HTTPS on both frontend and backend. Local dev with HTTP uses `SameSite=Lax` and same-origin rewrites in `next.config.js`.
 
-6. **In-Memory URL Cache**: The resolve endpoint cache is per-process and resets on restart. Not shared across multiple server instances. Cache TTL is 5 minutes.
+6. **In-Memory URL Cache**: The `/api/resolve` cache is per-process and resets on restart. Not shared across multiple server instances. Cache TTL is 5 minutes. (The *library* cache — likes/playlists/followings/followers/reposts — is different: since the 2026-09 performance work it has a Postgres tier underneath that survives restarts. See `docs/performance-audit-2026-09.md`.)
 
 7. **Static Export Limitation**: `next export` doesn't support Next.js API routes. All server logic must live in the Express backend. The frontend is pure client-side React.
 

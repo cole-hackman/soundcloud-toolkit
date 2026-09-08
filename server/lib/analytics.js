@@ -17,6 +17,38 @@ export function startOperationTimer() {
 }
 
 /**
+ * Express middleware that records how long a READ endpoint took and how many
+ * SoundCloud round trips it cost.
+ *
+ * The mutating routes already call `logOperation` by hand, but the endpoints
+ * users actually wait on — the full-library crawls behind /likes, /playlists,
+ * /followings, /reposts and /library/audit — were uninstrumented, so there was
+ * no way to rank tools by real latency. The write is fire-and-forget, and the
+ * `read:` prefix keeps these rows out of the operation aggregates (see
+ * routes/admin.js) while still feeding the latency panel.
+ *
+ * Mount AFTER authenticateUser so req.user is populated by the time the
+ * 'finish' listener runs.
+ *
+ * @param {string} action - Bare action name; stored as `read:<action>`.
+ */
+export function instrumentRead(action) {
+  return function instrumentedRead(req, res, next) {
+    const elapsed = startOperationTimer();
+    res.on('finish', () => {
+      logOperation({
+        req,
+        action: `read:${action}`,
+        status: res.statusCode >= 400 ? 'error' : 'success',
+        durationMs: elapsed(),
+        metadata: { scCalls: req.scMetrics?.scCalls ?? 0 },
+      });
+    });
+    next();
+  };
+}
+
+/**
  * Extract lightweight client/environment metadata from express request headers.
  *
  * @param {import('express').Request} req

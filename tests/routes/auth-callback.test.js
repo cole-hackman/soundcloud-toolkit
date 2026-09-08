@@ -23,6 +23,9 @@ jest.unstable_mockModule('../../server/lib/prisma.js', () => ({
 }));
 jest.unstable_mockModule('../../server/lib/soundcloud-client.js', () => ({
   soundcloudClient: { exchangeCodeForTokens, getMe },
+  // routes/api.js imports this alongside soundcloudClient for the oEmbed
+  // supplement; the mock must provide it or the module fails to link.
+  fetchWithTimeout: jest.fn(async () => ({ ok: false, status: 503 })),
 }));
 jest.unstable_mockModule('../../server/lib/analytics.js', () => ({
   logOperation: jest.fn(),

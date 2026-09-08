@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Stethoscope, Music, AlertTriangle, CheckCircle, Trash2 } from "lucide-react";
 import {
@@ -90,30 +90,33 @@ export default function PlaylistHealthCheckPage() {
     return { label: "Blocked", color: "text-red-700", bg: "bg-red-100", icon: "bad" };
   };
 
-  const isHealthy = (track: Track) =>
-    (!track.access || track.access === "playable") &&
-    track.streamable !== false &&
-    !track.blocked_at;
-  const healthyCount = tracks.filter(isHealthy).length;
+  const isHealthy = useCallback(
+    (track: Track) =>
+      (!track.access || track.access === "playable") &&
+      track.streamable !== false &&
+      !track.blocked_at,
+    [],
+  );
+
+  const healthyTracks = useMemo(() => tracks.filter(isHealthy), [tracks, isHealthy]);
+  const healthyCount = healthyTracks.length;
   const issueCount = tracks.length - healthyCount;
   const healthPercent = tracks.length > 0 ? Math.round((healthyCount / tracks.length) * 100) : 100;
 
-  const filteredTracks = tracks.filter((t) => {
-    if (filter === "healthy") return isHealthy(t);
-    if (filter === "issues") return !isHealthy(t);
-    return true;
-  });
+  const filteredTracks = useMemo(() => {
+    if (filter === "healthy") return healthyTracks;
+    if (filter === "issues") return tracks.filter((t) => !isHealthy(t));
+    return tracks;
+  }, [tracks, healthyTracks, filter, isHealthy]);
 
   const removeDeadTracks = async () => {
     if (!selectedPlaylist) return;
-    const healthyTracks = tracks.filter(isHealthy);
     if (healthyTracks.length === tracks.length) return;
     setShowRemoveConfirm(true);
   };
 
   const executeRemoveDeadTracks = async () => {
     if (!selectedPlaylist) return;
-    const healthyTracks = tracks.filter(isHealthy);
     const removedCount = tracks.length - healthyTracks.length;
     setShowRemoveConfirm(false);
     setSaving(true);
@@ -147,6 +150,19 @@ export default function PlaylistHealthCheckPage() {
     const seconds = Math.floor((ms % 60000) / 1000);
     return `${minutes}:${seconds.toString().padStart(2, "0")}`;
   };
+
+  // Only computed while the confirm dialog is open — no point building this
+  // on every render while it's closed.
+  const unhealthyReviewItems = useMemo(() => {
+    if (!showRemoveConfirm) return [];
+    return tracks
+      .filter((track) => !isHealthy(track))
+      .map((track) => ({
+        id: track.id,
+        label: track.title,
+        meta: track.user?.username,
+      }));
+  }, [tracks, isHealthy, showRemoveConfirm]);
 
   return (
     <PageContainer maxWidth="wide">
@@ -196,6 +212,10 @@ export default function PlaylistHealthCheckPage() {
                     <img
                       src={playlist.artwork_url || "/SC Toolkit Icon.png"}
                       alt={playlist.title}
+                      width={64}
+                      height={64}
+                      loading="lazy"
+                      decoding="async"
                       className="w-16 h-16 rounded-lg object-cover"
                     />
                     <div>
@@ -329,6 +349,10 @@ export default function PlaylistHealthCheckPage() {
                         <img
                           src={track.artwork_url || "/SC Toolkit Icon.png"}
                           alt={track.title}
+                          width={48}
+                          height={48}
+                          loading="lazy"
+                          decoding="async"
                           className="w-12 h-12 rounded-lg object-cover"
                         />
                         <div className="flex-1 min-w-0">
@@ -366,13 +390,7 @@ export default function PlaylistHealthCheckPage() {
           action="removing unavailable tracks"
           warning="This updates the playlist on SoundCloud and removes tracks currently marked blocked, preview-only, or not streamable."
           exportFilename="playlist-health-removals.csv"
-          items={tracks
-            .filter((track) => !isHealthy(track))
-            .map((track) => ({
-              id: track.id,
-              label: track.title,
-              meta: track.user?.username,
-            }))}
+          items={unhealthyReviewItems}
         />
       </ConfirmDialog>
     </PageContainer>

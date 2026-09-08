@@ -221,3 +221,62 @@ describe('soundcloud client behaviors', () => {
 });
 
 
+
+describe('paginate crawl bounds', () => {
+  // Without these, the per-fetch AbortController deadline resets every page, so
+  // a large or slow crawl could hold one HTTP response open for minutes.
+  const page = (items, next) => new Response(
+    JSON.stringify({ collection: items, next_href: next }),
+    { status: 200, headers: { 'content-type': 'application/json' } },
+  );
+
+  test('stops at maxPages and reports the result as truncated', async () => {
+    global.fetch = jest.fn(async () => page([1, 2], 'https://api.soundcloud.com/next'));
+
+    const items = await soundcloudClient.paginate('/me/likes/tracks', 'at', 'rt', 200, { maxPages: 3 });
+
+    expect(global.fetch).toHaveBeenCalledTimes(3);
+    expect(items).toHaveLength(6);
+    expect(items.truncated).toBe(true);
+    expect(items.truncatedReason).toBe('page-cap');
+  });
+
+  test('a crawl that finishes naturally is NOT marked truncated', async () => {
+    global.fetch = jest.fn()
+      .mockResolvedValueOnce(page([1], 'https://api.soundcloud.com/next'))
+      .mockResolvedValueOnce(page([2], null));
+
+    const items = await soundcloudClient.paginate('/me/likes/tracks', 'at', 'rt', 200, { maxPages: 10 });
+
+    expect(items).toEqual([1, 2]);
+    expect(items.truncated).toBeUndefined();
+  });
+
+  test('the truncated flag does not leak into JSON responses', async () => {
+    global.fetch = jest.fn(async () => page([1], 'https://api.soundcloud.com/next'));
+    const items = await soundcloudClient.paginate('/me/likes/tracks', 'at', 'rt', 200, { maxPages: 1 });
+    // Non-enumerable: existing callers keep treating this as a plain array.
+    expect(JSON.parse(JSON.stringify(items))).toEqual([1]);
+    expect(items.truncated).toBe(true);
+  });
+
+  test('a persistently 401ing endpoint gives up instead of refreshing forever', async () => {
+    global.fetch = jest.fn(async (url) => {
+      if (String(url).includes('oauth/token')) {
+        return new Response(
+          JSON.stringify({ access_token: 'a', refresh_token: 'r', expires_in: 3600 }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      return new Response('', { status: 401 });
+    });
+
+    await expect(
+      soundcloudClient.paginate('/me/likes/tracks', 'at', 'rt', 200, { max401Retries: 2 })
+    ).rejects.toThrow(/401/);
+
+    // Bounded: 2 refresh attempts, not an unbounded spin.
+    const refreshCalls = global.fetch.mock.calls.filter(c => String(c[0]).includes('oauth/token'));
+    expect(refreshCalls.length).toBeLessThanOrEqual(2);
+  });
+});

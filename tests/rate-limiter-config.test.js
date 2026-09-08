@@ -25,9 +25,12 @@ describe('rate limiter tiers are configured as documented', () => {
     process.env.NODE_ENV = ORIGINAL_NODE_ENV;
   });
 
-  test('general API: 100 requests / 15 minutes', () => {
+  test('general API: 600 requests / 15 minutes', () => {
+    // Sized for progressive loading: paging a large library at 200 items per
+    // request costs ~100 requests for one tool, and the old ceiling of 100
+    // would have cut a heavy user off mid-scroll.
     expect(limiters.apiRateLimiter.options).toMatchObject({
-      windowMs: 15 * MINUTE, max: 100, standardHeaders: true, legacyHeaders: false,
+      windowMs: 15 * MINUTE, max: 600, standardHeaders: true, legacyHeaders: false,
     });
   });
 

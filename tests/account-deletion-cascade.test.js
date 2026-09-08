@@ -40,6 +40,8 @@ describe('account deletion cascade coverage', () => {
     for (const expected of [
       'BetaSignup',
       'GrowthAction',
+      'LibraryCachePage',
+      'LibraryCacheState',
       'OperationLog',
       'RebrandVote',
       'SurveyResponse',

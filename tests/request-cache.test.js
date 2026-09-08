@@ -48,3 +48,29 @@ describe('request cache', () => {
     expect(cache.get('likes', 'user-1', 'default')).toEqual({ total: 20 });
   });
 });
+
+describe('entry cap', () => {
+  test('evicts the oldest entries once the cap is exceeded', () => {
+    const cache = createRequestCache({ maxEntries: 3 });
+    for (const n of [1, 2, 3, 4, 5]) {
+      cache.set('likes', `user-${n}`, 'default', { n }, 60_000);
+    }
+    expect(cache.size()).toBe(3);
+    // 1 and 2 were evicted; 3, 4, 5 survive.
+    expect(cache.get('likes', 'user-1')).toBeUndefined();
+    expect(cache.get('likes', 'user-2')).toBeUndefined();
+    expect(cache.get('likes', 'user-5')).toEqual({ n: 5 });
+  });
+
+  test('refreshing an entry moves it to the back of the eviction order', () => {
+    const cache = createRequestCache({ maxEntries: 2 });
+    cache.set('likes', 'a', 'default', 1, 60_000);
+    cache.set('likes', 'b', 'default', 2, 60_000);
+    cache.set('likes', 'a', 'default', 11, 60_000); // refresh a
+    cache.set('likes', 'c', 'default', 3, 60_000);  // should evict b, not a
+
+    expect(cache.get('likes', 'a')).toBe(11);
+    expect(cache.get('likes', 'b')).toBeUndefined();
+    expect(cache.get('likes', 'c')).toBe(3);
+  });
+});

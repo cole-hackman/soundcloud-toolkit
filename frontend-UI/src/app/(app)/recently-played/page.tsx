@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Radio, Music, Loader2, Search, SquarePlus, History } from "lucide-react";
 import {
@@ -11,6 +11,7 @@ import {
   LoadingSpinner,
   PageContainer,
   PageHeader,
+  Skeleton,
   TrackRow,
 } from "@/components/ui";
 import { apiFetch } from "@/lib/api";
@@ -20,6 +21,7 @@ import {
   usePlaylistDetailQuery,
   usePlaylistsQuery,
 } from "@/lib/queries";
+import { useDebouncedValue } from "@/lib/useDebouncedValue";
 
 interface Track {
   id: number;
@@ -47,14 +49,23 @@ export default function RecentlyPlayedPage() {
   const [notice, setNotice] = useState<{ type: "success" | "error"; text: string } | null>(null);
   
   const recentlyPlayedQuery = useRecentlyPlayedQuery();
-  const playlistsQuery = usePlaylistsQuery();
+  // Only needed for the "existing playlist" dropdown — don't block the
+  // recently-played list on a fetch it doesn't need yet.
+  const playlistsQuery = usePlaylistsQuery({ enabled: mode === "existing" });
   const selectedPlaylistQuery = usePlaylistDetailQuery(selectedPlaylistId ?? 0, {
     enabled: mode === "existing" && selectedPlaylistId != null,
   });
-  
-  const tracks = (recentlyPlayedQuery.data?.collection || []) as unknown as Track[];
-  const playlists = (playlistsQuery.data?.collection || []) as unknown as Playlist[];
-  const loading = recentlyPlayedQuery.isLoading || playlistsQuery.isLoading;
+
+  const tracks = useMemo(
+    () => (recentlyPlayedQuery.data?.collection || []) as unknown as Track[],
+    [recentlyPlayedQuery.data?.collection],
+  );
+  const playlists = useMemo(
+    () => (playlistsQuery.data?.collection || []) as unknown as Playlist[],
+    [playlistsQuery.data?.collection],
+  );
+  const loading = recentlyPlayedQuery.isLoading;
+  const loadingPlaylists = mode === "existing" && playlistsQuery.isLoading;
 
   useEffect(() => {
     if (recentlyPlayedQuery.isError || playlistsQuery.isError) {
@@ -86,10 +97,15 @@ export default function RecentlyPlayedPage() {
     return `${minutes}:${seconds.toString().padStart(2, "0")}`;
   };
 
-  const filteredTracks = tracks.filter((t) =>
-    !search || t.title.toLowerCase().includes(search.toLowerCase()) ||
-    t.user?.username?.toLowerCase().includes(search.toLowerCase())
-  );
+  const debouncedSearch = useDebouncedValue(search, 150);
+
+  const filteredTracks = useMemo(() => {
+    const query = debouncedSearch.toLowerCase();
+    return tracks.filter((t) =>
+      !query || t.title.toLowerCase().includes(query) ||
+      t.user?.username?.toLowerCase().includes(query)
+    );
+  }, [tracks, debouncedSearch]);
 
   const handleSave = async () => {
     if (selected.size === 0) return;
@@ -159,8 +175,19 @@ export default function RecentlyPlayedPage() {
         )}
 
         {loading ? (
-          <div className="bg-white dark:bg-card rounded-2xl p-12 border-2 border-gray-200 dark:border-border flex items-center justify-center">
-            <LoadingSpinner />
+          <div className="grid lg:grid-cols-3 gap-8">
+            <div className="lg:col-span-2 bg-white dark:bg-card rounded-2xl p-6 border-2 border-gray-200 dark:border-border">
+              <div className="space-y-2">
+                {Array.from({ length: 8 }).map((_, i) => (
+                  <Skeleton key={i} className="h-16 rounded-lg" />
+                ))}
+              </div>
+            </div>
+            <div className="bg-white dark:bg-card rounded-2xl p-6 border-2 border-gray-200 dark:border-border h-fit">
+              <Skeleton className="h-5 w-32 mb-4" />
+              <Skeleton className="h-4 w-24 mb-4" />
+              <Skeleton className="h-10 w-full rounded-lg" />
+            </div>
           </div>
         ) : tracks.length === 0 ? (
           <div className="bg-white dark:bg-card rounded-2xl p-8 border-2 border-gray-200 dark:border-border">
@@ -249,6 +276,11 @@ export default function RecentlyPlayedPage() {
                   placeholder="Playlist name (optional)"
                   className="w-full px-3 py-2 border-2 border-gray-200 dark:border-border rounded-lg text-sm text-foreground bg-gray-50 dark:bg-secondary/20 focus:border-primary focus:outline-none mb-4"
                 />
+              ) : loadingPlaylists ? (
+                <div className="flex items-center gap-2 py-3 mb-4 text-sm text-muted-foreground/70">
+                  <LoadingSpinner size="sm" />
+                  Loading playlists…
+                </div>
               ) : (
                 <select
                   value={selectedPlaylistId || ""}

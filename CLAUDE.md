@@ -55,13 +55,15 @@ soundcloud-tool/
 │   │   ├── normalize.js          # Pure resource normalizers (track/playlist/user, library-browser shapes)
 │   │   ├── pacing.js             # Shared sleep() + SC_WRITE_PACING_MS (300ms) — the single source for write pacing
 │   │   ├── resolve-cache.js      # In-memory /api/resolve cache (5-min TTL, 1000-entry cap)
-│   │   ├── social-cache.js       # Per-user collection cache + read-through tiering (loadUserCollection)
+│   │   ├── social-cache.js       # Per-user collection cache + read-through tiering (loadUserCollection, loadCachedPlaylists)
 │   │   ├── snapshot-cache.js     # Postgres tier — page rows, stale-while-revalidate, fails soft
 │   │   ├── auth-cache.js         # 30s memo of user + decrypted tokens (see Landmines in STATE.md)
 │   │   ├── request-cache.js      # Generic namespaced per-user TTL cache backing social-cache
 │   │   ├── merge-utils.js        # Dedup + 500-track chunking for merge/from-likes
 │   │   ├── playlist-transfer.js  # Move/duplicate a track between playlists
 │   │   ├── playlist-compare.js   # Diff two playlists
+│   │   ├── playlist-pages.js     # One page of playlists-with-tracks, sliced from the cached list
+│   │   ├── playlist-search.js    # Keyword matching + pure track-list surgery
 │   │   ├── library-audit.js      # Blocked/non-streamable summary across the library
 │   │   ├── dashboard-summary.js  # Dashboard aggregate payload
 │   │   ├── catalog.js            # Music-catalog harvest/upsert (Track, Playlist tables)
@@ -75,7 +77,7 @@ soundcloud-tool/
 │   │   ├── adminAuth.js          # adminAuth() — req.user.soundcloudId ∈ ADMIN_IDS; fails closed when unset
 │   │   ├── security.js           # securityHeaders, preventKeyLeakage, validateEnv, rejectUntrustedOrigin
 │   │   ├── validation.js         # express-validator rule sets (merge, bulk-unlike, resolve, growth, survey, etc.)
-│   │   └── rateLimiter.js        # Four rate limiters: api, auth, heavy, health
+│   │   └── rateLimiter.js        # Five rate limiters: api, auth, heavy, library-read, health
 │   └── package.json
 ├── frontend-UI/
 │   ├── src/
@@ -330,7 +332,7 @@ All are `heavyOperationRateLimiter` (20 requests / hour).
 |--------|------|------|-------------|
 | `POST` | `/api/playlists/merge` | `{ sourcePlaylistIds: number[] (2–10), title?: string }` | Fetches, deduplicates, and creates 1–N playlists; auto-splits at 500 tracks |
 | `POST` | `/api/playlists/from-likes` | `{ trackIds: number[], title?: string }` | Creates playlist(s) from provided track IDs; auto-splits if >500 |
-| `PUT` | `/api/playlists/:id` | `{ tracks: number[], title?: string }` | Update playlist track order / title |
+| `PUT` | `/api/playlists/:id` | `{ tracks: number[], title?: string }` | Update playlist track order / title. Reads the playlist first and 409s if that read came back short of its `track_count` — the body is a full replacement list |
 
 **Merge response:**
 ```json
@@ -381,10 +383,10 @@ All are `heavyOperationRateLimiter` (20 requests / hour).
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/api/library/audit` | Playlist health summary; paged with `limit` (1–50, default 20) + `offset` so a library larger than one page can be walked |
-| `GET` | `/api/playlists/search-tracks` | Keyword search across playlist track lists; `q` (comma-separated terms are OR'd), optional `playlistId` to scope to one, else `limit`/`offset` paging |
-| `POST` | `/api/playlists/tracks/bulk-remove` | Remove tracks from playlists; body `{ items: [{ playlistId, trackIds }] }` (≤20 playlists, ≤200 tracks total); per-playlist status |
-| `POST` | `/api/playlists/tracks/bulk-add` | Copy tracks into one playlist; body `{ targetPlaylistId, trackIds }` (≤200); skips duplicates, stops at the 500 cap |
+| `GET` | `/api/library/audit` | Playlist health summary; paged with `limit` (1–50, default 20) + `offset` **into the cached playlist list**, so a library larger than one page can be walked. Returns `page` (with `total`, `hasMore`, `stale`, `truncated`) and `failed[]` |
+| `GET` | `/api/playlists/search-tracks` | Keyword search across playlist track lists; `q` (comma-separated terms are OR'd, each ≥2 chars), optional `playlistId` to scope to one, else `limit`/`offset` paging. Returns `matches` (capped at 2,000, with `capped: true` when truncated), `stats`, `failed[]`, `page` |
+| `POST` | `/api/playlists/tracks/bulk-remove` | Remove tracks from playlists; body `{ items: [{ playlistId, trackIds }] }` (≤20 playlists, ≤200 tracks total); per-playlist status. Refuses any playlist whose read came back short of its `track_count` |
+| `POST` | `/api/playlists/tracks/bulk-add` | Copy tracks into one playlist; body `{ targetPlaylistId, trackIds }` (≤200); skips duplicates, stops at the 500 cap; 409 on a short read |
 | `GET` | `/api/recently-played` | Recently played tracks |
 | `GET` | `/api/tracks/search` | Track search |
 | `GET` | `/api/users/:id/profile` | Public profile of a SoundCloud user |
@@ -616,6 +618,15 @@ snooze / don't-show-again state over. **Unset it (or set it to
 3. Deduplicate by `${resourceType}:${id}` key
 4. Normalize to: `{ id, urn, resourceType, title, user, artwork_url, permalink_url, created_at }`
 
+### 9. Playlist Health Check
+
+**User-facing**: Select a playlist, scan for blocked/unplayable tracks, optionally remove them.
+
+**Frontend**: `frontend-UI/src/app/(app)/playlist-health-check/page.tsx`
+- Fetches `GET /api/playlists/:id`
+- Client-side filters for `blocked_at !== null` or `streamable === false`
+- Calls `PUT /api/playlists/:id` with cleaned track list
+
 ### 10. Keyword Search & Bulk Playlist Edits
 
 **User-facing**: Search track titles and artist names across playlists by
@@ -625,29 +636,45 @@ keyword, then remove the matches in bulk or copy them into another playlist.
 
 **Backend**: `GET /api/playlists/search-tracks` fetches a page of playlists with
 their full track lists and matches them via `lib/playlist-search.js`. A match is
-a `(playlistId, trackId)` pair, not a track — the same track in three playlists
-yields three rows, which is what makes "remove from everywhere" possible.
+one *occurrence* — `(playlistId, trackId, position)` — so the same track in
+three playlists yields three rows, which is what makes "remove from everywhere"
+possible, and two copies inside one playlist yield two rows. The removal path
+can only name track ids (the write replaces a playlist's whole list), so the UI
+selects duplicate copies as a unit and says so. Results are capped at 2,000
+matches; over that the response carries `capped: true`.
 
 `POST /api/playlists/tracks/bulk-remove` re-PUTs each playlist's surviving track
-list (SoundCloud has no per-track delete), one playlist per write with
-`SC_WRITE_PACING_MS` between them, returning per-playlist status so a partial
-failure is visible. `POST /api/playlists/tracks/bulk-add` appends to one target,
-skipping tracks already present and stopping at 500.
+list (SoundCloud has no per-track delete). It reads every playlist first, with
+`mapWithConcurrency` at `SC_READ_CONCURRENCY`, then writes sequentially with
+`SC_WRITE_PACING_MS` **between** writes — not after skipped rows, failed reads,
+or the last write. Per-playlist status is returned so a partial failure is
+visible. `POST /api/playlists/tracks/bulk-add` appends to one target, skipping
+tracks already present and stopping at 500.
 
-**Both `/api/library/audit` and `/api/playlists/search-tracks` page by `offset`.**
-Each page pulls every listed playlist's full track list, so the page size stays
-small; `offset=0` covers playlists 1–20, `offset=20` covers 21–40, `offset=40`
-covers 41–60, and so on, rather than only ever seeing the first 20. `/me/playlists` returns oldest-first,
-so without paging a large library's newer playlists were unreachable.
+**Every full-list write goes through `readPlaylistForRewrite`**
+(`lib/playlist-transfer.js`). These endpoints replace a playlist's entire track
+list, and `extractOrderedTrackIds` drops entries whose id is unusable — so a
+read that came back short of the playlist's own `track_count` would silently
+delete the difference. A mismatch throws `PlaylistReadIncompleteError`:
+bulk-remove reports that playlist as an error row and continues, bulk-add and
+`PUT /api/playlists/:id` return 409. Playlists with no `track_count` are not
+guarded.
 
-### 9. Playlist Health Check
+**Both `/api/library/audit` and `/api/playlists/search-tracks` page by `offset`
+against the cached playlist list, not against SoundCloud.** `/me/playlists`
+declares only `show_tracks`, `linked_partitioning` and `limit`, and marks the
+shared `offset` parameter deprecated — sending one returned page 1 on every
+page while the UI claimed "playlists 21-40". `lib/playlist-pages.js` slices the
+list `loadCachedPlaylists` already crawls by cursor for `GET /api/playlists`, so
+the order is SoundCloud's own, `total` and `hasMore` are exact, and a page walk
+costs one crawl rather than one query per page. The page object also carries
+`stale` and `truncated` from the cache tier, and `failed[]` names the playlists
+whose track fetch did not come back.
 
-**User-facing**: Select a playlist, scan for blocked/unplayable tracks, optionally remove them.
-
-**Frontend**: `frontend-UI/src/app/(app)/playlist-health-check/page.tsx`
-- Fetches `GET /api/playlists/:id`
-- Client-side filters for `blocked_at !== null` or `streamable === false`
-- Calls `PUT /api/playlists/:id` with cleaned track list
+Both routes are on `libraryReadRateLimiter` (60/hour), not
+`heavyOperationRateLimiter`: they are bounded reads (≤50 SoundCloud calls per
+page) and were otherwise spending the 20/hour write budget shared with merge,
+clone, and every bulk write.
 
 ---
 

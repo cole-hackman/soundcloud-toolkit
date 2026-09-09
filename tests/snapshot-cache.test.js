@@ -18,10 +18,13 @@ const libraryCacheState = {
   updateMany: jest.fn(async ({ where, data }) => {
     let count = 0;
     for (const [k, row] of state.rows) {
-      if (row.userId === where.userId && where.resource.in.includes(row.resource)) {
-        state.rows.set(k, { ...row, ...data });
-        count += 1;
-      }
+      if (row.userId !== where.userId || !where.resource.in.includes(row.resource)) continue;
+      // Honour the one comparison invalidateSnapshot uses, so the
+      // conditional-compensation tests exercise real filtering.
+      if (where.syncedAt?.lte instanceof Date
+        && !(row.syncedAt instanceof Date && row.syncedAt.getTime() <= where.syncedAt.lte.getTime())) continue;
+      state.rows.set(k, { ...row, ...data });
+      count += 1;
     }
     return { count };
   }),
@@ -85,7 +88,12 @@ describe('writeSnapshot / readSnapshot', () => {
     const written = await snapshot.writeSnapshot('u1', 'likes', items);
 
     // 450 items at a 200-item page size is three rows, not one giant blob.
-    expect(written).toEqual({ pages: 3, items: 450 });
+    expect(written).toMatchObject({ pages: 3, items: 450 });
+    // The stamp is produced here, in Node, once — and handed back so a caller
+    // can condition a later compensating invalidation on it.
+    expect(written.syncedAt).toBeInstanceOf(Date);
+    const row = state.rows.get('u1::likes');
+    expect(row.syncedAt).toBe(written.syncedAt);
 
     const read = await snapshot.readSnapshot('u1', 'likes');
     expect(read.items).toHaveLength(450);
@@ -128,10 +136,14 @@ describe('writeSnapshot / readSnapshot', () => {
     expect(read.truncated).toBe(true);
   });
 
-  test('invalidate marks stale without destroying the snapshot', async () => {
+  test('invalidate marks the row invalidated without destroying the snapshot', async () => {
     await snapshot.writeSnapshot('u1', 'likes', [{ id: 1 }]);
     await snapshot.invalidateSnapshot('u1', ['likes']);
 
+    // A distinct status from the 'stale' default, which now means only
+    // "never completed" — the two used to share a word and needed comments
+    // to keep apart.
+    expect(state.rows.get('u1::likes').status).toBe('invalidated');
     // status is no longer 'complete', so readSnapshot declines to serve it and
     // the caller re-crawls rather than showing pre-mutation data.
     expect(await snapshot.readSnapshot('u1', 'likes')).toBeNull();
@@ -157,5 +169,43 @@ describe('page-level access', () => {
 
   test('a missing page reads as null', async () => {
     expect(await snapshot.readSnapshotPage('u1', 'likes', 9)).toBeNull();
+  });
+});
+
+describe('invalidateSnapshot with syncedAtLte', () => {
+  // publishSnapshot uses this so a writer that lost a race against a mutation
+  // invalidates only the row IT wrote — not a newer, correct snapshot another
+  // crawl committed in the meantime, which would force a needless re-crawl.
+  test('skips a row newer than the stamp', async () => {
+    const first = await snapshot.writeSnapshot('u1', 'likes', [{ id: 1 }]);
+    // A newer crawl replaced the row after `first` returned.
+    const newer = new Date(first.syncedAt.getTime() + 5_000);
+    state.rows.set('u1::likes', { ...state.rows.get('u1::likes'), syncedAt: newer });
+
+    const result = await snapshot.invalidateSnapshot('u1', ['likes'], { syncedAtLte: first.syncedAt });
+
+    expect(result.count).toBe(0);
+    expect(state.rows.get('u1::likes').status).toBe('complete');
+    expect(await snapshot.readSnapshot('u1', 'likes')).not.toBeNull();
+  });
+
+  test('invalidates a row at or before the stamp', async () => {
+    const written = await snapshot.writeSnapshot('u1', 'likes', [{ id: 1 }]);
+
+    const result = await snapshot.invalidateSnapshot('u1', ['likes'], { syncedAtLte: written.syncedAt });
+
+    expect(result.count).toBe(1);
+    expect(state.rows.get('u1::likes').status).toBe('invalidated');
+  });
+
+  test('an unusable stamp falls back to unconditional', async () => {
+    // A soft-failed write returns null, and social-cache passes that through;
+    // the compensating invalidate must still fire rather than silently no-op.
+    await snapshot.writeSnapshot('u1', 'likes', [{ id: 1 }]);
+    for (const bad of [null, undefined, 'not a date', new Date('garbage')]) {
+      state.rows.set('u1::likes', { ...state.rows.get('u1::likes'), status: 'complete' });
+      const result = await snapshot.invalidateSnapshot('u1', ['likes'], { syncedAtLte: bad });
+      expect(result.count).toBe(1);
+    }
   });
 });

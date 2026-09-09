@@ -835,7 +835,7 @@ Before the OAuth redirect, the frontend pings `/health` (with 1.2s timeout) to w
 
 5. **Cross-Origin Cookie Requirement**: Production uses `SameSite=None; Secure` cookies. This requires HTTPS on both frontend and backend. Local dev with HTTP uses `SameSite=Lax` and same-origin rewrites in `next.config.js`.
 
-6. **In-Memory URL Cache**: The `/api/resolve` cache is per-process and resets on restart. Not shared across multiple server instances. Cache TTL is 5 minutes. (The *library* cache — likes/playlists/followings/followers/reposts — is different: since the 2026-09 performance work it has a Postgres tier underneath that survives restarts. See `docs/performance-audit-2026-09.md`.)
+6. **In-Memory URL Cache**: The `/api/resolve` cache is per-process and resets on restart. Not shared across multiple server instances. Cache TTL is 5 minutes. (The *library* cache — likes/playlists/followings/followers/reposts — is different: since the 2026-09 performance work it has a Postgres tier underneath that survives restarts. See `docs/performance-audit-2026-09.md`. Its invalidation marks are per-process, though: at `instance_count > 1` a second instance can republish a pre-mutation snapshot as `complete`, so the durable tier is only safe single-instance. See the header comment in `server/lib/social-cache.js`.)
 
 7. **Static Export Limitation**: `next export` doesn't support Next.js API routes. All server logic must live in the Express backend. The frontend is pure client-side React.
 

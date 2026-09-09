@@ -135,6 +135,10 @@ router.post('/growth/engage', authenticateUser, heavyOperationRateLimiter, valid
       sessionLabel,
       inspirationIds,
       inspirationNames,
+      // Invalidate again when the job settles. The invalidation below fires
+      // before a single follow has happened, so on its own it certified a
+      // crawl that ran mid-job as authoritative and durable.
+      onSettled: () => invalidateUserCollections(req.user.id, ['followings', 'likes']),
     });
 
     invalidateUserCollections(req.user.id, ['followings', 'likes']);

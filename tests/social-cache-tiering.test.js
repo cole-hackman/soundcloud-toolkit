@@ -14,24 +14,20 @@ jest.unstable_mockModule('../server/lib/soundcloud-client.js', () => ({
   soundcloudClient: {},
 }));
 
-const { loadUserCollection, invalidateUserCollections, invalidatePlaylistState, __resetCacheCoordinationForTests } =
-  await import('../server/lib/social-cache.js');
+const {
+  loadUserCollection, invalidateUserCollections, invalidatePlaylistState,
+  dropInvalidationMarks, invalidationMarkCount, __resetCacheCoordinationForTests,
+} = await import('../server/lib/social-cache.js');
 const { requestCache } = await import('../server/lib/request-cache.js');
+const { deferred, flush } = await import('./helpers/deferred.js');
 
 const req = { user: { id: 'u1' } };
 const shape = (items) => ({ collection: items, total: items.length });
-const flush = () => new Promise((r) => setImmediate(r));
 
-/** A promise plus its resolver, so a test can hold a crawl open and land a
- *  mutation while it is still in flight. */
-const deferred = () => {
-  let resolve;
-  const promise = new Promise((r) => { resolve = r; });
-  return { promise, resolve };
-};
-
-beforeEach(() => {
-  __resetCacheCoordinationForTests();
+beforeEach(async () => {
+  // Awaited: it also drains continuations the previous test left scheduled,
+  // which would otherwise land here and inflate this test's mock call counts.
+  await __resetCacheCoordinationForTests();
   requestCache.invalidateUser('u1');
   readSnapshot.mockReset();
   writeSnapshot.mockClear();
@@ -319,8 +315,137 @@ describe('memory -> Postgres -> SoundCloud tiering', () => {
 
     // The writer re-invalidates after its commit, so the row does not survive
     // as 'complete'. Worst case is a needless re-crawl; never a served stale.
+    // The mocked write returns no stamp, so the condition falls back to null.
     expect(invalidateSnapshot).toHaveBeenCalledTimes(2);
-    expect(invalidateSnapshot).toHaveBeenLastCalledWith('u1', ['likes']);
+    expect(invalidateSnapshot).toHaveBeenLastCalledWith('u1', ['likes'], { syncedAtLte: null });
+  });
+
+  /* ── Regression: the SERVING side, and the fix's own edges ──────────────
+   * Everything above gates what a crawl may PUBLISH. Two review passes missed
+   * that nothing gated what a caller could be SERVED.
+   */
+
+  test('a request arriving AFTER a mutation is not served the cancelled crawl', async () => {
+    readSnapshot.mockResolvedValue(null);
+    const gate = deferred();
+    const crawl = jest.fn()
+      .mockImplementationOnce(() => gate.promise)          // the pre-mutation crawl
+      .mockResolvedValueOnce([{ id: 'fresh' }]);           // whatever runs after it
+
+    const first = loadUserCollection(req, 'likes', crawl, shape);
+    await flush();
+    expect(crawl).toHaveBeenCalledTimes(1);                // running
+
+    invalidateUserCollections('u1', ['likes']);            // bulk-unlike lands
+    // The page refetches immediately. This request was made AFTER the
+    // mutation; handing it the cancelled crawl's promise would return the
+    // unliked tracks as the HTTP response, and no cache guard can fix that.
+    const second = loadUserCollection(req, 'likes', crawl, shape);
+    gate.resolve([{ id: 'stale' }]);
+
+    const [before, after] = await Promise.all([first, second]);
+    expect(before.collection).toEqual([{ id: 'stale' }]);  // asked before: fine
+    expect(after.collection).toEqual([{ id: 'fresh' }]);   // asked after: fresh
+    expect(crawl).toHaveBeenCalledTimes(2);
+    // And the cancelled crawl still did not write the memo.
+    await flush();
+    expect(requestCache.get('likes', 'u1', 'default')?.collection).toEqual([{ id: 'fresh' }]);
+  });
+
+  test('a mutation landing between the snapshot re-check and the memo write leaves no memo', async () => {
+    readSnapshot.mockResolvedValue({
+      items: [{ id: 'old' }], complete: true, stale: true, truncated: false,
+      syncedAt: new Date(Date.now() - 3_600_000), totalItems: 1,
+    });
+    const write = deferred();
+    writeSnapshot.mockImplementationOnce(() => write.promise);
+    const crawl = jest.fn().mockResolvedValue([{ id: 'pre-mutation' }]);
+
+    await loadUserCollection(req, 'likes', crawl, shape);  // serves stale, starts refresh
+    await flush();
+    expect(writeSnapshot).toHaveBeenCalledTimes(1);        // write is in flight
+
+    write.resolve({ pages: 1, items: 1, syncedAt: new Date() });
+    // Microtask order is what makes this deterministic: publishSnapshot's own
+    // re-check runs first (its await on the write was registered before
+    // ours), then THIS continuation, and only then the revalidate's
+    // continuation that writes the memo. So invalidating here lands in
+    // exactly the gap between the two checks.
+    await write.promise;
+    invalidateUserCollections('u1', ['likes']);
+    await flush();
+
+    expect(requestCache.get('likes', 'u1', 'default')).toBeUndefined();
+  });
+
+  test('the compensating invalidate is scoped to the row this writer stamped', async () => {
+    // A NEWER crawl may already have replaced the row with correct data by
+    // the time a slow writer notices it lost; invalidating unconditionally
+    // would destroy that and force a full re-crawl.
+    readSnapshot.mockResolvedValue(null);
+    const stamp = new Date('2026-01-01T00:00:00.000Z');
+    const write = deferred();
+    writeSnapshot.mockImplementationOnce(() => write.promise);
+
+    await loadUserCollection(req, 'likes', () => Promise.resolve([{ id: 1 }]), shape);
+    invalidateUserCollections('u1', ['likes']);            // lands mid-write
+    write.resolve({ pages: 1, items: 1, syncedAt: stamp });
+    await flush();
+
+    expect(invalidateSnapshot).toHaveBeenLastCalledWith('u1', ['likes'], { syncedAtLte: stamp });
+  });
+
+  test('a syncedAt that does not parse refuses rather than serves', async () => {
+    // This is the only guard covering the window before invalidateSnapshot's
+    // UPDATE commits. A type test that quietly evaluated to "serve" for an
+    // unexpected shape would switch it off with no log and no failing test.
+    invalidateUserCollections('u1', ['likes']);
+    const crawl = jest.fn().mockResolvedValue([{ id: 'fresh' }]);
+
+    for (const syncedAt of ['garbage', null, undefined, '2020-01-01T00:00:00.000Z']) {
+      requestCache.invalidateUser('u1');
+      crawl.mockClear();
+      readSnapshot.mockResolvedValue({
+        items: [{ id: 'pre-mutation' }], complete: true, stale: false, truncated: false,
+        syncedAt, totalItems: 1,
+      });
+      const payload = await loadUserCollection(req, 'likes', crawl, shape);
+      expect(crawl).toHaveBeenCalledTimes(1);
+      expect(payload.collection).toEqual([{ id: 'fresh' }]);
+    }
+  });
+
+  test('a post-mutation syncedAt still serves even as an ISO string', async () => {
+    // Fail-closed must not become fail-always: a parseable, newer timestamp
+    // is served regardless of whether it arrived as a Date.
+    invalidateUserCollections('u1', ['likes']);
+    readSnapshot.mockResolvedValue({
+      items: [{ id: 'post-mutation' }], complete: true, stale: false, truncated: false,
+      syncedAt: new Date(Date.now() + 1000).toISOString(), totalItems: 1,
+    });
+    const crawl = jest.fn();
+    const payload = await loadUserCollection(req, 'likes', crawl, shape);
+    expect(crawl).not.toHaveBeenCalled();
+    expect(payload.collection).toEqual([{ id: 'post-mutation' }]);
+  });
+
+  test('marks are dropped for a user on request, and only that user', async () => {
+    invalidateUserCollections('u1', ['likes', 'playlists']);
+    invalidateUserCollections('u2', ['likes']);
+    expect(invalidationMarkCount()).toBe(3);
+
+    dropInvalidationMarks('u1');                             // account deletion
+
+    expect(invalidationMarkCount()).toBe(1);
+    // u1's guard is gone: a pre-mutation-looking snapshot serves again, which
+    // is correct — the user no longer exists, there is nothing to protect.
+    readSnapshot.mockResolvedValue({
+      items: [{ id: 'x' }], complete: true, stale: false, truncated: false,
+      syncedAt: new Date(Date.now() - 60_000), totalItems: 1,
+    });
+    const crawl = jest.fn();
+    await loadUserCollection(req, 'likes', crawl, shape);
+    expect(crawl).not.toHaveBeenCalled();
   });
 
   test('a background revalidate raced mid-write publishes to neither tier', async () => {

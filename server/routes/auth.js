@@ -11,6 +11,7 @@ import { authenticateUser } from '../middleware/auth.js';
 import { invalidateCachedAuth } from '../lib/auth-cache.js';
 import { requestCache } from '../lib/request-cache.js';
 import { dropSnapshots } from '../lib/snapshot-cache.js';
+import { dropInvalidationMarks } from '../lib/social-cache.js';
 
 const router = express.Router();
 
@@ -258,6 +259,7 @@ router.delete('/account', authenticateUser, async (req, res) => {
     // library payloads so nothing survives the deletion in process memory.
     invalidateCachedAuth(id);
     requestCache.invalidateUser(id);
+    dropInvalidationMarks(id);
     await dropSnapshots(id);
     // Deliberately not logOperation: the operation_logs rows (and their FK
     // target) were just deleted with the account.

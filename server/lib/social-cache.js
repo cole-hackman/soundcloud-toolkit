@@ -37,16 +37,27 @@ const inFlightLoads = new Map();
 /**
  * When each (user, resource) was last invalidated: `{ rev, at }`.
  *
- * `cancelInFlight` only reaches loads registered in `inFlightLoads`, and only
- * guards the in-memory write. That left three ways for a crawl that started
- * before a mutation to publish its pre-mutation snapshot afterwards: the
- * persistent write in loadUserCollection's tier 3, the background revalidate
- * (which is not in `inFlightLoads` at all), and a read racing the not-yet-
- * committed `status='stale'` UPDATE.
+ * `cancelInFlight` only reaches loads registered in `inFlightLoads`. That left
+ * three ways for a crawl that started before a mutation to publish its
+ * pre-mutation snapshot afterwards: the persistent write in
+ * loadUserCollection's tier 3, the background revalidate (which is not in
+ * `inFlightLoads` at all), and a read racing the not-yet-committed
+ * `status='invalidated'` UPDATE.
  *
- * A monotonic mark closes all three, and does it SYNCHRONOUSLY — no waiting on
- * the database. A crawl records the mark when it starts and refuses to publish
- * if the mark has moved; a reader refuses a snapshot older than the mark.
+ * The mark closes all three WITHIN THIS PROCESS, and does it synchronously —
+ * no waiting on the database. A crawl records the mark when it starts and
+ * refuses to publish if the mark has moved; a reader refuses a snapshot synced
+ * at or before the mark.
+ *
+ * It is per-process state. At `instance_count > 1` (.do/app.yaml) a second
+ * instance has an empty map: a crawl there that straddles a mutation made here
+ * passes its own mark check and republishes the pre-mutation items as
+ * `complete`, with a `syncedAt` newer than this instance's invalidation —
+ * which then defeats this instance's reader guard too. The durable tier makes
+ * that worse than the old in-memory cache, because the row looks
+ * authoritative. Closing it across instances needs the mark persisted (a
+ * revision column on library_cache_states); until then instance_count is the
+ * gate. See CLAUDE.md, Known Limitations #6.
  *
  * Two different values, because the two comparisons want different things:
  *
@@ -55,30 +66,68 @@ const inFlightLoads = new Map();
  *     millisecond produce the same timestamp, so a crawl that started between
  *     them would compare equal to the later one and publish pre-mutation data.
  *     Equality against a counter cannot collide that way.
- *   - `at` is the wall clock, and is only ever compared against a `syncedAt`
- *     that Postgres wrote. A counter is meaningless in that comparison.
+ *   - `at` is the wall clock, compared against `syncedAt`. BOTH sides come from
+ *     this process's clock: writeSnapshot stamps `syncedAt` with `new Date()`
+ *     in Node, not with a database default, and that is what makes the
+ *     comparison sound. Do not move `syncedAt` to a Postgres-side now() —
+ *     Node/Postgres skew of tens of milliseconds would silently break the only
+ *     guard covering the uncommitted-invalidation window.
+ *
+ * Bounded like the sibling caches (request-cache DEFAULT_MAX_ENTRIES,
+ * auth-cache MAX_ENTRIES): an uncapped map keyed by user is a leak scaled by
+ * distinct users, and entries are also dropped on account deletion. The cap is
+ * generous on purpose. An evicted mark reads as 0, which makes an in-flight
+ * crawl refuse to publish (safe) but lets a reader serve a snapshot during the
+ * milliseconds before invalidateSnapshot's UPDATE commits (not safe). Eviction
+ * only bites if that many OTHER (user, resource) pairs invalidate inside that
+ * window, so the number just has to be far above plausible concurrency.
  */
+const MAX_INVALIDATION_MARKS = 5000;
 let invalidationRev = 0;
 const invalidatedAt = new Map();
 
 const markKey = (userId, resource) => `${resource}::${userId}`;
 
-/** Monotonic revision of the last invalidation; 0 when never invalidated. */
-export function invalidationMark(userId, resource) {
+/** Monotonic revision of the last invalidation; 0 when never invalidated.
+ *  Module-private on purpose: the guard only works when the mark is taken
+ *  BEFORE the crawl starts, and an exported getter invites taking it at the
+ *  wrong point, which reads as correct and disables the guard. */
+function invalidationMark(userId, resource) {
   return invalidatedAt.get(markKey(userId, resource))?.rev ?? 0;
 }
 
 /** Wall-clock time of the last invalidation, for comparing against a stored
  *  `syncedAt`; 0 when never invalidated. */
-export function invalidationTime(userId, resource) {
+function invalidationTime(userId, resource) {
   return invalidatedAt.get(markKey(userId, resource))?.at ?? 0;
 }
 
 function recordInvalidation(userId, resources) {
   const at = Date.now();
   for (const resource of resources) {
-    invalidatedAt.set(markKey(userId, resource), { rev: ++invalidationRev, at });
+    const k = markKey(userId, resource);
+    // Delete-then-set moves a re-invalidated key to the end of insertion
+    // order, so eviction below always drops the least recently invalidated.
+    invalidatedAt.delete(k);
+    invalidatedAt.set(k, { rev: ++invalidationRev, at });
   }
+  while (invalidatedAt.size > MAX_INVALIDATION_MARKS) {
+    invalidatedAt.delete(invalidatedAt.keys().next().value);
+  }
+}
+
+/** Forget a user's invalidation marks. Called on account deletion so nothing
+ *  about the user survives in process memory; see routes/auth.js. */
+export function dropInvalidationMarks(userId) {
+  const suffix = `::${userId}`;
+  for (const k of [...invalidatedAt.keys()]) {
+    if (k.endsWith(suffix)) invalidatedAt.delete(k);
+  }
+}
+
+/** Number of (user, resource) marks held. For tests and diagnostics. */
+export function invalidationMarkCount() {
+  return invalidatedAt.size;
 }
 
 /** True when nothing has invalidated this resource since `mark` was taken. */
@@ -92,22 +141,29 @@ function stillCurrent(userId, resource, mark) {
  * Checking the mark BEFORE the write cannot make the write atomic with
  * invalidation: `writeSnapshot` is a transaction round trip, and a mutation
  * landing during it runs `invalidateSnapshot` against the row this writer is
- * about to overwrite. The mutation marks it `stale`; this (older) writer then
- * upserts it back to `complete` with a FRESH `syncedAt` — which also defeats
- * the reader's `syncedAt <= invalidated` guard, because that timestamp records
- * when the row was written, not when the items were fetched.
+ * about to overwrite. The mutation marks it `invalidated`; this (older) writer
+ * then upserts it back to `complete` with a FRESH `syncedAt` — which also
+ * defeats the reader's `syncedAt <= invalidated` guard, because that timestamp
+ * records when the row was written, not when the items were fetched.
  *
  * Re-checking afterwards and re-invalidating converges: any writer that finds
- * the mark moved leaves the row stale, so the next read re-crawls. The failure
- * direction is a needless crawl, never a served-stale snapshot.
+ * the mark moved leaves the row invalidated, so the next read re-crawls. The
+ * failure direction is a needless crawl, never a served-stale snapshot.
  *
  * @returns {Promise<boolean>} true when the snapshot was published and is current
  */
 async function publishSnapshot(userId, resource, items, mark, { truncated }) {
-  await writeSnapshot(userId, resource, items, { truncated });
+  const written = await writeSnapshot(userId, resource, items, { truncated });
   if (stillCurrent(userId, resource, mark)) return true;
-  logger.info('[snapshot-cache] invalidated during snapshot write; re-marking stale', { resource });
-  await invalidateSnapshot(userId, [resource]);
+  logger.info('[snapshot-cache] invalidated during snapshot write; re-marking', { resource });
+  // Conditioned on the stamp THIS writer produced. A newer crawl may already
+  // have replaced the row with correct post-mutation data; invalidating that
+  // would cost a needless full re-crawl, repeatedly under mutation-heavy
+  // flows. `lte` rather than equality so a truncated timestamp cannot turn
+  // this into a silent no-op — that would leave the stale row `complete`,
+  // which is the bug this exists to prevent. A soft-failed write returns
+  // null and the invalidation falls back to unconditional.
+  await invalidateSnapshot(userId, [resource], { syncedAtLte: written?.syncedAt ?? null });
   return false;
 }
 
@@ -149,13 +205,32 @@ export function getCachedUserPayload(namespace, userId, key, load, ttlMs) {
   return entry.promise;
 }
 
-/** Mark any in-flight load under these namespaces as stale so it cannot
- *  repopulate the cache after an invalidation. */
+/**
+ * An invalidation landed while these loads were running. Two things must
+ * happen, and `stale` alone only did the first:
+ *
+ *   - the running crawl must not write its pre-mutation result into the cache
+ *     when it resolves — `stale` gates that write in getCachedUserPayload;
+ *   - later callers must not JOIN it. getCachedUserPayload hands any caller
+ *     the in-flight promise, so leaving the entry in the map served
+ *     pre-mutation data as the HTTP response to a request made AFTER the
+ *     mutation. Two review passes missed that the mark only ever gated
+ *     publishing, never serving.
+ *
+ * Deleting the entry makes the next caller start a fresh crawl, which every
+ * caller after it coalesces onto — so no thundering herd, at most one extra
+ * crawl. Callers already awaiting the old promise still resolve: they asked
+ * before the mutation. Deleting during for..of over a Map is safe, and the old
+ * entry's .finally is guarded by identity so it cannot remove the new one.
+ */
 function cancelInFlight(userId, namespaces) {
   const wanted = new Set(namespaces);
   for (const [flightKey, entry] of inFlightLoads) {
     const [namespace, entryUserId] = flightKey.split('::');
-    if (entryUserId === String(userId) && wanted.has(namespace)) entry.stale = true;
+    if (entryUserId === String(userId) && wanted.has(namespace)) {
+      entry.stale = true;
+      inFlightLoads.delete(flightKey);
+    }
   }
 }
 
@@ -255,7 +330,7 @@ export function invalidatePlaylistState(userId) {
 const revalidating = new Map();
 
 function revalidateInBackground(userId, resource, crawl, shape) {
-  const key = `${resource}::${userId}`;
+  const key = markKey(userId, resource);
   if (revalidating.has(key)) return;
 
   // Taken before the crawl starts: if a mutation lands while it runs, this
@@ -276,6 +351,12 @@ function revalidateInBackground(userId, resource, crawl, shape) {
       // mutation can land during it. Losing the memo write is harmless;
       // leaving a stale snapshot marked 'complete' is not.
       if (!(await publishSnapshot(userId, resource, items, mark, { truncated }))) return;
+      // publishSnapshot re-checked before its promise resolved; this
+      // continuation runs a microtask later, and a mutation handler can run in
+      // between. Nothing would ever clear a memo written now, so check again
+      // immediately before the write — the same reason the tier-3 memo write
+      // is gated by getCachedUserPayload's `stale` flag.
+      if (!stillCurrent(userId, resource, mark)) return;
       // Same payload shape as the other tiers — a bare shape(items) here would
       // silently drop `truncated` after any background refresh.
       requestCache.set(
@@ -318,23 +399,23 @@ export async function loadUserCollection(req, resource, crawl, shape) {
   const memo = requestCache.get(resource, userId, 'default');
   if (memo !== undefined) return memo;
 
-  // Tier 2: Postgres. Two different things are called "stale" here, and only
-  // one of them still serves:
-  //   - TTL-stale (snapshot.stale): served immediately, refreshed behind the
-  //     response. An answer now beats a correct answer after a 25-page crawl.
-  //   - invalidated (the user mutated this): NOT served. readSnapshot already
-  //     refuses a row whose status is no longer 'complete', and the mark check
-  //     below covers the window before that UPDATE commits.
+  // Tier 2: Postgres. A TTL-stale snapshot (snapshot.stale) is served
+  // immediately and refreshed behind the response — an answer now beats a
+  // correct answer after a 25-page crawl. An invalidated one is not served at
+  // all: readSnapshot refuses any status other than 'complete'.
   const snapshot = await readSnapshot(userId, resource);
-  // A snapshot synced before the last invalidation is pre-mutation data, even
-  // if its row still says 'complete'. This is the synchronous guard that makes
-  // invalidateSnapshot's fire-and-forget UPDATE safe: the read does not have to
-  // wait for that write to commit.
+  // A snapshot synced at or before the last invalidation is pre-mutation data
+  // even if its row still says 'complete': invalidateSnapshot's UPDATE is a
+  // fire-and-forget round trip, and this synchronous check covers the window
+  // before it commits. It fails CLOSED — a syncedAt that does not parse
+  // refuses rather than serves. This is the only guard on that window, and a
+  // type test that quietly evaluated to "serve" would switch it off with no
+  // log and no failing test.
   const invalidated = invalidationTime(userId, resource);
-  const supersededByMutation = snapshot
+  const syncedMs = snapshot ? new Date(snapshot.syncedAt).getTime() : NaN;
+  const supersededByMutation = Boolean(snapshot)
     && invalidated > 0
-    && snapshot.syncedAt instanceof Date
-    && snapshot.syncedAt.getTime() <= invalidated;
+    && !(Number.isFinite(syncedMs) && syncedMs > invalidated);
 
   if (snapshot && !supersededByMutation) {
     const payload = {
@@ -358,7 +439,10 @@ export async function loadUserCollection(req, resource, crawl, shape) {
 
   return getCachedUserPayload(resource, userId, 'default', async () => {
     const items = await crawl();
-    const payload = { ...shape(items), truncated: items?.truncated === true };
+    // One computation for both the response and the snapshot row: the test
+    // 'a truncated crawl is reported as truncated' asserts they agree.
+    const truncated = items?.truncated === true;
+    const payload = { ...shape(items), truncated };
     if (!stillCurrent(userId, resource, mark)) {
       logger.info('[snapshot-cache] not persisting crawl; invalidated mid-flight', { resource });
       return payload;
@@ -368,9 +452,7 @@ export async function loadUserCollection(req, resource, crawl, shape) {
     // that would hand the cold path a fresh delay in exchange for removing a
     // future one. The caller already has its data — the snapshot is for the
     // NEXT reader. Same posture as harvestTracks.
-    Promise.resolve(publishSnapshot(userId, resource, items, mark, {
-      truncated: items?.truncated === true,
-    })).catch(() => {});
+    Promise.resolve(publishSnapshot(userId, resource, items, mark, { truncated })).catch(() => {});
     return payload;
   }, CACHE_TTL[resource] ?? 60_000);
 }
@@ -386,15 +468,31 @@ export function invalidateUserCollections(userId, resources) {
 
 /**
  * Drop all in-process cache coordination state: in-flight loads, background
- * revalidations, and invalidation marks.
+ * revalidations, and invalidation marks. For tests; `await` it in beforeEach.
  *
- * For tests. These live at module scope for the lifetime of the process, so
- * without this one test's leftover in-flight entry is handed to the next test
- * that asks for the same (user, resource) — which is exactly how the races
- * below went unnoticed. Mirrors clearAuthCache in auth-cache.js.
+ * These live at module scope for the lifetime of the process, so without this
+ * one test's leftover in-flight entry is handed to the next test that asks for
+ * the same (user, resource) — which is exactly how the races the tiering suite
+ * covers went unnoticed. Mirrors clearAuthCache in auth-cache.js.
+ *
+ * Clearing the maps does not cancel continuations already scheduled on the
+ * promises they held — a publishSnapshot re-check, a memo write. Left alone
+ * those land in the NEXT test and inflate its mock call counts. So this also
+ * waits for whatever was pending to settle, bounded so a test that
+ * deliberately left a gate closed cannot hang the suite. The bound is a real
+ * timer: under jest fake timers advance them first, or leave nothing pending.
  */
-export function __resetCacheCoordinationForTests() {
+export async function __resetCacheCoordinationForTests({ settleMs = 25 } = {}) {
+  const pending = [
+    ...[...inFlightLoads.values()].map((entry) => entry.promise),
+    ...revalidating.values(),
+  ];
   inFlightLoads.clear();
   revalidating.clear();
   invalidatedAt.clear();
+  if (pending.length === 0) return;
+  await Promise.race([
+    Promise.allSettled(pending),
+    new Promise((resolve) => setTimeout(resolve, settleMs)),
+  ]);
 }

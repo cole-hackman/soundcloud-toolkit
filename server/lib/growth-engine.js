@@ -547,6 +547,7 @@ export function startEngagementJob(engine, {
   sessionLabel,
   inspirationIds,
   inspirationNames,
+  onSettled = null,
 }) {
   const existing = engagementJobs.get(userId);
   if (existing && existing.status === 'running') {
@@ -575,12 +576,30 @@ export function startEngagementJob(engine, {
   };
   engagementJobs.set(userId, job);
 
+  // Fires exactly once when the job reaches any terminal state — complete,
+  // cancelled, or crashed. The route uses it to invalidate the followings and
+  // likes caches AFTER the follows have actually happened. Invalidating only
+  // at start certified a mid-job crawl as authoritative: it took the job-start
+  // mark, passed every check, and was persisted to the durable tier as a
+  // 'complete' snapshot reflecting 8 of 50 follows for the 30-minute TTL.
+  // Injected rather than imported so this module stays free of cache concerns.
+  const settle = () => {
+    if (typeof onSettled !== 'function') return;
+    try {
+      onSettled(job);
+    } catch (err) {
+      logger.warn('[GrowthEngine] onSettled threw:', err?.message || err);
+    }
+  };
+
   engine
     .runEngagementBatch(job, { prisma, accessToken, refreshToken })
+    .then(settle)
     .catch((err) => {
       logger.error('[GrowthEngine] Engagement batch crashed:', err?.message || err);
       job.status = 'error';
       job.finishedAt = Date.now();
+      settle();
     });
 
   return job;

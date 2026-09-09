@@ -1,39 +1,39 @@
 # STATE
 
 ## Now
-Performance audit branch (`claude/web-tool-performance-audit-i9z0n8`) is in
-review. **Before deploying its backend, run `docs/sql/2026-library-cache.sql`
-in the Neon console** — it adds `library_cache_pages` and
-`library_cache_states`. The SQL is additive and idempotent. The backend
-tolerates the tables being absent (snapshot reads/writes fail soft), so the
-ordering is preferred, not load-bearing.
+Two features off the back of the rebrand-vote feature requests: **library audit
+paging** and **playlist keyword search with bulk remove/copy**. Not deployed.
 
-After deploy, leave it a few days and then read `/admin` → the new per-action
-p95 panel. `docs/performance-audit-2026-09.md` is written against estimated
-round-trip counts, not measured production latency; the instrumentation added
-in this branch is what produces the real numbers, and the doc should be
-revisited once they exist.
+Merged in the performance-audit work from #34. **Before deploying the backend,
+run `docs/sql/2026-library-cache.sql`** in the Neon console — it adds
+`library_cache_pages` and `library_cache_states`. Additive and idempotent; the
+backend fails soft when the tables are absent, so the ordering is preferred
+rather than load-bearing.
 
-The rebrand name vote is still **live**. Read results at `/admin`. Verify
-`SURVEY_CAMPAIGN_ID` is unset or `2026-rebrand-name-v1` in DigitalOcean; a
-stale `2026-songswipe-beta-v1` would silently suppress the prompt for anyone
+After deploy, leave it a few days and read `/admin` → the per-action p95 panel.
+`docs/performance-audit-2026-09.md` is written against estimated round-trip
+counts, not measured production latency; the instrumentation from #34 is what
+produces the real numbers, and the doc should be revisited once they exist.
+
+Verify `SURVEY_CAMPAIGN_ID` is unset or `2026-rebrand-name-v1` in DigitalOcean;
+a stale `2026-songswipe-beta-v1` would silently suppress the prompt for anyone
 who dismissed the beta survey.
 
 ## Just done
-- **Performance audit + fixes.** `docs/performance-audit-2026-09.md` has the
-  full write-up. Headline: the followed-library authorization check was
-  re-crawling the entire followings list on every page click (11 SoundCloud
-  round trips to return 50 items); `GET /playlists` was fetching whole
-  playlists — up to 500 tracks each, unbounded and concurrent — to read one
-  `artwork_url`. Both fixed. Serial read loops in `/library/audit`,
-  `/resolve/batch` and the merge read phase became bounded pools. A
-  Postgres-backed snapshot tier now sits under the in-memory cache so caching
-  survives a deploy. Correctness bugs found along the way: `paginate()` could
-  hold a response open for ~12 minutes and could spin forever on a repeated
-  401; a crawl that started before a mutation could write pre-mutation data
-  back into the cache after invalidation; `/resolve`'s oEmbed call had no
-  timeout. `apiRateLimiter` raised 100 → 600/15min to make paged browsing
-  viable.
+- Library audit takes `offset`, so a library bigger than one page can be walked
+  (playlists 1-20, then 21-40, 41-60, ...). Previously it only ever audited the
+  first 20 — and `/me/playlists` is oldest-first, so newer playlists were
+  unreachable.
+- New keyword search: `GET /api/playlists/search-tracks` (comma-separated terms
+  OR'd, matches title + artist, scoped to one playlist or paged across all),
+  plus `POST /api/playlists/tracks/bulk-remove` and `.../bulk-add`. Pure
+  matching and list surgery live in `lib/playlist-search.js` with unit tests;
+  route tests cover paging, partial failure and the 500-track cap.
+- **Rebrand vote decided: Track Toolkit** (48/165, 29.1%), ahead of "None of
+  these" (47) and TrackTidy (30). TrackTidy sat in the first option slot and
+  still lost, so position bias ran against the winner rather than for it.
+  Blocker is now domain + trademark, where Track Toolkit is weakest: verify
+  tracktoolkit.com and clear Class 9/42 before spending on branding.
 - Rebrand vote is now a **mandatory** modal: no close, Escape, backdrop click
   or snooze. Submitting is the only way out; "None of these" is the pressure
   valve; a failed submit reveals "Skip for now" so an outage can't lock anyone

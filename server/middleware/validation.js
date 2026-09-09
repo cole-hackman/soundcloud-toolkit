@@ -1,4 +1,5 @@
 import { body, param, query, validationResult } from 'express-validator';
+import { parseKeywords } from '../lib/playlist-search.js';
 
 function validateSoundCloudUrl(value) {
   if (!value) return true;
@@ -635,6 +636,118 @@ export const REBRAND_NAME_SLUGS = [
   'sortwave',
   'deckhaul',
   'none',
+];
+
+/**
+ * Library audit paging. The audit fetches every playlist's full track list, so
+ * the page size stays small; offset is what lets a user walk a library larger
+ * than one page (playlists 20-40, 40-60, and so on).
+ */
+export const validateLibraryAudit = [
+  query('limit')
+    .optional()
+    .isInt({ min: 1, max: 50 })
+    .withMessage('limit must be between 1 and 50')
+    .toInt(),
+  query('offset')
+    .optional()
+    .isInt({ min: 0, max: 10000 })
+    .withMessage('offset must be between 0 and 10000')
+    .toInt(),
+  handleValidationErrors
+];
+
+/**
+ * Keyword search across playlist track lists. Same paging shape as the audit,
+ * for the same reason — each page pulls full track lists from SoundCloud.
+ */
+export const validatePlaylistTrackSearch = [
+  query('q')
+    .isString()
+    .withMessage('q is required')
+    .trim()
+    .isLength({ min: 2, max: 200 })
+    .withMessage('q must be 2-200 characters')
+    // The whole-string bound above is not the bound that matters: "a,b" is
+    // four characters and passes it, then splits into two one-character terms
+    // that match most of the library. Each term has to clear the floor.
+    .custom((q) => parseKeywords(q).every((keyword) => keyword.length >= 2))
+    .withMessage('each keyword must be at least 2 characters'),
+  query('playlistId')
+    .optional({ nullable: true, checkFalsy: true })
+    .isInt({ min: 1 })
+    .withMessage('playlistId must be a positive integer')
+    .toInt(),
+  query('limit')
+    .optional()
+    .isInt({ min: 1, max: 50 })
+    .withMessage('limit must be between 1 and 50')
+    .toInt(),
+  query('offset')
+    .optional()
+    .isInt({ min: 0, max: 10000 })
+    .withMessage('offset must be between 0 and 10000')
+    .toInt(),
+  handleValidationErrors
+];
+
+/**
+ * Bulk removal of tracks from playlists. Capped at 20 playlists and 200 track
+ * removals per request: each playlist costs a read plus a paced write, so a
+ * larger batch would sit past any sane request timeout.
+ */
+export const validateBulkRemovePlaylistTracks = [
+  body('items')
+    .isArray({ min: 1, max: 20 })
+    .withMessage('items must be an array with 1-20 entries'),
+  body('items.*.playlistId')
+    .isInt({ min: 1 })
+    .withMessage('Each playlistId must be a positive integer')
+    .toInt(),
+  body('items.*.trackIds')
+    .isArray({ min: 1, max: 500 })
+    .withMessage('Each trackIds must be an array with 1-500 items'),
+  body('items.*.trackIds.*')
+    .isInt({ min: 1 })
+    .withMessage('Each trackId must be a positive integer')
+    .toInt(),
+  body('items').custom((items) => {
+    const total = items.reduce(
+      (sum, item) => sum + (Array.isArray(item?.trackIds) ? item.trackIds.length : 0),
+      0
+    );
+    if (total > 200) {
+      throw new Error('Cannot remove more than 200 tracks in one request');
+    }
+    const seen = new Set();
+    for (const item of items) {
+      const id = String(item?.playlistId);
+      if (seen.has(id)) {
+        throw new Error('Each playlist may appear only once per request');
+      }
+      seen.add(id);
+    }
+    return true;
+  }),
+  handleValidationErrors
+];
+
+/**
+ * Bulk copy of tracks into one existing playlist.
+ */
+export const validateBulkAddPlaylistTracks = [
+  body('targetPlaylistId')
+    .isInt({ min: 1 })
+    .withMessage('targetPlaylistId must be a positive integer')
+    .toInt(),
+  body('trackIds')
+    .isArray({ min: 1, max: 200 })
+    .withMessage('trackIds must be an array with 1-200 items'),
+  body('trackIds.*')
+    .isInt({ min: 1 })
+    .withMessage('Each trackId must be a positive integer')
+    .toInt(),
+  handleValidationErrors
 ];
 
 export const validateRebrandVote = [

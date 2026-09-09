@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { AlertTriangle, CheckCircle, Download, ListChecks, RefreshCw } from "lucide-react";
+import { AlertTriangle, CheckCircle, ChevronLeft, ChevronRight, Download, ListChecks, RefreshCw } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { downloadCsv } from "@/lib/csv";
 import { Button, EmptyState, InlineAlert, LoadingSpinner, PageHeader, Skeleton } from "@/components/ui";
@@ -20,7 +20,28 @@ interface AuditPlaylist {
   };
 }
 
+interface AuditPage {
+  limit: number;
+  offset: number;
+  returned: number;
+  total: number;
+  hasMore: boolean;
+  from: number;
+  to: number;
+  /** The playlist list came from cache and is being refreshed behind this response. */
+  stale: boolean;
+  /** The playlist crawl stopped early, so the library is bigger than `total`. */
+  truncated: boolean;
+}
+
+interface AuditFailure {
+  id: number;
+  title: string | null;
+}
+
 interface AuditResult {
+  page?: AuditPage;
+  failed?: AuditFailure[];
   summary: {
     playlists: number;
     tracks: number;
@@ -33,23 +54,38 @@ interface AuditResult {
   playlists: AuditPlaylist[];
 }
 
+const PAGE_SIZE = 20;
+/** Server rejects offsets past this, so the pager must stop there too. */
+const MAX_OFFSET = 10000;
+
 export default function LibraryAuditPage() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<AuditResult | null>(null);
+  const [offset, setOffset] = useState(0);
   const [notice, setNotice] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
-  const runAudit = async () => {
+  // Each run audits one page of playlists. SoundCloud returns them
+  // oldest-first, so walking the offset is how a library larger than one page
+  // gets fully covered.
+  const runAudit = async (nextOffset = 0) => {
     setLoading(true);
     setNotice(null);
     try {
-      const response = await apiFetch("/api/library/audit?limit=20");
+      const response = await apiFetch(`/api/library/audit?limit=${PAGE_SIZE}&offset=${nextOffset}`);
       const data = await response.json();
       if (!response.ok) {
         setNotice({ type: "error", text: data.error || "Could not run the audit." });
         return;
       }
       setResult(data);
-      setNotice({ type: "success", text: `Audited ${data.summary.playlists} playlist${data.summary.playlists === 1 ? "" : "s"}.` });
+      setOffset(nextOffset);
+      const range = data.page ? `${data.page.from}–${data.page.to}` : "";
+      setNotice({
+        type: "success",
+        text: data.summary.playlists === 0
+          ? "No playlists in this range."
+          : `Audited playlist${data.summary.playlists === 1 ? "" : "s"} ${range}.`,
+      });
     } catch (error) {
       console.error("Library audit failed:", error);
       setNotice({ type: "error", text: "Could not run the audit. Try again." });
@@ -73,7 +109,8 @@ export default function LibraryAuditPage() {
         playlist.summary.nearCap ? "yes" : "no",
       ]),
     ];
-    downloadCsv("library-audit.csv", rows);
+    const suffix = result.page ? `-${result.page.from}-${result.page.to}` : "";
+    downloadCsv(`library-audit${suffix}.csv`, rows);
   };
 
   return (
@@ -91,9 +128,9 @@ export default function LibraryAuditPage() {
         )}
 
         <div className="mb-6 flex flex-wrap items-center gap-3 rounded-xl border border-border bg-card p-4">
-          <Button onClick={runAudit} disabled={loading}>
+          <Button onClick={() => runAudit(0)} disabled={loading}>
             {loading ? <LoadingSpinner size="sm" className="border-white" /> : <RefreshCw className="h-4 w-4" />}
-            Run playlist audit
+            {result ? "Restart from the top" : "Run playlist audit"}
           </Button>
           {result && (
             <Button variant="outline" onClick={exportCsv}>
@@ -102,7 +139,8 @@ export default function LibraryAuditPage() {
             </Button>
           )}
           <p className="text-sm text-muted-foreground">
-            The MVP scans up to 20 playlists per run to stay friendly to SoundCloud rate limits.
+            {PAGE_SIZE} playlists per run, to stay friendly to SoundCloud&apos;s rate limits. Use
+            Next to audit the following {PAGE_SIZE}.
           </p>
         </div>
 
@@ -132,6 +170,24 @@ export default function LibraryAuditPage() {
           </div>
         ) : (
           <div className="space-y-6">
+            {result.page?.stale && (
+              <InlineAlert variant="info">
+                This list may be up to 15 minutes old — it is refreshing in the background.
+              </InlineAlert>
+            )}
+            {result.page?.truncated && (
+              <InlineAlert variant="warning">
+                Not all playlists were indexed, so the range below may not cover your whole
+                library.
+              </InlineAlert>
+            )}
+            {result.failed && result.failed.length > 0 && (
+              <InlineAlert variant="warning">
+                {result.failed.length} playlist{result.failed.length === 1 ? "" : "s"} could not be
+                read — these results are incomplete.
+              </InlineAlert>
+            )}
+
             <div className="grid gap-3 md:grid-cols-4">
               <Metric label="Playlists" value={result.summary.playlists} />
               <Metric label="Tracks scanned" value={result.summary.tracks} />
@@ -168,6 +224,35 @@ export default function LibraryAuditPage() {
                 })}
               </div>
             </div>
+
+            {result.page && (
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-3">
+                <p className="text-sm text-muted-foreground">
+                  {result.page.from === 0
+                    ? "No playlists in this range"
+                    : `Showing playlists ${result.page.from}–${result.page.to}`}
+                  {result.page.hasMore ? " — more to audit" : " — end of your library"}
+                </p>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => runAudit(Math.max(0, offset - PAGE_SIZE))}
+                    disabled={loading || offset === 0}
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                    Previous {PAGE_SIZE}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => runAudit(offset + PAGE_SIZE)}
+                    disabled={loading || !result.page.hasMore || offset + PAGE_SIZE > MAX_OFFSET}
+                  >
+                    Next {PAGE_SIZE}
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

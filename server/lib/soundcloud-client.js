@@ -267,23 +267,13 @@ class SoundCloudClient {
   }
 
   /**
-   * Get user's playlists with pagination
-   */
-  async getPlaylists(accessToken, refreshToken, limit = 50, offset = 0) {
-    const params = new URLSearchParams({
-      limit: limit.toString(),
-      offset: offset.toString(),
-      linked_partitioning: '1'
-    });
-
-    return this.scRequest(`/me/playlists?${params.toString()}`, accessToken, refreshToken);
-  }
-
-  /**
    * Get every one of the user's playlists (fully paginated via next_href).
    * `/me/playlists` returns oldest-created playlists first, so a single
-   * page (see getPlaylists) silently drops newer playlists once a user
-   * has more than `limit` of them.
+   * page silently drops newer playlists once a user has more than `limit`
+   * of them — which is why there is no single-page variant here. The one
+   * that existed sent `offset`, which this endpoint's own spec marks
+   * deprecated in favour of `linked_partitioning`; callers that want a
+   * page slice the cached full list instead (see lib/playlist-pages.js).
    */
   async getAllPlaylists(accessToken, refreshToken, limit = 200) {
     return this.paginate('/me/playlists', accessToken, refreshToken, limit);

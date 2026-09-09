@@ -1,7 +1,7 @@
 import express from 'express';
 import { soundcloudClient, fetchWithTimeout } from '../lib/soundcloud-client.js';
 import prisma from '../lib/prisma.js';
-import { heavyOperationRateLimiter } from '../middleware/rateLimiter.js';
+import { heavyOperationRateLimiter, libraryReadRateLimiter } from '../middleware/rateLimiter.js';
 import { authenticateUser } from '../middleware/auth.js';
 import { logOperation, startOperationTimer, extractClientInfo, instrumentRead } from '../lib/analytics.js';
 import { harvestTracks, harvestPlaylists } from '../lib/catalog.js';
@@ -23,6 +23,7 @@ import {
   invalidateUserNamespaces,
   loadCachedFollowings,
   loadCachedFollowers,
+  loadCachedPlaylists,
   loadCachedMe,
   loadUserCollection,
   invalidateUserCollections,
@@ -32,11 +33,21 @@ import { safeError } from '../lib/safe-error.js';
 import { isAllowedDownloadRedirectTarget, isAllowedDownloadUrl } from '../lib/download-utils.js';
 import { buildDashboardSummary } from '../lib/dashboard-summary.js';
 import { summarizeLibraryAudit } from '../lib/library-audit.js';
+import { pagePlaylistsWithTracks } from '../lib/playlist-pages.js';
 import { comparePlaylists } from '../lib/playlist-compare.js';
 import {
   duplicateTrackBetweenPlaylists,
   moveTrackBetweenPlaylists,
+  readPlaylistForRewrite,
+  PlaylistReadIncompleteError,
+  MAX_PLAYLIST_TRACKS,
 } from '../lib/playlist-transfer.js';
+import {
+  parseKeywords,
+  searchTracksInPlaylists,
+  removeTrackIds,
+  appendTrackIds,
+} from '../lib/playlist-search.js';
 import { requestCache } from '../lib/request-cache.js';
 import { mergeIntoExisting, splitIntoChunks } from '../lib/merge-utils.js';
 import {
@@ -62,10 +73,25 @@ import {
   validateTrackSearch,
   validateDeletePlaylist,
   validateEvent,
+  validateLibraryAudit,
+  validatePlaylistTrackSearch,
+  validateBulkRemovePlaylistTracks,
+  validateBulkAddPlaylistTracks,
 } from '../middleware/validation.js';
 const router = express.Router();
 
 const SC_TOOLKIT_PLAYLIST_SITE = 'www.soundcloudtoolkit.com';
+
+/**
+ * Ceiling on the matches one keyword search returns.
+ *
+ * A one-letter term against fifty full playlists can match tens of thousands
+ * of tracks; serialising and rendering that is a slow response and a slower
+ * page, for a result nobody can act on — the bulk endpoints cap out at 200
+ * tracks anyway. Over the cap the client is told to narrow the search rather
+ * than handed a truncated list it thinks is complete.
+ */
+const MAX_SEARCH_MATCHES = 2000;
 const SC_TOOLKIT_PLAYLIST_FOOTER = `Created using SC Toolkit. Try it for free ${SC_TOOLKIT_PLAYLIST_SITE}`;
 
 /** Operation summary only; standard toolkit footer is appended for SoundCloud playlist descriptions. */
@@ -251,32 +277,23 @@ router.get('/dashboard/summary', authenticateUser, instrumentRead('dashboard-sum
   }
 });
 
-router.get('/library/audit', authenticateUser, instrumentRead('library-audit'), heavyOperationRateLimiter, async (req, res) => {
+router.get('/library/audit', authenticateUser, instrumentRead('library-audit'), libraryReadRateLimiter, validateLibraryAudit, async (req, res) => {
   try {
-    const limit = Math.min(Math.max(Number(req.query.limit) || 20, 1), 50);
-    const playlistPage = await soundcloudClient.getPlaylists(req.accessToken, req.refreshToken, limit, 0);
-    const playlists = Array.isArray(playlistPage?.collection)
-      ? playlistPage.collection
-      : Array.isArray(playlistPage)
-        ? playlistPage
-        : [];
-    // These fetches are independent of each other, so the serial loop this
-    // replaces cost one round trip per playlist end to end: ~21 at the default
-    // limit of 20 and ~51 at the maximum, all inside one held-open request.
-    const settled = await mapWithConcurrency(playlists, SC_READ_CONCURRENCY, async (playlist) => {
-      try {
-        return await soundcloudClient.getPlaylistWithTracks(req.accessToken, req.refreshToken, playlist.id);
-      } catch (error) {
-        logger.warn('Library audit playlist fetch failed:', { playlistId: playlist.id, error: safeError(error) });
-        return null;
-      }
-    });
-    // Order is preserved by mapWithConcurrency; failures drop out as before.
-    const fullPlaylists = settled.filter(Boolean);
+    const limit = req.query.limit ?? 20;
+    const offset = req.query.offset ?? 0;
+    // Auditing pulls every playlist's full track list, so it works a page at a
+    // time. offset is what lets a user walk a library bigger than one page —
+    // playlists 20-40, then 40-60, and so on. The page is a slice of the cached
+    // full playlist list, not a SoundCloud offset query; see playlist-pages.js.
+    const { playlists: fullPlaylists, failed, page } = await pagePlaylistsWithTracks(req, { limit, offset });
 
     harvestTracks(fullPlaylists.flatMap(p => (Array.isArray(p.tracks) ? p.tracks : [])));
     harvestPlaylists(fullPlaylists);
     const audit = summarizeLibraryAudit(fullPlaylists);
+    audit.page = page;
+    // Playlists whose read failed are named rather than dropped: an audit that
+    // silently skipped three playlists reads as a clean bill of health.
+    audit.failed = failed;
     logOperation({
       req,
       action: 'library-audit',
@@ -295,6 +312,281 @@ router.get('/library/audit', authenticateUser, instrumentRead('library-audit'), 
   } catch (error) {
     logger.error('Library audit error:', safeError(error));
     res.status(500).json({ error: 'Failed to audit library' });
+  }
+});
+
+/**
+ * GET /api/playlists/search-tracks?q=&playlistId=&limit=&offset=
+ *
+ * Find tracks by keyword across playlist track lists. Comma-separated terms
+ * are OR'd. Without playlistId it walks the library a page at a time (same
+ * shape as the audit); with one it searches just that playlist.
+ */
+router.get('/playlists/search-tracks', authenticateUser, instrumentRead('playlist-keyword-search'), libraryReadRateLimiter, validatePlaylistTrackSearch, async (req, res) => {
+  try {
+    const keywords = parseKeywords(req.query.q);
+    if (keywords.length === 0) {
+      return res.status(400).json({ error: 'Enter at least one keyword' });
+    }
+
+    // `??` would keep an empty string here: validatePlaylistTrackSearch uses
+    // checkFalsy, so `?playlistId=` skips validation entirely and arrives as
+    // ''. `||` collapses that to "not scoped" instead of scoping the search to
+    // a playlist id of ''.
+    const singlePlaylistId = req.query.playlistId || null;
+    const limit = req.query.limit ?? 20;
+    const offset = req.query.offset ?? 0;
+
+    let fullPlaylists;
+    let failed = [];
+    let page = null;
+
+    if (singlePlaylistId !== null) {
+      // Scoped to one playlist: no library listing, and no page — the client
+      // has nothing to walk.
+      try {
+        fullPlaylists = [
+          await soundcloudClient.getPlaylistWithTracks(req.accessToken, req.refreshToken, singlePlaylistId),
+        ];
+      } catch (error) {
+        logger.warn('Keyword search playlist fetch failed:', { playlistId: singlePlaylistId, error: safeError(error) });
+        fullPlaylists = [];
+        failed = [{ id: singlePlaylistId, title: null }];
+      }
+    } else {
+      // A slice of the cached full playlist list, with each playlist's tracks
+      // fetched concurrently. See playlist-pages.js for why not an offset query.
+      const paged = await pagePlaylistsWithTracks(req, { limit, offset });
+      fullPlaylists = paged.playlists;
+      failed = paged.failed;
+      page = paged.page;
+    }
+
+    const { matches: allMatches, stats } = searchTracksInPlaylists(fullPlaylists, keywords);
+    // stats keeps the true count; `matches` is what the client can act on.
+    const capped = allMatches.length > MAX_SEARCH_MATCHES;
+    const matches = capped ? allMatches.slice(0, MAX_SEARCH_MATCHES) : allMatches;
+    // A search that could not read three playlists is not the same answer as
+    // one that read them and found nothing; the client says so either way.
+    stats.playlistsFailed = failed.length;
+
+    logOperation({
+      req,
+      action: 'playlist-keyword-search',
+      itemCount: stats.playlistsSearched,
+      trackCount: stats.matchCount,
+      status: 'success',
+      playlistIds: fullPlaylists.map(p => p.id).filter(id => id != null),
+      metadata: { keywords: keywords.length, scoped: singlePlaylistId !== null },
+    });
+
+    res.json({ keywords, matches, stats, failed, capped, page });
+  } catch (error) {
+    logger.error('Playlist keyword search error:', safeError(error));
+    res.status(500).json({ error: 'Failed to search playlists' });
+  }
+});
+
+/**
+ * POST /api/playlists/tracks/bulk-remove
+ * Body: { items: [{ playlistId, trackIds: [] }] }
+ *
+ * Removes tracks from playlists by PUTting each playlist's surviving track
+ * list. Per-playlist status is returned so a partial failure is visible rather
+ * than silent.
+ */
+router.post('/playlists/tracks/bulk-remove', authenticateUser, heavyOperationRateLimiter, validateBulkRemovePlaylistTracks, async (req, res) => {
+  const elapsed = startOperationTimer();
+  try {
+    const { items } = req.body;
+
+    // Phase 1 — read every playlist, concurrently. The reads are independent
+    // of each other and of the writes, so the old read/write/sleep cycle paid
+    // twenty round trips end to end before the second write even started, all
+    // inside one held-open response.
+    const prepared = await mapWithConcurrency(items, SC_READ_CONCURRENCY, async (item) => {
+      const { playlistId, trackIds } = item;
+      try {
+        // Refuses rather than PUTting a list we only partly have — see
+        // readPlaylistForRewrite. Removing one track from a short read would
+        // silently delete every entry the read dropped.
+        const { playlist, ids: currentIds } = await readPlaylistForRewrite(
+          soundcloudClient, req.accessToken, req.refreshToken, playlistId,
+        );
+        const nextIds = removeTrackIds(currentIds, trackIds);
+        return {
+          playlistId,
+          title: playlist.title ?? null,
+          nextIds,
+          removed: currentIds.length - nextIds.length,
+        };
+      } catch (error) {
+        logger.warn('Bulk remove read failed for playlist:', { playlistId, error: safeError(error) });
+        return {
+          playlistId,
+          error: error instanceof PlaylistReadIncompleteError
+            ? error.message
+            : 'Could not update this playlist',
+        };
+      }
+    });
+
+    // Phase 2 — the writes, still sequential and still paced. Pacing exists so
+    // a burst of playlist PUTs does not draw a 429, which means it belongs
+    // BETWEEN writes: never after a row that was skipped or failed its read (no
+    // request was made, so there is nothing to pace away from) and never after
+    // the last one, where it only delays the response by 300ms per batch.
+    const results = [];
+    let removedTotal = 0;
+    let wroteAny = false;
+
+    for (const entry of prepared) {
+      if (entry.error) {
+        results.push({ playlistId: entry.playlistId, status: 'error', removed: 0, error: entry.error });
+        continue;
+      }
+
+      if (entry.removed === 0) {
+        results.push({
+          playlistId: entry.playlistId,
+          status: 'skipped',
+          removed: 0,
+          title: entry.title,
+          message: 'None of those tracks are in this playlist any more',
+        });
+        continue;
+      }
+
+      if (wroteAny) await sleep(SC_WRITE_PACING_MS);
+      // Set before the attempt, not after it: a PUT that failed still cost
+      // SoundCloud a request, and a 429 is precisely when the next one should
+      // wait.
+      wroteAny = true;
+
+      try {
+        await soundcloudClient.addTracksToPlaylist(
+          req.accessToken,
+          req.refreshToken,
+          entry.playlistId,
+          entry.nextIds
+        );
+
+        removedTotal += entry.removed;
+        results.push({
+          playlistId: entry.playlistId,
+          status: 'success',
+          removed: entry.removed,
+          remaining: entry.nextIds.length,
+          title: entry.title,
+        });
+      } catch (error) {
+        logger.warn('Bulk remove write failed for playlist:', { playlistId: entry.playlistId, error: safeError(error) });
+        results.push({
+          playlistId: entry.playlistId,
+          status: 'error',
+          removed: 0,
+          error: 'Could not update this playlist',
+        });
+      }
+    }
+
+    invalidatePlaylistState(req.user.id);
+
+    logOperation({
+      req,
+      action: 'playlist-bulk-remove-tracks',
+      itemCount: items.length,
+      trackCount: removedTotal,
+      status: results.some(r => r.status === 'error') ? 'partial' : 'success',
+      durationMs: elapsed(),
+      playlistIds: items.map(i => i.playlistId),
+      trackIds: items.flatMap(i => i.trackIds),
+    });
+
+    res.json({ results, removedTotal });
+  } catch (error) {
+    logger.error('Bulk remove playlist tracks error:', safeError(error));
+    res.status(500).json({ error: 'Failed to remove tracks' });
+  }
+});
+
+/**
+ * POST /api/playlists/tracks/bulk-add
+ * Body: { targetPlaylistId, trackIds: [] }
+ *
+ * Appends tracks to one existing playlist, skipping ones already there and
+ * stopping at SoundCloud's 500-track ceiling.
+ */
+router.post('/playlists/tracks/bulk-add', authenticateUser, heavyOperationRateLimiter, validateBulkAddPlaylistTracks, async (req, res) => {
+  const elapsed = startOperationTimer();
+  try {
+    const { targetPlaylistId, trackIds } = req.body;
+
+    // Appending to a short read would drop whatever the read missed, so a
+    // playlist we cannot fully see is refused outright.
+    let target;
+    let existingIds;
+    try {
+      ({ playlist: target, ids: existingIds } = await readPlaylistForRewrite(
+        soundcloudClient, req.accessToken, req.refreshToken, targetPlaylistId,
+      ));
+    } catch (error) {
+      if (error instanceof PlaylistReadIncompleteError) {
+        return res.status(409).json({ error: error.message });
+      }
+      throw error;
+    }
+    const { nextIds, added, alreadyPresent, noRoom } = appendTrackIds(
+      existingIds,
+      trackIds,
+      MAX_PLAYLIST_TRACKS
+    );
+
+    if (added.length === 0) {
+      return res.json({
+        targetPlaylistId,
+        targetTitle: target.title ?? null,
+        added: 0,
+        alreadyPresent: alreadyPresent.length,
+        noRoom: noRoom.length,
+        total: existingIds.length,
+        message: noRoom.length
+          ? `Playlist is full (${MAX_PLAYLIST_TRACKS} tracks max)`
+          : 'Every one of those tracks is already in this playlist',
+      });
+    }
+
+    await soundcloudClient.addTracksToPlaylist(
+      req.accessToken,
+      req.refreshToken,
+      targetPlaylistId,
+      nextIds
+    );
+
+    invalidatePlaylistState(req.user.id);
+
+    logOperation({
+      req,
+      action: 'playlist-bulk-add-tracks',
+      itemCount: 1,
+      trackCount: added.length,
+      status: 'success',
+      durationMs: elapsed(),
+      playlistIds: [targetPlaylistId],
+      trackIds: added,
+    });
+
+    res.json({
+      targetPlaylistId,
+      targetTitle: target.title ?? null,
+      added: added.length,
+      alreadyPresent: alreadyPresent.length,
+      noRoom: noRoom.length,
+      total: nextIds.length,
+    });
+  } catch (error) {
+    logger.error('Bulk add playlist tracks error:', safeError(error));
+    res.status(500).json({ error: 'Failed to add tracks' });
   }
 });
 
@@ -346,27 +638,9 @@ router.post('/playlists/compare', authenticateUser, heavyOperationRateLimiter, a
  */
 router.get('/playlists', authenticateUser, instrumentRead('playlists'), async (req, res) => {
   try {
-    const withCovers = await loadUserCollection(
-      req,
-      'playlists',
-      () => soundcloudClient.getAllPlaylists(req.accessToken, req.refreshToken),
-      (playlists) => {
-        // Cover art is derived from what the list response already carries.
-        // This used to fall back to getPlaylistWithTracks for every artwork-less
-        // playlist, in an unbounded Promise.all — 50 simultaneous requests each
-        // returning up to 500 full track objects, to read one artwork_url off
-        // tracks[0]. That fan-out was the dominant cost of this endpoint and its
-        // swallowed errors turned the resulting 429s into silently missing
-        // covers. Clients that want a real per-playlist cover can ask for one
-        // lazily; the owner avatar is a fine placeholder in a list view.
-        const collection = playlists.map((p) => {
-          const idNum = typeof p.id === 'string' ? parseInt(p.id, 10) : p.id;
-          const coverUrl = p.artwork_url || p.user?.avatar_url || '';
-          return { ...p, id: idNum, coverUrl };
-        });
-        return { collection, total: collection.length };
-      },
-    );
+    // One definition, in social-cache.js: the paged tools slice this same
+    // cached list rather than running their own query.
+    const withCovers = await loadCachedPlaylists(req);
     res.json(withCovers);
   } catch (error) {
     logger.error('Get playlists error:', safeError(error));
@@ -622,6 +896,11 @@ router.post(
 
       return res.status(400).json({ ok: false, error: 'Invalid action' });
     } catch (error) {
+      // A short read is a refusal with a reason, not a failure: the same 409
+      // bulk-add and PUT /playlists/:id return, so the client can show it.
+      if (error instanceof PlaylistReadIncompleteError) {
+        return res.status(409).json({ ok: false, error: error.message });
+      }
       logger.error('Playlist transfer error:', safeError(error));
       res.status(500).json({ ok: false, error: 'Playlist transfer failed' });
     }
@@ -658,6 +937,20 @@ router.put('/playlists/:id', authenticateUser, validateUpdatePlaylist, async (re
   try {
     const id = req.params.id; // Already validated and converted to int by middleware
     const { tracks, title } = req.body || {};
+
+    // The client sends a full replacement list it derived from its own read of
+    // this playlist. If OUR read comes back short of the playlist's own
+    // track_count, the client's almost certainly did too — and PUTting that
+    // list would permanently delete whatever both reads dropped. Refuse
+    // instead; the read costs one round trip and the write is irreversible.
+    try {
+      await readPlaylistForRewrite(soundcloudClient, req.accessToken, req.refreshToken, id);
+    } catch (error) {
+      if (error instanceof PlaylistReadIncompleteError) {
+        return res.status(409).json({ error: error.message });
+      }
+      throw error;
+    }
 
     // Reuse addTracksToPlaylist to overwrite order by sending full list
     const updated = await soundcloudClient.addTracksToPlaylist(

@@ -68,6 +68,29 @@ export const heavyOperationRateLimiter = createLimiter({
 });
 
 /**
+ * Rate limiter for the bounded paged library reads — the library audit and the
+ * playlist keyword search. Allows 60 requests per hour per IP.
+ *
+ * These two are reads, and their cost is bounded: one page is at most 50
+ * playlist fetches, against a cached playlist list. They were sharing the
+ * 20/hour heavy budget with merge, clone, and every bulk write, which meant
+ * paging through a 400-playlist library twenty pages at a time locked the user
+ * out of the operations that actually mutate their account — and did it after
+ * twenty page views, which is one sitting. Sitting between heavy and general
+ * gives the page walk room without handing a write budget away.
+ */
+export const libraryReadRateLimiter = createLimiter({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 60, // Limit each IP to 60 paged library reads per hour
+  message: {
+    error: 'Too many library scans, please try again later.',
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  // Default keyGenerator handles IPv6 correctly
+});
+
+/**
  * Light rate limiter for health check endpoint
  * Allows 60 requests per minute per IP (prevents abuse while allowing monitoring)
  */

@@ -19,12 +19,12 @@ export default function AboutPage() {
           </div>
 
           <h1 className="text-3xl md:text-4xl font-bold mb-6 text-foreground">
-            About SC Toolkit
+            About Track Toolkit
           </h1>
 
           <div className="space-y-6 text-muted-foreground leading-relaxed">
             <p className="text-lg">
-              SC Toolkit is a powerful web application designed to enhance your
+              Track Toolkit is a powerful web application designed to enhance your
               SoundCloud experience with advanced playlist management tools.
               Created by music lovers, for music lovers, we understand the
               frustration of managing large music libraries and the limitations
@@ -114,7 +114,7 @@ export default function AboutPage() {
                 Security &amp; Privacy
               </h2>
               <p>
-                Your security and privacy are our top priorities. SC Toolkit
+                Your security and privacy are our top priorities. Track Toolkit
                 uses official SoundCloud OAuth authentication, which means we
                 never see or store your password. All access tokens are
                 encrypted at rest using AES-256-GCM encryption. We only request
@@ -128,7 +128,7 @@ export default function AboutPage() {
                 Free &amp; Open
               </h2>
               <p>
-                SC Toolkit is completely free to use. We&apos;re committed to
+                Track Toolkit is completely free to use. We&apos;re committed to
                 providing powerful tools without charging our users. Our goal is
                 to improve the SoundCloud experience for everyone, regardless of
                 their subscription status.
@@ -141,7 +141,7 @@ export default function AboutPage() {
               </h2>
               <p>
                 Built with modern web technologies including React, TypeScript,
-                and Node.js, SC Toolkit is designed for performance, security,
+                and Node.js, Track Toolkit is designed for performance, security,
                 and reliability. We use industry best practices for
                 authentication and data encryption to keep your information
                 safe.
@@ -163,7 +163,7 @@ export default function AboutPage() {
 
             <div className="pt-6 border-t border-border">
               <p className="text-sm text-muted-foreground">
-                <strong className="text-foreground">Note:</strong> SC Toolkit is
+                <strong className="text-foreground">Note:</strong> Track Toolkit is
                 not affiliated with, endorsed by, or connected to SoundCloud.
                 This is an independent tool created to enhance the SoundCloud
                 user experience.

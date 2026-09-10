@@ -20,7 +20,6 @@ import { getCachedResolve, setCachedResolve } from '../lib/resolve-cache.js';
 import {
   CACHE_TTL,
   getCachedUserPayload,
-  invalidateUserNamespaces,
   loadCachedFollowings,
   loadCachedFollowers,
   loadCachedPlaylists,
@@ -80,7 +79,10 @@ import {
 } from '../middleware/validation.js';
 const router = express.Router();
 
-const SC_TOOLKIT_PLAYLIST_SITE = 'www.soundcloudtoolkit.com';
+// The live domain is unchanged by the Track Toolkit rebrand — the product name
+// moved, the deployment did not. Update this only when the new domain is
+// registered and pointed at the app.
+const TRACK_TOOLKIT_PLAYLIST_SITE = 'www.soundcloudtoolkit.com';
 
 /**
  * Ceiling on the matches one keyword search returns.
@@ -92,12 +94,12 @@ const SC_TOOLKIT_PLAYLIST_SITE = 'www.soundcloudtoolkit.com';
  * than handed a truncated list it thinks is complete.
  */
 const MAX_SEARCH_MATCHES = 2000;
-const SC_TOOLKIT_PLAYLIST_FOOTER = `Created using SC Toolkit. Try it for free ${SC_TOOLKIT_PLAYLIST_SITE}`;
+const TRACK_TOOLKIT_PLAYLIST_FOOTER = `Created using Track Toolkit. Try it for free ${TRACK_TOOLKIT_PLAYLIST_SITE}`;
 
 /** Operation summary only; standard toolkit footer is appended for SoundCloud playlist descriptions. */
 function playlistDescriptionWithToolkit(operationDescription) {
   const body = String(operationDescription ?? '').trim();
-  return `${body}\n\n${SC_TOOLKIT_PLAYLIST_FOOTER}`;
+  return `${body}\n\n${TRACK_TOOLKIT_PLAYLIST_FOOTER}`;
 }
 
 /**
@@ -1692,7 +1694,7 @@ const MAX_TRACKS_PER_PLAYLIST = 500;
 
 /**
  * Create a single playlist from track IDs using 100-track batches (SoundCloud API limit).
- * @param {string} operationDescription - Summary only; SC Toolkit footer is appended automatically.
+ * @param {string} operationDescription - Summary only; Track Toolkit footer is appended automatically.
  */
 async function createPlaylistFromTrackIds(accessToken, refreshToken, trackIds, title, operationDescription) {
   const initialBatch = trackIds.slice(0, BATCH_SIZE_PLAYLIST_TRACKS);

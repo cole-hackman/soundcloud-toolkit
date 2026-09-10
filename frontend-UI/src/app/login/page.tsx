@@ -71,7 +71,7 @@ export default function LoginPage() {
           <section className="order-2 flex flex-col items-start lg:order-1 lg:pr-8">
             <Image
               src="/sc toolkit transparent .png"
-              alt="SC Toolkit"
+              alt="Track Toolkit"
               width={140}
               height={46}
               className="h-8 w-auto object-contain"
@@ -104,7 +104,7 @@ export default function LoginPage() {
                       </h2>
                       <p className="mt-2 max-w-sm text-xs leading-5 text-muted-foreground sm:text-sm">
                         We&apos;ll open the official SoundCloud approval screen.
-                        Your password is never stored by SC Toolkit.
+                        Your password is never stored by Track Toolkit.
                       </p>
                     </div>
                     <Link

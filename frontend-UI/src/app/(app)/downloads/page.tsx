@@ -547,7 +547,7 @@ export default function DownloadsPage() {
               <div className="mb-4 flex items-start gap-3 rounded-xl bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-900/40 px-4 py-3 text-sm text-purple-800 dark:text-purple-300">
                 <Zap className="w-4 h-4 shrink-0 mt-0.5" />
                 <span>
-                  Queue sent to extension. Open the SoundCloud Toolkit side panel from the Chrome toolbar
+                  Queue sent to extension. Open the Track Toolkit side panel from the Chrome toolbar
                   and click <strong>Start</strong> to begin downloading.
                 </span>
                 <button onClick={() => setQueueSent(false)} className="shrink-0 hover:opacity-70">
@@ -664,7 +664,7 @@ export default function DownloadsPage() {
                       </Button>
                       {!extInstalled && (
                         <span className="text-xs text-muted-foreground/70 self-center">
-                          SC Toolkit extension required
+                          Track Toolkit extension required
                         </span>
                       )}
                     </>

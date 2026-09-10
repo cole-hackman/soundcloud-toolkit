@@ -1,6 +1,6 @@
 {
-  "name": "SC Toolkit",
-  "short_name": "SC Toolkit",
+  "name": "Track Toolkit",
+  "short_name": "Track Toolkit",
   "description": "Organize, merge, and clean your SoundCloud playlists",
   "start_url": "/",
   "display": "standalone",

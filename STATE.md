@@ -1,25 +1,59 @@
 # STATE
 
 ## Now
-Two features off the back of the rebrand-vote feature requests: **library audit
-paging** and **playlist keyword search with bulk remove/copy**. Not deployed.
+**The Track Toolkit rebrand.** Product-owned naming across the app, the
+marketing and legal pages, metadata/OG/JSON-LD, the API service name and the
+playlist footer now says Track Toolkit; SoundCloud references that describe the
+platform, the OAuth connection, the API or the trademark position are
+deliberately kept. Two announcements ship with it (site-wide banner + a
+one-time modal for signed-in users), and the name vote is retired. Not
+deployed.
 
-Merged in the performance-audit work from #34. **Before deploying the backend,
-run `docs/sql/2026-library-cache.sql`** in the Neon console — it adds
-`library_cache_pages` and `library_cache_states`. Additive and idempotent; the
-backend fails soft when the tables are absent, so the ordering is preferred
-rather than load-bearing.
+**The domain has not moved.** Every `soundcloudtoolkit.com` reference in the
+repo is intentional until it does — that is still where the product is served.
+The outstanding external steps are listed under "Rebrand follow-ups" in
+README.md: register the domain, update the SoundCloud OAuth registration +
+`SOUNDCLOUD_REDIRECT_URI`/`APP_URL`/`APP_URLS`, redraw the logo artwork,
+re-point og-image/sitemap/robots/canonicals and file a Search Console change of
+address, rename the Chrome extension listing and the DigitalOcean app.
+
+**Before deploying the backend**, run `docs/sql/2026-library-cache.sql` in the
+Neon console — it adds `library_cache_pages` and `library_cache_states`.
+Additive and idempotent; the backend fails soft when the tables are absent, so
+the ordering is preferred rather than load-bearing.
 
 After deploy, leave it a few days and read `/admin` → the per-action p95 panel.
 `docs/performance-audit-2026-09.md` is written against estimated round-trip
 counts, not measured production latency; the instrumentation from #34 is what
 produces the real numbers, and the doc should be revisited once they exist.
 
-Verify `SURVEY_CAMPAIGN_ID` is unset or `2026-rebrand-name-v1` in DigitalOcean;
-a stale `2026-songswipe-beta-v1` would silently suppress the prompt for anyone
-who dismissed the beta survey.
+`SURVEY_CAMPAIGN_ID` no longer gates any prompt, so a stale value in
+DigitalOcean is now inert rather than dangerous.
 
 ## Just done
+- **Rebrand shipped to the branch: SC Toolkit / SoundCloud Toolkit → Track
+  Toolkit.** Landing headline, nav, app shell, dashboard, login, about, privacy,
+  accessibility, extension pages, admin dashboard, `manifest.json`, `robots.txt`,
+  Open Graph + Twitter + JSON-LD (with `alternateName: "SoundCloud Toolkit"` so
+  the rebrand stays legible to search), the `/` API service name, the playlist
+  description footer, README, CLAUDE.md, SECURITY.md, ANALYSIS.md,
+  DATA-COLLECTION.md.
+- New `RebrandBanner` (site-wide, sticky, dismissible, publishes
+  `--announcement-h` so the two fixed headers offset under it) and
+  `RebrandAnnouncementModal` (one-time, signed-in only, single acknowledgement,
+  focus-trapped). Both localStorage-gated via `lib/rebrand.ts`; the dashboard
+  holds "What's new" back until the rebrand modal is acknowledged, so nothing
+  stacks.
+- **Name vote retired.** `REBRAND_VOTE_CONCLUDED` in `routes/feedback.js`:
+  status reports `{ enabled: false, concluded, decidedName }`, POST answers 410
+  *after* the validator (so the CSRF fail-closed invariant keeps its coverage).
+  `SurveyContext.tsx`, `RebrandSurveyModal.tsx` and `survey-storage.ts` deleted,
+  triggers removed from dashboard/combine/likes-to-playlist. `RebrandVote` rows
+  and both admin read paths untouched.
+- Post-merge review of #34-#37: no regressions found. Removed one dead import
+  (`invalidateUserNamespaces` in `routes/api.js`) left behind when the write
+  paths moved to `invalidateUserCollections`, and corrected CLAUDE.md's model
+  count (15 → 16).
 - Library audit takes `offset`, so a library bigger than one page can be walked
   (playlists 1-20, then 21-40, 41-60, ...). Previously it only ever audited the
   first 20 — and `/me/playlists` is oldest-first, so newer playlists were
@@ -69,17 +103,51 @@ who dismissed the beta survey.
   route-level authz/CSRF tests (tests/routes/).
 
 ## Next
-1. Review and merge PR #29, then let Vercel + DigitalOcean deploy.
-2. Run `/verify-deploy` against the live site — landing copy, login round-trip
-   (everyone gets logged out once; confirm re-login works), one authenticated
-   call. This step is REQUIRED before calling the work done.
-3. Deploy the rebrand survey backend and let the vote run (the `rebrand_votes`
-   table already exists). Shortlist ranking and the domain caveats behind it are
-   in the PR body — TrackTidy and SortWave need an aftermarket domain purchase;
-   DeckDig and DeckHaul had free .coms at time of writing (re-check at the
-   registrar before buying).
+1. Merge this branch, then let Vercel + DigitalOcean deploy.
+2. Validate against the live site — this step is REQUIRED before calling the
+   rebrand done, and none of it has been done yet:
+   - landing + `/about` + `/privacy` read "Track Toolkit"; the H1 is "The
+     Ultimate Track Toolkit";
+   - the banner renders on the landing page and inside the app, the landing nav
+     and the mobile app header sit *below* it rather than under it, and
+     dismissing it puts them back flush at the top;
+   - log in and confirm the announcement modal appears once, that "Got it"
+     dismisses it for good, and that "What's new" does not stack on top of it;
+   - the name-vote modal is gone, and `GET /api/feedback/survey/status` returns
+     `enabled: false`;
+   - one authenticated call still works end to end;
+   - re-scrape the OG card (title/description/siteName) and check `/admin` still
+     renders the historical vote tally.
+3. Work the external rebrand list in README.md ("Rebrand follow-ups"), in order
+   — the domain gates the rest.
 
 ## Decisions
+- **Name: Track Toolkit** (2026-09-10). Supersedes the live vote, which is now
+  closed in code. SoundCloud references stay wherever they are factual — the
+  platform, the OAuth connection, the API, the trademark position, "Continue
+  with SoundCloud". Product-owned naming — titles, nav, metadata, marketing and
+  legal copy, the playlist footer — is Track Toolkit.
+- The headline is now "The Ultimate Track Toolkit" (2026-09-10). This replaces
+  the 2026-07-08 decision to keep "The Ultimate SoundCloud Toolkit": that
+  wording *was* the trademark problem, since it reads as the product's name.
+  Structure and the `.text-gradient` treatment on "Toolkit" are unchanged.
+- Domain references stay on `soundcloudtoolkit.com` until the new domain is
+  registered and pointed (2026-09-10). Renaming them in the repo first would
+  break the deployed product for no gain — the domain move is an external step,
+  tracked in README.md.
+- Logo and icon files keep their old paths (`/SC Toolkit Icon.png`,
+  `/sc toolkit transparent .png`) (2026-09-10). The artwork still has to be
+  redrawn; renaming the files without new art only breaks the paths the app and
+  the Chrome extension already point at. Replace the images in place.
+- `sc-toolkit-*` localStorage keys and the `sc-toolkit-*` postMessage types
+  keep their names (2026-09-10). They are not user-visible, the postMessage
+  types are a contract with the Chrome extension, and renaming the rest would
+  silently reset every user's recent-tools list, sidebar state, growth risk
+  acknowledgement and "What's new" dismissal. New rebrand keys use the
+  `track-toolkit-` prefix.
+- Rebrand announcements are localStorage-gated only, no DB (2026-09-10), same
+  posture as "What's new". Order of precedence: rebrand modal, then "What's
+  new", and the name vote is gone — never two at once.
 - Headline "The Ultimate SoundCloud Toolkit" kept as-is — only subhead copy
   added around it (2026-07-08).
 - Landing keeps exactly 3 animation components as signatures: FlickeringGrid
@@ -117,6 +185,21 @@ who dismissed the beta survey.
 - Licensed MIT, © 2026 Cole Hackman (2026-08-25).
 
 ## Landmines
+- The rebrand banner publishes its height as `--announcement-h` and the two
+  `position: fixed` headers (landing nav in `app/page.tsx`, mobile header in
+  `AppShell.tsx`) read it as their `top`. If you add another fixed element
+  anchored to the top of the viewport, give it the same offset or it will sit
+  underneath the banner. The variable is declared `0px` in `globals.css`, so
+  everything is correct when there is no banner.
+- The rebrand modal is mounted by `(app)/layout.tsx`, the banner by the root
+  layout, so acknowledging the modal reaches the banner only through
+  `REBRAND_STATE_EVENT`. A `storage` event will not do it — that one fires in
+  other tabs, not this one.
+- `validateRebrandVote` must stay AHEAD of the closed-vote 410 in
+  `routes/feedback.js`. That POST is what
+  `tests/routes/feedback-authz.test.js` uses to prove a cross-site
+  form-encoded body fails closed at the validator; a gate in front of it would
+  answer 410 and the invariant would go untested.
 - `npm test` is self-contained again: `tests/setup-env.js` supplies dummy
   SoundCloud credentials via jest `setupFiles`, because five suites validate
   them at module scope and otherwise fail to LOAD on a fresh clone — which

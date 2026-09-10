@@ -1,6 +1,6 @@
 # Security Implementation
 
-This document outlines the security measures implemented in the SoundCloud Toolkit project.
+This document outlines the security measures implemented in the Track Toolkit project.
 
 ## 1. Rate Limiting
 

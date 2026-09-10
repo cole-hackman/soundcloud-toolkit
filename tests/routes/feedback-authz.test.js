@@ -47,9 +47,8 @@ describe('CSRF invariant: non-JSON bodies fail closed', () => {
   });
 });
 
-describe('rebrand vote binds to the authenticated principal', () => {
-  test('a client-supplied userId cannot write a vote for another user', async () => {
-    create.mockResolvedValueOnce({ id: 'vote-1', createdAt: new Date() });
+describe('the concluded name vote refuses new writes', () => {
+  test('a well-formed vote is answered 410 and never reaches the database', async () => {
     const res = await request(app)
       .post('/api/feedback/survey')
       .send({
@@ -58,26 +57,30 @@ describe('rebrand vote binds to the authenticated principal', () => {
         nameChoice: 'tracktidy',
         context: 'dashboard',
       });
-    expect(res.status).toBe(201);
-    const data = create.mock.calls[0][0].data;
-    // Ownership comes from the session, never from the body
-    expect(data.userId).toBe('user-a');
-    expect(data.soundcloudId).toBe(111);
+    expect(res.status).toBe(410);
+    expect(res.body.concluded).toBe(true);
+    expect(res.body.decidedName).toBe('Track Toolkit');
+    // The write path is closed, so no body — client-supplied or not — can
+    // create a row.
+    expect(create).not.toHaveBeenCalled();
   });
 
-  test('a second vote in the same campaign is rejected as a duplicate', async () => {
-    create.mockRejectedValueOnce(Object.assign(new Error('dup'), { code: 'P2002' }));
-    const res = await request(app)
-      .post('/api/feedback/survey')
-      .send({ nameChoice: 'deckdig', context: 'dashboard' });
-    expect(res.status).toBe(409);
-  });
-
-  test('an off-shortlist nameChoice never reaches the database', async () => {
+  test('an off-shortlist nameChoice is still rejected by the validator, not the gate', async () => {
+    // Validation runs first on purpose; a 410 here would mean the CSRF
+    // fail-closed invariant above is being served by the gate rather than by
+    // express.json() plus the validator.
     const res = await request(app)
       .post('/api/feedback/survey')
       .send({ nameChoice: 'cratekit', context: 'dashboard' });
     expect(res.status).toBe(400);
     expect(create).not.toHaveBeenCalled();
+  });
+
+  test('status reports the vote as closed and names the winner', async () => {
+    const res = await request(app).get('/api/feedback/survey/status');
+    expect(res.status).toBe(200);
+    expect(res.body.enabled).toBe(false);
+    expect(res.body.concluded).toBe(true);
+    expect(res.body.decidedName).toBe('Track Toolkit');
   });
 });

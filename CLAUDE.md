@@ -1,8 +1,8 @@
-# CLAUDE.md — SoundCloud Toolkit Project Brief
+# CLAUDE.md — Track Toolkit Project Brief
 
 ## Project Overview
 
-SoundCloud Toolkit is a full-stack web application for SoundCloud power users who need bulk management capabilities the official platform doesn't provide. It solves the 500-track playlist limit with automatic playlist splitting, enables batch operations (bulk unlike, bulk unfollow, bulk repost removal, playlist merging), converts liked tracks or activity feeds into playlists, resolves SoundCloud URLs to structured metadata, and provides a playlist health checker. The backend acts as a secure OAuth2 proxy—all SoundCloud API calls flow through it so credentials never reach the browser.
+Track Toolkit (formerly SoundCloud Toolkit — SoundCloud's API Terms of Use forbid "SoundCloud" in an app's name or its domain) is a full-stack web application for SoundCloud power users who need bulk management capabilities the official platform doesn't provide. It solves the 500-track playlist limit with automatic playlist splitting, enables batch operations (bulk unlike, bulk unfollow, bulk repost removal, playlist merging), converts liked tracks or activity feeds into playlists, resolves SoundCloud URLs to structured metadata, and provides a playlist health checker. The backend acts as a secure OAuth2 proxy—all SoundCloud API calls flow through it so credentials never reach the browser.
 
 ---
 
@@ -114,12 +114,14 @@ soundcloud-tool/
 │   │   ├── components/
 │   │   │   ├── ui/               # shadcn-style primitive components
 │   │   │   ├── AppShell.tsx      # Sidebar layout wrapper
-│   │   │   ├── RebrandSurveyModal.tsx # Rebrand name-vote modal
+│   │   │   ├── RebrandBanner.tsx  # Site-wide "now Track Toolkit" strip (localStorage-gated)
+│   │   │   ├── RebrandAnnouncement.tsx      # Auth gate for the one-time rebrand modal
+│   │   │   ├── RebrandAnnouncementModal.tsx # The modal itself
+│   │   │   ├── WhatsNewModal.tsx  # Feature announcement (yields to the rebrand modal)
 │   │   │   ├── Providers.tsx     # Context aggregator
 │   │   │   └── Analytics.tsx     # Google Analytics integration
 │   │   ├── contexts/
 │   │   │   ├── AuthContext.tsx   # isAuthenticated, user, login(), logout()
-│   │   │   ├── SurveyContext.tsx # Survey gating (server truth + 14-day cooldown)
 │   │   │   └── ThemeContext.tsx
 │   │   └── lib/utils.ts
 │   ├── next.config.js            # Static export config, API rewrites for dev
@@ -127,7 +129,7 @@ soundcloud-tool/
 │   └── package.json
 ├── tests/                        # Jest suites — lib units plus tests/routes/ (supertest authz/CSRF boundaries)
 ├── prisma/
-│   └── schema.prisma             # Single source of truth for the schema (15 models)
+│   └── schema.prisma             # Single source of truth for the schema (16 models)
 ├── docs/                         # Engineering review, SECURITY.md, perf audit, plans, incidents,
 │                                 #   sql/ migrations, api.json (SoundCloud's upstream spec)
 ├── .do/app.yaml                  # DigitalOcean App Platform deployment config
@@ -231,7 +233,7 @@ expires.
 
 ## Data Model
 
-The schema (`prisma/schema.prisma`) has **15 models**, not two:
+The schema (`prisma/schema.prisma`) has **16 models**, not two:
 
 | Model | Purpose |
 |-------|---------|
@@ -240,7 +242,7 @@ The schema (`prisma/schema.prisma`) has **15 models**, not two:
 | `OperationLog` | Per-operation analytics record — action, status, duration, track/playlist ids |
 | `Track` / `Playlist` | Harvested music catalog (populated opportunistically from resolved/browsed content) |
 | `GrowthAction` | Follow/like actions taken by the growth suite, plus follow-back outcomes |
-| `RebrandVote` | Rebrand name-vote responses — the live survey (`@@unique([userId, campaignId])`) |
+| `RebrandVote` | Rebrand name-vote responses — the vote is closed, rows retained read-only (`@@unique([userId, campaignId])`) |
 | `BetaSignup` | The retired SongSwipe beta survey — retained read-only for history |
 | `SurveyResponse` | The retired monetization survey — retained read-only for history |
 | `chat_conversations` / `chat_messages` | AI library chat (owned by `feature/ai-library-chat`; declared here so `prisma db push` does not drop them) |
@@ -465,60 +467,74 @@ list is wanted.
 > them. The authoritative list of what this server exposes is the source:
 > `grep -n "router\." server/routes/*.js`.
 
-### Feedback Survey (rebrand name vote)
+### Rebrand announcements (and the retired name vote)
 
-The survey infrastructure now runs the **rebrand name vote**. SoundCloud's API
-Terms of Use forbid "SoundCloud" in an app's name *or* its domain, so the
-product has to rename; this survey shows every logged-in user the ranked
-shortlist and collects a vote plus two optional write-ins.
+The product renamed from **SoundCloud Toolkit** ("SC Toolkit" in the UI) to
+**Track Toolkit**, because SoundCloud's API Terms of Use forbid "SoundCloud" in
+an app's name *or* its domain. References to SoundCloud that describe the
+platform, the OAuth connection, the API or the trademark position stay — only
+product-owned naming moved. The live domain has NOT moved yet; every
+`soundcloudtoolkit.com` reference in this repo is deliberate until it does (see
+"Rebrand follow-ups" in README.md).
 
-It replaced the SongSwipe beta survey, which replaced the monetization survey
-before that. Both predecessors (`BetaSignup`, `SurveyResponse`) are retained
-read-only for history — their admin read endpoints still work, their write
-paths and modals are gone.
+Two announcements carry the change, both gated in **localStorage only** — no
+server call, no table, same posture as `lib/whatsNew.ts`:
+
+| Surface | File | Gate |
+|---------|------|------|
+| Site-wide banner | [`RebrandBanner.tsx`](frontend-UI/src/components/RebrandBanner.tsx) | `track-toolkit-rebrand-banner` |
+| One-time modal | [`RebrandAnnouncementModal.tsx`](frontend-UI/src/components/RebrandAnnouncementModal.tsx) | `track-toolkit-rebrand-ack` |
+
+Both keys are namespaced by `REBRAND_ANNOUNCEMENT_VERSION` in
+[`lib/rebrand.ts`](frontend-UI/src/lib/rebrand.ts); bump it to re-announce.
+Acknowledging the modal also settles the banner, and
+`REBRAND_STATE_EVENT` is what tells the banner (mounted by the root layout)
+that the modal (mounted by the `(app)` layout) was acknowledged in this tab.
+
+**Banner layout contract.** The banner sits in normal flow, sticky at `top: 0`
+with `z-40`, and publishes its measured height as `--announcement-h` on the
+document element. The two `position: fixed` headers that would otherwise sit
+under it — the landing nav in `app/page.tsx` and the mobile header in
+`AppShell.tsx` — read that variable as their `top`. It is declared `0px` in
+`globals.css`, so both are correct before the banner mounts and after it is
+dismissed. `z-40` is deliberate: above page content, below the mobile drawer
+(z-50) and every modal (z-70).
+
+**Modal ordering — nothing stacks.** The rebrand modal is mounted by the
+protected route group's layout, so it fires on first arrival anywhere in the
+app, not only on the dashboard. The dashboard's "What's new" effect returns
+early while `isRebrandAcknowledged()` is false, so the two never appear
+together; "What's new" simply waits for the next visit.
+
+**The name vote is closed.** Track Toolkit won (48/165), and
+`REBRAND_VOTE_CONCLUDED` in [`routes/feedback.js`](server/routes/feedback.js)
+retires the write path in code rather than by environment variable:
+`GET /api/feedback/survey/status` reports `{ enabled: false, concluded: true,
+decidedName }` and `POST /api/feedback/survey` answers **410**. The client
+modal, `SurveyContext` and `survey-storage` are deleted.
+
+Note the middleware order on that POST: `validateRebrandVote` still runs
+*before* the closed-campaign check. That is what keeps a cross-site
+form-encoded post failing with a 400 at the validator — the fail-closed CSRF
+invariant `tests/routes/feedback-authz.test.js` guards. Putting the gate first
+would retire that coverage along with the vote.
+
+Nothing collected is deleted. `RebrandVote` rows stay, and the admin read
+paths still serve the full tally and both write-in fields:
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/api/feedback/survey/status` | `{ enabled, campaignId, submitted, submittedAt }` for the current user / active campaign |
-| `POST` | `/api/feedback/survey` | Submit a vote: `{ nameChoice, nameIdea?, featureIdea?, context }`; 409 if already submitted for the campaign |
+| `GET` | `/api/feedback/survey/status` | `{ enabled: false, concluded, decidedName, campaignId, submitted, submittedAt }` |
+| `POST` | `/api/feedback/survey` | 400 on an invalid body, otherwise **410 Gone** — the vote is closed |
 | `GET` | `/api/admin/rebrand/summary` | Admin-only tally by `nameChoice`, plus write-in and feature-request counts |
 | `GET` | `/api/admin/rebrand` | Admin-only paginated vote list with user info and both write-in fields |
 
-`nameChoice` is one of the shortlist slugs — `tracktidy`, `tracktoolkit`,
-`deckdig`, `sortwave`, `deckhaul` — or `none`. The list is defined in
-three places that must stay in sync: `REBRAND_NAME_SLUGS`
-([`validation.js`](server/middleware/validation.js)), `NAME_OPTIONS`
-([`RebrandSurveyModal.tsx`](frontend-UI/src/components/RebrandSurveyModal.tsx)),
-and `REBRAND_NAME_ORDER` in the admin page.
-
-Responses live in the `RebrandVote` table (`@@unique([userId, campaignId])`),
-linked to `userId` + snapshotted `soundcloudId`.
-
-**The modal is mandatory.** There is no close button, no Escape, no backdrop
-dismiss and no snooze — submitting a vote is the only way past it, and `none`
-("None of these") is the pressure valve. The single exception is a failed
-submit: once `errorMessage` is set the modal offers "Skip for now", so a
-backend outage cannot lock users out of the app. That escape records nothing,
-so the prompt returns on the next navigation.
-
-Because of that, [`SurveyContext.tsx`](frontend-UI/src/contexts/SurveyContext.tsx)
-gates on **only** the kill switch and whether the user has already voted
-(server truth plus a localStorage mirror). Snooze, don't-show-again and the
-re-prompt cooldown were removed — honouring a stale dismissal would let anyone
-who dismissed an earlier build skip the vote forever. There is also no
-qualifier gate and no heavy-user carve-out; every authenticated user is in
-scope.
-
-Option order in the modal is Cole's preference (TrackTidy and Track Toolkit
-first), not the research ranking. First position attracts votes, so read the
-gap between the top two and the rest as soft. Triggers fire on the dashboard, post-merge
-success, and post-likes-to-playlist success. Default campaign is
-`2026-rebrand-name-v1`.
-
-Because localStorage keys are namespaced by campaign id, a stale
-`SURVEY_CAMPAIGN_ID` in the environment would carry the previous survey's
-snooze / don't-show-again state over. **Unset it (or set it to
-`2026-rebrand-name-v1`) when deploying this survey.**
+`REBRAND_NAME_ORDER` in the admin page is frozen as the order voters actually
+saw; the slugs still match `REBRAND_NAME_SLUGS` in
+[`validation.js`](server/middleware/validation.js), which the stored rows were
+validated against. The retired SongSwipe beta survey (`BetaSignup`) and the
+monetization survey before it (`SurveyResponse`) sit in the same read-only
+posture.
 
 ---
 
@@ -694,8 +710,8 @@ clone, and every bulk write.
 | `APP_URLS` | Yes | Comma-separated CORS allowlist (e.g., `https://www.soundcloudtoolkit.com,https://api.soundcloudtoolkit.com`) |
 | `NODE_ENV` | Yes | `development` or `production` |
 | `PORT` | No | HTTP port (default 3001) |
-| `SURVEY_ENABLED` | No | Kill switch for the in-app feedback survey (`true` by default; set to `false` to disable globally without a redeploy) |
-| `SURVEY_CAMPAIGN_ID` | No | Active survey campaign identifier (default `2026-rebrand-name-v1`). Bumping this opens a new campaign so previously-submitted users see the prompt again |
+| `SURVEY_ENABLED` | No | Kill switch for a **future** in-app survey. It no longer affects the rebrand name vote, which is closed in code (`REBRAND_VOTE_CONCLUDED`) and cannot be switched back on from the environment |
+| `SURVEY_CAMPAIGN_ID` | No | Campaign identifier for the (closed) vote, default `2026-rebrand-name-v1`. Only the admin read paths use it now; it no longer gates any prompt |
 | `GROWTH_AUTOCHECK` | No | Set to `false` to disable the daily growth follow-back scheduler |
 | `ADMIN_IDS` | No | Comma-separated SoundCloud numeric user IDs allowed into `/api/admin/*`. Unset or empty = **nobody** (fails closed) |
 | `SC_FETCH_TIMEOUT_MS` | No | AbortController deadline on every SoundCloud fetch (default `30000`) |

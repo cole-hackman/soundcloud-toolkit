@@ -6,7 +6,6 @@ import Link from "next/link";
 import { ArrowLeft, X, Combine, Check, Music, Trash2, AlertTriangle } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { BulkReviewDetails, ConfirmDialog, EmptyState, LoadingSpinner, PageContainer, PageHeader, Skeleton, Card, Button } from "@/components/ui";
-import { useSurvey } from "@/contexts/SurveyContext";
 import { invalidatePlaylistCaches, playlistsQueryOptions } from "@/lib/queries";
 
 interface Playlist {
@@ -21,7 +20,6 @@ type MergeMode = "new" | "existing";
 
 export default function CombinePlaylistsPage() {
   const queryClient = useQueryClient();
-  const survey = useSurvey();
   
   const { data: playlistsData } = useSuspenseQuery(playlistsQueryOptions());
   const userPlaylists = useMemo(
@@ -57,11 +55,6 @@ export default function CombinePlaylistsPage() {
     totalTracks?: number;
   } | null>(null);
   const [lastSelectedIndex, setLastSelectedIndex] = useState<number | null>(null);
-
-  useEffect(() => {
-    if (!isComplete) return;
-    survey.maybeShow({ context: "post-merge" });
-  }, [isComplete, result, survey]);
 
   const openPlaylistPicker = (event: React.MouseEvent<HTMLButtonElement>) => {
     pickerTriggerRef.current = event.currentTarget;

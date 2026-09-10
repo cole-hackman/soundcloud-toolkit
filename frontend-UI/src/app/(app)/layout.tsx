@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import { usePathname } from "next/navigation";
 import { AppLayout } from "@/components/AppLayout";
 import { AppShell } from "@/components/AppShell";
-import { SurveyProvider } from "@/contexts/SurveyContext";
+import { RebrandAnnouncement } from "@/components/RebrandAnnouncement";
 import { apiFetch } from "@/lib/api";
 
 const TOOL_SLUGS: Record<string, string> = {
@@ -80,9 +80,12 @@ export default function AppRouteLayout({
 
   return (
     <AppLayout>
-      <SurveyProvider>
-        <AppShell>{children}</AppShell>
-      </SurveyProvider>
+      {/* One-time rebrand notice. Mounted here rather than on the dashboard so
+          it also greets a returning user who deep-links straight to a tool.
+          The dashboard holds "What's new" back until this is acknowledged, so
+          the two never stack. */}
+      <RebrandAnnouncement />
+      <AppShell>{children}</AppShell>
     </AppLayout>
   );
 }

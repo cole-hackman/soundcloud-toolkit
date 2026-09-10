@@ -24,7 +24,7 @@ export default function AccessibilityPage() {
 
           <div className="space-y-6 text-muted-foreground leading-relaxed">
             <p className="text-lg">
-              SC Toolkit is committed to ensuring digital accessibility for people
+              Track Toolkit is committed to ensuring digital accessibility for people
               with disabilities. We are continually improving the user experience
               for everyone and applying the relevant accessibility standards to
               ensure our application is usable by all music lovers.
@@ -41,7 +41,7 @@ export default function AccessibilityPage() {
                 AA, and Level AAA.
               </p>
               <p className="mt-2">
-                SC Toolkit aims to adhere as closely as possible to the WCAG 2.1 Level
+                Track Toolkit aims to adhere as closely as possible to the WCAG 2.1 Level
                 AA standards. We strive to provide an inclusive experience, though we
                 recognize that some areas of the site may still need improvement.
               </p>
@@ -80,7 +80,7 @@ export default function AccessibilityPage() {
                 Current Limitations
               </h2>
               <p>
-                Despite our best efforts to ensure accessibility of SC Toolkit, there
+                Despite our best efforts to ensure accessibility of Track Toolkit, there
                 may be some limitations. Below is a description of known limitations:
               </p>
               <ul className="list-disc list-inside space-y-2 ml-4 mt-2 mb-4">
@@ -104,7 +104,7 @@ export default function AccessibilityPage() {
                 Feedback
               </h2>
               <p>
-                We welcome your feedback on the accessibility of SC Toolkit. If you
+                We welcome your feedback on the accessibility of Track Toolkit. If you
                 encounter any accessibility barriers or have suggestions on how we
                 can improve, please don&apos;t hesitate to reach out.
               </p>

@@ -1,4 +1,4 @@
-# DATA-COLLECTION.md — Music Dataset Spec for SC Toolkit
+# DATA-COLLECTION.md — Music Dataset Spec for Track Toolkit
 
 **Date:** 2026-08-09 · **Status: SPEC ONLY — nothing here is implemented.** Awaiting approval.
 **Goal:** persist the track and playlist identity behind every operation so an admin can explore what music moves through the tool.

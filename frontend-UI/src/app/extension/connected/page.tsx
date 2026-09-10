@@ -11,7 +11,7 @@ export default function ExtensionConnectedPage() {
         <CardHeader>
           <h1 className="text-lg font-semibold tracking-tight">Chrome extension connected</h1>
           <p className="text-sm text-muted-foreground">
-            You are signed in to SoundCloud Toolkit. You can close this tab and return to the browser side panel to use
+            You are signed in to Track Toolkit. You can close this tab and return to the browser side panel to use
             likes → playlist and other tools.
           </p>
         </CardHeader>

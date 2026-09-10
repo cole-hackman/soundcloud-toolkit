@@ -37,7 +37,7 @@ export default function PrivacyPage() {
                 Introduction
               </h2>
               <p>
-                SC Toolkit (&quot;we,&quot; &quot;our,&quot; or &quot;us&quot;)
+                Track Toolkit (&quot;we,&quot; &quot;our,&quot; or &quot;us&quot;)
                 is committed to protecting your privacy. This Privacy Policy
                 explains how we collect, use, disclose, and safeguard your
                 information when you use our web application. Please read this
@@ -51,7 +51,7 @@ export default function PrivacyPage() {
                 Authentication & Account Access
               </h2>
               <p>
-                SC Toolkit uses SoundCloud&apos;s official OAuth 2.0
+                Track Toolkit uses SoundCloud&apos;s official OAuth 2.0
                 authentication system with PKCE (Proof Key for Code Exchange)
                 for secure login. This means:
               </p>
@@ -79,7 +79,7 @@ export default function PrivacyPage() {
                 Data We Access
               </h2>
               <p>
-                SC Toolkit requests the minimum permissions necessary to
+                Track Toolkit requests the minimum permissions necessary to
                 function:
               </p>
               <ul className="list-disc list-inside space-y-2 ml-4 mt-2">
@@ -121,7 +121,7 @@ export default function PrivacyPage() {
                 How We Store Your Data
               </h2>
               <p>
-                When you authenticate with SC Toolkit, we store the following
+                When you authenticate with Track Toolkit, we store the following
                 information in our secure database:
               </p>
               <ul className="list-disc list-inside space-y-2 ml-4 mt-2">
@@ -284,7 +284,7 @@ export default function PrivacyPage() {
               </p>
               <ul className="list-disc list-inside space-y-2 ml-4 mt-2">
                 <li>
-                  Log out of SC Toolkit (this clears your session but keeps
+                  Log out of Track Toolkit (this clears your session but keeps
                   account data)
                 </li>
                 <li>
@@ -300,7 +300,7 @@ export default function PrivacyPage() {
                 Cookies & Session Management
               </h2>
               <p>
-                SC Toolkit uses secure, HttpOnly cookies to maintain your
+                Track Toolkit uses secure, HttpOnly cookies to maintain your
                 session. These cookies:
               </p>
               <ul className="list-disc list-inside space-y-2 ml-4 mt-2">
@@ -321,7 +321,7 @@ export default function PrivacyPage() {
               <h2 className="text-2xl font-bold mb-4 text-foreground">
                 Third-Party Services
               </h2>
-              <p>SC Toolkit integrates with:</p>
+              <p>Track Toolkit integrates with:</p>
               <ul className="list-disc list-inside space-y-2 ml-4 mt-2">
                 <li>
                   <strong className="text-foreground">SoundCloud API:</strong>{" "}
@@ -374,7 +374,7 @@ export default function PrivacyPage() {
                 Children&apos;s Privacy
               </h2>
               <p>
-                SC Toolkit is not intended for users under the age of 13. We do
+                Track Toolkit is not intended for users under the age of 13. We do
                 not knowingly collect personal information from children under
                 13. If you are a parent or guardian and believe your child has
                 provided us with personal information, please contact us to have
@@ -412,7 +412,7 @@ export default function PrivacyPage() {
                 <strong className="text-foreground">Disclaimer:</strong> SC
                 Toolkit is not affiliated with, endorsed by, or connected to
                 SoundCloud. This is an independent tool created to enhance the
-                SoundCloud user experience. Your use of SC Toolkit is subject to
+                SoundCloud user experience. Your use of Track Toolkit is subject to
                 SoundCloud&apos;s Terms of Service and this Privacy Policy.
               </p>
             </div>

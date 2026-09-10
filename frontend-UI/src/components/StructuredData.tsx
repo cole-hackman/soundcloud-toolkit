@@ -14,18 +14,22 @@ export function StructuredData({ faqs = [] }: StructuredDataProps) {
   const organizationSchema = {
     "@context": "https://schema.org",
     "@type": "Organization",
-    name: "SC Toolkit",
+    name: "Track Toolkit",
+    // Keeps the rebrand legible to search engines: the site has years of
+    // links and queries pointing at the old name.
+    alternateName: "SoundCloud Toolkit",
     url: "https://www.soundcloudtoolkit.com",
     logo: "https://www.soundcloudtoolkit.com/SC%20Toolkit%20Icon.png",
     description:
-      "SC Toolkit helps SoundCloud power users organize, merge, and clean playlists.",
+      "Track Toolkit helps SoundCloud power users organize, merge, and clean playlists.",
     sameAs: [],
   };
 
   const softwareApplicationSchema = {
     "@context": "https://schema.org",
     "@type": "SoftwareApplication",
-    name: "SC Toolkit",
+    name: "Track Toolkit",
+    alternateName: "SoundCloud Toolkit",
     applicationCategory: "MusicApplication",
     operatingSystem: "Web",
     description:
@@ -62,10 +66,11 @@ export function StructuredData({ faqs = [] }: StructuredDataProps) {
   const webSiteSchema = {
     "@context": "https://schema.org",
     "@type": "WebSite",
-    name: "SC Toolkit",
+    name: "Track Toolkit",
+    alternateName: "SoundCloud Toolkit",
     url: "https://www.soundcloudtoolkit.com",
     description:
-      "SC Toolkit helps SoundCloud power users organize, merge, and clean playlists. Remove duplicates, manage tracks, and build better playlists faster.",
+      "Track Toolkit helps SoundCloud power users organize, merge, and clean playlists. Remove duplicates, manage tracks, and build better playlists faster.",
     potentialAction: {
       "@type": "SearchAction",
       target: "https://www.soundcloudtoolkit.com/?q={search_term_string}",

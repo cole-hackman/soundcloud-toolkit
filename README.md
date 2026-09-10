@@ -1,4 +1,8 @@
-# SoundCloud Toolkit
+# Track Toolkit
+
+_Formerly SoundCloud Toolkit._ SoundCloud's API Terms of Use forbid
+"SoundCloud" in an app's name or its domain, so the product renamed. Nothing
+else changed: same tools, same accounts, same OAuth connection to SoundCloud.
 
 Bulk library management for SoundCloud power users — the batch operations the
 official site makes you do one click at a time.
@@ -10,7 +14,8 @@ figure is from August 2026 and has not been re-measured since)
 Numbers come from the production `operation_log` table (see
 [ANALYSIS.md](ANALYSIS.md) for methodology).
 
-Live at [soundcloudtoolkit.com](https://soundcloudtoolkit.com).
+Live at [soundcloudtoolkit.com](https://soundcloudtoolkit.com) — the domain
+move is still outstanding; see "Rebrand follow-ups" below.
 
 <!-- SCREENSHOT: dashboard after login, showing the tool grid grouped as
 Playlists / Likes & Social / Library & Export / Discovery & Links. A ~10s GIF
@@ -137,6 +142,32 @@ slow, and that's the predictable complaint.
 4. Finish the AI library chat on `feature/ai-library-chat` — the index tables
    are already in the production schema; the tool-calling chat loop isn't
    merged.
+
+## Rebrand follow-ups
+
+The code, copy, metadata and in-app announcements ship as Track Toolkit. What
+is left is outside the repository and has to be done by hand, in this order:
+
+1. Register the new domain and point it at the existing Vercel/DigitalOcean
+   apps. Everything below waits on this.
+2. Update the SoundCloud OAuth app registration — name and redirect URI — and
+   set `SOUNDCLOUD_REDIRECT_URI`, `APP_URL` and `APP_URLS` to match. The
+   cookie `domain` in `server/routes/auth.js` is derived from the app URL and
+   moves with it.
+3. Redraw the logo and icon artwork. The files under `frontend-UI/public/`
+   still carry the old wordmark; their paths are referenced verbatim across the
+   app and by the Chrome extension, so replace the images in place rather than
+   renaming the files.
+4. Re-point `og-image.png`, the sitemap, `robots.txt` and the canonical URLs at
+   the new domain, then re-verify in Search Console and submit the change of
+   address.
+5. Rename the Chrome extension listing and the DigitalOcean app
+   (`.do/app.yaml` still says `soundcloud-toolkit-api`, which is the deployed
+   app's identity — renaming it in the file alone would create a second app).
+
+Until step 1 lands, every domain reference in this repository deliberately
+still says `soundcloudtoolkit.com`, because that is where the product is
+actually served.
 
 ## Stack
 

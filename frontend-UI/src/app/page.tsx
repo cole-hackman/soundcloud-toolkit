@@ -29,12 +29,12 @@ import {
 // FAQ data - used for both display and structured data
 const faqs = [
   {
-    question: "Is SC Toolkit free to use?",
-    answer: "Yes, SC Toolkit is completely free to use. We provide powerful playlist management and social tools at no cost to help you organize your SoundCloud music."
+    question: "Is Track Toolkit free to use?",
+    answer: "Yes, Track Toolkit is completely free to use. We provide powerful playlist management and social tools at no cost to help you organize your SoundCloud music."
   },
   {
     question: "Do I need a SoundCloud Go+ or Pro subscription?",
-    answer: "No! SC Toolkit works with all SoundCloud accounts, including free ones. You do not need a paid subscription to use any of our features."
+    answer: "No! Track Toolkit works with all SoundCloud accounts, including free ones. You do not need a paid subscription to use any of our features."
   },
   {
     question: "How secure is my SoundCloud account?",
@@ -42,7 +42,7 @@ const faqs = [
   },
   {
     question: "Can I merge playlists with more than 500 tracks?",
-    answer: "Yes! When merging playlists that exceed 500 tracks, SC Toolkit automatically splits them into multiple playlists (e.g., Part 1/3, Part 2/3, Part 3/3) so you don't lose a single track."
+    answer: "Yes! When merging playlists that exceed 500 tracks, Track Toolkit automatically splits them into multiple playlists (e.g., Part 1/3, Part 2/3, Part 3/3) so you don't lose a single track."
   },
   {
     question: "What happens to my original playlists?",
@@ -54,15 +54,15 @@ const faqs = [
   },
   {
     question: "Can I download tracks from SoundCloud?",
-    answer: "SC Toolkit helps you download tracks where the artist has enabled downloads or provided a purchase link. We respect artist preferences and never bypass download restrictions."
+    answer: "Track Toolkit helps you download tracks where the artist has enabled downloads or provided a purchase link. We respect artist preferences and never bypass download restrictions."
   },
   {
     question: "What is Activity to Playlist?",
     answer: "Activity to Playlist pulls the latest tracks from your SoundCloud activity feed — songs recently posted by artists you follow — and lets you save them as a new playlist before they get buried in your feed."
   },
   {
-    question: "Does SC Toolkit work with private playlists?",
-    answer: "Yes, SC Toolkit works with both public and private playlists. As long as you have access to the playlists through your SoundCloud account, you can use all our tools to organize them."
+    question: "Does Track Toolkit work with private playlists?",
+    answer: "Yes, Track Toolkit works with both public and private playlists. As long as you have access to the playlists through your SoundCloud account, you can use all our tools to organize them."
   }
 ];
 
@@ -196,13 +196,16 @@ export default function Home() {
 
       <div className="min-h-screen bg-background text-foreground">
         {/* Navigation */}
-        <nav className="fixed inset-x-0 top-0 z-40 flex items-center justify-center pt-4 sm:pt-6">
+        <nav
+          className="fixed inset-x-0 z-40 flex items-center justify-center pt-4 sm:pt-6"
+          style={{ top: "var(--announcement-h)" }}
+        >
           <div className="mx-auto flex w-full max-w-6xl px-4 sm:px-6">
             <div className="glass-card flex w-full items-center justify-between rounded-full border px-4 py-2 sm:px-6 sm:py-3">
               <div className="flex items-center gap-2">
                 <Image
                   src="/sc toolkit transparent .png"
-                  alt="SC Toolkit Logo"
+                  alt="Track Toolkit Logo"
                   width={120}
                   height={40}
                   className="h-8 w-auto object-contain sm:h-10"
@@ -263,7 +266,7 @@ export default function Home() {
             </div>
 
             <h1 className="mt-6 animate-fade-in-up text-balance font-display text-4xl font-semibold tracking-tight text-foreground sm:text-5xl md:text-6xl lg:text-7xl [animation-delay:80ms]">
-              The Ultimate SoundCloud{" "}
+              The Ultimate Track{" "}
               <span className="text-gradient font-semibold">Toolkit</span>
             </h1>
 
@@ -321,7 +324,7 @@ export default function Home() {
                 </div>
                 <Image
                   src={HERO_SHOT}
-                  alt="SC Toolkit dashboard showing playlist tools and library stats"
+                  alt="Track Toolkit dashboard showing playlist tools and library stats"
                   width={1600}
                   height={1000}
                   className="h-auto w-full"
@@ -425,7 +428,7 @@ export default function Home() {
               Built for the obsessed listeners.
             </h2>
             <p className="mx-auto mt-4 max-w-3xl text-center text-base text-muted-foreground sm:text-lg">
-              Whether you&apos;re a DJ, curator, or collector, SC Toolkit
+              Whether you&apos;re a DJ, curator, or collector, Track Toolkit
               gives you the levers to keep everything sharp, searchable, and
               show-ready.
             </p>
@@ -531,7 +534,7 @@ export default function Home() {
               Ready to organize your SoundCloud like a studio session?
             </h2>
             <p className="mt-4 text-base text-muted-foreground sm:text-lg">
-              Connect once, pick a tool, and let SC Toolkit handle the
+              Connect once, pick a tool, and let Track Toolkit handle the
               tedious parts — so you can listen, sort, and play.
             </p>
             <div className="mt-8 flex flex-wrap items-center justify-center gap-4">
@@ -612,9 +615,9 @@ export default function Home() {
                 </Link>
               </div>
               <div className="text-center sm:text-right">
-                <p>SC Toolkit is not affiliated with SoundCloud.</p>
+                <p>Track Toolkit is not affiliated with SoundCloud.</p>
                 <p className="mt-1">
-                  © {new Date().getFullYear()} SC Toolkit. All rights reserved.
+                  © {new Date().getFullYear()} Track Toolkit. All rights reserved.
                 </p>
               </div>
             </div>

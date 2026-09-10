@@ -98,7 +98,7 @@ model BetaSignup {
   interest         String // very | somewhat | not
   wantsBeta        Boolean  @default(false)
   wantsCall        Boolean  @default(false)
-  suggestions      String?  @db.Text // ideas for SC Toolkit or SongSwipe
+  suggestions      String?  @db.Text // ideas for the toolkit or SongSwipe
   nameIdea         String? // product name suggestion
   context          String // dashboard | post-merge | post-from-likes
   createdAt        DateTime @default(now())

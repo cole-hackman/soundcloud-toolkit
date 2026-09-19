@@ -1,125 +1,36 @@
 # STATE
 
 ## Now
-**The Track Toolkit rebrand.** Product-owned naming across the app, the
-marketing and legal pages, metadata/OG/JSON-LD, the API service name and the
-playlist footer now says Track Toolkit; SoundCloud references that describe the
-platform, the OAuth connection, the API or the trademark position are
-deliberately kept. Two announcements ship with it (site-wide banner + a
-one-time modal for signed-in users), and the name vote is retired. Not
-deployed.
-
-**The domain has not moved.** Every `soundcloudtoolkit.com` reference in the
-repo is intentional until it does — that is still where the product is served.
-The outstanding external steps are listed under "Rebrand follow-ups" in
-README.md: register the domain, update the SoundCloud OAuth registration +
-`SOUNDCLOUD_REDIRECT_URI`/`APP_URL`/`APP_URLS`, redraw the logo artwork,
-re-point og-image/sitemap/robots/canonicals and file a Search Console change of
-address, rename the Chrome extension listing and the DigitalOcean app.
-
-**Before deploying the backend**, run `docs/sql/2026-library-cache.sql` in the
-Neon console — it adds `library_cache_pages` and `library_cache_states`.
-Additive and idempotent; the backend fails soft when the tables are absent, so
-the ordering is preferred rather than load-bearing.
-
-After deploy, leave it a few days and read `/admin` → the per-action p95 panel.
-`docs/performance-audit-2026-09.md` is written against estimated round-trip
-counts, not measured production latency; the instrumentation from #34 is what
-produces the real numbers, and the doc should be revisited once they exist.
-
-`SURVEY_CAMPAIGN_ID` no longer gates any prompt, so a stale value in
-DigitalOcean is now inert rather than dangerous.
+Azure migration in flight on branch `azure/migration` (off the rebrand
+branch `claude/keen-newton-02qlh4`, draft PR #39). The parallel Azure stack
+exists in `rg-tracktoolkit` (westus3) with the code deployed, but every
+request answers 500 until the six Key Vault secrets are written — that write
+was denied by the Claude Code permission classifier and is Blocked B1 in
+`MIGRATION.md`. Production (DigitalOcean, Vercel, Neon, DNS) is untouched.
+Read `MIGRATION.md` first; it is the durable log for this work.
 
 ## Just done
-- **Rebrand shipped to the branch: SC Toolkit / SoundCloud Toolkit → Track
-  Toolkit.** Landing headline, nav, app shell, dashboard, login, about, privacy,
-  accessibility, extension pages, admin dashboard, `manifest.json`, `robots.txt`,
-  Open Graph + Twitter + JSON-LD (with `alternateName: "SoundCloud Toolkit"` so
-  the rebrand stays legible to search), the `/` API service name, the playlist
-  description footer, README, CLAUDE.md, SECURITY.md, ANALYSIS.md,
-  DATA-COLLECTION.md.
-- New `RebrandBanner` (site-wide, sticky, dismissible, publishes
-  `--announcement-h` so the two fixed headers offset under it) and
-  `RebrandAnnouncementModal` (one-time, signed-in only, single acknowledgement,
-  focus-trapped). Both localStorage-gated via `lib/rebrand.ts`; the dashboard
-  holds "What's new" back until the rebrand modal is acknowledged, so nothing
-  stacks.
-- **Name vote retired.** `REBRAND_VOTE_CONCLUDED` in `routes/feedback.js`:
-  status reports `{ enabled: false, concluded, decidedName }`, POST answers 410
-  *after* the validator (so the CSRF fail-closed invariant keeps its coverage).
-  `SurveyContext.tsx`, `RebrandSurveyModal.tsx` and `survey-storage.ts` deleted,
-  triggers removed from dashboard/combine/likes-to-playlist. `RebrandVote` rows
-  and both admin read paths untouched.
-- Post-merge review of #34-#37: no regressions found. Removed one dead import
-  (`invalidateUserNamespaces` in `routes/api.js`) left behind when the write
-  paths moved to `invalidateUserCollections`, and corrected CLAUDE.md's model
-  count (15 → 16).
-- Library audit takes `offset`, so a library bigger than one page can be walked
-  (playlists 1-20, then 21-40, 41-60, ...). Previously it only ever audited the
-  first 20 — and `/me/playlists` is oldest-first, so newer playlists were
-  unreachable.
-- New keyword search: `GET /api/playlists/search-tracks` (comma-separated terms
-  OR'd, matches title + artist, scoped to one playlist or paged across all),
-  plus `POST /api/playlists/tracks/bulk-remove` and `.../bulk-add`. Pure
-  matching and list surgery live in `lib/playlist-search.js` with unit tests;
-  route tests cover paging, partial failure and the 500-track cap.
-- **Rebrand vote decided: Track Toolkit** (48/165, 29.1%), ahead of "None of
-  these" (47) and TrackTidy (30). TrackTidy sat in the first option slot and
-  still lost, so position bias ran against the winner rather than for it.
-  Blocker is now domain + trademark, where Track Toolkit is weakest: verify
-  tracktoolkit.com and clear Class 9/42 before spending on branding.
-- Rebrand vote is now a **mandatory** modal: no close, Escape, backdrop click
-  or snooze. Submitting is the only way out; "None of these" is the pressure
-  valve; a failed submit reveals "Skip for now" so an outage can't lock anyone
-  out. Snooze / don't-show / cooldown gating removed from SurveyContext and
-  survey-storage, since honouring a stale dismissal would exempt earlier
-  dismissers permanently.
-- Option order changed to Cole's preference — TrackTidy, Track Toolkit, then
-  DeckDig, SortWave, DeckHaul, None. Synced across the modal, the validator
-  and the admin chart.
-- Admin dashboard drops the retired SongSwipe beta-survey card; the rebrand vote
-  is the only survey section. Its `/api/admin/feedback*` endpoints still work —
-  including the beta-emails CSV — they are just no longer linked from the page.
-- Rebrand name vote shipped to the branch: `RebrandVote` model,
-  `validateRebrandVote`, rewritten `routes/feedback.js`, `RebrandSurveyModal.tsx`
-  (replaces `BetaSurveyModal.tsx`), `/api/admin/rebrand{,/summary}` + an admin
-  dashboard section. SongSwipe beta survey retired read-only, same as the
-  monetization survey before it.
-- dc4923e — landing claim fixed: "Trusted by 2,000+ DJs & producers" →
-  "Trusted by 3,500+ SoundCloud users" (backed by the real 3,570 figure).
-- 85c4ad2 — README stats refreshed (3,570 users / 2,032,233 tracks, 2026-08-25)
-  with operation_log attribution; MIT LICENSE added; README-QUESTIONS.md deleted.
-- 5ad7604 — CLAUDE.md rewritten to match actual code (5 route files, real
-  server/lib tree, 13 Prisma models, growth/admin route families, CSRF+session
-  invariants); AGENTS.md reduced to a pointer; docs/SECURITY.md gained CSRF and
-  session-lifetime sections.
-- 703e38e + d1e145d + 1ea67a5 + b5a8069 + 93fa83f — refactors: routes/growth.js
-  and lib/social-cache.js extracted, three followed-library paged handlers
-  collapsed into one, lib/resolve-cache.js, lib/normalize.js, lib/pacing.js.
-  api.js 3,180 → 2,485 lines. No behavior change.
-- 8af4958 + 2800c76 + 4ce5ab0 + da9e12a + 1e9fbaa — security: session
-  timingSafeEqual + iat/TTL, rejectUntrustedOrigin on /api, 30s AbortController
-  on every SC fetch, logger message sanitization on all levels, and the first
-  route-level authz/CSRF tests (tests/routes/).
+- f5e7e94 — database cutover rehearsed end to end into `tracktoolkit-rehearsal`
+  (dump 219 s, restore 671 s, ~16 min window, counts + structure verified);
+  `docs/azure-db-cutover.md` written; 4089/4089 token rows decrypt with the
+  DigitalOcean `ENCRYPTION_KEY`.
+- 5cb6a0d — `infra/main.bicep` + `deploy.sh` + OIDC GitHub workflow;
+  `SESSION_COOKIE_SAMESITE` env; CLAUDE.md cookie-domain error fixed.
+- 86b9d08 (branch `prep/domain-switch`, pushed, not merged) — every
+  domain reference → tracktoolkit.com, legacy-host 301/308 middleware,
+  `infra/main.cutover.bicepparam`, 5 new tests.
+- c10f378 — rebrand to Track Toolkit (PR #39, unchanged).
 
 ## Next
-1. Merge this branch, then let Vercel + DigitalOcean deploy.
-2. Validate against the live site — this step is REQUIRED before calling the
-   rebrand done, and none of it has been done yet:
-   - landing + `/about` + `/privacy` read "Track Toolkit"; the H1 is "The
-     Ultimate Track Toolkit";
-   - the banner renders on the landing page and inside the app, the landing nav
-     and the mobile app header sit *below* it rather than under it, and
-     dismissing it puts them back flush at the top;
-   - log in and confirm the announcement modal appears once, that "Got it"
-     dismisses it for good, and that "What's new" does not stack on top of it;
-   - the name-vote modal is gone, and `GET /api/feedback/survey/status` returns
-     `enabled: false`;
-   - one authenticated call still works end to end;
-   - re-scrape the OG card (title/description/siteName) and check `/admin` still
-     renders the historical vote tally.
-3. Work the external rebrand list in README.md ("Rebrand follow-ups"), in order
-   — the domain gates the rest.
+1. Clear Blocked B1: write the six secrets into `tracktoolkit-kv` (exact
+   command in MIGRATION.md), restart, confirm `/health` 200 and that
+   `/api/auth/login` 302s to secure.soundcloud.com.
+2. Merge `azure/migration` (after PR #39) so `azure-deploy.yml` becomes
+   dispatchable; run it once to prove the pipeline.
+3. Buy tracktoolkit.com, then follow the cutover order in MIGRATION.md
+   work item 4 (DNS → OAuth redirect URI → cutover params → merge
+   `prep/domain-switch`) and the database procedure in
+   `docs/azure-db-cutover.md`.
 
 ## Decisions
 - **Name: Track Toolkit** (2026-09-10). Supersedes the live vote, which is now
@@ -184,7 +95,29 @@ DigitalOcean is now inert rather than dangerous.
   to "fix" with a session table unless that tradeoff is revisited (2026-08-25).
 - Licensed MIT, © 2026 Cole Hackman (2026-08-25).
 
+- Azure target is App Service (Linux B1, one instance, pinned) serving the
+  API and `frontend-UI/out` from ONE origin; session cookie goes to
+  `SameSite=Lax` via `SESSION_COOKIE_SAMESITE`. Not Container Apps, not
+  Static Web Apps (2026-09-19).
+- New canonical origin is the apex `https://tracktoolkit.com`; www and all
+  soundcloudtoolkit.com hosts 301/308 from Express (`LEGACY_REDIRECT_HOSTS`),
+  no Front Door, no stub app (2026-09-19).
+- Secrets on Azure are Key Vault references by name (`infra/deploy.sh`
+  header); `ENCRYPTION_KEY` / `SESSION_SECRET` carry over byte-identical
+  from DigitalOcean, never regenerated (2026-09-19).
+- Database client commands for the cutover run in `docker run postgres:17`,
+  not the Homebrew libpq (its `pg_dump` hangs against Neon) (2026-09-19).
+
 ## Landmines
+- `validateEnv` in `server/index.js` is global: with Key Vault references
+  unresolved, `/health` returns 500 too. On Azure that is "secrets missing",
+  not "app down" — check the body before debugging the box.
+- `PRISMA_CLI_BINARY_TARGETS` does not change the generated client. Build
+  the deploy zip on linux/amd64 (the GitHub workflow, or Docker with
+  `--platform linux/amd64`); an arm64 Docker build silently ships the wrong
+  engine.
+- `westus2` has no Burstable Postgres capacity for this subscription; the
+  stack lives in `westus3`. Don't "fix" the region.
 - The rebrand banner publishes its height as `--announcement-h` and the two
   `position: fixed` headers (landing nav in `app/page.tsx`, mobile header in
   `AppShell.tsx`) read it as their `top`. If you add another fixed element

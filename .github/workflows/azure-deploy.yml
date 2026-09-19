@@ -1,0 +1,93 @@
+name: Deploy to Azure App Service
+
+# Manual only while the Azure stack runs in parallel with production. Once the
+# cutover in MIGRATION.md is done, add `push: branches: [main]` here and this
+# replaces DigitalOcean's deploy_on_push.
+#
+# Auth is OIDC (no long-lived secret): the `azure` GitHub environment is the
+# federated-credential subject, so any branch can deploy through it. The three
+# AZURE_* values are repository variables, not secrets — they are identifiers.
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Git ref to build and deploy (defaults to the ref the run was started from)
+        required: false
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: azure-deploy
+  cancel-in-progress: false
+
+env:
+  AZURE_WEBAPP_NAME: tracktoolkit
+  NODE_VERSION: 22
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment: azure
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            frontend-UI/package-lock.json
+
+      # Root install generates the Prisma client for linux-x64 (the App
+      # Service image), which is why the build happens here and not on a Mac.
+      - name: Install server dependencies
+        run: npm ci
+
+      - name: Run server tests
+        run: npm test
+
+      # NEXT_PUBLIC_API_BASE stays unset: same-origin means fetch('/api/...').
+      - name: Build frontend (static export)
+        working-directory: frontend-UI
+        run: |
+          npm ci
+          npm run build
+
+      - name: Prune dev dependencies
+        run: npm prune --omit=dev
+
+      - name: Package
+        run: |
+          zip -qr deploy.zip \
+            package.json package-lock.json \
+            server prisma \
+            node_modules \
+            frontend-UI/out
+          ls -la deploy.zip
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ env.AZURE_WEBAPP_NAME }}
+          package: deploy.zip
+          type: zip
+
+      - name: Smoke test /health
+        run: |
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "https://${AZURE_WEBAPP_NAME}.azurewebsites.net/health" || true)
+            echo "attempt $i: $code"
+            [ "$code" = "200" ] && exit 0
+            sleep 10
+          done
+          exit 1

@@ -1,7 +1,7 @@
 name: Keep API Warm
-# NOTE: This workflow was used to keep Render free tier awake.
-# DigitalOcean App Platform keeps services running on paid plans, so this may not be needed.
-# You can disable this workflow or update the URL to your new DigitalOcean domain.
+# NOTE: This workflow was used to keep the Render free tier awake. The Azure
+# App Service has alwaysOn, so it is unnecessary after the cutover and can be
+# retired; until then it doubles as a five-minute external uptime probe.
 
 on:
   schedule:
@@ -11,9 +11,8 @@ jobs:
   ping:
     runs-on: ubuntu-latest
     steps:
-      - name: Warm API (Render - can be updated to DigitalOcean URL)
+      - name: Ping /health
         run: |
-          # Update this URL to your DigitalOcean app URL if needed
-          curl -fsS https://api.soundcloudtoolkit.com/health || true
+          curl -fsS https://tracktoolkit.com/health || true
 
 

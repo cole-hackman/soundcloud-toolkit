@@ -716,6 +716,8 @@ clone, and every bulk write.
 | `ADMIN_IDS` | No | Comma-separated SoundCloud numeric user IDs allowed into `/api/admin/*`. Unset or empty = **nobody** (fails closed) |
 | `SC_FETCH_TIMEOUT_MS` | No | AbortController deadline on every SoundCloud fetch (default `30000`) |
 | `CHROME_EXTENSION_IDS` | No | Comma-separated extension IDs allowed as credentialed origins (CORS + `rejectUntrustedOrigin`) |
+| `SESSION_COOKIE_SAMESITE` | No | `lax`, `none` or `strict` for the session cookie. Unset keeps the historical default (`none` in production). Same-origin hosting sets `lax` |
+| `LEGACY_REDIRECT_HOSTS` | No | Comma-separated hostnames Express redirects to `APP_URL` (301 GET/HEAD, 308 otherwise). Unset disables the middleware |
 
 ### Frontend (`frontend-UI/.env.local`)
 
@@ -874,6 +876,19 @@ Before the OAuth redirect, the frontend pings `/health` (with 1.2s timeout) to w
 | Database | **Neon** PostgreSQL | Serverless pooling; use `DATABASE_URL` from Neon console |
 
 ### Domain Strategy
+
+**Post-cutover target (this branch, `prep/domain-switch`):**
+
+- One origin, `https://tracktoolkit.com` (apex is canonical), on Azure App
+  Service — Express serves both `/api` and the static export
+  (`infra/main.cutover.bicepparam`).
+- `www.tracktoolkit.com`, `soundcloudtoolkit.com`, `www.soundcloudtoolkit.com`
+  and `api.soundcloudtoolkit.com` are bound to the same app and 301/308 to the
+  apex via `server/middleware/legacy-redirect.js` (`LEGACY_REDIRECT_HOSTS`).
+- Session cookie is host-only and `SameSite=Lax` (`SESSION_COOKIE_SAMESITE=lax`);
+  the OAuth redirect URI is `https://tracktoolkit.com/api/auth/callback`.
+
+**Until then (live today):**
 
 - Frontend: `https://www.soundcloudtoolkit.com` → Vercel
 - Backend: `https://api.soundcloudtoolkit.com` → DigitalOcean

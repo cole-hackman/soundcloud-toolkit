@@ -14,11 +14,11 @@ untouched and remain the rollback plan.
 
 | # | Work item | State |
 |---|---|---|
-| 1 | Provision Azure in parallel, /health 200 | in progress |
-| 2 | Rehearse the database migration, write docs/azure-db-cutover.md | in progress |
-| 3 | Secrets reachable? decrypt round-trip | in progress |
-| 4 | prep/domain-switch branch + 301 design | not started |
-| 5 | Verification (tests, tsc, lint, build, login redirect) | not started |
+| 1 | Provision Azure in parallel, /health 200 | **resources up, code deployed**; /health is 500 until the six Key Vault secrets exist (Blocked B1) |
+| 2 | Rehearse the database migration, write docs/azure-db-cutover.md | **done** — 16 min measured, `docs/azure-db-cutover.md` |
+| 3 | Secrets reachable? decrypt round-trip | **done** — readable; 4089/4089 token rows decrypt with the DigitalOcean key |
+| 4 | prep/domain-switch branch + 301 design | **done** (branch `prep/domain-switch`, 86b9d08, not merged, not pushed) |
+| 5 | Verification (tests, tsc, lint, build, login redirect) | **done except login redirect** (needs B1) |
 | 6 | Fix CLAUDE.md cookie-domain error | **done** (commit on this branch) |
 
 ## Resources (Azure subscription "Azure subscription 1", 14ca6838-…)
@@ -104,9 +104,27 @@ engine must match the App Service image), runs `npm test`, builds the static
 export, zips `server/ prisma/ node_modules/ frontend-UI/out` and ships it with
 OIDC (no stored secret). When the cutover is done, add `push: [main]`.
 
-### Verification
+### Verification (2026-09-19, 21:27–21:50 CEST)
 
-(pending — filled in below when /health answers)
+- `infra/deploy.sh` (Bicep) succeeded in `westus3`: every resource in the
+  table above exists. Deployment name `tracktoolkit-20260919212721`.
+- Code deployed with `az webapp deploy --type zip` (44 MB: `server/`,
+  `prisma/`, production `node_modules` installed in a `node:22-bookworm`
+  **amd64** container so the Prisma engine is `debian-openssl-3.0.x`, and
+  `frontend-UI/out` from a green `next build`). App Service deployment log:
+  "Deployment successful. deployer = OneDeploy" at 19:49:24 UTC.
+- `GET https://tracktoolkit.azurewebsites.net/health` → **500** with body
+  `{"error":"Server configuration error","message":"Server is not properly configured. Check environment variables."}`.
+  That body is `validateEnv` in `server/middleware/security.js`, and the
+  App Service log stream shows `[ERROR] Environment variable validation
+  failed` every 5 s from the health probe — so the deployed Express app is
+  running the shipped code; it is refusing to serve because the Key Vault
+  references resolve to nothing (Blocked B1). The moment the six secrets
+  exist and the app restarts, this is a 200. I could not get there tonight.
+- First attempt on a Docker arm64 image produced a `linux-arm64` Prisma
+  engine, which would not load on App Service (x64); the `--platform
+  linux/amd64` rebuild fixed it. The GitHub workflow builds on x64 runners
+  and does not have this problem.
 
 ## Work item 2 — Database rehearsal
 
@@ -132,7 +150,36 @@ PostgreSQL 17.11, 485 MB, row counts in 9 s:
 | tracks | 576427 |
 | users | 4089 |
 
-(remaining steps pending)
+Rehearsal run (all steps timed; full procedure, commands and rollback in
+`docs/azure-db-cutover.md`):
+
+| step | measured |
+|---|---|
+| Neon row counts (psql, direct endpoint) | 9 s |
+| `pg_dump -Fc` Neon → 145 MB archive (Docker `postgres:17`) | 219 s |
+| `pg_restore -j 4` into `tracktoolkit-rehearsal` (B1ms) | 671 s, 0 stderr lines |
+| `docs/sql/2026-library-cache.sql` | 3 s (no-op: the dump already carries both tables) |
+| Azure row counts + diff + structure | ~10 s |
+| **downtime window** | **~16 min measured; budget 25, announce 30** |
+
+Row counts: 15 of 16 tables identical; `operation_logs` was 22092 on Azure
+against 22091 counted on Neon eleven minutes earlier, and 22093 on a recount
+afterwards — live production writing between count and dump, which is
+exactly what the freeze step in the procedure prevents. Structure matches:
+16 tables, 63 indexes, 13 foreign keys, 0 sequences on both sides. Restored
+size 408 MB (Neon reports 485 MB including its own overhead).
+
+Two operational findings worth knowing before the real run:
+
+- The Homebrew `libpq@17` `pg_dump` on this Mac hangs forever in the libpq
+  connection poll against Neon (direct and pooler, with and without channel
+  binding / GSS), while `psql` from the same keg connects instantly. Root
+  cause not chased; the procedure uses `docker run postgres:17` for every
+  client command, which worked first time and pins the client version.
+- `library_cache_pages` (901 rows of large JSONB) is the restore's long
+  tail, not `tracks` (576 k rows). If the window ever needs shrinking,
+  that table is also safe to leave behind: the app treats it as a cache and
+  rebuilds it (`snapshot-cache.js` fails soft).
 
 ## Work item 3 — Secrets
 
@@ -148,15 +195,109 @@ The root `.env` on this machine holds the same `DATABASE_URL` host and both
 secrets by name; whether its values match production is settled by the
 decrypt round-trip below, not by comparing files.
 
-(decrypt round-trip pending)
+**Decrypt round-trip: passed.** Against the restored `tokens` table in
+`tracktoolkit-rehearsal`, with `ENCRYPTION_KEY` set to the DigitalOcean
+value:
+
+| run | rows | decrypted | failed |
+|---|---|---|---|
+| sample, newest 100 rows | 100 | 100 | 0 |
+| full table | 4089 | 4089 | 0 |
+| negative control, all-zero key | 5 | 0 | 5 (GCM auth tag mismatch) |
+
+AES-256-GCM authenticates every blob, so a key that is off by one byte fails
+every row; 4089/4089 is proof the DigitalOcean value is the key that wrote
+production. `SESSION_SECRET` cannot be proven the same way (there is no
+stored artefact to verify against), but it comes from the same source.
+
+Also checked: the root `.env` on this workstation carries byte-identical
+`ENCRYPTION_KEY` and `SESSION_SECRET` to DigitalOcean (string compare; the
+values were not printed). So the secrets exist in three places already:
+DigitalOcean, the local `.env`, and — once B1 is cleared — Key Vault.
+
+Wiring: `infra/main.bicep` app settings are Key Vault references by name
+(`encryption-key`, `session-secret`, …). Nothing in code names a vault or a
+value; cutover is "the secret exists in the vault".
 
 ## Work item 4 — Domain switch
 
-(not started)
+Branch `prep/domain-switch` (commit 86b9d08, one commit on top of
+`azure/migration` 5cb6a0d), committed, **not merged and not pushed**. Review
+it with `git diff azure/migration..prep/domain-switch`.
+
+Canonical origin is the apex, `https://tracktoolkit.com` (assumption: the
+brief says "a switch to tracktoolkit.com"; `www.` redirects to the apex).
+
+What it changes:
+
+- Frontend: canonical, OpenGraph/Twitter URLs, `metadataBase`, JSON-LD
+  (`StructuredData.tsx`), `robots.txt`, `sitemap.xml` (lastmod 2026-09-19),
+  the hero mock URL bar → `tracktoolkit.com`.
+- Server: `TRACK_TOOLKIT_PLAYLIST_SITE` (playlist footer) → `tracktoolkit.com`.
+- `server/middleware/legacy-redirect.js` (new, mounted first in
+  `server/index.js`): hosts listed in `LEGACY_REDIRECT_HOSTS` get a 301
+  (GET/HEAD) or 308 (everything else, so stale API clients keep their method)
+  to `APP_URL` + original path and query. Unset = no-op. Five tests in
+  `tests/routes/legacy-redirect.test.js`.
+- `infra/main.cutover.bicepparam`: `appUrl`/`appUrls`/`soundcloudRedirectUri`
+  on tracktoolkit.com, the five hostnames bound to the app
+  (tracktoolkit.com, www.tracktoolkit.com, soundcloudtoolkit.com,
+  www.soundcloudtoolkit.com, api.soundcloudtoolkit.com), and the four
+  non-canonical ones in `legacyRedirectHosts`.
+- `keep-api-warm.yml` pings the new host; CLAUDE.md env table and Domain
+  Strategy updated.
+- Env values that move with it (all already parameters in Bicep, nothing in
+  code): `SOUNDCLOUD_REDIRECT_URI=https://tracktoolkit.com/api/auth/callback`,
+  `APP_URL=APP_URLS=https://tracktoolkit.com`.
+
+### Where the soundcloudtoolkit.com 301 lives
+
+In Express, on the same App Service, not in Front Door and not in a stub
+app. Once DNS for the three old hosts points at `tracktoolkit.azurewebsites.net`
+and they are bound (with managed certificates) to the app, the middleware
+answers every request on those hosts with a redirect. Front Door Standard
+costs more per month than the whole app and would exist only to emit one
+header; a stub App Service would be a second thing to keep patched. The IaC
+is in place and inert: `customHostnames` and `legacyRedirectHosts` are empty
+in `main.bicepparam` and populated in `main.cutover.bicepparam`.
+
+Cutover order for the domain (after the database cutover):
+1. DNS for tracktoolkit.com / www → App Service (A + TXT `asuid` for the
+   apex, CNAME for www).
+2. Change the SoundCloud OAuth app's redirect URI to
+   `https://tracktoolkit.com/api/auth/callback` (check-in-first item).
+3. `infra/deploy.sh` with `main.cutover.bicepparam`, then managed certs
+   (`infra/README.md`, "Custom domains").
+4. Merge `prep/domain-switch`, deploy the code.
+5. Repoint soundcloudtoolkit.com / www / api DNS at the App Service; the
+   redirects start answering. Then retire DigitalOcean and Vercel.
+
+Pre-existing gaps noticed on the way (not fixed): `/og-image.png` is
+referenced by the OpenGraph and Twitter metadata but does not exist in
+`frontend-UI/public`, so link previews are already broken today; the JSON-LD
+`aggregateRating` (4.8 from 150) has no data behind it, which conflicts with
+the "no fabricated social proof" decision in STATE.md; `vercel.json` still
+rewrites `/api` to api.soundcloudtoolkit.com and is dead weight once Vercel
+is gone.
 
 ## Work item 5 — Verification
 
-(not started)
+On `azure/migration` (5cb6a0d + MIGRATION.md commits), 2026-09-19:
+
+| check | result |
+|---|---|
+| `npm test` (root) | 45 suites, 395 tests, all passing |
+| `npx tsc --noEmit` (frontend-UI, after `npm ci`) | exit 0 |
+| `npx next lint` | no warnings or errors |
+| `npm run build` (frontend-UI, static export) | exit 0, `out/` produced and shipped in the zip |
+| Server boots on Azure | yes — see work item 1 (500 from validateEnv, not a crash) |
+| `/health` = 200 on Azure | **not yet** — Blocked B1 |
+| Login reaches SoundCloud authorize redirect | **not yet** — every request 500s until B1; the command to check is in B1 |
+| Static frontend served by Express on Azure | **not yet** — same reason; `frontend-UI/out` is in the deployed package |
+
+On `prep/domain-switch` (86b9d08): 46 suites, 400 tests passing; lint
+clean; tsc clean once `@tanstack/react-virtual` is installed (it is in
+`package.json`; a stale local `node_modules` lacked it).
 
 ## Work item 6 — CLAUDE.md cookie domain
 
@@ -168,7 +309,51 @@ say so.
 
 ## Blocked
 
-(nothing yet)
+### B1. Key Vault secret writes need your approval (blocks /health = 200 and the login test)
+
+What I tried: `az keyvault secret set` for the six application secrets
+(`database-url`, `encryption-key`, `session-secret`, `soundcloud-client-id`,
+`soundcloud-client-secret`, `download-allowlist`) with the values read from
+the DigitalOcean app spec. The Claude Code permission classifier denied the
+command ("Secret-Store Writes"), twice. I did not work around it.
+
+Consequence: the web app's settings are Key Vault references that resolve to
+nothing, `validateEnv` (mounted globally in `server/index.js`) rejects every
+request — including `/health` — with a 500 "Server configuration error"
+until the six secrets exist. The Postgres admin password is in the vault
+(written by `infra/deploy.sh`, which was allowed).
+
+What you do (about two minutes):
+
+```bash
+# 1. Copy the six values from DigitalOcean → sctoolkit-backend → Settings → soundcloud-toolkit → Environment Variables
+#    (or `doctl apps spec get 69dbca20-e3f3-4765-ae2b-d01865fd4eb7`).
+# 2. Write them and restart the app in one go:
+TT_PG_ADMIN_PASSWORD="$(az keyvault secret show --vault-name tracktoolkit-kv --name postgres-admin-password --query value -o tsv)" \
+TT_SECRET_DATABASE_URL="postgresql://tracktoolkit_admin:<url-encoded admin password>@tracktoolkit-pg.postgres.database.azure.com:5432/tracktoolkit-rehearsal?sslmode=require" \
+TT_SECRET_ENCRYPTION_KEY='<DO value, 32 chars>' \
+TT_SECRET_SESSION_SECRET='<DO value>' \
+TT_SECRET_SOUNDCLOUD_CLIENT_ID='<DO value>' \
+TT_SECRET_SOUNDCLOUD_CLIENT_SECRET='<DO value>' \
+TT_SECRET_DOWNLOAD_ALLOWLIST='<DO value>' \
+infra/deploy.sh
+# 3. Verify:
+curl -i https://tracktoolkit.azurewebsites.net/health
+curl -sI https://tracktoolkit.azurewebsites.net/api/auth/login | grep -i '^location'   # expect secure.soundcloud.com/authorize?...
+```
+
+Or start a Claude Code session and approve the `az keyvault secret set`
+prompt; everything else is scripted.
+
+### B2. GitHub Actions deploy cannot be dispatched until the workflow is on `main`
+
+`gh workflow run azure-deploy.yml --ref azure/migration` → 404: GitHub only
+exposes `workflow_dispatch` for workflow files that exist on the default
+branch. Tonight's code deploy therefore went through `az webapp deploy` with a
+zip built locally in a `node:22-bookworm` container (identical contents to
+what the workflow produces). After `azure/migration` merges, the workflow is
+dispatchable and this blocker disappears. Nothing for you to do beyond the
+merge.
 
 ## Follow-ups (not done tonight, deliberately)
 

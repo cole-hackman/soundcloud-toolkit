@@ -369,6 +369,60 @@ so the OTHER stack (DigitalOcean, still on Neon) loses the ability to refresh
 that one account until its owner logs in again. Only your own account is
 affected, which is why the test is restricted to it.
 
+### ENCRYPTION_KEY rotation script (Part 3)
+
+`server/scripts/rotate-encryption-key.js` (+ `tests/rotate-encryption-key.test.js`,
+7 tests). Exercised against `tracktoolkit-rehearsal` on 2026-09-20 with a
+throwaway 32-char key, then rotated back so the database still matches the
+Azure app's key:
+
+| step | result |
+|---|---|
+| `--dry-run` current → throwaway | scanned 4089, would rotate 4089, 0 undecryptable, nothing written |
+| real run current → throwaway | rotated 4089 / 4089 |
+| decrypt round-trip, throwaway key | 4089 / 4089 |
+| decrypt round-trip, current key | 0 / 4089 (every row fails, as it must) |
+| re-run current → throwaway | skipped 4089, rotated 0 (idempotent) |
+| real run throwaway → current | rotated 4089 / 4089 |
+| decrypt round-trip, current key | 4089 / 4089 |
+
+`changedUnderneath` stayed 0 throughout (no token refresh landed mid-run).
+Timing: each real pass over 4089 rows took roughly 10–15 minutes from this
+workstation because every row is one guarded `UPDATE` inside the batch
+transaction and the round trip to `westus3` is ~150 ms; the same pass from a
+box inside Azure would be seconds. Plan the production rotation
+(post-cutover, once DigitalOcean is gone) from an Azure-side shell or accept
+the window. Never run it against production while both stacks are live: the
+old stack would lose the ability to decrypt.
+
+### Domain-switch dry run (Part 4)
+
+- `prep/domain-switch` (86b9d08): 46 suites / 400 tests green; merges cleanly
+  onto main at 50b659e (`git merge-tree` exit 0, no conflicts).
+- Deployed to the parallel Azure app via the workflow, `LEGACY_REDIRECT_HOSTS`
+  set to `legacy.example.test`, then exercised. App Service routes by `Host`
+  and answers 404 itself for a hostname that is not bound to the app, so a
+  raw `Host:` header never reaches Express; behind `trust proxy`, Express's
+  `req.hostname` reads `X-Forwarded-Host`, which the platform passes through:
+
+  | request | result |
+  |---|---|
+  | GET `/about/?x=1`, forwarded host listed | 301 → `https://tracktoolkit.azurewebsites.net/about/?x=1` |
+  | POST `/api/x`, forwarded host listed | 308 → `https://tracktoolkit.azurewebsites.net/api/x` |
+  | GET, forwarded host `LEGACY.Example.TEST` | 301 (case-insensitive) |
+  | GET, canonical host | 200, no redirect |
+  | GET, unlisted forwarded host | 200, no redirect |
+  | `/health` | 200 |
+
+  Matches `tests/routes/legacy-redirect.test.js`. Setting reverted to empty,
+  main redeployed afterwards. At cutover the retired hostnames are real
+  bindings on the app, so the platform routes them in and `Host` is what the
+  middleware sees; the forwarded-header path was only the way to test it
+  before DNS exists.
+- `SESSION_COOKIE_SAMESITE` is `lax` on the live app, from the Bicep default
+  and `main.bicepparam`; there are no deployment slots and no other setting
+  touches it.
+
 ## Blocked
 
 ### B1. Key Vault secret writes — CLEARED 2026-09-20

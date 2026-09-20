@@ -61,14 +61,26 @@ downtime" line at the end.
 
 ### 0. Freeze writes (start of downtime)
 
-Scale the DigitalOcean app to zero or, simpler, flip it to maintenance by
-setting `instance_count: 0` in the spec. The point is that nothing writes to
-Neon after the dump starts. Do not delete anything.
+App Platform cannot scale a service to zero, and the app has no maintenance
+switch, so the freeze is "make Neon unreachable from DigitalOcean while it
+stays reachable from the operator machine". Pick one; both are reversible in
+about a minute and neither deletes anything.
 
-```bash
-# DigitalOcean console → sctoolkit-backend → Settings → soundcloud-toolkit → Scale → 0
-# (or `doctl apps update 69dbca20-e3f3-4765-ae2b-d01865fd4eb7 --spec spec-with-instance-count-0.yaml`)
-```
+**Option A — Neon IP allow list (preferred, no DigitalOcean change).**
+Neon → project *SoundCloud-Toolkit* → Settings → IP Allow: allow only the
+operator machine's public IP (`curl -s https://api.ipify.org`). Every
+DigitalOcean connection is refused from that moment; `pg_dump` still works.
+Rollback: clear the list. If the plan does not offer IP Allow, use B.
+
+**Option B — break DigitalOcean's `DATABASE_URL`.** In the app's
+environment variables, change `DATABASE_URL` to point at an unreachable
+host (for example replace the hostname with `frozen.invalid`). The app keeps
+serving `/health` (the health check stays green) but every database-backed
+route fails, so nothing is written. Rollback: restore the original value.
+Each change is a config redeploy of about two minutes.
+
+Do NOT destroy the DigitalOcean app at this point; it is the rollback until
+the new stack has soaked. Destroy it afterwards (see MIGRATION.md).
 
 ### 1. Row counts on the source
 
@@ -209,12 +221,13 @@ size.
 
 ## Rollback
 
-At any point before step 6: nothing has changed for users. Scale the
-DigitalOcean app back to 1. Neon was only read.
+At any point before step 6: nothing has changed for users. Undo the freeze
+(clear the Neon allow list, or restore `DATABASE_URL` on DigitalOcean). Neon
+was only read.
 
 After step 6: set Key Vault `database-url` back to the Neon DSN and restart
-(same command as step 6 with the Neon string), or scale DigitalOcean back up
-and repoint DNS. Writes that landed on Azure between step 6 and the rollback
+(same command as step 6 with the Neon string), or undo the freeze on
+DigitalOcean and repoint DNS. Writes that landed on Azure between step 6 and the rollback
 are lost unless you reverse-dump them; that is the reason for the freeze in
 step 0 and for keeping the window short.
 

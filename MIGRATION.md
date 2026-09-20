@@ -1,5 +1,41 @@
 # Azure migration — working state
 
+## CUTOVER DONE — 2026-09-20 (18:49–19:15 CEST window, redirects live 19:45)
+
+Track Toolkit is served by Azure at https://tracktoolkit.com against the
+Azure Postgres `tracktoolkit` database. Sequence as run:
+
+1. 18:49 freeze: DigitalOcean `DATABASE_URL` hostname replaced (Option B);
+   Neon pooled connections hit zero at 18:49:13.
+2. 18:49–19:05 dump (230 s) → restore (692 s) → SQL → verify: all 16 tables
+   identical (4,105 users, 578,450 tracks), 16 tables / 63 indexes / 13 FKs.
+3. In parallel: PR #42 (`prep/domain-switch`) merged and deployed from main
+   (e2d456c); cutover Bicep parameters applied (`APP_URL`,
+   `SOUNDCLOUD_REDIRECT_URI`, legacy redirect hosts). Cole changed the
+   SoundCloud OAuth redirect URI to `https://tracktoolkit.com/api/auth/callback`.
+4. 19:05 Key Vault `database-url` → `tracktoolkit` DB; app healthy at 19:15
+   (the parameter deploy had detached the custom-domain certificates at
+   19:01; rebound by hand; template fixed so bindings reference the managed
+   certificates).
+5. Verified on tracktoolkit.com: login 302 → SoundCloud with the new
+   callback; authenticated smoke test on Cole's account 200 (29 playlists);
+   writes land in Azure (`operation_logs` 22,369 → 22,371).
+6. 19:30 Cole repointed soundcloudtoolkit.com DNS (Namecheap): apex A,
+   `www`/`api` CNAME, three `asuid` TXT. Hostnames bound, managed
+   certificates issued; redirects verified: apex/www 301 with path+query,
+   `api` POST 308, HTTP→HTTPS→301, one hop to a 200 on tracktoolkit.com.
+
+Rollback (until the old stack is decommissioned): restore DigitalOcean's
+`DATABASE_URL`, point the old DNS back at Vercel/DigitalOcean, set the
+SoundCloud redirect URI back to `https://api.soundcloudtoolkit.com/api/auth/callback`.
+Writes made on Azure after 18:49 would need a reverse dump. Neon is intact.
+
+Still open: Search Console change of address (in progress, needs the
+`google-site-verification` TXT on tracktoolkit.com), Cole's browser login
+on the new domain, the one-week soak, then decommission (DigitalOcean app →
+Vercel project → Neon last, then rotate the SoundCloud client secret).
+
+
 Durable state for the DigitalOcean + Vercel + Neon → Azure move and the
 tracktoolkit.com domain switch. A fresh session resumes from this file plus
 `git log`. Companion documents: `infra/README.md` (operator reference),

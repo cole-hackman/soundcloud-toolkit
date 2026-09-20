@@ -1,13 +1,12 @@
 # STATE
 
 ## Now
-Azure migration: PR #39 (rebrand) and PR #40 (`azure/migration`) are merged
-to main (50b659e); the GitHub Actions deploy works from main and the parallel
-Azure app is serving main with `/health` 200 against `tracktoolkit-rehearsal`.
-Browser-less authenticated smoke test passed on Cole's own account.
-`prep/domain-switch` is verified (tests, clean merge, live 301/308 dry run)
-and waits for the domain. Later commits on `azure/migration` (docs + the
-rotation script) are pushed but not yet merged. Read `MIGRATION.md` first.
+**Cut over.** Track Toolkit runs on Azure at https://tracktoolkit.com against
+the Azure `tracktoolkit` database (2026-09-20). soundcloudtoolkit.com (apex,
+www, api) 301/308 to it. DigitalOcean is frozen (broken DATABASE_URL), Vercel
+and Neon untouched — all three are the rollback until a one-week soak ends.
+Open: Search Console change of address, Cole's browser login, decommission.
+Read `MIGRATION.md` ("CUTOVER DONE") first.
 
 ## Just done
 - 8731b98 / 50b659e — PR #39 and PR #40 merged after review (391 tests,
@@ -21,14 +20,11 @@ rotation script) are pushed but not yet merged. Read `MIGRATION.md` first.
 - 646dd20 — /health 200, login 302 to SoundCloud, Postgres password rotated.
 
 ## Next
-1. SoundCloud OAuth: temporarily swap the redirect URI to the Azure
-   callback, log in through the browser on the Azure host, swap back.
-   Also log in once on production: the smoke test refreshed Cole's token on
-   the rehearsal DB, so DigitalOcean's copy of that refresh token is stale.
-2. Merge the trailing `azure/migration` commits (docs, rotation script) to
-   main when convenient; nothing on Azure depends on it.
-3. Buy tracktoolkit.com, then follow MIGRATION.md work item 4 and
-   `docs/azure-db-cutover.md`.
+1. Cole: browser login on https://tracktoolkit.com, confirm playlists load.
+2. Search Console: verify the tracktoolkit.com domain property (TXT), run
+   Change of address from the soundcloudtoolkit.com property, submit sitemap.
+3. After a week: decommission DigitalOcean app, then Vercel, keep Neon a
+   month; rotate the SoundCloud client secret; add /og-image.png.
 
 ## Decisions
 - **Name: Track Toolkit** (2026-09-10). Supersedes the live vote, which is now

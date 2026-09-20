@@ -37,10 +37,11 @@ const RED = "#E74C3C";
 const YELLOW = "#F1C40F";
 const CYAN = "#00D4AA";
 
-// Rebrand name-vote shortlist. Order matches the modal's option order in
-// RebrandSurveyModal.tsx, so the bars read in the same sequence voters saw;
-// keep the slugs in sync with REBRAND_NAME_SLUGS in
-// server/middleware/validation.js.
+// Rebrand name-vote shortlist — historical. The vote is closed (Track Toolkit
+// won) and the voting modal is gone, so this order is frozen as the sequence
+// voters actually saw rather than kept in sync with a live modal. The slugs
+// still match REBRAND_NAME_SLUGS in server/middleware/validation.js, which the
+// stored rows were validated against.
 const REBRAND_NAME_ORDER = [
   "tracktidy",
   "tracktoolkit",
@@ -904,7 +905,7 @@ export default function AdminDashboard() {
             ))}
           </div>
           <div>
-            <span style={{ fontSize: 18, fontWeight: 700, letterSpacing: -0.5 }}>SoundCloud Toolkit</span>
+            <span style={{ fontSize: 18, fontWeight: 700, letterSpacing: -0.5 }}>Track Toolkit</span>
             <span
               style={{
                 fontSize: 10,
@@ -1455,7 +1456,7 @@ export default function AdminDashboard() {
                 <div key={i} style={{ width: 2, height: h, background: ORANGE, borderRadius: 1, opacity: 0.5 }} />
               ))}
             </div>
-            <span style={{ fontSize: 11, color: P.textDim, fontFamily: "'JetBrains Mono', monospace" }}>SoundCloud Toolkit Admin</span>
+            <span style={{ fontSize: 11, color: P.textDim, fontFamily: "'JetBrains Mono', monospace" }}>Track Toolkit Admin</span>
           </div>
           <span style={{ fontSize: 10, color: P.textDim, fontFamily: "'JetBrains Mono', monospace" }}>
             Last refreshed: {lastRefresh.toLocaleTimeString("en-US", { hour12: true })} · Auto-refreshes every 30s

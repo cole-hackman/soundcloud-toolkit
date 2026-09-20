@@ -1,4 +1,4 @@
-# robots.txt for SC Toolkit
+# robots.txt for Track Toolkit
 # https://www.soundcloudtoolkit.com
 
 User-agent: *

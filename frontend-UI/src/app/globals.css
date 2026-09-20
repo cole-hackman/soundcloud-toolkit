@@ -4,6 +4,13 @@
 
 @layer base {
   :root {
+    /* Height of the site-wide announcement banner, published by
+       components/RebrandBanner.tsx while it is visible. The landing nav and
+       the app's mobile header are `position: fixed`, so they read this as
+       their `top` instead of sitting underneath the banner. 0px whenever
+       there is no banner. */
+    --announcement-h: 0px;
+
     /* Light mode — Midnight Studio */
     --background: 45 20% 97%;
     --foreground: 222 47% 11%;

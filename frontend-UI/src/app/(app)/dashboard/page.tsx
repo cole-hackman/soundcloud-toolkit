@@ -29,7 +29,6 @@ import {
   History,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
-import { useSurvey } from "@/contexts/SurveyContext";
 import { Card, EmptyState, Input, PageContainer, Skeleton, Button } from "@/components/ui";
 import { WhatsNewModal } from "@/components/WhatsNewModal";
 import {
@@ -37,6 +36,7 @@ import {
   isWhatsNewDismissed,
   markWhatsNewShownThisSession,
 } from "@/lib/whatsNew";
+import { isRebrandAcknowledged } from "@/lib/rebrand";
 import { dashboardSummaryQueryOptions, useDashboardSummaryQuery } from "@/lib/queries";
 
 const LAST_TOOLS_KEY = "sc-toolkit-last-tools";
@@ -340,25 +340,25 @@ function StatsErrorFallback({ resetErrorBoundary }: { resetErrorBoundary: () => 
 
 export default function DashboardPage() {
   const { user, isAuthenticated, loading: authLoading } = useAuth();
-  const survey = useSurvey();
   const router = useRouter();
   const [linkUrl, setLinkUrl] = useState("");
   const [recentTools, setRecentTools] = useState<string[]>([]);
   const [toolQuery, setToolQuery] = useState("");
   const [showWhatsNew, setShowWhatsNew] = useState(false);
 
-  // Announce new features first; only fall through to the survey once the
-  // user has already seen (and dismissed) the announcement — so the two
-  // modals never stack in the same session.
+  // The rebrand announcement comes first and is mounted by the route group's
+  // layout, so this yields to it: while it is still unacknowledged, "What's
+  // new" waits for the next visit rather than stacking a second dialog on top
+  // of it. (The name vote that used to sit third in this chain is retired —
+  // the name is decided.)
   useEffect(() => {
     if (authLoading || !isAuthenticated) return;
+    if (!isRebrandAcknowledged()) return;
     if (!isWhatsNewDismissed()) {
       setShowWhatsNew(true);
       markWhatsNewShownThisSession();
-    } else {
-      survey.maybeShow({ context: "dashboard" });
     }
-  }, [authLoading, isAuthenticated, survey]);
+  }, [authLoading, isAuthenticated]);
 
   const handleCloseWhatsNew = () => {
     dismissWhatsNew();

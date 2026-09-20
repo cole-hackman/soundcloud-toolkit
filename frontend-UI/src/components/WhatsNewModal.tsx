@@ -108,7 +108,7 @@ export function WhatsNewModal({ open, onClose }: WhatsNewModalProps) {
             </div>
             <div>
               <h2 id="whats-new-title" className="text-lg font-bold text-foreground">
-                What&apos;s new in SC Toolkit
+                What&apos;s new in Track Toolkit
               </h2>
               <p className="text-xs text-muted-foreground mt-0.5">
                 A few new tools since your last visit

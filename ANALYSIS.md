@@ -1,4 +1,4 @@
-# SC Toolkit — Production Data Analysis
+# Track Toolkit — Production Data Analysis
 
 **Date:** 2026-08-09 · **Analyst:** Claude Code session, requested by the developer before a semester abroad.
 **Inputs:** five production table exports (operation_logs 9,235 rows · growth_actions 1,591 · indexed_likes 1,021 · indexed_playlist_tracks 1,242 · survey_responses 321) plus a full trace of the repo's logging, indexing, growth, and survey code with git history.

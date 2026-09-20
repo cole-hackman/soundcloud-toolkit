@@ -192,7 +192,7 @@ if (existsSync(FRONTEND_BUILD_PATH)) {
   // Root route for API-only mode
   app.get('/', (req, res) => {
     res.json({
-      service: 'SoundCloud Toolkit API',
+      service: 'Track Toolkit API',
       status: 'running',
       version: '1.0.0',
       endpoints: {

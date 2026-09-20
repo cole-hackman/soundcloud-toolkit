@@ -625,9 +625,10 @@ export const validateEvent = [
  * (POST /api/feedback/survey). Email is required only when wantsBeta is true.
  */
 /**
- * Rebrand name vote — the live survey. Kept deliberately small: one required
- * choice plus two optional free-text fields. The allowed nameChoice slugs are
- * the shortlist in RebrandSurveyModal.tsx; keep the two lists in sync.
+ * Rebrand name vote — now closed (routes/feedback.js answers 410), kept so
+ * the POST still fails closed at the validator for non-JSON bodies. The
+ * slugs are the shortlist voters saw; REBRAND_NAME_ORDER in the admin page
+ * mirrors it for the read-only tally. The client modal is gone.
  */
 export const REBRAND_NAME_SLUGS = [
   'tracktidy',

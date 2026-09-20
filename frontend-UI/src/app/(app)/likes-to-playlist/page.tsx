@@ -16,7 +16,6 @@ import {
   Skeleton,
   TrackRow,
 } from "@/components/ui";
-import { useSurvey } from "@/contexts/SurveyContext";
 import { invalidatePlaylistCaches, useLikesQuery, usePlaylistsQuery } from "@/lib/queries";
 
 interface Track {
@@ -46,7 +45,6 @@ type AddMode = "new" | "existing";
 
 export default function LikesToPlaylistPage() {
   const queryClient = useQueryClient();
-  const survey = useSurvey();
   const [prefillTrackId, setPrefillTrackId] = useState<number | null>(null);
   const [selectedTracks, setSelectedTracks] = useState<Set<number>>(new Set());
   const [playlistName, setPlaylistName] = useState("");
@@ -83,12 +81,6 @@ export default function LikesToPlaylistPage() {
       setNotice({ type: "error", text: "Couldn’t load your liked tracks. Try refreshing the page." });
     }
   }, [likesQuery.isError]);
-
-  useEffect(() => {
-    if (!success || !result) return;
-    survey.maybeShow({ context: "post-from-likes" });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [success, result]);
 
   const [lastSelectedIndex, setLastSelectedIndex] = useState<number | null>(null);
 

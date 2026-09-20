@@ -8,19 +8,33 @@ import { validateRebrandVote } from '../middleware/validation.js';
 const router = express.Router();
 
 /**
- * The live survey is the rebrand name vote: SC Toolkit has to drop
- * "SoundCloud" from its name to stay inside SoundCloud's API terms, and this
- * asks every logged-in user which replacement they'd pick.
+ * The rebrand name vote — CONCLUDED. Track Toolkit won, and the product now
+ * ships under that name, so there is nothing left to vote on.
  *
- * The retired SongSwipe beta survey (BetaSignup) and the monetization survey
- * before it (SurveyResponse) are kept read-only for history — see the admin
- * routes.
+ * The vote is closed in code rather than by an environment variable: the
+ * client-side modal is gone, and a vote arriving after the decision would be
+ * recorded against a question nobody is asking any more. `SURVEY_ENABLED` can
+ * still switch a FUTURE campaign off without a redeploy; it can no longer
+ * switch this one back on.
+ *
+ * Everything already collected is untouched. `RebrandVote` rows stay, and the
+ * admin read paths (/api/admin/rebrand and /api/admin/rebrand/summary) still
+ * serve the full tally and both write-in fields. Same posture as the retired
+ * SongSwipe beta survey (BetaSignup) and the monetization survey before it
+ * (SurveyResponse) — read-only for history.
  */
+const REBRAND_VOTE_CONCLUDED = true;
+
+/** The name the vote settled on, echoed to clients so a stale build can tell
+ *  why the prompt is gone rather than silently retrying. */
+const REBRAND_WINNING_NAME = 'Track Toolkit';
+
 function getCampaignId() {
   return process.env.SURVEY_CAMPAIGN_ID || '2026-rebrand-name-v1';
 }
 
 function isSurveyEnabled() {
+  if (REBRAND_VOTE_CONCLUDED) return false;
   return String(process.env.SURVEY_ENABLED ?? 'true').toLowerCase() !== 'false';
 }
 
@@ -48,6 +62,8 @@ router.get('/survey/status', authenticateUser, async (req, res) => {
 
     res.json({
       enabled,
+      concluded: REBRAND_VOTE_CONCLUDED,
+      decidedName: REBRAND_VOTE_CONCLUDED ? REBRAND_WINNING_NAME : null,
       campaignId,
       submitted: !!existing,
       submittedAt: existing?.createdAt ?? null,
@@ -61,9 +77,23 @@ router.get('/survey/status', authenticateUser, async (req, res) => {
 /**
  * POST /api/feedback/survey
  * Records a single rebrand vote per user per campaign.
+ *
+ * `validateRebrandVote` deliberately still runs BEFORE the closed-campaign
+ * check. It is what makes a cross-site form post fail with a 400 rather than
+ * reaching the handler at all, which is the invariant
+ * tests/routes/feedback-authz.test.js guards — see the CSRF section of
+ * docs/SECURITY.md. Moving the gate in front of it would quietly retire that
+ * coverage along with the vote.
  */
 router.post('/survey', authenticateUser, validateRebrandVote, async (req, res) => {
   try {
+    if (REBRAND_VOTE_CONCLUDED) {
+      return res.status(410).json({
+        error: `The name vote has closed — the winner was ${REBRAND_WINNING_NAME}.`,
+        concluded: true,
+        decidedName: REBRAND_WINNING_NAME,
+      });
+    }
     if (!isSurveyEnabled()) {
       return res.status(403).json({ error: 'Survey is currently disabled' });
     }

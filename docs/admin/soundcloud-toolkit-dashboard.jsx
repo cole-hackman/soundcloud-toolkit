@@ -389,7 +389,7 @@ export default function Dashboard() {
             ))}
           </div>
           <div>
-            <span style={{ fontSize: 18, fontWeight: 700, letterSpacing: -0.5 }}>SoundCloud Toolkit</span>
+            <span style={{ fontSize: 18, fontWeight: 700, letterSpacing: -0.5 }}>Track Toolkit</span>
             <span
               style={{
                 fontSize: 10,
@@ -632,7 +632,7 @@ export default function Dashboard() {
                 <div key={i} style={{ width: 2, height: h, background: ORANGE, borderRadius: 1, opacity: 0.5 }} />
               ))}
             </div>
-            <span style={{ fontSize: 11, color: TEXT_DIM, fontFamily: "'JetBrains Mono', monospace" }}>SoundCloud Toolkit Admin</span>
+            <span style={{ fontSize: 11, color: TEXT_DIM, fontFamily: "'JetBrains Mono', monospace" }}>Track Toolkit Admin</span>
           </div>
           <span style={{ fontSize: 10, color: TEXT_DIM, fontFamily: "'JetBrains Mono', monospace" }}>
             Last refreshed: {time.toLocaleTimeString("en-US", { hour12: true })}

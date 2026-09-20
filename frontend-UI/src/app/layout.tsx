@@ -4,6 +4,7 @@ import Script from "next/script";
 import "./globals.css";
 import { GoogleAnalytics } from "@/components/Analytics";
 import { Providers } from "@/components/Providers";
+import { RebrandBanner } from "@/components/RebrandBanner";
 import { Analytics } from "@vercel/analytics/react";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 
@@ -26,10 +27,11 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: "SC Toolkit – Organize, Merge & Clean SoundCloud Playlists",
+  title: "Track Toolkit – Organize, Merge & Clean SoundCloud Playlists",
   description:
-    "SC Toolkit helps SoundCloud power users organize, merge, and clean playlists. Remove duplicates, manage tracks, and build better playlists faster.",
+    "Track Toolkit helps SoundCloud power users organize, merge, and clean playlists. Remove duplicates, manage tracks, and build better playlists faster.",
   keywords: [
+    "Track Toolkit",
     "SoundCloud",
     "playlist",
     "merge playlists",
@@ -41,9 +43,9 @@ export const metadata: Metadata = {
     "duplicate remover",
     "music organization",
   ],
-  authors: [{ name: "SC Toolkit" }],
-  creator: "SC Toolkit",
-  publisher: "SC Toolkit",
+  authors: [{ name: "Track Toolkit" }],
+  creator: "Track Toolkit",
+  publisher: "Track Toolkit",
   robots: {
     index: true,
     follow: true,
@@ -62,26 +64,29 @@ export const metadata: Metadata = {
     type: "website",
     locale: "en_US",
     url: "https://www.soundcloudtoolkit.com/",
-    siteName: "SC Toolkit",
-    title: "SC Toolkit – Organize, Merge & Clean SoundCloud Playlists",
+    siteName: "Track Toolkit",
+    title: "Track Toolkit – Organize, Merge & Clean SoundCloud Playlists",
     description:
-      "SC Toolkit helps SoundCloud power users organize, merge, and clean playlists. Remove duplicates, manage tracks, and build better playlists faster.",
+      "Track Toolkit helps SoundCloud power users organize, merge, and clean playlists. Remove duplicates, manage tracks, and build better playlists faster.",
     images: [
       {
         url: "https://www.soundcloudtoolkit.com/og-image.png",
         width: 1200,
         height: 630,
-        alt: "SC Toolkit - Smarter SoundCloud Playlist Management",
+        alt: "Track Toolkit - Smarter SoundCloud Playlist Management",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "SC Toolkit – Organize, Merge & Clean SoundCloud Playlists",
+    title: "Track Toolkit – Organize, Merge & Clean SoundCloud Playlists",
     description:
-      "SC Toolkit helps SoundCloud power users organize, merge, and clean playlists. Remove duplicates, manage tracks, and build better playlists faster.",
+      "Track Toolkit helps SoundCloud power users organize, merge, and clean playlists. Remove duplicates, manage tracks, and build better playlists faster.",
     images: ["https://www.soundcloudtoolkit.com/og-image.png"],
   },
+  // The icon files keep their original names: the artwork itself still has to
+  // be redrawn for Track Toolkit, and renaming the files without new art only
+  // breaks the paths the Chrome extension and cached pages already point at.
   icons: {
     icon: "/SC Toolkit Icon.png",
     apple: "/SC Toolkit Icon.png",
@@ -106,6 +111,7 @@ export default function RootLayout({
           Skip to content
         </a>
         <Providers>
+          <RebrandBanner />
           {children}
         </Providers>
         <Script

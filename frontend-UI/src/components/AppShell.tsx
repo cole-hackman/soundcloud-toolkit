@@ -490,7 +490,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <div className="h-7 w-7 shrink-0 overflow-hidden rounded flex items-center justify-center">
                 <Image
                   src="/sc toolkit transparent .png"
-                  alt="SC Toolkit"
+                  alt="Track Toolkit"
                   width={28}
                   height={28}
                   className="h-7 w-auto object-contain"
@@ -502,14 +502,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <div className="h-7 w-7 shrink-0 overflow-hidden rounded flex items-center justify-center">
                 <Image
                   src="/sc toolkit transparent .png"
-                  alt="SC Toolkit"
+                  alt="Track Toolkit"
                   width={28}
                   height={28}
                   className="h-7 w-auto object-contain"
                 />
               </div>
               <span className="ml-2 font-bold text-sm text-foreground truncate">
-                SC Toolkit
+                Track Toolkit
               </span>
             </Link>
           )}
@@ -528,7 +528,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </aside>
 
       {/* Mobile header */}
-      <div className="lg:hidden fixed top-0 left-0 right-0 z-50 bg-white/95 dark:bg-background/95 backdrop-blur-sm border-b border-gray-200/80 dark:border-border h-12 flex items-center justify-between px-4">
+      <div
+        className="lg:hidden fixed left-0 right-0 z-50 bg-white/95 dark:bg-background/95 backdrop-blur-sm border-b border-gray-200/80 dark:border-border h-12 flex items-center justify-between px-4"
+        style={{ top: "var(--announcement-h)" }}
+      >
         <button
           onClick={() => setMobileOpen(true)}
           className="p-1.5 rounded-md hover:bg-black/[0.04] dark:hover:bg-white/[0.04] text-muted-foreground"
@@ -539,7 +542,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <Link href="/dashboard" className="flex items-center">
           <Image
             src="/sc toolkit transparent .png"
-            alt="SC Toolkit"
+            alt="Track Toolkit"
             width={90}
             height={28}
             className="h-7 w-auto object-contain"
@@ -584,7 +587,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <ConfirmDialog
         open={deleteAccountOpen}
         title="Delete your account?"
-        description="This permanently deletes your SC Toolkit account and everything stored with it — your login, connected SoundCloud tokens, and all operation history. Your SoundCloud account and playlists are not affected. This cannot be undone."
+        description="This permanently deletes your Track Toolkit account and everything stored with it — your login, connected SoundCloud tokens, and all operation history. Your SoundCloud account and playlists are not affected. This cannot be undone."
         confirmLabel={deletingAccount ? "Deleting…" : "Delete my account"}
         variant="destructive"
         onConfirm={handleDeleteAccount}

@@ -20,6 +20,7 @@ BigInt.prototype.toJSON = function () {
 // Import security middleware
 import { apiRateLimiter, authRateLimiter, heavyOperationRateLimiter, healthCheckRateLimiter } from './middleware/rateLimiter.js';
 import { securityHeaders, preventKeyLeakage, validateEnv, rejectUntrustedOrigin } from './middleware/security.js';
+import { legacyHostRedirect } from './middleware/legacy-redirect.js';
 import logger from './lib/logger.js';
 import { safeError } from './lib/safe-error.js';
 import { createScMetrics } from './lib/token-context.js';
@@ -33,6 +34,13 @@ const PORT = process.env.PORT || 3001;
 // Trust proxy for accurate IP addresses (needed for rate limiting behind proxies/load balancers)
 // This allows req.ip to correctly reflect the client IP from X-Forwarded-For header
 app.set('trust proxy', 1);
+
+// Legacy-host 301s (soundcloudtoolkit.com → tracktoolkit.com) are answered
+// here, so the retired hostnames are just extra bindings on this same app and
+// no Front Door profile or stub app is needed. First in the chain: nothing
+// else should run for a request that is only here to be redirected. A no-op
+// while LEGACY_REDIRECT_HOSTS is unset.
+app.use(legacyHostRedirect);
 
 // Path to Next.js static export
 const FRONTEND_BUILD_PATH = join(__dirname, '..', 'frontend-UI', 'out');

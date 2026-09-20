@@ -41,6 +41,9 @@ param clientIp string = ''
 @description('Custom hostnames to bind to the web app. Empty until DNS points here — bindings fail verification otherwise. See MIGRATION.md work item 4.')
 param customHostnames array = []
 
+@description('Attach the App Service managed certificate named after each custom hostname (must already exist). False only for the first deploy of a brand-new hostname.')
+param bindManagedCertificates bool = false
+
 @description('Value of the NODE_ENV app setting.')
 param nodeEnv string = 'production'
 
@@ -276,13 +279,26 @@ resource webAppDiagnostics 'Microsoft.Insights/diagnosticSettings@2021-05-01-pre
 // Each needs a CNAME/A record plus an asuid TXT record first, and a managed
 // certificate after the binding exists (second deploy or az CLI; see
 // infra/README.md "Custom domains").
-resource hostBindings 'Microsoft.Web/sites/hostNameBindings@2023-12-01' = [for host in customHostnames: {
+// App Service accepts one site update at a time; bindings applied in
+// parallel fail each other with "another operation is in progress".
+// A binding PUT replaces the TLS state, so once a managed certificate exists
+// for the hostname it has to be named here or a redeploy silently detaches
+// it (that happened on 2026-09-20 and took the site down for six minutes).
+// bindManagedCertificates=false is only for the very first deploy of a
+// hostname, before `az webapp config ssl create` has run for it.
+resource managedCerts 'Microsoft.Web/certificates@2023-12-01' existing = [for host in customHostnames: {
+  name: host
+}]
+
+@batchSize(1)
+resource hostBindings 'Microsoft.Web/sites/hostNameBindings@2023-12-01' = [for (host, i) in customHostnames: {
   parent: webApp
   name: host
   properties: {
     siteName: webApp.name
     hostNameType: 'Verified'
-    sslState: 'Disabled'
+    sslState: bindManagedCertificates ? 'SniEnabled' : 'Disabled'
+    thumbprint: bindManagedCertificates ? managedCerts[i].properties.thumbprint : null
   }
 }]
 

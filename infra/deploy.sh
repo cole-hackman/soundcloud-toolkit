@@ -34,12 +34,16 @@ export TT_DEPLOYER_OBJECT_ID="${TT_DEPLOYER_OBJECT_ID:-$(az ad signed-in-user sh
 export TT_CLIENT_IP="${TT_CLIENT_IP:-}"
 # ARM rejects a second role assignment for the same principal/role/scope even
 # under a different name, so skip ours if one is already there (portal grant).
-KV_ID="/subscriptions/$(az account show --query id -o tsv)/resourceGroups/$RG/providers/Microsoft.KeyVault/vaults/$KV"
-if [ -n "$(az role assignment list --assignee "$TT_DEPLOYER_OBJECT_ID" --scope "$KV_ID" --role 'Key Vault Secrets Officer' --query '[0].id' -o tsv 2>/dev/null)" ]; then
-  export TT_ASSIGN_DEPLOYER_ROLE=false
-else
-  export TT_ASSIGN_DEPLOYER_ROLE=true
+# A preset TT_ASSIGN_DEPLOYER_ROLE wins over detection.
+if [ -z "${TT_ASSIGN_DEPLOYER_ROLE:-}" ]; then
+  KV_ID="/subscriptions/$(az account show --query id -o tsv)/resourceGroups/$RG/providers/Microsoft.KeyVault/vaults/$KV"
+  if [ -n "$(az role assignment list --assignee "$TT_DEPLOYER_OBJECT_ID" --scope "$KV_ID" --role 'Key Vault Secrets Officer' --query '[0].id' -o tsv 2>/dev/null)" ]; then
+    TT_ASSIGN_DEPLOYER_ROLE=false
+  else
+    TT_ASSIGN_DEPLOYER_ROLE=true
+  fi
 fi
+export TT_ASSIGN_DEPLOYER_ROLE
 
 az group create --name "$RG" --location "$LOCATION" --output none
 az deployment group create \

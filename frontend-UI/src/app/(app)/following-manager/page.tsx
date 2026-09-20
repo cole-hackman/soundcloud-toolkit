@@ -468,7 +468,7 @@ export default function FollowingManagerPage() {
                               {isSelected && <Check className="w-3.5 h-3.5" />}
                             </button>
                             <img
-                              src={user.avatar_url || "/SC Toolkit Icon.png"}
+                              src={user.avatar_url || "/brand/icon-192.png"}
                               alt={user.username}
                               width={48}
                               height={48}

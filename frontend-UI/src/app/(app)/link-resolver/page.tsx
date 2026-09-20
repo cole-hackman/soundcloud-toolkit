@@ -209,7 +209,7 @@ function LinkResolverContent() {
           <ResultPanel>
             <div className="flex items-start gap-6">
               <img
-                src={imageUrl || "/SC Toolkit Icon.png"}
+                src={imageUrl || "/brand/icon-192.png"}
                 alt={title}
                 width={128}
                 height={128}

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import Image from "next/image";
+import { BrandMark, BrandWordmark } from "@/components/brand/Logo";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
@@ -378,7 +378,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <div className="space-y-2">
             <div className="flex items-center gap-3 px-3 py-2">
               <img
-                src={user?.avatar_url || "/SC Toolkit Icon.png"}
+                src={user?.avatar_url || "/brand/icon-192.png"}
                 alt={user?.display_name || "User"}
                 width={24}
                 height={24}
@@ -430,7 +430,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           /* Collapsed state: Stacked column of avatars/icons */
           <div className="flex flex-col items-center gap-3 py-2">
             <img
-              src={user?.avatar_url || "/SC Toolkit Icon.png"}
+              src={user?.avatar_url || "/brand/icon-192.png"}
               alt={user?.display_name || "User"}
               width={24}
               height={24}
@@ -487,27 +487,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               className="flex items-center min-w-0 cursor-pointer"
               aria-label="Expand sidebar"
             >
-              <div className="h-7 w-7 shrink-0 overflow-hidden rounded flex items-center justify-center">
-                <Image
-                  src="/sc toolkit transparent .png"
-                  alt="Track Toolkit"
-                  width={28}
-                  height={28}
-                  className="h-7 w-auto object-contain"
-                />
-              </div>
+              <BrandMark className="h-7 w-7 shrink-0" />
             </button>
           ) : (
             <Link href="/dashboard" className="flex items-center min-w-0">
-              <div className="h-7 w-7 shrink-0 overflow-hidden rounded flex items-center justify-center">
-                <Image
-                  src="/sc toolkit transparent .png"
-                  alt="Track Toolkit"
-                  width={28}
-                  height={28}
-                  className="h-7 w-auto object-contain"
-                />
-              </div>
+              <BrandMark title="" className="h-7 w-7 shrink-0" />
               <span className="ml-2 font-bold text-sm text-foreground truncate">
                 Track Toolkit
               </span>
@@ -540,13 +524,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <Menu className="w-5 h-5" />
         </button>
         <Link href="/dashboard" className="flex items-center">
-          <Image
-            src="/sc toolkit transparent .png"
-            alt="Track Toolkit"
-            width={90}
-            height={28}
-            className="h-7 w-auto object-contain"
-          />
+          <BrandWordmark className="h-7 w-auto text-foreground" />
         </Link>
         <div className="w-8" />
       </div>

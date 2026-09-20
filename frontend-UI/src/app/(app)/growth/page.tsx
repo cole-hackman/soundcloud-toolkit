@@ -737,7 +737,7 @@ export default function GrowthPage() {
                         {isSelected && <Check className="w-3 h-3" />}
                       </div>
                       <img
-                        src={user.avatar_url || "/SC Toolkit Icon.png"}
+                        src={user.avatar_url || "/brand/icon-192.png"}
                         alt={user.username}
                         width={40}
                         height={40}
@@ -895,7 +895,7 @@ export default function GrowthPage() {
                           {/* Upper user info */}
                           <div className="flex items-start gap-3 mb-3">
                             <img
-                              src={sug.user.avatar_url || "/SC Toolkit Icon.png"}
+                              src={sug.user.avatar_url || "/brand/icon-192.png"}
                               alt={sug.user.username}
                               width={48}
                               height={48}
@@ -947,7 +947,7 @@ export default function GrowthPage() {
                               className="flex items-center gap-3 p-2 bg-card rounded-lg border border-border/50 text-xs mt-auto"
                             >
                               <img
-                                src={sug.suggestedTrack.artwork_url || "/SC Toolkit Icon.png"}
+                                src={sug.suggestedTrack.artwork_url || "/brand/icon-192.png"}
                                 alt={sug.suggestedTrack.title}
                                 width={40}
                                 height={40}
@@ -1279,7 +1279,7 @@ export default function GrowthPage() {
                             </div>
 
                             <img
-                              src={act.targetAvatar || "/SC Toolkit Icon.png"}
+                              src={act.targetAvatar || "/brand/icon-192.png"}
                               alt={act.targetName || "Target"}
                               width={40}
                               height={40}

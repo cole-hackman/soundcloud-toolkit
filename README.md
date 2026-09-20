@@ -154,10 +154,12 @@ is left is outside the repository and has to be done by hand, in this order:
    set `SOUNDCLOUD_REDIRECT_URI`, `APP_URL` and `APP_URLS` to match. The
    cookie `domain` in `server/routes/auth.js` is derived from the app URL and
    moves with it.
-3. Redraw the logo and icon artwork. The files under `frontend-UI/public/`
-   still carry the old wordmark; their paths are referenced verbatim across the
-   app and by the Chrome extension, so replace the images in place rather than
-   renaming the files.
+3. ~~Redraw the logo and icon artwork.~~ Done (2026-09-20): the new mark and
+   wordmark live under `frontend-UI/public/brand/`, generated from
+   `docs/brand/tools/mark-spec.cjs`. The legacy `SC Toolkit Icon*` and
+   `sc toolkit transparent*` files now carry the same artwork and exist only
+   because the Chrome extension points at them. The extension's own bundled
+   icons still need the new mark.
 4. Re-point `og-image.png`, the sitemap, `robots.txt` and the canonical URLs at
    the new domain, then re-verify in Search Console and submit the change of
    address.

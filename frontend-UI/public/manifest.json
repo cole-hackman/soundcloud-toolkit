@@ -4,15 +4,20 @@
   "description": "Organize, merge, and clean your SoundCloud playlists",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#F2F2F2",
+  "background_color": "#F8F7F5",
   "theme_color": "#FF5500",
   "icons": [
     {
-      "src": "/SC Toolkit Icon.png",
+      "src": "/brand/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/brand/icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
     }
   ]
 }
-

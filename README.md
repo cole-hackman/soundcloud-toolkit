@@ -148,33 +148,37 @@ slow, and that's the predictable complaint.
 The code, copy, metadata and in-app announcements ship as Track Toolkit. What
 is left is outside the repository and has to be done by hand, in this order:
 
-1. Register the new domain and point it at the existing Vercel/DigitalOcean
-   apps. Everything below waits on this.
-2. Update the SoundCloud OAuth app registration — name and redirect URI — and
-   set `SOUNDCLOUD_REDIRECT_URI`, `APP_URL` and `APP_URLS` to match. The
-   cookie `domain` in `server/routes/auth.js` is derived from the app URL and
-   moves with it.
+1. ~~Register the new domain and point it at the app.~~ Done (2026-09-20):
+   `tracktoolkit.com` and `www` serve the app from Azure App Service; the
+   old `soundcloudtoolkit.com` hosts 301/308 to it (`MIGRATION.md`).
+2. SoundCloud OAuth app registration: ~~redirect URI~~ done
+   (`https://tracktoolkit.com/api/auth/callback`, 2026-09-20). Still to do:
+   rename the app to "Track Toolkit" and upload
+   `frontend-UI/public/brand/icon-512.png` as its icon so the authorize
+   screen shows the new mark.
 3. ~~Redraw the logo and icon artwork.~~ Done (2026-09-20): the new mark and
    wordmark live under `frontend-UI/public/brand/`, generated from
    `docs/brand/tools/mark-spec.cjs`. The legacy `SC Toolkit Icon*` and
    `sc toolkit transparent*` files now carry the same artwork and exist only
-   because the Chrome extension points at them. The extension's own bundled
-   icons still need the new mark.
-4. Re-point `og-image.png`, the sitemap, `robots.txt` and the canonical URLs at
-   the new domain, then re-verify in Search Console and submit the change of
-   address.
-5. Rename the Chrome extension listing and the DigitalOcean app
-   (`.do/app.yaml` still says `soundcloud-toolkit-api`, which is the deployed
-   app's identity — renaming it in the file alone would create a second app).
-
-Until step 1 lands, every domain reference in this repository deliberately
-still says `soundcloudtoolkit.com`, because that is where the product is
-actually served.
+   because the Chrome extension points at them.
+4. ~~Re-point `og-image.png`, the sitemap, `robots.txt` and the canonical URLs
+   at the new domain, re-verify in Search Console~~ done (2026-09-20:
+   `tracktoolkit.com` verified as a Domain property, sitemap submitted).
+   Still to do: submit the change of address from the `soundcloudtoolkit.com`
+   property. Also upload `og-image.png` as the GitHub repository's social
+   preview.
+5. Chrome extension (separate project): copy
+   `docs/brand/extension/icon-{16,32,48,128}.png` into its icons folder,
+   point `manifest.icons` and `action.default_icon` at them, rename the
+   listing to Track Toolkit and re-publish. Only after the published
+   extension no longer requests the legacy filenames may the two legacy
+   image files be removed from `frontend-UI/public/`. The DigitalOcean app
+   is not renamed; it is decommissioned after the Azure soak.
 
 ## Stack
 
 Next.js 15 · React 18 · TypeScript · Tailwind CSS · Express · Prisma ·
-PostgreSQL (Neon) · Vercel · DigitalOcean
+PostgreSQL (Azure Flexible Server) · Azure App Service
 
 ## License
 

@@ -13,16 +13,19 @@ param adminIds = '472267677'
 param appUrl = 'https://tracktoolkit.com'
 param appUrls = 'https://tracktoolkit.com'
 param soundcloudRedirectUri = 'https://tracktoolkit.com/api/auth/callback'
-// Only the hostnames whose DNS already points here. The retired
-// soundcloudtoolkit.com hosts (apex, www, api) are bound in the same way
-// once their DNS is repointed after the database cutover; until then a
-// binding for them fails verification and fails the whole deployment.
+// All five hostnames point here since the 2026-09-20 cutover; each has an
+// App Service managed certificate (bindManagedCertificates keeps them
+// attached on redeploy).
 param customHostnames = [
   'tracktoolkit.com'
   'www.tracktoolkit.com'
+  'soundcloudtoolkit.com'
+  'www.soundcloudtoolkit.com'
+  'api.soundcloudtoolkit.com'
 ]
 param legacyRedirectHosts = 'www.tracktoolkit.com,soundcloudtoolkit.com,www.soundcloudtoolkit.com,api.soundcloudtoolkit.com'
 
 param postgresAdminPassword = readEnvironmentVariable('TT_PG_ADMIN_PASSWORD')
 param deployerObjectId = readEnvironmentVariable('TT_DEPLOYER_OBJECT_ID')
 param clientIp = readEnvironmentVariable('TT_CLIENT_IP', '')
+param assignDeployerKvRole = bool(readEnvironmentVariable('TT_ASSIGN_DEPLOYER_ROLE', 'true'))

@@ -1,50 +1,39 @@
 # STATE
 
 ## Now
-Azure migration in flight on branch `azure/migration` (off the rebrand
-branch `claude/keen-newton-02qlh4`, draft PR #39). The parallel Azure stack
-in `rg-tracktoolkit` (westus3) is serving: `/health` 200, login redirects to
-SoundCloud, static frontend served same-origin, pointed at the
-`tracktoolkit-rehearsal` database. Waiting on Cole to add the Azure callback
-URL to the SoundCloud OAuth app and do a browser login. Production
-(DigitalOcean, Vercel, Neon, DNS) is untouched. Read `MIGRATION.md` first.
+**Cut over.** Track Toolkit runs on Azure at https://tracktoolkit.com against
+the Azure `tracktoolkit` database (2026-09-20). soundcloudtoolkit.com (apex,
+www, api) 301/308 to it. DigitalOcean is frozen (broken DATABASE_URL), Vercel
+and Neon untouched — all three are the rollback until a one-week soak ends.
+Verified end to end (browser login + playlists, 2026-09-20 19:44). Open:
+Search Console change of address (Cole, two clicks), soak, decommission.
+Read `MIGRATION.md` ("CUTOVER DONE") first.
 
 ## Just done
-- Branch `claude-branding` (worktree `.worktrees/claude-branding`, cut from
-  `azure/migration`) — candidate Track Toolkit identity, 2026-09-20: icon mark
-  ("stacked tracks", three rounded bars, middle one shifted), horizontal and
-  stacked wordmarks in Space Grotesk 600 outlines, mono stamps, 1200x630
-  social card. Everything under `frontend-UI/public/brand/` + parametric
-  build in `docs/brand/tools/` (`build-all.cjs`). Legacy `SC Toolkit Icon*` /
-  `sc toolkit transparent*` files untouched; a Codex-produced alternative is
-  being compared before either is swapped into those paths. Prompt pack:
-  `docs/brand/logo-prompts.md`.
-- f5e7e94 — database cutover rehearsed end to end into `tracktoolkit-rehearsal`
-  (dump 219 s, restore 671 s, ~16 min window, counts + structure verified);
-  `docs/azure-db-cutover.md` written; 4089/4089 token rows decrypt with the
-  DigitalOcean `ENCRYPTION_KEY`.
-- 5cb6a0d — `infra/main.bicep` + `deploy.sh` + OIDC GitHub workflow;
-  `SESSION_COOKIE_SAMESITE` env; CLAUDE.md cookie-domain error fixed.
-- 86b9d08 (branch `prep/domain-switch`, pushed, not merged) — every
-  domain reference → tracktoolkit.com, legacy-host 301/308 middleware,
-  `infra/main.cutover.bicepparam`, 5 new tests.
-- c10f378 — rebrand to Track Toolkit (PR #39, unchanged).
+- c9af1df — PR #41: Track Toolkit identity shipped (three-bar mark, wordmarks,
+  maskable icons, opaque touch icon, 1200x630 og-image, generated Logo.tsx,
+  legacy icon files replaced in place; see Decisions 2026-09-20 "Logo").
+- 8731b98 / 50b659e — PR #39 and PR #40 merged after review (391 tests,
+  tsc, lint, build, boot) and a diff-scoped security review; review record
+  posted on #39. Deploy workflow run from main: success.
+- 4fed15c — `server/scripts/rotate-encryption-key.js` + tests; exercised
+  on the rehearsal DB (4089 rows there and back, idempotent re-run).
+- Key Vault `download-allowlist` now holds the real 3-id list (resolved).
+- Part 4 dry run: legacy-host redirects verified live on Azure with
+  `prep/domain-switch` deployed then reverted; `SESSION_COOKIE_SAMESITE=lax`.
+- 646dd20 — /health 200, login 302 to SoundCloud, Postgres password rotated.
 
 ## Next
-1. Add `https://tracktoolkit.azurewebsites.net/api/auth/callback` as an
-   additional redirect URI in the SoundCloud OAuth app, log in through the
-   browser on the Azure host, confirm playlists load (rehearsal DB).
-2. Merge `azure/migration` (after PR #39) so `azure-deploy.yml` becomes
-   dispatchable; run it once to prove the pipeline.
-3. Buy tracktoolkit.com, then follow the cutover order in MIGRATION.md
-   work item 4 (DNS → OAuth redirect URI → cutover params → merge
-   `prep/domain-switch`) and the database procedure in
-   `docs/azure-db-cutover.md`.
-4. Logo shipped (PR #41). Left: drop `docs/brand/extension/icon-{16,32,48,128}.png`
-   into the Chrome extension project (outside this repo) and re-point its
-   manifest; it still ships SoundCloud's cloud glyph as its listing icon.
-   The opaque Apple touch icon (`/brand/apple-touch-icon.png`, mark on PAPER)
-   is done.
+1. Search Console → soundcloudtoolkit.com property → Settings → Change of
+   address → select tracktoolkit.com → Validate & update (Cole).
+2. Watch Azure for a week: `/health`, Log Analytics errors, Search Console
+   coverage on both properties.
+3. After a week: decommission DigitalOcean app, then Vercel, keep Neon a
+   month; rotate the SoundCloud client secret.
+4. Branding leftovers outside the web app: SoundCloud OAuth app name
+   "Track Toolkit" + `icon-512.png` as its icon; GitHub social preview
+   (`og-image.png`); Chrome extension icons from `docs/brand/extension/`
+   and its listing renamed — only then may the two legacy icon files go.
 
 ## Decisions
 - **Logo: the `claude-branding` shifted-bar mark** (2026-09-20). Three
@@ -131,6 +120,11 @@ URL to the SoundCloud OAuth app and do a browser login. Production
   not the Homebrew libpq (its `pg_dump` hangs against Neon) (2026-09-19).
 
 ## Landmines
+- The Azure app (and any stack pointed at a COPY of the tokens table) will
+  refresh SoundCloud tokens on use; refresh tokens are single-use, so the
+  other stack loses that account until its owner logs in again. Do not run
+  authenticated smoke tests with anyone's account but your own while both
+  stacks are alive.
 - `frontend-UI/src/components/brand/Logo.tsx` is GENERATED by
   `docs/brand/tools/build-components.cjs` from `public/brand/mark.svg` and
   `wordmark.svg`. Hand edits get overwritten; change `mark-spec.cjs`, run

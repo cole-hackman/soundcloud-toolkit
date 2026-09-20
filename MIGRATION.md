@@ -1,5 +1,51 @@
 # Azure migration — working state
 
+## CUTOVER DONE — 2026-09-20 (18:49–19:15 CEST window, redirects live 19:45)
+
+Track Toolkit is served by Azure at https://tracktoolkit.com against the
+Azure Postgres `tracktoolkit` database. Sequence as run:
+
+1. 18:49 freeze: DigitalOcean `DATABASE_URL` hostname replaced (Option B);
+   Neon pooled connections hit zero at 18:49:13.
+2. 18:49–19:05 dump (230 s) → restore (692 s) → SQL → verify: all 16 tables
+   identical (4,105 users, 578,450 tracks), 16 tables / 63 indexes / 13 FKs.
+3. In parallel: PR #42 (`prep/domain-switch`) merged and deployed from main
+   (e2d456c); cutover Bicep parameters applied (`APP_URL`,
+   `SOUNDCLOUD_REDIRECT_URI`, legacy redirect hosts). Cole changed the
+   SoundCloud OAuth redirect URI to `https://tracktoolkit.com/api/auth/callback`.
+4. 19:05 Key Vault `database-url` → `tracktoolkit` DB; app healthy at 19:15
+   (the parameter deploy had detached the custom-domain certificates at
+   19:01; rebound by hand; template fixed so bindings reference the managed
+   certificates).
+5. Verified on tracktoolkit.com: login 302 → SoundCloud with the new
+   callback; authenticated smoke test on Cole's account 200 (29 playlists);
+   writes land in Azure (`operation_logs` 22,369 → 22,371).
+6. 19:30 Cole repointed soundcloudtoolkit.com DNS (Namecheap): apex A,
+   `www`/`api` CNAME, three `asuid` TXT. Hostnames bound, managed
+   certificates issued; redirects verified: apex/www 301 with path+query,
+   `api` POST 308, HTTP→HTTPS→301, one hop to a 200 on tracktoolkit.com.
+
+Rollback (until the old stack is decommissioned): restore DigitalOcean's
+`DATABASE_URL`, point the old DNS back at Vercel/DigitalOcean, set the
+SoundCloud redirect URI back to `https://api.soundcloudtoolkit.com/api/auth/callback`.
+Writes made on Azure after 18:49 would need a reverse dump. Neon is intact.
+
+7. 19:44 Cole logged in through the browser on tracktoolkit.com: OAuth code
+   exchange with the new redirect URI succeeded (`auth-login` operation and a
+   fresh `tokens` row at 17:44:13 UTC in the Azure DB), playlists loaded.
+   **Migration verified end to end.**
+8. Search Console: `tracktoolkit.com` Domain property verified (DNS TXT),
+   sitemap submitted. Change of address left for Cole (two clicks on
+   Settings → Change of address in the soundcloudtoolkit.com property; the
+   page's dropdown hangs the browser extension).
+
+Still open: one-week soak, then decommission in this order — DigitalOcean
+app (still running with a broken `DATABASE_URL`), Vercel project, Neon last
+(keep a month) — then rotate the SoundCloud client secret at SoundCloud and
+in Key Vault, retire `.do/app.yaml` and `vercel.json`, and add
+`/og-image.png`.
+
+
 Durable state for the DigitalOcean + Vercel + Neon → Azure move and the
 tracktoolkit.com domain switch. A fresh session resumes from this file plus
 `git log`. Companion documents: `infra/README.md` (operator reference),
@@ -307,6 +353,150 @@ on `api.soundcloudtoolkit.com` and crosses to `www.` only through
 `Domain=.soundcloudtoolkit.com` (the cookie table and "Domain Strategy") now
 say so.
 
+## 2026-09-20 session — merges, allowlist, smoke test, rotation, domain dry run
+
+### PR #39 (rebrand) and PR #40 (azure/migration) are on main
+
+- PR #39 reviewed by hand against the six load-bearing claims in its body,
+  plus `npm test` (391/45), `tsc`, `next lint`, `next build` and a local boot
+  serving `/health`; a diff-scoped security review found nothing. One
+  comment-only fix (4a7c6bd). Review record posted as a PR comment. Merged
+  as 8731b98.
+- PR #40 (`azure/migration` → main): `git merge-tree` clean, merged as
+  50b659e. The GitHub Actions deploy is dispatchable from now on (B2 cleared).
+- `prep/domain-switch` stays unmerged; it merges cleanly onto the new main
+  (`git merge-tree --write-tree origin/main origin/prep/domain-switch` exits
+  0, no conflicts), 46 suites / 400 tests green on it.
+- The `/code-review` tool, asked for PR #39, reviewed the whole
+  `azure/migration` diff instead. Its three correctness findings are about
+  code that reached main in #34–#37 and are listed under Follow-ups; none is
+  a migration blocker.
+
+### DOWNLOAD_ALLOWLIST (Part 1)
+
+Read from the DigitalOcean app spec (3 ids), written to Key Vault
+`download-allowlist` through `infra/deploy.sh`, reference status `Resolved`,
+the running app sees 3 ids, `/health` still 200.
+
+### Authenticated smoke test without a browser (Part 2) — the procedure
+
+Proves session HMAC verification, the user lookup, AES-256-GCM decrypt under
+the Azure `ENCRYPTION_KEY`, a live SoundCloud call, Key Vault reference
+resolution and the Postgres cache tier — everything the browser test proves
+except the OAuth code exchange. GET routes only; writes would hit the real
+SoundCloud API. Use your OWN `soundcloudId` only.
+
+```bash
+S=$(mktemp -d) && chmod 700 "$S"
+# 1. Your user row, from the database the app is pointed at.
+docker run --rm postgres:17 psql "$DATABASE_URL" -Atc \
+  'select row_to_json(u) from (select id, "soundcloudId", username, "avatarUrl", "displayName" from users where "soundcloudId"=<your id>) u' > "$S/me.json"
+# 2. Mint the cookie with the app's own signer (repo root, SESSION_SECRET from the vault, never echoed).
+cat > "$S/mint.mjs" <<'JS'
+import { readFileSync, writeFileSync } from 'fs';
+import { signSession } from './server/lib/session.js';
+const u = JSON.parse(readFileSync(process.argv[2], 'utf8'));
+const data = { userId: u.id, soundcloudId: u.soundcloudId, username: u.username, avatarUrl: u.avatarUrl, displayName: u.displayName, iat: Date.now() };
+writeFileSync(process.argv[3], 'session=' + signSession(JSON.stringify(data), process.env.SESSION_SECRET), { mode: 0o600 });
+JS
+cp "$S/mint.mjs" ./.mint.mjs && SESSION_SECRET="$(az keyvault secret show --vault-name tracktoolkit-kv --name session-secret --query value -o tsv)" node ./.mint.mjs "$S/me.json" "$S/cookie.txt"; rm ./.mint.mjs
+# 3. Exercise the app.
+H=https://tracktoolkit.azurewebsites.net
+for p in /api/auth/me /api/playlists "/api/likes/paged?limit=5" "/api/library/audit?limit=5"; do
+  printf '%-32s ' "$p"; curl -s -o /dev/null -w '%{http_code} %{time_total}s\n' -H "Cookie: $(cat "$S/cookie.txt")" "$H$p"; done
+# (send it as a header: `curl -b <file>` expects a Netscape cookie jar and silently sends nothing for a plain session=... line)
+# 4. Destroy the cookie.
+rm -rf "$S"
+```
+
+Expect 200 on all four. Run on 2026-09-20 16:01 UTC against main
+(50b659e) on the Azure app, own account only:
+
+| route | status | time |
+|---|---|---|
+| `/api/auth/me` | 200 (userId, soundcloudId, username, isAdmin, canDownload…) | 0.9 s |
+| `/api/playlists` | 200, 29 playlists | 3.4 s |
+| `/api/likes/paged?limit=5` | 200, 5 items, `next_href` present | 1.0 s |
+| `/api/library/audit?limit=5` | 200 (`summary`, `playlists`, `failed`, `page`) | 2.2 s |
+| `/api/auth/me`, last signature byte altered | 401 "Invalid session" | |
+
+The cookie file was deleted afterwards. The side effect below DID happen:
+the copied access token had expired, the app refreshed it, and the
+rehearsal `tokens` row for this account now has `updatedAt` 16:01:28 UTC,
+`expiresAt` 17:01 UTC. Note the side effect: if the copied access token
+has expired, the app refreshes it through SoundCloud and stores the new pair
+in the database it is pointed at; SoundCloud refresh tokens are single-use,
+so the OTHER stack (DigitalOcean, still on Neon) loses the ability to refresh
+that one account until its owner logs in again. Only your own account is
+affected, which is why the test is restricted to it.
+
+### ENCRYPTION_KEY rotation script (Part 3)
+
+`server/scripts/rotate-encryption-key.js` (+ `tests/rotate-encryption-key.test.js`,
+7 tests). Exercised against `tracktoolkit-rehearsal` on 2026-09-20 with a
+throwaway 32-char key, then rotated back so the database still matches the
+Azure app's key:
+
+| step | result |
+|---|---|
+| `--dry-run` current → throwaway | scanned 4089, would rotate 4089, 0 undecryptable, nothing written |
+| real run current → throwaway | rotated 4089 / 4089 |
+| decrypt round-trip, throwaway key | 4089 / 4089 |
+| decrypt round-trip, current key | 0 / 4089 (every row fails, as it must) |
+| re-run current → throwaway | skipped 4089, rotated 0 (idempotent) |
+| real run throwaway → current | rotated 4089 / 4089 |
+| decrypt round-trip, current key | 4089 / 4089 |
+
+`changedUnderneath` stayed 0 throughout (no token refresh landed mid-run).
+Timing: each real pass over 4089 rows took roughly 10–15 minutes from this
+workstation because every row is one guarded `UPDATE` inside the batch
+transaction and the round trip to `westus3` is ~150 ms; the same pass from a
+box inside Azure would be seconds. Plan the production rotation
+(post-cutover, once DigitalOcean is gone) from an Azure-side shell or accept
+the window. Never run it against production while both stacks are live: the
+old stack would lose the ability to decrypt.
+
+### Domain-switch dry run (Part 4)
+
+- `prep/domain-switch` (86b9d08): 46 suites / 400 tests green; merges cleanly
+  onto main at 50b659e (`git merge-tree` exit 0, no conflicts).
+- Deployed to the parallel Azure app via the workflow, `LEGACY_REDIRECT_HOSTS`
+  set to `legacy.example.test`, then exercised. App Service routes by `Host`
+  and answers 404 itself for a hostname that is not bound to the app, so a
+  raw `Host:` header never reaches Express; behind `trust proxy`, Express's
+  `req.hostname` reads `X-Forwarded-Host`, which the platform passes through:
+
+  | request | result |
+  |---|---|
+  | GET `/about/?x=1`, forwarded host listed | 301 → `https://tracktoolkit.azurewebsites.net/about/?x=1` |
+  | POST `/api/x`, forwarded host listed | 308 → `https://tracktoolkit.azurewebsites.net/api/x` |
+  | GET, forwarded host `LEGACY.Example.TEST` | 301 (case-insensitive) |
+  | GET, canonical host | 200, no redirect |
+  | GET, unlisted forwarded host | 200, no redirect |
+  | `/health` | 200 |
+
+  Matches `tests/routes/legacy-redirect.test.js`. Setting reverted to empty,
+  main redeployed afterwards. At cutover the retired hostnames are real
+  bindings on the app, so the platform routes them in and `Host` is what the
+  middleware sees; the forwarded-header path was only the way to test it
+  before DNS exists.
+- `SESSION_COOKIE_SAMESITE` is `lax` on the live app, from the Bicep default
+  and `main.bicepparam`; there are no deployment slots and no other setting
+  touches it.
+
+### Domain bound (2026-09-20, evening)
+
+tracktoolkit.com registered at Spaceship (nameservers launch1/launch2).
+DNS: apex A → 20.118.138.138, `www` CNAME → tracktoolkit.azurewebsites.net,
+`asuid` and `asuid.www` TXT → the app's customDomainVerificationId. Both
+hostnames bound (`Verified`) and carrying App Service managed certificates
+(DigiCert, valid to 2027-03-20); `https://tracktoolkit.com/health` and
+`https://www.tracktoolkit.com/health` return 200, HTTP 301s to HTTPS. Done
+with `az webapp config hostname add` / `ssl create` / `ssl bind`; the
+cutover Bicep params re-declare the same bindings idempotently. No traffic
+is routed yet: the OAuth redirect URI, `APP_URL` and the old domain's DNS
+are unchanged, and the app still uses `tracktoolkit-rehearsal`.
+
 ## Blocked
 
 ### B1. Key Vault secret writes — CLEARED 2026-09-20
@@ -361,6 +551,20 @@ dispatchable and this blocker disappears. Nothing for you to do beyond the
 merge.
 
 ## Follow-ups (not done tonight, deliberately)
+
+- From the automated review of the main codebase (2026-09-20), pre-existing,
+  not migration-related: `countScCall()` in `soundcloud-client.js` also
+  counts oEmbed fetches, so `avgScCalls` overstates SoundCloud round trips
+  on `/resolve`; `retries401` in `paginate()` resets per page instead of per
+  crawl, so a dead refresh token can attempt many exchanges on a long crawl;
+  `MAX_INVALIDATION_MARKS` eviction in `social-cache.js` lets a crawl that
+  started before an evicted mark republish pre-mutation data. Plus small
+  cleanups (dead `deadlineAt` null checks, duplicated map lookup, an
+  unreachable guard in `auth-cache.js`).
+- `frontend-UI` `npm run lint` shells out to `bunx`, which is not installed
+  on this machine or the GitHub runner image; the deploy workflow runs
+  `next build` (which lints) and tsc separately, so nothing is skipped, but
+  the script itself should drop the `bunx` prefix.
 
 - **DigitalOcean env vars are readable through the API.** Every secret on
   `sctoolkit-backend` is a plain env, not `type: SECRET`. Anyone with the

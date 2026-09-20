@@ -10,6 +10,15 @@ URL to the SoundCloud OAuth app and do a browser login. Production
 (DigitalOcean, Vercel, Neon, DNS) is untouched. Read `MIGRATION.md` first.
 
 ## Just done
+- Branch `claude-branding` (worktree `.worktrees/claude-branding`, cut from
+  `azure/migration`) — candidate Track Toolkit identity, 2026-09-20: icon mark
+  ("stacked tracks", three rounded bars, middle one shifted), horizontal and
+  stacked wordmarks in Space Grotesk 600 outlines, mono stamps, 1200x630
+  social card. Everything under `frontend-UI/public/brand/` + parametric
+  build in `docs/brand/tools/` (`build-all.cjs`). Legacy `SC Toolkit Icon*` /
+  `sc toolkit transparent*` files untouched; a Codex-produced alternative is
+  being compared before either is swapped into those paths. Prompt pack:
+  `docs/brand/logo-prompts.md`.
 - f5e7e94 — database cutover rehearsed end to end into `tracktoolkit-rehearsal`
   (dump 219 s, restore 671 s, ~16 min window, counts + structure verified);
   `docs/azure-db-cutover.md` written; 4089/4089 token rows decrypt with the
@@ -31,6 +40,12 @@ URL to the SoundCloud OAuth app and do a browser login. Production
    work item 4 (DNS → OAuth redirect URI → cutover params → merge
    `prep/domain-switch`) and the database procedure in
    `docs/azure-db-cutover.md`.
+4. Pick a logo (Claude branch vs Codex run), then replace the four legacy
+   image files in place, wire `wordmark-dark` for the dark sidebar in
+   `AppShell.tsx`, ship `og-image.png`, and update `manifest.json` /
+   `layout.tsx` icon entries. Caveats in the `claude-branding` commit
+   `d6907a9` summary: iOS composites the transparent touch icon over black;
+   `wordmark-28.png` has 4 px padding; stamp needs 128 px+.
 
 ## Decisions
 - **Name: Track Toolkit** (2026-09-10). Supersedes the live vote, which is now

@@ -58,19 +58,19 @@ export const metadata: Metadata = {
     },
   },
   alternates: {
-    canonical: "https://www.soundcloudtoolkit.com/",
+    canonical: "https://tracktoolkit.com/",
   },
   openGraph: {
     type: "website",
     locale: "en_US",
-    url: "https://www.soundcloudtoolkit.com/",
+    url: "https://tracktoolkit.com/",
     siteName: "Track Toolkit",
     title: "Track Toolkit – Organize, Merge & Clean SoundCloud Playlists",
     description:
       "Track Toolkit helps SoundCloud power users organize, merge, and clean playlists. Remove duplicates, manage tracks, and build better playlists faster.",
     images: [
       {
-        url: "https://www.soundcloudtoolkit.com/og-image.png",
+        url: "https://tracktoolkit.com/og-image.png",
         width: 1200,
         height: 630,
         alt: "Track Toolkit - Smarter SoundCloud Playlist Management",
@@ -82,7 +82,7 @@ export const metadata: Metadata = {
     title: "Track Toolkit – Organize, Merge & Clean SoundCloud Playlists",
     description:
       "Track Toolkit helps SoundCloud power users organize, merge, and clean playlists. Remove duplicates, manage tracks, and build better playlists faster.",
-    images: ["https://www.soundcloudtoolkit.com/og-image.png"],
+    images: ["https://tracktoolkit.com/og-image.png"],
   },
   // The icon files keep their original names: the artwork itself still has to
   // be redrawn for Track Toolkit, and renaming the files without new art only
@@ -92,7 +92,7 @@ export const metadata: Metadata = {
     apple: "/SC Toolkit Icon.png",
   },
   manifest: "/manifest.json",
-  metadataBase: new URL("https://www.soundcloudtoolkit.com"),
+  metadataBase: new URL("https://tracktoolkit.com"),
 };
 
 export default function RootLayout({
@@ -103,7 +103,7 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${display.variable} ${sans.variable}`}>
       <head>
-        <link rel="canonical" href="https://www.soundcloudtoolkit.com/" />
+        <link rel="canonical" href="https://tracktoolkit.com/" />
         <meta name="theme-color" content="#FF5500" />
       </head>
       <body className="antialiased font-sans">

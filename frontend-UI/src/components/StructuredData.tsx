@@ -18,8 +18,8 @@ export function StructuredData({ faqs = [] }: StructuredDataProps) {
     // Keeps the rebrand legible to search engines: the site has years of
     // links and queries pointing at the old name.
     alternateName: "SoundCloud Toolkit",
-    url: "https://www.soundcloudtoolkit.com",
-    logo: "https://www.soundcloudtoolkit.com/SC%20Toolkit%20Icon.png",
+    url: "https://tracktoolkit.com",
+    logo: "https://tracktoolkit.com/SC%20Toolkit%20Icon.png",
     description:
       "Track Toolkit helps SoundCloud power users organize, merge, and clean playlists.",
     sameAs: [],
@@ -34,7 +34,7 @@ export function StructuredData({ faqs = [] }: StructuredDataProps) {
     operatingSystem: "Web",
     description:
       "Powerful playlist management tools for SoundCloud. Merge playlists, remove duplicates, organize tracks, and more.",
-    url: "https://www.soundcloudtoolkit.com",
+    url: "https://tracktoolkit.com",
     offers: {
       "@type": "Offer",
       price: "0",
@@ -68,12 +68,12 @@ export function StructuredData({ faqs = [] }: StructuredDataProps) {
     "@type": "WebSite",
     name: "Track Toolkit",
     alternateName: "SoundCloud Toolkit",
-    url: "https://www.soundcloudtoolkit.com",
+    url: "https://tracktoolkit.com",
     description:
       "Track Toolkit helps SoundCloud power users organize, merge, and clean playlists. Remove duplicates, manage tracks, and build better playlists faster.",
     potentialAction: {
       "@type": "SearchAction",
-      target: "https://www.soundcloudtoolkit.com/?q={search_term_string}",
+      target: "https://tracktoolkit.com/?q={search_term_string}",
       "query-input": "required name=search_term_string",
     },
   };

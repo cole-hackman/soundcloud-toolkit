@@ -234,3 +234,25 @@ step 0 and for keeping the window short.
 `tracktoolkit-rehearsal` can be dropped at any time
 (`az postgres flexible-server db delete -g rg-tracktoolkit -s tracktoolkit-pg -d tracktoolkit-rehearsal`);
 nothing depends on it once the parallel stack is repointed.
+
+## The real run (2026-09-20)
+
+Executed exactly as above, freeze via Option B at 18:49 CEST (DigitalOcean
+`DATABASE_URL` hostname replaced; Neon's pooled connections from the app
+dropped to zero at 18:49:13, which was the go signal).
+
+| step | measured |
+|---|---|
+| 1. source counts | 6 s |
+| 2. `pg_dump` (149 MB) | 230 s |
+| 3. `pg_restore -j 4` into `tracktoolkit` | 692 s, 0 stderr lines |
+| 4. library-cache SQL | 2 s |
+| 5. verify: 16 tables identical (4,105 users, 578,450 tracks), 16/63/13 | 5 s |
+| 6. Key Vault `database-url` + settings nudge → healthy container | ~1 min |
+| **steps 1–6** | **~17 min** |
+
+The code deploy and the domain parameters were applied in parallel with the
+restore, which shortened the window, but the parameter deploy detached the
+custom hostnames' certificates for 14 minutes (fixed in `main.bicep`, see
+MIGRATION.md). Nothing was written to Neon after the freeze; it remains the
+rollback copy.

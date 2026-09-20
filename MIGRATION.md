@@ -357,12 +357,27 @@ cp "$S/mint.mjs" ./.mint.mjs && SESSION_SECRET="$(az keyvault secret show --vaul
 # 3. Exercise the app.
 H=https://tracktoolkit.azurewebsites.net
 for p in /api/auth/me /api/playlists "/api/likes/paged?limit=5" "/api/library/audit?limit=5"; do
-  printf '%-32s ' "$p"; curl -s -o /dev/null -w '%{http_code} %{time_total}s\n' -b "$S/cookie.txt" "$H$p"; done
+  printf '%-32s ' "$p"; curl -s -o /dev/null -w '%{http_code} %{time_total}s\n' -H "Cookie: $(cat "$S/cookie.txt")" "$H$p"; done
+# (send it as a header: `curl -b <file>` expects a Netscape cookie jar and silently sends nothing for a plain session=... line)
 # 4. Destroy the cookie.
 rm -rf "$S"
 ```
 
-Expect 200 on all four. Note the side effect: if the copied access token
+Expect 200 on all four. Run on 2026-09-20 16:01 UTC against main
+(50b659e) on the Azure app, own account only:
+
+| route | status | time |
+|---|---|---|
+| `/api/auth/me` | 200 (userId, soundcloudId, username, isAdmin, canDownload…) | 0.9 s |
+| `/api/playlists` | 200, 29 playlists | 3.4 s |
+| `/api/likes/paged?limit=5` | 200, 5 items, `next_href` present | 1.0 s |
+| `/api/library/audit?limit=5` | 200 (`summary`, `playlists`, `failed`, `page`) | 2.2 s |
+| `/api/auth/me`, last signature byte altered | 401 "Invalid session" | |
+
+The cookie file was deleted afterwards. The side effect below DID happen:
+the copied access token had expired, the app refreshed it, and the
+rehearsal `tokens` row for this account now has `updatedAt` 16:01:28 UTC,
+`expiresAt` 17:01 UTC. Note the side effect: if the copied access token
 has expired, the app refreshes it through SoundCloud and stores the new pair
 in the database it is pointed at; SoundCloud refresh tokens are single-use,
 so the OTHER stack (DigitalOcean, still on Neon) loses the ability to refresh

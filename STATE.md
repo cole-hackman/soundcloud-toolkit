@@ -1,35 +1,33 @@
 # STATE
 
 ## Now
-Azure migration in flight on branch `azure/migration` (off the rebrand
-branch `claude/keen-newton-02qlh4`, draft PR #39). The parallel Azure stack
-in `rg-tracktoolkit` (westus3) is serving: `/health` 200, login redirects to
-SoundCloud, static frontend served same-origin, pointed at the
-`tracktoolkit-rehearsal` database. Waiting on Cole to add the Azure callback
-URL to the SoundCloud OAuth app and do a browser login. Production
-(DigitalOcean, Vercel, Neon, DNS) is untouched. Read `MIGRATION.md` first.
+Azure migration: PR #39 (rebrand) and PR #40 (`azure/migration`) are merged
+to main (50b659e); the GitHub Actions deploy works from main and the parallel
+Azure app is serving main with `/health` 200 against `tracktoolkit-rehearsal`.
+Browser-less authenticated smoke test passed on Cole's own account.
+`prep/domain-switch` is verified (tests, clean merge, live 301/308 dry run)
+and waits for the domain. Later commits on `azure/migration` (docs + the
+rotation script) are pushed but not yet merged. Read `MIGRATION.md` first.
 
 ## Just done
-- f5e7e94 — database cutover rehearsed end to end into `tracktoolkit-rehearsal`
-  (dump 219 s, restore 671 s, ~16 min window, counts + structure verified);
-  `docs/azure-db-cutover.md` written; 4089/4089 token rows decrypt with the
-  DigitalOcean `ENCRYPTION_KEY`.
-- 5cb6a0d — `infra/main.bicep` + `deploy.sh` + OIDC GitHub workflow;
-  `SESSION_COOKIE_SAMESITE` env; CLAUDE.md cookie-domain error fixed.
-- 86b9d08 (branch `prep/domain-switch`, pushed, not merged) — every
-  domain reference → tracktoolkit.com, legacy-host 301/308 middleware,
-  `infra/main.cutover.bicepparam`, 5 new tests.
-- c10f378 — rebrand to Track Toolkit (PR #39, unchanged).
+- 8731b98 / 50b659e — PR #39 and PR #40 merged after review (391 tests,
+  tsc, lint, build, boot) and a diff-scoped security review; review record
+  posted on #39. Deploy workflow run from main: success.
+- 4fed15c — `server/scripts/rotate-encryption-key.js` + tests; exercised
+  on the rehearsal DB (4089 rows there and back, idempotent re-run).
+- Key Vault `download-allowlist` now holds the real 3-id list (resolved).
+- Part 4 dry run: legacy-host redirects verified live on Azure with
+  `prep/domain-switch` deployed then reverted; `SESSION_COOKIE_SAMESITE=lax`.
+- 646dd20 — /health 200, login 302 to SoundCloud, Postgres password rotated.
 
 ## Next
-1. Add `https://tracktoolkit.azurewebsites.net/api/auth/callback` as an
-   additional redirect URI in the SoundCloud OAuth app, log in through the
-   browser on the Azure host, confirm playlists load (rehearsal DB).
-2. Merge `azure/migration` (after PR #39) so `azure-deploy.yml` becomes
-   dispatchable; run it once to prove the pipeline.
-3. Buy tracktoolkit.com, then follow the cutover order in MIGRATION.md
-   work item 4 (DNS → OAuth redirect URI → cutover params → merge
-   `prep/domain-switch`) and the database procedure in
+1. SoundCloud OAuth: temporarily swap the redirect URI to the Azure
+   callback, log in through the browser on the Azure host, swap back.
+   Also log in once on production: the smoke test refreshed Cole's token on
+   the rehearsal DB, so DigitalOcean's copy of that refresh token is stale.
+2. Merge the trailing `azure/migration` commits (docs, rotation script) to
+   main when convenient; nothing on Azure depends on it.
+3. Buy tracktoolkit.com, then follow MIGRATION.md work item 4 and
    `docs/azure-db-cutover.md`.
 
 ## Decisions
@@ -109,6 +107,11 @@ URL to the SoundCloud OAuth app and do a browser login. Production
   not the Homebrew libpq (its `pg_dump` hangs against Neon) (2026-09-19).
 
 ## Landmines
+- The Azure app (and any stack pointed at a COPY of the tokens table) will
+  refresh SoundCloud tokens on use; refresh tokens are single-use, so the
+  other stack loses that account until its owner logs in again. Do not run
+  authenticated smoke tests with anyone's account but your own while both
+  stacks are alive.
 - `validateEnv` in `server/index.js` is global: with Key Vault references
   unresolved, `/health` returns 500 too. On Azure that is "secrets missing",
   not "app down" — check the body before debugging the box. References

@@ -93,7 +93,9 @@ export const metadata: Metadata = {
       { url: "/brand/mark.svg", type: "image/svg+xml" },
       { url: "/brand/icon-192.png", sizes: "192x192", type: "image/png" },
     ],
-    apple: "/brand/icon-180.png",
+    // Opaque on the paper background: iOS composites a transparent touch icon
+    // over black, which matches nothing else in the identity.
+    apple: "/brand/apple-touch-icon.png",
   },
   manifest: "/manifest.json",
   metadataBase: new URL("https://tracktoolkit.com"),

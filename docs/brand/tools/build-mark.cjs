@@ -78,6 +78,38 @@ async function main() {
   fs.writeFileSync(file24, await renderAt(markSvg, 24));
   results.push(await verify(file24));
 
+  // 5. Apple touch icon, OPAQUE on PAPER. iOS composites a transparent touch
+  // icon over black, which matches nothing else in the identity, so this one
+  // deliberately bakes the light page background in. The transparent
+  // icon-180.png stays for anything that wants it. iOS applies its own corner
+  // mask, so the mark sits at TOUCH_FILL of the canvas width, centred.
+  const TOUCH = 180, TOUCH_FILL = 0.66;
+  const touchScale = (TOUCH * TOUCH_FILL) / bounds(chosen).w;
+  const touchFile = path.join(OUT, 'apple-touch-icon.png');
+  fs.writeFileSync(touchFile, await sharp(await renderPadded(markSvg, TOUCH, touchScale)).flatten({ background: PAPER }).png().toBuffer());
+  {
+    const { data, info } = await sharp(touchFile).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    let nonOpaque = 0;
+    for (let i = 3; i < data.length; i += 4) if (data[i] !== 255) nonOpaque++;
+    const px = (i) => '#' + [0, 1, 2].map((k) => data[i * 4 + k].toString(16).padStart(2, '0')).join('').toUpperCase();
+    const corners = [0, info.width - 1, (info.height - 1) * info.width, info.height * info.width - 1].map(px);
+    const ok = info.width === TOUCH && info.height === TOUCH && nonOpaque === 0 && corners.every((c) => c === PAPER.toUpperCase());
+    console.log(JSON.stringify({ appleTouchIcon: { size: `${info.width}x${info.height}`, nonOpaquePixels: nonOpaque, corners, ok } }));
+    if (!ok) throw new Error('apple-touch-icon.png failed the opacity / background check');
+  }
+
+  // 6. Chrome extension icon set (MV3 `icons` / `action.default_icon` sizes).
+  // For the extension project, which lives outside this repo; NOT served by
+  // the web app. Transparent, mark on its own canvas (no maskable inset,
+  // Chrome does not mask extension icons).
+  const EXT = path.resolve(__dirname, '..', 'extension');
+  fs.mkdirSync(EXT, { recursive: true });
+  for (const size of [16, 32, 48, 128]) {
+    const file = path.join(EXT, `icon-${size}.png`);
+    fs.writeFileSync(file, await renderAt(markSvg, size));
+    results.push(await verify(file));
+  }
+
   // Candidate comparison sheet: both treatments at 24 and 64 px, both themes.
   const cands = [chosen, alt];
   const tile = 96, pad = 16;

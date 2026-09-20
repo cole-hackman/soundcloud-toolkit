@@ -11,59 +11,20 @@ const { load } = require('./deps.cjs');
 const { verify } = require('./verify-png.cjs');
 const { COLORS, T, CANDIDATES, CHOSEN, USE_ACCENT, bounds, rects } = require('./mark-spec.cjs');
 const sharp = load('sharp');
-const fontkit = load('fontkit');
+const { TEXT, WEIGHT, TRACKING_EM, loadFont, textPath, assertCleanSvg, renderWidth, renderHeight } = require('./text-outline.cjs');
 
 const ROOT = path.resolve(__dirname, '..', '..', '..');
 const OUT = path.join(ROOT, 'frontend-UI', 'public', 'brand');
 const PREVIEW = path.join(OUT, 'preview');
-const FONT = path.join(__dirname, 'fonts', 'SpaceGrotesk[wght].ttf');
 const { ORANGE, ORANGE_DEEP, INK, WHITE, PAPER, NIGHT } = COLORS;
 
 // Layout, in the mark's units (one bar = T = 10).
-const TEXT = 'Track Toolkit';
-const WEIGHT = 600;
 const CAP_RATIO = 0.65;      // cap height as a fraction of the mark's height
-const TRACKING_EM = -0.01;   // letter-spacing, em
 const PAD = T;               // canvas padding, one bar-height on every side
 const GAP = T;               // mark-to-text gap, one bar-height
 
 const spec = CANDIDATES[CHOSEN];
 const mb = bounds(spec);     // 40 x 40 at (4,4)
-
-function fmt(n) { return String(+n.toFixed(3)); }
-
-// One SVG path `d` for the whole string: glyph outlines placed on the baseline
-// with the font's kerning plus the tracking, y flipped to SVG space.
-function textPath(font, size, x0, baseline) {
-  const s = size / font.unitsPerEm;
-  const run = font.layout(TEXT);
-  const track = TRACKING_EM * size;
-  let pen = x0, d = '', inkMinX = Infinity, inkMaxX = -Infinity, inkMinY = Infinity, inkMaxY = -Infinity;
-  run.glyphs.forEach((g, i) => {
-    const pos = run.positions[i];
-    const gx = pen + pos.xOffset * s, gy = baseline - pos.yOffset * s;
-    for (const c of g.path.commands) {
-      const a = c.args;
-      const X = (k) => fmt(gx + a[k] * s), Y = (k) => fmt(gy - a[k] * s);
-      switch (c.command) {
-        case 'moveTo': d += `M${X(0)} ${Y(1)}`; break;
-        case 'lineTo': d += `L${X(0)} ${Y(1)}`; break;
-        case 'quadraticCurveTo': d += `Q${X(0)} ${Y(1)} ${X(2)} ${Y(3)}`; break;
-        case 'bezierCurveTo': d += `C${X(0)} ${Y(1)} ${X(2)} ${Y(3)} ${X(4)} ${Y(5)}`; break;
-        case 'closePath': d += 'Z'; break;
-        default: throw new Error(`unhandled path command ${c.command}`);
-      }
-    }
-    if (g.bbox.maxX > g.bbox.minX) { // skip empty glyphs (space)
-      inkMinX = Math.min(inkMinX, gx + g.bbox.minX * s);
-      inkMaxX = Math.max(inkMaxX, gx + g.bbox.maxX * s);
-      inkMinY = Math.min(inkMinY, gy - g.bbox.maxY * s);
-      inkMaxY = Math.max(inkMaxY, gy - g.bbox.minY * s);
-    }
-    pen += pos.xAdvance * s + track;
-  });
-  return { d, ink: { x0: inkMinX, x1: inkMaxX, y0: inkMinY, y1: inkMaxY } };
-}
 
 function buildSvg(font, { markFill, textFill }) {
   const capHeightUnits = font.capHeight / font.unitsPerEm;   // 0.7
@@ -86,19 +47,8 @@ ${markRects}
   return { svg, W, H, size, baseline, ink, capHeight: CAP_RATIO * mb.h };
 }
 
-function assertOutlineOnly(file) {
-  const s = fs.readFileSync(file, 'utf8');
-  const bad = ['<text', '@font-face', 'url(', 'href', '<image', '<use', 'xlink', 'gradient', '<style', '<script'].filter((k) => s.includes(k));
-  if (bad.length) throw new Error(`${file} is not outline-only: ${bad.join(', ')}`);
-  return true;
-}
-
-async function renderWidth(svg, width) { return sharp(Buffer.from(svg)).resize({ width }).png().toBuffer(); }
-async function renderHeight(svg, height) { return sharp(Buffer.from(svg)).resize({ height }).png().toBuffer(); }
-
 async function main() {
-  const font = fontkit.openSync(FONT).getVariation({ wght: WEIGHT });
-  if (font.familyName.indexOf('Space Grotesk') !== 0) throw new Error(`unexpected font ${font.familyName}`);
+  const font = loadFont();
 
   const variants = {
     'wordmark': { markFill: ORANGE, textFill: INK },
@@ -111,7 +61,7 @@ async function main() {
     const b = buildSvg(font, fills);
     const file = path.join(OUT, `${name}.svg`);
     fs.writeFileSync(file, b.svg);
-    assertOutlineOnly(file);
+    assertCleanSvg(file);
     built[name] = b;
   }
   const results = [];

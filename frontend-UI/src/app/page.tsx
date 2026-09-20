@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import { BrandWordmark } from "@/components/brand/Logo";
 import Link from "next/link";
 import { StructuredData } from "@/components/StructuredData";
 import { Button, Card } from "@/components/ui";
@@ -203,15 +204,7 @@ export default function Home() {
           <div className="mx-auto flex w-full max-w-6xl px-4 sm:px-6">
             <div className="glass-card flex w-full items-center justify-between rounded-full border px-4 py-2 sm:px-6 sm:py-3">
               <div className="flex items-center gap-2">
-                <Image
-                  src="/sc toolkit transparent .png"
-                  alt="Track Toolkit Logo"
-                  width={120}
-                  height={40}
-                  className="h-8 w-auto object-contain sm:h-10"
-                  priority
-                  unoptimized
-                />
+                <BrandWordmark className="h-8 w-auto text-foreground sm:h-10" />
               </div>
               <div className="absolute left-1/2 hidden -translate-x-1/2 items-center gap-8 text-sm text-muted-foreground md:flex">
                 <a href="#features" className="hover:text-foreground transition">

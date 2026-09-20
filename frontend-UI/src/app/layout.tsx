@@ -70,7 +70,7 @@ export const metadata: Metadata = {
       "Track Toolkit helps SoundCloud power users organize, merge, and clean playlists. Remove duplicates, manage tracks, and build better playlists faster.",
     images: [
       {
-        url: "https://www.soundcloudtoolkit.com/og-image.png",
+        url: "https://www.soundcloudtoolkit.com/brand/og-image.png",
         width: 1200,
         height: 630,
         alt: "Track Toolkit - Smarter SoundCloud Playlist Management",
@@ -82,14 +82,18 @@ export const metadata: Metadata = {
     title: "Track Toolkit – Organize, Merge & Clean SoundCloud Playlists",
     description:
       "Track Toolkit helps SoundCloud power users organize, merge, and clean playlists. Remove duplicates, manage tracks, and build better playlists faster.",
-    images: ["https://www.soundcloudtoolkit.com/og-image.png"],
+    images: ["https://www.soundcloudtoolkit.com/brand/og-image.png"],
   },
-  // The icon files keep their original names: the artwork itself still has to
-  // be redrawn for Track Toolkit, and renaming the files without new art only
-  // breaks the paths the Chrome extension and cached pages already point at.
+  // Brand assets live under /brand and are generated from
+  // docs/brand/tools/mark-spec.cjs. The legacy "SC Toolkit Icon.png" and
+  // "sc toolkit transparent .png" files still exist, now carrying the same
+  // artwork, only because the Chrome extension and cached pages point at them.
   icons: {
-    icon: "/SC Toolkit Icon.png",
-    apple: "/SC Toolkit Icon.png",
+    icon: [
+      { url: "/brand/mark.svg", type: "image/svg+xml" },
+      { url: "/brand/icon-192.png", sizes: "192x192", type: "image/png" },
+    ],
+    apple: "/brand/icon-180.png",
   },
   manifest: "/manifest.json",
   metadataBase: new URL("https://www.soundcloudtoolkit.com"),

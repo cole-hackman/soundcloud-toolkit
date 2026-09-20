@@ -407,7 +407,7 @@ export default function LikesToPlaylistPage() {
                       className="w-full flex items-center gap-3 p-3 rounded-xl bg-primary/10 border-2 border-primary transition-all hover:bg-primary/15 text-left"
                     >
                       <img
-                        src={targetPlaylist.coverUrl || targetPlaylist.artwork_url || "/SC Toolkit Icon.png"}
+                        src={targetPlaylist.coverUrl || targetPlaylist.artwork_url || "/brand/icon-192.png"}
                         alt={targetPlaylist.title}
                         width={40}
                         height={40}
@@ -502,7 +502,7 @@ export default function LikesToPlaylistPage() {
                     }`}
                   >
                     <img
-                      src={playlist.coverUrl || playlist.artwork_url || "/SC Toolkit Icon.png"}
+                      src={playlist.coverUrl || playlist.artwork_url || "/brand/icon-192.png"}
                       alt={playlist.title}
                       width={48}
                       height={48}

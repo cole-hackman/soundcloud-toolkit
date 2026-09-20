@@ -40,7 +40,7 @@ URL to the SoundCloud OAuth app and do a browser login. Production
    work item 4 (DNS → OAuth redirect URI → cutover params → merge
    `prep/domain-switch`) and the database procedure in
    `docs/azure-db-cutover.md`.
-4. Pick a logo (Claude branch vs Codex run), then replace the four legacy
+4. Logo chosen (see Decisions). Replace the four legacy
    image files in place, wire `wordmark-dark` for the dark sidebar in
    `AppShell.tsx`, ship `og-image.png`, and update `manifest.json` /
    `layout.tsx` icon entries. Caveats in the `claude-branding` commit
@@ -48,6 +48,14 @@ URL to the SoundCloud OAuth app and do a browser login. Production
    `wordmark-28.png` has 4 px padding; stamp needs 128 px+.
 
 ## Decisions
+- **Logo: the `claude-branding` shifted-bar mark** (2026-09-20). Three
+  horizontal rounded bars of decreasing length, middle bar shifted right, flat
+  `#FF5500`, no second tone in the mark; wordmark in Space Grotesk 600
+  outlines. Chosen over the Codex split-bar candidate because three
+  equal-length bars with a break reads as a hamburger-menu icon at sidebar
+  size. Codex's set is archived on branch `codex-branding` (`docs/brand/`,
+  see its `ARCHIVE.md`). Source of truth is `docs/brand/tools/mark-spec.cjs`;
+  regenerate with `build-all.cjs`, never hand-edit the exports.
 - **Name: Track Toolkit** (2026-09-10). Supersedes the live vote, which is now
   closed in code. SoundCloud references stay wherever they are factual — the
   platform, the OAuth connection, the API, the trademark position, "Continue

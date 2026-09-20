@@ -1,11 +1,11 @@
 # robots.txt for Track Toolkit
-# https://www.soundcloudtoolkit.com
+# https://tracktoolkit.com
 
 User-agent: *
 Allow: /
 
 # Sitemap location
-Sitemap: https://www.soundcloudtoolkit.com/sitemap.xml
+Sitemap: https://tracktoolkit.com/sitemap.xml
 
 # Disallow authenticated routes from indexing
 Disallow: /dashboard

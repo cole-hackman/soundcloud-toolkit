@@ -79,10 +79,10 @@ import {
 } from '../middleware/validation.js';
 const router = express.Router();
 
-// The live domain is unchanged by the Track Toolkit rebrand — the product name
-// moved, the deployment did not. Update this only when the new domain is
-// registered and pointed at the app.
-const TRACK_TOOLKIT_PLAYLIST_SITE = 'www.soundcloudtoolkit.com';
+// The domain moves with the Azure cutover (MIGRATION.md work item 4): the
+// apex is canonical, and every soundcloudtoolkit.com host 301s to it via
+// server/middleware/legacy-redirect.js.
+const TRACK_TOOLKIT_PLAYLIST_SITE = 'tracktoolkit.com';
 
 /**
  * Ceiling on the matches one keyword search returns.

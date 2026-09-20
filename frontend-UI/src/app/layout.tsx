@@ -58,12 +58,12 @@ export const metadata: Metadata = {
     },
   },
   alternates: {
-    canonical: "https://www.soundcloudtoolkit.com/",
+    canonical: "https://tracktoolkit.com/",
   },
   openGraph: {
     type: "website",
     locale: "en_US",
-    url: "https://www.soundcloudtoolkit.com/",
+    url: "https://tracktoolkit.com/",
     siteName: "Track Toolkit",
     title: "Track Toolkit – Organize, Merge & Clean SoundCloud Playlists",
     description:
@@ -96,7 +96,7 @@ export const metadata: Metadata = {
     apple: "/brand/icon-180.png",
   },
   manifest: "/manifest.json",
-  metadataBase: new URL("https://www.soundcloudtoolkit.com"),
+  metadataBase: new URL("https://tracktoolkit.com"),
 };
 
 export default function RootLayout({
@@ -107,7 +107,7 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${display.variable} ${sans.variable}`}>
       <head>
-        <link rel="canonical" href="https://www.soundcloudtoolkit.com/" />
+        <link rel="canonical" href="https://tracktoolkit.com/" />
         <meta name="theme-color" content="#FF5500" />
       </head>
       <body className="antialiased font-sans">

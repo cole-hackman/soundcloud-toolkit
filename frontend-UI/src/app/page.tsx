@@ -313,7 +313,7 @@ export default function Home() {
                   <span className="h-2.5 w-2.5 rounded-full bg-destructive/60" />
                   <span className="h-2.5 w-2.5 rounded-full bg-chart-4/70" />
                   <span className="h-2.5 w-2.5 rounded-full bg-chart-3/70" />
-                  <span className="ml-3 text-[11px] text-muted-foreground">soundcloudtoolkit.com/dashboard</span>
+                  <span className="ml-3 text-[11px] text-muted-foreground">tracktoolkit.com/dashboard</span>
                 </div>
                 <Image
                   src={HERO_SHOT}

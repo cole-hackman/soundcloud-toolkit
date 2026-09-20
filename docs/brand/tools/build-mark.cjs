@@ -12,7 +12,9 @@ const sharp = load('sharp');
 
 const ROOT = path.resolve(__dirname, '..', '..', '..');
 const OUT = path.join(ROOT, 'frontend-UI', 'public', 'brand');
-const PREVIEW = path.join(OUT, 'preview');
+// Review sheets and QA renders live outside the static export so they are
+// never publicly fetchable; only the assets under public/brand ship.
+const PREVIEW = path.resolve(__dirname, '..', 'preview');
 fs.mkdirSync(PREVIEW, { recursive: true });
 
 const { COLORS, VB, T, G, CANDIDATES, CHOSEN, RUNNER_UP, USE_ACCENT, pieces, bounds, svg } = require('./mark-spec.cjs');

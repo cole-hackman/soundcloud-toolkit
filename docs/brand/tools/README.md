@@ -32,11 +32,11 @@ There is no static SemiBold cut; weight 600 is an instance of the variable axis
 | `deps.cjs` | Resolves `sharp` / `fontkit` from `BRAND_DEPS` (or fallbacks) |
 | `verify-png.cjs` | Alpha, corner, edge and bounding-box check for exported PNGs |
 | `mark-spec.cjs` | The one parametric spec (bar size, gap, candidate geometries, colours) both builders read |
-| `build-mark.cjs` | Generates `mark.svg`, `mark-white.svg`, `mark-ink.svg`, the icon PNGs, `preview/mark-alt.svg` and the review sheets; runs the alpha and maskable checks |
+| `build-mark.cjs` | Generates `mark.svg`, `mark-white.svg`, `mark-ink.svg`, the icon PNGs, `docs/brand/preview/mark-alt.svg` and the review sheets; runs the alpha and maskable checks |
 | `text-outline.cjs` | Shared typography: loads Space Grotesk at wght 600, lays out the string with kerning and -0.01 em tracking, emits outlines; `assertCleanSvg` (outline-only, no root fill/style, no background rect) |
-| `build-wordmark.cjs` | Generates the four wordmark SVGs (text as Space Grotesk 600 outlines), the 1200 px and 28 px PNGs and `preview/wordmark-contact-sheet.png`; asserts the SVGs are outline-only |
-| `build-stacked.cjs` | Generates the stacked lockup (`wordmark-stacked*.svg/.png`), the monochrome stamps (`stamp-ink`, `stamp-white`, 256 px PNGs) and `preview/stacked-contact-sheet.png` |
-| `build-og.cjs` | Generates the opaque 1200x630 social card `og-image.png` (+ layered `og-image.svg`, `preview/og-image-check.png`, `preview/og-image-half.png`) and verifies dimensions, opacity, corner colour, wordmark ink width/offset, safe area and illustration clearance |
+| `build-wordmark.cjs` | Generates the four wordmark SVGs (text as Space Grotesk 600 outlines), the 1200 px and 28 px PNGs and `docs/brand/preview/wordmark-contact-sheet.png`; asserts the SVGs are outline-only |
+| `build-stacked.cjs` | Generates the stacked lockup (`wordmark-stacked*.svg/.png`), the monochrome stamps (`stamp-ink`, `stamp-white`, 256 px PNGs) and `docs/brand/preview/stacked-contact-sheet.png` |
+| `build-og.cjs` | Generates the opaque 1200x630 social card `og-image.png` (+ layered `og-image.svg`, `docs/brand/preview/og-image-check.png`, `docs/brand/preview/og-image-half.png`) and verifies dimensions, opacity, corner colour, wordmark ink width/offset, safe area and illustration clearance |
 
 ## Icon framing
 

@@ -70,7 +70,7 @@ export const metadata: Metadata = {
       "Track Toolkit helps SoundCloud power users organize, merge, and clean playlists. Remove duplicates, manage tracks, and build better playlists faster.",
     images: [
       {
-        url: "https://www.soundcloudtoolkit.com/brand/og-image.png",
+        url: "/brand/og-image.png",
         width: 1200,
         height: 630,
         alt: "Track Toolkit - Smarter SoundCloud Playlist Management",
@@ -82,7 +82,7 @@ export const metadata: Metadata = {
     title: "Track Toolkit – Organize, Merge & Clean SoundCloud Playlists",
     description:
       "Track Toolkit helps SoundCloud power users organize, merge, and clean playlists. Remove duplicates, manage tracks, and build better playlists faster.",
-    images: ["https://www.soundcloudtoolkit.com/brand/og-image.png"],
+    images: ["/brand/og-image.png"],
   },
   // Brand assets live under /brand and are generated from
   // docs/brand/tools/mark-spec.cjs. The legacy "SC Toolkit Icon.png" and

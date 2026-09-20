@@ -15,7 +15,10 @@ const { TEXT, WEIGHT, TRACKING_EM, loadFont, textPath, assertCleanSvg, renderWid
 
 const ROOT = path.resolve(__dirname, '..', '..', '..');
 const OUT = path.join(ROOT, 'frontend-UI', 'public', 'brand');
-const PREVIEW = path.join(OUT, 'preview');
+// Review sheets and QA renders live outside the static export so they are
+// never publicly fetchable; only the assets under public/brand ship.
+const PREVIEW = path.resolve(__dirname, '..', 'preview');
+fs.mkdirSync(PREVIEW, { recursive: true });
 const { ORANGE, ORANGE_DEEP, INK, WHITE, PAPER, NIGHT } = COLORS;
 
 // Layout, in the mark's units (one bar = T = 10).

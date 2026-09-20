@@ -13,12 +13,13 @@ param adminIds = '472267677'
 param appUrl = 'https://tracktoolkit.com'
 param appUrls = 'https://tracktoolkit.com'
 param soundcloudRedirectUri = 'https://tracktoolkit.com/api/auth/callback'
+// Only the hostnames whose DNS already points here. The retired
+// soundcloudtoolkit.com hosts (apex, www, api) are bound in the same way
+// once their DNS is repointed after the database cutover; until then a
+// binding for them fails verification and fails the whole deployment.
 param customHostnames = [
   'tracktoolkit.com'
   'www.tracktoolkit.com'
-  'soundcloudtoolkit.com'
-  'www.soundcloudtoolkit.com'
-  'api.soundcloudtoolkit.com'
 ]
 param legacyRedirectHosts = 'www.tracktoolkit.com,soundcloudtoolkit.com,www.soundcloudtoolkit.com,api.soundcloudtoolkit.com'
 

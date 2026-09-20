@@ -307,6 +307,68 @@ on `api.soundcloudtoolkit.com` and crosses to `www.` only through
 `Domain=.soundcloudtoolkit.com` (the cookie table and "Domain Strategy") now
 say so.
 
+## 2026-09-20 session — merges, allowlist, smoke test, rotation, domain dry run
+
+### PR #39 (rebrand) and PR #40 (azure/migration) are on main
+
+- PR #39 reviewed by hand against the six load-bearing claims in its body,
+  plus `npm test` (391/45), `tsc`, `next lint`, `next build` and a local boot
+  serving `/health`; a diff-scoped security review found nothing. One
+  comment-only fix (4a7c6bd). Review record posted as a PR comment. Merged
+  as 8731b98.
+- PR #40 (`azure/migration` → main): `git merge-tree` clean, merged as
+  50b659e. The GitHub Actions deploy is dispatchable from now on (B2 cleared).
+- `prep/domain-switch` stays unmerged; it merges cleanly onto the new main
+  (`git merge-tree --write-tree origin/main origin/prep/domain-switch` exits
+  0, no conflicts), 46 suites / 400 tests green on it.
+- The `/code-review` tool, asked for PR #39, reviewed the whole
+  `azure/migration` diff instead. Its three correctness findings are about
+  code that reached main in #34–#37 and are listed under Follow-ups; none is
+  a migration blocker.
+
+### DOWNLOAD_ALLOWLIST (Part 1)
+
+Read from the DigitalOcean app spec (3 ids), written to Key Vault
+`download-allowlist` through `infra/deploy.sh`, reference status `Resolved`,
+the running app sees 3 ids, `/health` still 200.
+
+### Authenticated smoke test without a browser (Part 2) — the procedure
+
+Proves session HMAC verification, the user lookup, AES-256-GCM decrypt under
+the Azure `ENCRYPTION_KEY`, a live SoundCloud call, Key Vault reference
+resolution and the Postgres cache tier — everything the browser test proves
+except the OAuth code exchange. GET routes only; writes would hit the real
+SoundCloud API. Use your OWN `soundcloudId` only.
+
+```bash
+S=$(mktemp -d) && chmod 700 "$S"
+# 1. Your user row, from the database the app is pointed at.
+docker run --rm postgres:17 psql "$DATABASE_URL" -Atc \
+  'select row_to_json(u) from (select id, "soundcloudId", username, "avatarUrl", "displayName" from users where "soundcloudId"=<your id>) u' > "$S/me.json"
+# 2. Mint the cookie with the app's own signer (repo root, SESSION_SECRET from the vault, never echoed).
+cat > "$S/mint.mjs" <<'JS'
+import { readFileSync, writeFileSync } from 'fs';
+import { signSession } from './server/lib/session.js';
+const u = JSON.parse(readFileSync(process.argv[2], 'utf8'));
+const data = { userId: u.id, soundcloudId: u.soundcloudId, username: u.username, avatarUrl: u.avatarUrl, displayName: u.displayName, iat: Date.now() };
+writeFileSync(process.argv[3], 'session=' + signSession(JSON.stringify(data), process.env.SESSION_SECRET), { mode: 0o600 });
+JS
+cp "$S/mint.mjs" ./.mint.mjs && SESSION_SECRET="$(az keyvault secret show --vault-name tracktoolkit-kv --name session-secret --query value -o tsv)" node ./.mint.mjs "$S/me.json" "$S/cookie.txt"; rm ./.mint.mjs
+# 3. Exercise the app.
+H=https://tracktoolkit.azurewebsites.net
+for p in /api/auth/me /api/playlists "/api/likes/paged?limit=5" "/api/library/audit?limit=5"; do
+  printf '%-32s ' "$p"; curl -s -o /dev/null -w '%{http_code} %{time_total}s\n' -b "$S/cookie.txt" "$H$p"; done
+# 4. Destroy the cookie.
+rm -rf "$S"
+```
+
+Expect 200 on all four. Note the side effect: if the copied access token
+has expired, the app refreshes it through SoundCloud and stores the new pair
+in the database it is pointed at; SoundCloud refresh tokens are single-use,
+so the OTHER stack (DigitalOcean, still on Neon) loses the ability to refresh
+that one account until its owner logs in again. Only your own account is
+affected, which is why the test is restricted to it.
+
 ## Blocked
 
 ### B1. Key Vault secret writes — CLEARED 2026-09-20
@@ -361,6 +423,20 @@ dispatchable and this blocker disappears. Nothing for you to do beyond the
 merge.
 
 ## Follow-ups (not done tonight, deliberately)
+
+- From the automated review of the main codebase (2026-09-20), pre-existing,
+  not migration-related: `countScCall()` in `soundcloud-client.js` also
+  counts oEmbed fetches, so `avgScCalls` overstates SoundCloud round trips
+  on `/resolve`; `retries401` in `paginate()` resets per page instead of per
+  crawl, so a dead refresh token can attempt many exchanges on a long crawl;
+  `MAX_INVALIDATION_MARKS` eviction in `social-cache.js` lets a crawl that
+  started before an evicted mark republish pre-mutation data. Plus small
+  cleanups (dead `deadlineAt` null checks, duplicated map lookup, an
+  unreachable guard in `auth-cache.js`).
+- `frontend-UI` `npm run lint` shells out to `bunx`, which is not installed
+  on this machine or the GitHub runner image; the deploy workflow runs
+  `next build` (which lints) and tsc separately, so nothing is skipped, but
+  the script itself should drop the `bunx` prefix.
 
 - **DigitalOcean env vars are readable through the API.** Every secret on
   `sctoolkit-backend` is a plain env, not `type: SECRET`. Anyone with the

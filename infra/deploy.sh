@@ -4,6 +4,7 @@
 #
 # Usage:
 #   TT_PG_ADMIN_PASSWORD='<strong password>' infra/deploy.sh
+#   TT_PARAMS=infra/main.cutover.bicepparam ... infra/deploy.sh   # domain cutover values
 #
 # Idempotent: re-running updates in place. Secrets are only (re)written when
 # the matching TT_SECRET_* variable is set, so a plain re-run never clobbers
@@ -45,7 +46,7 @@ az deployment group create \
   --name "tracktoolkit-$(date +%Y%m%d%H%M%S)" \
   --resource-group "$RG" \
   --template-file "$HERE/main.bicep" \
-  --parameters "$HERE/main.bicepparam" \
+  --parameters "${TT_PARAMS:-$HERE/main.bicepparam}" \
   --output table
 
 put_secret() { # name, value

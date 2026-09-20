@@ -438,6 +438,19 @@ old stack would lose the ability to decrypt.
   and `main.bicepparam`; there are no deployment slots and no other setting
   touches it.
 
+### Domain bound (2026-09-20, evening)
+
+tracktoolkit.com registered at Spaceship (nameservers launch1/launch2).
+DNS: apex A → 20.118.138.138, `www` CNAME → tracktoolkit.azurewebsites.net,
+`asuid` and `asuid.www` TXT → the app's customDomainVerificationId. Both
+hostnames bound (`Verified`) and carrying App Service managed certificates
+(DigiCert, valid to 2027-03-20); `https://tracktoolkit.com/health` and
+`https://www.tracktoolkit.com/health` return 200, HTTP 301s to HTTPS. Done
+with `az webapp config hostname add` / `ssl create` / `ssl bind`; the
+cutover Bicep params re-declare the same bindings idempotently. No traffic
+is routed yet: the OAuth redirect URI, `APP_URL` and the old domain's DNS
+are unchanged, and the app still uses `tracktoolkit-rehearsal`.
+
 ## Blocked
 
 ### B1. Key Vault secret writes — CLEARED 2026-09-20

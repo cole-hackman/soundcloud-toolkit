@@ -14,11 +14,11 @@ untouched and remain the rollback plan.
 
 | # | Work item | State |
 |---|---|---|
-| 1 | Provision Azure in parallel, /health 200 | **resources up, code deployed**; /health is 500 until the six Key Vault secrets exist (Blocked B1) |
+| 1 | Provision Azure in parallel, /health 200 | **done** — /health 200 on 2026-09-20 12:43 CEST after the secrets landed (B1 cleared) |
 | 2 | Rehearse the database migration, write docs/azure-db-cutover.md | **done** — 16 min measured, `docs/azure-db-cutover.md` |
 | 3 | Secrets reachable? decrypt round-trip | **done** — readable; 4089/4089 token rows decrypt with the DigitalOcean key |
 | 4 | prep/domain-switch branch + 301 design | **done** (branch `prep/domain-switch`, 86b9d08, not merged, not pushed) |
-| 5 | Verification (tests, tsc, lint, build, login redirect) | **done except login redirect** (needs B1) |
+| 5 | Verification (tests, tsc, lint, build, login redirect) | **done** — login 302s to secure.soundcloud.com with the Azure callback as redirect_uri (2026-09-20) |
 | 6 | Fix CLAUDE.md cookie-domain error | **done** (commit on this branch) |
 
 ## Resources (Azure subscription "Azure subscription 1", 14ca6838-…)
@@ -309,41 +309,46 @@ say so.
 
 ## Blocked
 
-### B1. Key Vault secret writes need your approval (blocks /health = 200 and the login test)
+### B1. Key Vault secret writes — CLEARED 2026-09-20
 
-What I tried: `az keyvault secret set` for the six application secrets
-(`database-url`, `encryption-key`, `session-secret`, `soundcloud-client-id`,
-`soundcloud-client-secret`, `download-allowlist`) with the values read from
-the DigitalOcean app spec. The Claude Code permission classifier denied the
-command ("Secret-Store Writes"), twice. I did not work around it.
+Cole granted his user Key Vault Secrets Officer and approved the writes. Done
+in that session:
 
-Consequence: the web app's settings are Key Vault references that resolve to
-nothing, `validateEnv` (mounted globally in `server/index.js`) rejects every
-request — including `/health` — with a 500 "Server configuration error"
-until the six secrets exist. The Postgres admin password is in the vault
-(written by `infra/deploy.sh`, which was allowed).
+- Postgres admin password rotated (the original had been exposed in a tool
+  output): 40-char alphanumeric, applied with
+  `az postgres flexible-server update`, stored as `postgres-admin-password`.
+  Never printed.
+- The six app secrets written via `infra/deploy.sh` from the root `./.env`
+  (the production file: Neon host, 32-char key, 57-char session secret;
+  `server/.env` is the localhost mock). `DOWNLOAD_ALLOWLIST` is not in
+  `./.env`, so the vault holds `"0"` for now — production DigitalOcean has a
+  real list; copy it before cutover. `database-url` points at
+  `tracktoolkit-rehearsal`, not `tracktoolkit`.
+- Decrypt round-trip re-run with the rotated password: 200/200 rows.
+- Verified on https://tracktoolkit.azurewebsites.net: `/health` 200,
+  `/api/auth/login` 302 → `secure.soundcloud.com/authorize?...&redirect_uri=https%3A%2F%2Ftracktoolkit.azurewebsites.net%2Fapi%2Fauth%2Fcallback`,
+  `/` serves the Track Toolkit static export, `/api/auth/me` → 401.
 
-What you do (about two minutes):
+Two things that bit, both now handled in the IaC:
 
-```bash
-# 1. Copy the six values from DigitalOcean → sctoolkit-backend → Settings → soundcloud-toolkit → Environment Variables
-#    (or `doctl apps spec get 69dbca20-e3f3-4765-ae2b-d01865fd4eb7`).
-# 2. Write them and restart the app in one go:
-TT_PG_ADMIN_PASSWORD="$(az keyvault secret show --vault-name tracktoolkit-kv --name postgres-admin-password --query value -o tsv)" \
-TT_SECRET_DATABASE_URL="postgresql://tracktoolkit_admin:<url-encoded admin password>@tracktoolkit-pg.postgres.database.azure.com:5432/tracktoolkit-rehearsal?sslmode=require" \
-TT_SECRET_ENCRYPTION_KEY='<DO value, 32 chars>' \
-TT_SECRET_SESSION_SECRET='<DO value>' \
-TT_SECRET_SOUNDCLOUD_CLIENT_ID='<DO value>' \
-TT_SECRET_SOUNDCLOUD_CLIENT_SECRET='<DO value>' \
-TT_SECRET_DOWNLOAD_ALLOWLIST='<DO value>' \
-infra/deploy.sh
-# 3. Verify:
-curl -i https://tracktoolkit.azurewebsites.net/health
-curl -sI https://tracktoolkit.azurewebsites.net/api/auth/login | grep -i '^location'   # expect secure.soundcloud.com/authorize?...
-```
+1. **Duplicate role assignment.** The portal grant of Secrets Officer to the
+   same user/scope made the Bicep-named assignment fail with
+   `RoleAssignmentExists`. `main.bicep` now has `assignDeployerKvRole`, and
+   `deploy.sh` sets it false when an equivalent assignment already exists.
+2. **Key Vault references do not re-resolve on `az webapp restart`.** After
+   the secrets were written, a restart left every reference at
+   `SecretNotFound` and the app kept 500ing on `ENCRYPTION_KEY` /
+   `DATABASE_URL`. Platform logs showed the managed-identity sidecar
+   "terminated during site startup". Changing any app setting
+   (`KV_RESOLVE_NUDGE=<epoch>`) forced re-resolution: all six flipped to
+   `Resolved` and the container was recreated healthy within a minute.
+   `deploy.sh` now touches that setting instead of only restarting. The
+   stray setting is harmless and the next Bicep deploy removes it (which is
+   itself a settings change, so references re-resolve again).
 
-Or start a Claude Code session and approve the `az keyvault secret set`
-prompt; everything else is scripted.
+Still to do before cutover (not blockers): `SESSION_SECRET` matches the
+DigitalOcean value by string compare but cannot be cryptographically
+verified; `DOWNLOAD_ALLOWLIST` real value.
 
 ### B2. GitHub Actions deploy cannot be dispatched until the workflow is on `main`
 

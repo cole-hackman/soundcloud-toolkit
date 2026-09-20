@@ -32,6 +32,9 @@ param postgresAdminPassword string
 @description('Object id of the person/pipeline running the deployment. Gets Key Vault Secrets Officer so it can write secrets.')
 param deployerObjectId string
 
+@description('Create the deployer\'s Key Vault Secrets Officer assignment. deploy.sh sets this false when an equivalent assignment already exists (e.g. granted in the portal), because ARM rejects a duplicate under a different name.')
+param assignDeployerKvRole bool = true
+
 @description('Optional public IP allowed through the Postgres firewall for pg_dump/pg_restore. Empty string skips the rule.')
 param clientIp string = ''
 
@@ -102,7 +105,7 @@ resource kv 'Microsoft.KeyVault/vaults@2023-07-01' = {
   }
 }
 
-resource deployerSecretsOfficer 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+resource deployerSecretsOfficer 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (assignDeployerKvRole) {
   name: guid(kv.id, deployerObjectId, kvSecretsOfficerRoleId)
   scope: kv
   properties: {

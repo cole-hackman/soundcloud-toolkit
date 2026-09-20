@@ -3,11 +3,11 @@
 ## Now
 Azure migration in flight on branch `azure/migration` (off the rebrand
 branch `claude/keen-newton-02qlh4`, draft PR #39). The parallel Azure stack
-exists in `rg-tracktoolkit` (westus3) with the code deployed, but every
-request answers 500 until the six Key Vault secrets are written — that write
-was denied by the Claude Code permission classifier and is Blocked B1 in
-`MIGRATION.md`. Production (DigitalOcean, Vercel, Neon, DNS) is untouched.
-Read `MIGRATION.md` first; it is the durable log for this work.
+in `rg-tracktoolkit` (westus3) is serving: `/health` 200, login redirects to
+SoundCloud, static frontend served same-origin, pointed at the
+`tracktoolkit-rehearsal` database. Waiting on Cole to add the Azure callback
+URL to the SoundCloud OAuth app and do a browser login. Production
+(DigitalOcean, Vercel, Neon, DNS) is untouched. Read `MIGRATION.md` first.
 
 ## Just done
 - f5e7e94 — database cutover rehearsed end to end into `tracktoolkit-rehearsal`
@@ -22,9 +22,9 @@ Read `MIGRATION.md` first; it is the durable log for this work.
 - c10f378 — rebrand to Track Toolkit (PR #39, unchanged).
 
 ## Next
-1. Clear Blocked B1: write the six secrets into `tracktoolkit-kv` (exact
-   command in MIGRATION.md), restart, confirm `/health` 200 and that
-   `/api/auth/login` 302s to secure.soundcloud.com.
+1. Add `https://tracktoolkit.azurewebsites.net/api/auth/callback` as an
+   additional redirect URI in the SoundCloud OAuth app, log in through the
+   browser on the Azure host, confirm playlists load (rehearsal DB).
 2. Merge `azure/migration` (after PR #39) so `azure-deploy.yml` becomes
    dispatchable; run it once to prove the pipeline.
 3. Buy tracktoolkit.com, then follow the cutover order in MIGRATION.md
@@ -111,7 +111,9 @@ Read `MIGRATION.md` first; it is the durable log for this work.
 ## Landmines
 - `validateEnv` in `server/index.js` is global: with Key Vault references
   unresolved, `/health` returns 500 too. On Azure that is "secrets missing",
-  not "app down" — check the body before debugging the box.
+  not "app down" — check the body before debugging the box. References
+  re-resolve on an app-settings change, not on `az webapp restart`;
+  `infra/deploy.sh` nudges a setting for that reason.
 - `PRISMA_CLI_BINARY_TARGETS` does not change the generated client. Build
   the deploy zip on linux/amd64 (the GitHub workflow, or Docker with
   `--platform linux/amd64`); an arm64 Docker build silently ships the wrong

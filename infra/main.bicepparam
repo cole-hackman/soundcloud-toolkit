@@ -14,3 +14,4 @@ param legacyRedirectHosts = ''
 param postgresAdminPassword = readEnvironmentVariable('TT_PG_ADMIN_PASSWORD')
 param deployerObjectId = readEnvironmentVariable('TT_DEPLOYER_OBJECT_ID')
 param clientIp = readEnvironmentVariable('TT_CLIENT_IP', '')
+param assignDeployerKvRole = bool(readEnvironmentVariable('TT_ASSIGN_DEPLOYER_ROLE', 'true'))

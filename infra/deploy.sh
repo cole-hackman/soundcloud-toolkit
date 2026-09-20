@@ -31,6 +31,14 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 export TT_PG_ADMIN_PASSWORD
 export TT_DEPLOYER_OBJECT_ID="${TT_DEPLOYER_OBJECT_ID:-$(az ad signed-in-user show --query id -o tsv)}"
 export TT_CLIENT_IP="${TT_CLIENT_IP:-}"
+# ARM rejects a second role assignment for the same principal/role/scope even
+# under a different name, so skip ours if one is already there (portal grant).
+KV_ID="/subscriptions/$(az account show --query id -o tsv)/resourceGroups/$RG/providers/Microsoft.KeyVault/vaults/$KV"
+if [ -n "$(az role assignment list --assignee "$TT_DEPLOYER_OBJECT_ID" --scope "$KV_ID" --role 'Key Vault Secrets Officer' --query '[0].id' -o tsv 2>/dev/null)" ]; then
+  export TT_ASSIGN_DEPLOYER_ROLE=false
+else
+  export TT_ASSIGN_DEPLOYER_ROLE=true
+fi
 
 az group create --name "$RG" --location "$LOCATION" --output none
 az deployment group create \
@@ -60,6 +68,10 @@ put_secret soundcloud-client-id     "${TT_SECRET_SOUNDCLOUD_CLIENT_ID:-}"
 put_secret soundcloud-client-secret "${TT_SECRET_SOUNDCLOUD_CLIENT_SECRET:-}"
 put_secret download-allowlist       "${TT_SECRET_DOWNLOAD_ALLOWLIST:-}"
 
-# Key Vault references are resolved when the app starts.
-az webapp restart --name "$BASE" --resource-group "$RG" --output none
+# Key Vault references are re-resolved on an app-settings change, NOT on a
+# plain restart (observed 2026-09-20: a restart after writing the secrets left
+# every reference at SecretNotFound). Touch one setting to force it; the
+# platform recreates the container with the resolved values.
+az webapp config appsettings set --name "$BASE" --resource-group "$RG" \
+  --settings "KV_RESOLVE_NUDGE=$(date +%s)" --output none
 echo "done: https://${BASE}.azurewebsites.net/health"

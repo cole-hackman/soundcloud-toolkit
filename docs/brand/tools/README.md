@@ -31,3 +31,12 @@ There is no static SemiBold cut; weight 600 is an instance of the variable axis
 |---|---|
 | `deps.cjs` | Resolves `sharp` / `fontkit` from `BRAND_DEPS` (or fallbacks) |
 | `verify-png.cjs` | Alpha, corner, edge and bounding-box check for exported PNGs |
+| `build-mark.cjs` | Generates `mark.svg`, `mark-white.svg`, `mark-ink.svg`, the icon PNGs, `preview/mark-alt.svg` and the review sheets; runs the alpha and maskable checks |
+
+## Icon framing
+
+`mark.svg` is a tight 48-unit canvas (bars 10 thick, gaps 5, mark 40x40). The
+PNG icons are exported from it with maskable framing: the mark is scaled so
+every rounded cap sits at least 5 px inside the 410 px safe circle of a 512
+canvas, and 192/180 use the same relative framing. `icon-24.png` is the mark's
+own canvas at 24 px (a legibility check, not the padded framing).

@@ -37,14 +37,17 @@ function buildSvg(font, { markFill, textFill }) {
   const W = +(ink.x1 + PAD).toFixed(3);
   const H = mb.h + 2 * PAD;
   const markRects = rects(spec, { fill: markFill, accentFill: USE_ACCENT ? ORANGE_DEEP : null, dx: markX - mb.x0, dy: markY - mb.y0, indent: '    ' });
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="Track Toolkit">
-  <g>
+  const inner = `  <g>
 ${markRects}
   </g>
-  <path fill="${textFill}" d="${d}"/>
+  <path fill="${textFill}" d="${d}"/>`;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="Track Toolkit">
+${inner}
 </svg>
 `;
-  return { svg, W, H, size, baseline, ink, capHeight: CAP_RATIO * mb.h };
+  // inkBox: the whole lockup's ink (mark box union text ink), in these units
+  const inkBox = { x0: markX, y0: markY, x1: ink.x1, y1: Math.max(markY + mb.h, ink.y1) };
+  return { svg, inner, W, H, size, baseline, ink, inkBox, capHeight: CAP_RATIO * mb.h };
 }
 
 async function main() {
@@ -112,4 +115,5 @@ async function main() {
   if (!results.every((r) => r.ok)) { console.error('VERIFY FAILED'); process.exit(1); }
 }
 
-main().catch((e) => { console.error(e); process.exit(1); });
+module.exports = { buildSvg };
+if (require.main === module) main().catch((e) => { console.error(e); process.exit(1); });

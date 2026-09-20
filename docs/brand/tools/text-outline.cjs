@@ -14,8 +14,8 @@ const TEXT = 'Track Toolkit';
 const WEIGHT = 600;
 const TRACKING_EM = -0.01;
 
-function loadFont() {
-  const font = fontkit.openSync(FONT).getVariation({ wght: WEIGHT });
+function loadFont(weight = WEIGHT) {
+  const font = fontkit.openSync(FONT).getVariation({ wght: weight });
   if (font.familyName.indexOf('Space Grotesk') !== 0) throw new Error(`unexpected font ${font.familyName}`);
   return font;
 }

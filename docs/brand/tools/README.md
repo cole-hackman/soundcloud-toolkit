@@ -36,6 +36,7 @@ There is no static SemiBold cut; weight 600 is an instance of the variable axis
 | `text-outline.cjs` | Shared typography: loads Space Grotesk at wght 600, lays out the string with kerning and -0.01 em tracking, emits outlines; `assertCleanSvg` (outline-only, no root fill/style, no background rect) |
 | `build-wordmark.cjs` | Generates the four wordmark SVGs (text as Space Grotesk 600 outlines), the 1200 px and 28 px PNGs and `preview/wordmark-contact-sheet.png`; asserts the SVGs are outline-only |
 | `build-stacked.cjs` | Generates the stacked lockup (`wordmark-stacked*.svg/.png`), the monochrome stamps (`stamp-ink`, `stamp-white`, 256 px PNGs) and `preview/stacked-contact-sheet.png` |
+| `build-og.cjs` | Generates the opaque 1200x630 social card `og-image.png` (+ layered `og-image.svg`, `preview/og-image-check.png`, `preview/og-image-half.png`) and verifies dimensions, opacity, corner colour, wordmark ink width/offset, safe area and illustration clearance |
 
 ## Icon framing
 
@@ -61,3 +62,18 @@ units, which gives a font size of 10.837 units (cap height 7.586, 19 % of the
 mark). Gap from the mark's bottom bar to the cap line is one bar-height, and
 the canvas is the artwork plus one bar-height of padding. The stamps are the
 same lockup in one flat colour.
+
+## Social card
+
+`og-image.png` is the one opaque asset: `#0E121A` background, the dark
+horizontal wordmark scaled so its ink is 480 px wide starting 96 px from the
+left, a two-line tagline in Space Grotesk 500 (28 px cap height, white at
+70 %) one wordmark bar-height below it, and a playlist-split illustration of
+rounded bars on the right. `og-image.svg` is the editable layered source
+(outline-only; the tagline lines are the `TAGLINE` array in `build-og.cjs`).
+
+## Regenerate everything
+
+```sh
+BRAND_DEPS=/tmp/brand-deps node docs/brand/tools/build-all.cjs
+```

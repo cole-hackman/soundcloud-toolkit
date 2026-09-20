@@ -52,7 +52,7 @@ export default function ExportPlaylistsPage() {
         <div className="space-y-4">
           <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-muted/30 px-4 py-3">
             <img
-              src={selectedPlaylist.coverUrl || selectedPlaylist.artwork_url || "/SC Toolkit Icon.png"}
+              src={selectedPlaylist.coverUrl || selectedPlaylist.artwork_url || "/brand/icon-192.png"}
               alt={selectedPlaylist.title}
               width={48}
               height={48}

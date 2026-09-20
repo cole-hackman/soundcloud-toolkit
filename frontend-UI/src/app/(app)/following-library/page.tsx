@@ -367,7 +367,7 @@ export default function FollowingLibraryPage() {
                       }`}
                     >
                       <img
-                        src={user.avatar_url || "/SC Toolkit Icon.png"}
+                        src={user.avatar_url || "/brand/icon-192.png"}
                         alt={user.username}
                         width={36}
                         height={36}
@@ -409,7 +409,7 @@ export default function FollowingLibraryPage() {
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex min-w-0 items-center gap-3">
                     <img
-                      src={selectedUser.avatar_url || "/SC Toolkit Icon.png"}
+                      src={selectedUser.avatar_url || "/brand/icon-192.png"}
                       alt={selectedUser.username}
                       width={48}
                       height={48}
@@ -584,7 +584,7 @@ export default function FollowingLibraryPage() {
                                 <Check className="h-3.5 w-3.5" />
                               </div>
                               <img
-                                src={playlist.artwork_url || "/SC Toolkit Icon.png"}
+                                src={playlist.artwork_url || "/brand/icon-192.png"}
                                 alt={playlist.title}
                                 width={48}
                                 height={48}

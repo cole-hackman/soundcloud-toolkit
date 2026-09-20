@@ -575,7 +575,7 @@ export default function PlaylistModifierPage() {
                     className="flex items-center gap-4 p-4 rounded-xl bg-gray-50 dark:bg-secondary/20 border-2 border-transparent hover:border-primary transition-all text-left"
                   >
                     <img
-                      src={playlist.coverUrl || playlist.artwork_url || "/SC Toolkit Icon.png"}
+                      src={playlist.coverUrl || playlist.artwork_url || "/brand/icon-192.png"}
                       alt={playlist.title}
                       width={64}
                       height={64}
@@ -702,7 +702,7 @@ export default function PlaylistModifierPage() {
                       className="flex items-center gap-4 p-3 rounded-xl bg-gray-50 dark:bg-secondary/20 group"
                     >
                       <img
-                        src={track.artwork_url || "/SC Toolkit Icon.png"}
+                        src={track.artwork_url || "/brand/icon-192.png"}
                         alt={track.title}
                         width={48}
                         height={48}
@@ -900,7 +900,7 @@ export default function PlaylistModifierPage() {
                         {globalIndex + 1}
                       </span>
                       <img
-                        src={track.artwork_url || "/SC Toolkit Icon.png"}
+                        src={track.artwork_url || "/brand/icon-192.png"}
                         alt={track.title}
                         width={48}
                         height={48}

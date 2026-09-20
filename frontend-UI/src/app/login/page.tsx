@@ -1,6 +1,6 @@
 "use client";
 
-import Image from "next/image";
+import { BrandWordmark } from "@/components/brand/Logo";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -69,15 +69,7 @@ export default function LoginPage() {
       <main id="main-content" tabIndex={-1} className="relative z-10 mx-auto flex min-h-screen w-full max-w-6xl flex-col justify-center px-4 py-4 focus:outline-none sm:px-6 sm:py-8 lg:px-8 lg:py-10">
         <div className="grid items-center gap-10 lg:grid-cols-[minmax(0,1.1fr)_minmax(380px,440px)] lg:gap-16">
           <section className="order-2 flex flex-col items-start lg:order-1 lg:pr-8">
-            <Image
-              src="/sc toolkit transparent .png"
-              alt="Track Toolkit"
-              width={140}
-              height={46}
-              className="h-8 w-auto object-contain"
-              priority
-              unoptimized
-            />
+            <BrandWordmark className="h-8 w-auto text-foreground" />
 
             <h1 className="mt-10 text-balance font-display text-3xl font-semibold leading-tight sm:text-4xl lg:text-5xl xl:text-6xl">
               Connect once.

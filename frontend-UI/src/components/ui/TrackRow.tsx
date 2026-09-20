@@ -63,7 +63,7 @@ export function TrackRow({
       </div>
 
       <img
-        src={track.artwork_url || "/SC Toolkit Icon.png"}
+        src={track.artwork_url || "/brand/icon-192.png"}
         alt={track.artworkAlt || track.title}
         width={40}
         height={40}

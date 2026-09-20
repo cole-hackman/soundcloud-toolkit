@@ -79,7 +79,7 @@ export function PlaylistSelectGrid({
                 }`}
               >
                 <img
-                  src={playlist.coverUrl || playlist.artwork_url || "/SC Toolkit Icon.png"}
+                  src={playlist.coverUrl || playlist.artwork_url || "/brand/icon-192.png"}
                   alt={playlist.title}
                   width={64}
                   height={64}

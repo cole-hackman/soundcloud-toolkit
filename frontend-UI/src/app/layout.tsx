@@ -70,7 +70,7 @@ export const metadata: Metadata = {
       "Track Toolkit helps SoundCloud power users organize, merge, and clean playlists. Remove duplicates, manage tracks, and build better playlists faster.",
     images: [
       {
-        url: "https://tracktoolkit.com/og-image.png",
+        url: "/brand/og-image.png",
         width: 1200,
         height: 630,
         alt: "Track Toolkit - Smarter SoundCloud Playlist Management",
@@ -82,14 +82,20 @@ export const metadata: Metadata = {
     title: "Track Toolkit – Organize, Merge & Clean SoundCloud Playlists",
     description:
       "Track Toolkit helps SoundCloud power users organize, merge, and clean playlists. Remove duplicates, manage tracks, and build better playlists faster.",
-    images: ["https://tracktoolkit.com/og-image.png"],
+    images: ["/brand/og-image.png"],
   },
-  // The icon files keep their original names: the artwork itself still has to
-  // be redrawn for Track Toolkit, and renaming the files without new art only
-  // breaks the paths the Chrome extension and cached pages already point at.
+  // Brand assets live under /brand and are generated from
+  // docs/brand/tools/mark-spec.cjs. The legacy "SC Toolkit Icon.png" and
+  // "sc toolkit transparent .png" files still exist, now carrying the same
+  // artwork, only because the Chrome extension and cached pages point at them.
   icons: {
-    icon: "/SC Toolkit Icon.png",
-    apple: "/SC Toolkit Icon.png",
+    icon: [
+      { url: "/brand/mark.svg", type: "image/svg+xml" },
+      { url: "/brand/icon-192.png", sizes: "192x192", type: "image/png" },
+    ],
+    // Opaque on the paper background: iOS composites a transparent touch icon
+    // over black, which matches nothing else in the identity.
+    apple: "/brand/apple-touch-icon.png",
   },
   manifest: "/manifest.json",
   metadataBase: new URL("https://tracktoolkit.com"),

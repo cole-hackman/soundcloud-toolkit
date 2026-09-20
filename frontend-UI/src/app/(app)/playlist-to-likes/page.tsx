@@ -227,7 +227,7 @@ export default function PlaylistToLikesPage() {
                   className="w-full flex items-center gap-3 p-3 rounded-xl border-2 border-gray-200 dark:border-border hover:border-primary hover:bg-primary/5 transition text-left"
                 >
                   <img
-                    src={p.coverUrl || p.artwork_url || "/SC Toolkit Icon.png"}
+                    src={p.coverUrl || p.artwork_url || "/brand/icon-192.png"}
                     alt={p.title}
                     width={48}
                     height={48}

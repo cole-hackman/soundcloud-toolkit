@@ -19,7 +19,7 @@ export function StructuredData({ faqs = [] }: StructuredDataProps) {
     // links and queries pointing at the old name.
     alternateName: "SoundCloud Toolkit",
     url: "https://tracktoolkit.com",
-    logo: "https://tracktoolkit.com/SC%20Toolkit%20Icon.png",
+    logo: "https://tracktoolkit.com/brand/icon-512.png",
     description:
       "Track Toolkit helps SoundCloud power users organize, merge, and clean playlists.",
     sameAs: [],

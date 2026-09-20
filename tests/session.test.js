@@ -1,5 +1,5 @@
 const SECRET = 'test-secret-that-is-at-least-32-chars!!';
-const { signSession, unsignSession, parseSessionData, SESSION_TTL_MS } =
+const { signSession, unsignSession, parseSessionData, SESSION_TTL_MS, resolveSessionSameSite } =
   await import('../server/lib/session.js');
 
 describe('signSession / unsignSession', () => {
@@ -41,5 +41,23 @@ describe('parseSessionData expiry', () => {
 
   test('rejects malformed JSON', () => {
     expect(parseSessionData('not json')).toBeNull();
+  });
+});
+
+describe('resolveSessionSameSite', () => {
+  test('production defaults to none (split-origin deploy)', () => {
+    expect(resolveSessionSameSite({ NODE_ENV: 'production' })).toBe('none');
+  });
+
+  test('development defaults to lax', () => {
+    expect(resolveSessionSameSite({ NODE_ENV: 'development' })).toBe('lax');
+  });
+
+  test('SESSION_COOKIE_SAMESITE=lax overrides production (same-origin deploy)', () => {
+    expect(resolveSessionSameSite({ NODE_ENV: 'production', SESSION_COOKIE_SAMESITE: 'Lax' })).toBe('lax');
+  });
+
+  test('an invalid value falls back to the default', () => {
+    expect(resolveSessionSameSite({ NODE_ENV: 'production', SESSION_COOKIE_SAMESITE: 'bogus' })).toBe('none');
   });
 });

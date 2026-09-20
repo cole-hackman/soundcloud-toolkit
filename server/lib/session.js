@@ -78,8 +78,24 @@ export function createSessionCookieOptions(maxAge = SESSION_TTL_MS) {
   return {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
-    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+    sameSite: resolveSessionSameSite(),
     maxAge,
     path: '/'
   };
+}
+
+const SAMESITE_VALUES = new Set(['lax', 'none', 'strict']);
+
+/**
+ * SameSite for the session cookie. No `domain` is ever set: the cookie is
+ * host-only and the split-origin (Vercel + DigitalOcean) deployment works
+ * purely because production defaults to `none` + Secure. Same-origin hosting
+ * (Azure, Express serving frontend-UI/out) sets SESSION_COOKIE_SAMESITE=lax
+ * so the browser stops attaching the cookie to cross-site requests at all.
+ * An unset or invalid value keeps the historical behaviour.
+ */
+export function resolveSessionSameSite(env = process.env) {
+  const configured = String(env.SESSION_COOKIE_SAMESITE || '').trim().toLowerCase();
+  if (SAMESITE_VALUES.has(configured)) return configured;
+  return env.NODE_ENV === 'production' ? 'none' : 'lax';
 }

@@ -205,10 +205,10 @@ Browser ──HTTPS──▶ Vercel (Next.js static)
 | `httpOnly` | true | true |
 | `secure` | false | true |
 | `sameSite` | `lax` | `none` |
-| `domain` | (none) | `.soundcloudtoolkit.com` |
+| `domain` | (none) | (none) — host-only cookie |
 | `maxAge` | 7 days | 7 days |
 
-`SameSite=None` is required in production because the frontend (Vercel) and backend (DigitalOcean) are on different subdomains.
+`SameSite=None` is required in production because the frontend (Vercel) and backend (DigitalOcean) are on different subdomains. The cookie is **host-only** — `createSessionCookieOptions()` in `server/lib/session.js` sets no `domain`, so it is scoped to `api.soundcloudtoolkit.com` and reaches the API cross-site purely through `SameSite=None; Secure`. `SESSION_COOKIE_SAMESITE=lax` switches it to `Lax` for a same-origin deployment (Azure).
 
 ### CSRF & Origin Enforcement
 
@@ -877,7 +877,7 @@ Before the OAuth redirect, the frontend pings `/health` (with 1.2s timeout) to w
 
 - Frontend: `https://www.soundcloudtoolkit.com` → Vercel
 - Backend: `https://api.soundcloudtoolkit.com` → DigitalOcean
-- Session cookies use `Domain=.soundcloudtoolkit.com` (apex) to be shared across subdomains
+- Session cookies are host-only (no `Domain` attribute) on `api.soundcloudtoolkit.com`; the browser sends them cross-site from `www.` only because of `SameSite=None; Secure`
 
 ### Production Environment Differences vs Dev
 

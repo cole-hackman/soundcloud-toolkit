@@ -40,9 +40,11 @@ URL to the SoundCloud OAuth app and do a browser login. Production
    work item 4 (DNS → OAuth redirect URI → cutover params → merge
    `prep/domain-switch`) and the database procedure in
    `docs/azure-db-cutover.md`.
-4. Logo shipped in code on `claude-branding` (see Decisions). Left: the
-   Chrome extension's bundled icons, and deciding whether the transparent
-   Apple touch icon (iOS backs it with black) should get an opaque variant.
+4. Logo shipped (PR #41). Left: drop `docs/brand/extension/icon-{16,32,48,128}.png`
+   into the Chrome extension project (outside this repo) and re-point its
+   manifest; it still ships SoundCloud's cloud glyph as its listing icon.
+   The opaque Apple touch icon (`/brand/apple-touch-icon.png`, mark on PAPER)
+   is done.
 
 ## Decisions
 - **Logo: the `claude-branding` shifted-bar mark** (2026-09-20). Three

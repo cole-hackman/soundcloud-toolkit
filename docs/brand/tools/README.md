@@ -31,7 +31,9 @@ There is no static SemiBold cut; weight 600 is an instance of the variable axis
 |---|---|
 | `deps.cjs` | Resolves `sharp` / `fontkit` from `BRAND_DEPS` (or fallbacks) |
 | `verify-png.cjs` | Alpha, corner, edge and bounding-box check for exported PNGs |
+| `mark-spec.cjs` | The one parametric spec (bar size, gap, candidate geometries, colours) both builders read |
 | `build-mark.cjs` | Generates `mark.svg`, `mark-white.svg`, `mark-ink.svg`, the icon PNGs, `preview/mark-alt.svg` and the review sheets; runs the alpha and maskable checks |
+| `build-wordmark.cjs` | Generates the four wordmark SVGs (text as Space Grotesk 600 outlines), the 1200 px and 28 px PNGs and `preview/wordmark-contact-sheet.png`; asserts the SVGs are outline-only |
 
 ## Icon framing
 
@@ -40,3 +42,11 @@ PNG icons are exported from it with maskable framing: the mark is scaled so
 every rounded cap sits at least 5 px inside the 410 px safe circle of a 512
 canvas, and 192/180 use the same relative framing. `icon-24.png` is the mark's
 own canvas at 24 px (a legibility check, not the padded framing).
+
+## Wordmark layout
+
+Same units as the mark (one bar = 10). Mark ink box at (10,10) 40x40, gap of
+one bar, then "Track Toolkit" at a font size of 37.143 units so the cap height
+is 26 units (65 % of the mark), tracking -0.01 em, font kerning on, cap-height
+box centred on the mark (baseline y = 43). Canvas is the artwork plus one
+bar-height of padding on every side: viewBox `0 0 290.294 60`.

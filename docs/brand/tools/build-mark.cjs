@@ -1,4 +1,4 @@
-// Builds the Track Toolkit icon mark from a parametric spec: SVG sources,
+// Builds the Track Toolkit icon mark from the parametric spec in mark-spec.cjs: SVG sources,
 // PNG icon exports (maskable-safe framing), a 24 px legibility export, and the
 // review previews. Re-run with:
 //
@@ -15,65 +15,8 @@ const OUT = path.join(ROOT, 'frontend-UI', 'public', 'brand');
 const PREVIEW = path.join(OUT, 'preview');
 fs.mkdirSync(PREVIEW, { recursive: true });
 
-const ORANGE = '#FF5500';
-const ORANGE_DEEP = '#E64A00';
-const INK = '#0F1729';
-const WHITE = '#FFFFFF';
-const PAPER = '#F8F7F5';
-const NIGHT = '#0E121A';
-
-// All geometry in a 48-unit square viewBox. Bar thickness T, gap G.
-const VB = 48;
-const T = 10;   // 20.8 % of canvas
-const G = 5;    // 10.4 % of canvas
-const ROWS = [4, 4 + T + G, 4 + 2 * (T + G)]; // y of each bar: 4, 19, 34 -> bottom edge 44
-
-// Each candidate: rows of pieces [x0, x1]. `accent` marks the irregular piece.
-const CANDIDATES = {
-  // "moved": the middle row is pushed sideways out of the left-aligned list.
-  shift: {
-    name: 'shift',
-    rows: [
-      [{ x: [4, 36] }],
-      [{ x: [14, 44], accent: true }],
-      [{ x: [4, 28] }],
-    ],
-  },
-  // "split": the middle row is cut into two pieces with a small gap.
-  split: {
-    name: 'split',
-    rows: [
-      [{ x: [4, 44] }],
-      [{ x: [4, 24] }, { x: [30, 44], accent: true }],
-      [{ x: [4, 32] }],
-    ],
-  },
-};
-
-const CHOSEN = 'shift';
-const RUNNER_UP = 'split';
-const USE_ACCENT = false; // second flat tone on the irregular piece
-
-function pieces(spec) {
-  const out = [];
-  spec.rows.forEach((row, i) => row.forEach((p) => out.push({ x: p.x[0], y: ROWS[i], w: p.x[1] - p.x[0], h: T, accent: !!p.accent })));
-  return out;
-}
-
-function bounds(spec) {
-  const ps = pieces(spec);
-  const x0 = Math.min(...ps.map((p) => p.x)), x1 = Math.max(...ps.map((p) => p.x + p.w));
-  const y0 = Math.min(...ps.map((p) => p.y)), y1 = Math.max(...ps.map((p) => p.y + p.h));
-  return { x0, y0, x1, y1, w: x1 - x0, h: y1 - y0 };
-}
-
-function svg(spec, { fill, accentFill, size } = {}) {
-  const dim = size ? ` width="${size}" height="${size}"` : '';
-  const rects = pieces(spec)
-    .map((p) => `  <rect x="${p.x}" y="${p.y}" width="${p.w}" height="${p.h}" rx="${T / 2}" fill="${p.accent && accentFill ? accentFill : fill}"/>`)
-    .join('\n');
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${VB} ${VB}"${dim} role="img" aria-label="Track Toolkit">\n${rects}\n</svg>\n`;
-}
+const { COLORS, VB, T, G, CANDIDATES, CHOSEN, RUNNER_UP, USE_ACCENT, pieces, bounds, svg } = require('./mark-spec.cjs');
+const { ORANGE, ORANGE_DEEP, INK, WHITE, PAPER, NIGHT } = COLORS;
 
 // Largest scale (px per unit) at which every rounded cap of the mark stays
 // inside a circle of the given radius centred on the canvas centre.

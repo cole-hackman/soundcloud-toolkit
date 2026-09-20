@@ -5,7 +5,8 @@
 the Azure `tracktoolkit` database (2026-09-20). soundcloudtoolkit.com (apex,
 www, api) 301/308 to it. DigitalOcean is frozen (broken DATABASE_URL), Vercel
 and Neon untouched — all three are the rollback until a one-week soak ends.
-Open: Search Console change of address, Cole's browser login, decommission.
+Verified end to end (browser login + playlists, 2026-09-20 19:44). Open:
+Search Console change of address (Cole, two clicks), soak, decommission.
 Read `MIGRATION.md` ("CUTOVER DONE") first.
 
 ## Just done
@@ -20,9 +21,10 @@ Read `MIGRATION.md` ("CUTOVER DONE") first.
 - 646dd20 — /health 200, login 302 to SoundCloud, Postgres password rotated.
 
 ## Next
-1. Cole: browser login on https://tracktoolkit.com, confirm playlists load.
-2. Search Console: verify the tracktoolkit.com domain property (TXT), run
-   Change of address from the soundcloudtoolkit.com property, submit sitemap.
+1. Search Console → soundcloudtoolkit.com property → Settings → Change of
+   address → select tracktoolkit.com → Validate & update (Cole).
+2. Watch Azure for a week: `/health`, Log Analytics errors, Search Console
+   coverage on both properties.
 3. After a week: decommission DigitalOcean app, then Vercel, keep Neon a
    month; rotate the SoundCloud client secret; add /og-image.png.
 

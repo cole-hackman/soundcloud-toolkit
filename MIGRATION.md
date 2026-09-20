@@ -30,10 +30,20 @@ Rollback (until the old stack is decommissioned): restore DigitalOcean's
 SoundCloud redirect URI back to `https://api.soundcloudtoolkit.com/api/auth/callback`.
 Writes made on Azure after 18:49 would need a reverse dump. Neon is intact.
 
-Still open: Search Console change of address (in progress, needs the
-`google-site-verification` TXT on tracktoolkit.com), Cole's browser login
-on the new domain, the one-week soak, then decommission (DigitalOcean app →
-Vercel project → Neon last, then rotate the SoundCloud client secret).
+7. 19:44 Cole logged in through the browser on tracktoolkit.com: OAuth code
+   exchange with the new redirect URI succeeded (`auth-login` operation and a
+   fresh `tokens` row at 17:44:13 UTC in the Azure DB), playlists loaded.
+   **Migration verified end to end.**
+8. Search Console: `tracktoolkit.com` Domain property verified (DNS TXT),
+   sitemap submitted. Change of address left for Cole (two clicks on
+   Settings → Change of address in the soundcloudtoolkit.com property; the
+   page's dropdown hangs the browser extension).
+
+Still open: one-week soak, then decommission in this order — DigitalOcean
+app (still running with a broken `DATABASE_URL`), Vercel project, Neon last
+(keep a month) — then rotate the SoundCloud client secret at SoundCloud and
+in Key Vault, retire `.do/app.yaml` and `vercel.json`, and add
+`/og-image.png`.
 
 
 Durable state for the DigitalOcean + Vercel + Neon → Azure move and the

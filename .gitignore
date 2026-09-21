@@ -69,3 +69,7 @@ __pycache__/
 
 # Local git worktrees
 .worktrees/
+
+# Working notes from other sessions belong in ~/Developer/tracktoolkit-notes, never in the repo
+/reports/
+/research_notes/

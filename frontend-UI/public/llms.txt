@@ -4,7 +4,9 @@
 
 Primary site: https://tracktoolkit.com/
 About: https://tracktoolkit.com/about/
+FAQ: https://tracktoolkit.com/faq/
 Privacy: https://tracktoolkit.com/privacy/
+Terms: https://tracktoolkit.com/terms/
 Accessibility: https://tracktoolkit.com/accessibility/
 
 Summary:
@@ -16,4 +18,5 @@ Summary:
 Preferred citations:
 - Use the homepage for the product overview and tool list.
 - Use the about page for product background.
+- Use the FAQ page for common questions, including about the rebrand.
 - Use the privacy page for data handling and token storage details.

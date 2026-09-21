@@ -26,8 +26,13 @@ Track Toolkit (formerly SoundCloud Toolkit — SoundCloud's API Terms of Use for
 - **TypeScript**
 - **Tailwind CSS v4** — utility styling
 - **shadcn/ui** (custom components in `src/components/ui/`) — Button, Card, Input, LoadingSpinner, EmptyState, Skeleton
-- **Space Grotesk** + **Plus Jakarta Sans** — fonts via `next/font`
-- Deployed as static export on **Vercel**
+- **Space Grotesk** + **Plus Jakarta Sans** — fonts via `next/font`, self-hosted into the export
+- Built to `frontend-UI/out/` and served by the Express backend from one origin on **Azure App Service**
+- **No third-party scripts and no analytics.** No Google Analytics, no Vercel
+  Analytics or Speed Insights, no tag manager, no widget CDN, no external font
+  host. The CSP in `server/middleware/security.js` names no third-party script,
+  style or font source (only SoundCloud, in `connectSrc`), and
+  `tests/security-headers.test.js` fails if one is added back
 
 ---
 
@@ -118,8 +123,8 @@ soundcloud-tool/
 │   │   │   ├── RebrandAnnouncement.tsx      # Auth gate for the one-time rebrand modal
 │   │   │   ├── RebrandAnnouncementModal.tsx # The modal itself
 │   │   │   ├── WhatsNewModal.tsx  # Feature announcement (yields to the rebrand modal)
-│   │   │   ├── Providers.tsx     # Context aggregator
-│   │   │   └── Analytics.tsx     # Google Analytics integration
+│   │   │   ├── SupportLink.tsx   # mailto: link to the shared support address
+│   │   │   └── Providers.tsx     # Context aggregator
 │   │   ├── contexts/
 │   │   │   ├── AuthContext.tsx   # isAuthenticated, user, login(), logout()
 │   │   │   └── ThemeContext.tsx

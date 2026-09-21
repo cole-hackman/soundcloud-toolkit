@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import Link from "next/link";
 import { Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { PREVIOUS_PRODUCT_NAME, PRODUCT_NAME } from "@/lib/rebrand";
@@ -141,10 +142,21 @@ export function RebrandAnnouncementModal({
             </p>
           </div>
 
-          <div className="pt-1">
-            <Button ref={acknowledgeRef} onClick={onAcknowledge} className="w-full">
+          <div className="flex flex-col gap-2 pt-1 sm:flex-row-reverse">
+            <Button
+              ref={acknowledgeRef}
+              onClick={onAcknowledge}
+              className="w-full sm:flex-1"
+            >
               Got it — take me to {PRODUCT_NAME}
             </Button>
+            <Link
+              href="/faq/#rebrand"
+              onClick={onAcknowledge}
+              className="inline-flex h-11 items-center justify-center rounded-lg border border-border px-4 text-sm font-medium text-foreground transition hover:border-primary/40 hover:text-primary sm:flex-1"
+            >
+              Read the FAQ
+            </Link>
           </div>
         </div>
       </div>

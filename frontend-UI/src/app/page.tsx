@@ -4,6 +4,7 @@ import Image from "next/image";
 import { BrandWordmark } from "@/components/brand/Logo";
 import Link from "next/link";
 import { StructuredData } from "@/components/StructuredData";
+import { SupportLink } from "@/components/SupportLink";
 import { Button, Card } from "@/components/ui";
 import { FlickeringGrid } from "@/components/ui/FlickeringGrid";
 import { ShimmerButton } from "@/components/ui/ShimmerButton";
@@ -27,8 +28,17 @@ import {
   ArrowRight,
 } from "lucide-react";
 
-// FAQ data - used for both display and structured data
+// FAQ data — trimmed teaser for the landing page. The full list (including
+// the rest of the rename questions) lives on /faq, which is also the only
+// page that emits FAQPage JSON-LD for this content.
 const faqs = [
+  {
+    question: "Is Track Toolkit the same as SC Toolkit?",
+    answer:
+      "Yes — same product, same tools, same account and data. We just had to change the name.",
+    linkHref: "/faq/#rebrand",
+    linkLabel: "Read the rebrand FAQ",
+  },
   {
     question: "Is Track Toolkit free to use?",
     answer: "Yes, Track Toolkit is completely free to use. We provide powerful playlist management and social tools at no cost to help you organize your SoundCloud music."
@@ -44,26 +54,6 @@ const faqs = [
   {
     question: "Can I merge playlists with more than 500 tracks?",
     answer: "Yes! When merging playlists that exceed 500 tracks, Track Toolkit automatically splits them into multiple playlists (e.g., Part 1/3, Part 2/3, Part 3/3) so you don't lose a single track."
-  },
-  {
-    question: "What happens to my original playlists?",
-    answer: "Your original playlists remain completely untouched. When you merge playlists or create new ones from your likes, we create new playlists rather than modifying existing ones. You have full control over your music library."
-  },
-  {
-    question: "Can I see who doesn't follow me back?",
-    answer: "Yes! The Following Manager compares your followers and following lists to show who doesn't follow you back. You can then bulk unfollow to clean up your social graph."
-  },
-  {
-    question: "Can I download tracks from SoundCloud?",
-    answer: "Track Toolkit helps you download tracks where the artist has enabled downloads or provided a purchase link. We respect artist preferences and never bypass download restrictions."
-  },
-  {
-    question: "What is Activity to Playlist?",
-    answer: "Activity to Playlist pulls the latest tracks from your SoundCloud activity feed — songs recently posted by artists you follow — and lets you save them as a new playlist before they get buried in your feed."
-  },
-  {
-    question: "Does Track Toolkit work with private playlists?",
-    answer: "Yes, Track Toolkit works with both public and private playlists. As long as you have access to the playlists through your SoundCloud account, you can use all our tools to organize them."
   }
 ];
 
@@ -193,7 +183,7 @@ export default function Home() {
 
   return (
     <>
-      <StructuredData faqs={faqs} />
+      <StructuredData />
 
       <div className="min-h-screen bg-background text-foreground">
         {/* Navigation */}
@@ -561,7 +551,7 @@ export default function Home() {
                   key={faq.question}
                   className="group rounded-xl border border-border/70 bg-surface/80"
                 >
-                  <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-4 sm:px-6 sm:py-5">
+                  <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between px-4 py-4 sm:px-6 sm:py-5">
                     <h3 className="pr-4 text-left text-sm font-medium text-foreground sm:text-base">
                       {faq.question}
                     </h3>
@@ -573,9 +563,25 @@ export default function Home() {
                     <p className="text-sm leading-relaxed text-muted-foreground sm:text-base">
                       {faq.answer}
                     </p>
+                    {faq.linkHref && faq.linkLabel && (
+                      <Link
+                        href={faq.linkHref}
+                        className="mt-2 inline-block text-sm font-medium text-foreground underline underline-offset-2 transition hover:text-primary"
+                      >
+                        {faq.linkLabel}
+                      </Link>
+                    )}
                   </div>
                 </details>
               ))}
+            </div>
+            <div className="mt-8 text-center">
+              <Link
+                href="/faq"
+                className="text-sm font-medium text-foreground underline underline-offset-2 transition hover:text-primary"
+              >
+                More questions →
+              </Link>
             </div>
           </div>
         </section>
@@ -585,12 +591,26 @@ export default function Home() {
         <footer className="border-t border-border/60 bg-background/90 px-4 py-10 sm:px-6">
           <div className="mx-auto max-w-6xl">
             <div className="flex flex-col items-center justify-between gap-4 text-xs text-muted-foreground sm:flex-row sm:text-sm">
-              <div className="flex items-center gap-4">
+              <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
                 <Link
                   href="/about"
                   className="hover:text-foreground transition-colors"
                 >
                   About
+                </Link>
+                <span className="hidden sm:inline">•</span>
+                <Link
+                  href="/faq"
+                  className="hover:text-foreground transition-colors"
+                >
+                  FAQ
+                </Link>
+                <span className="hidden sm:inline">•</span>
+                <Link
+                  href="/terms"
+                  className="hover:text-foreground transition-colors"
+                >
+                  Terms
                 </Link>
                 <span className="hidden sm:inline">•</span>
                 <Link
@@ -606,6 +626,10 @@ export default function Home() {
                 >
                   Accessibility
                 </Link>
+                <span className="hidden sm:inline">•</span>
+                <SupportLink className="hover:text-foreground transition-colors underline underline-offset-2">
+                  Contact
+                </SupportLink>
               </div>
               <div className="text-center sm:text-right">
                 <p>Track Toolkit is not affiliated with SoundCloud.</p>

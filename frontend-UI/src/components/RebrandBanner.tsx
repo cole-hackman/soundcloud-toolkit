@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { Megaphone, X } from "lucide-react";
 import {
   PREVIOUS_PRODUCT_NAME,
@@ -92,6 +93,12 @@ export function RebrandBanner() {
             Same tools, same account — just a new name.
           </span>
         </p>
+        <Link
+          href="/faq/#rebrand"
+          className="shrink-0 whitespace-nowrap text-xs font-medium text-foreground underline underline-offset-2 transition hover:text-primary sm:text-sm"
+        >
+          Read the FAQ
+        </Link>
         <button
           type="button"
           onClick={handleDismiss}

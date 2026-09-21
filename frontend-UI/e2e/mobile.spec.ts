@@ -13,6 +13,7 @@ interface PageCase {
 const PAGES: PageCase[] = [
   { path: "/" },
   { path: "/about/" },
+  { path: "/faq/" },
   { path: "/privacy/" },
   { path: "/accessibility/" },
   { path: "/login/" },

@@ -1,6 +1,6 @@
 # Azure infrastructure
 
-Everything Track Toolkit needs on Azure, as code. `MIGRATION.md` at the repo
+Everything Track Toolkit needs on Azure, as code. `docs/internal/MIGRATION.md` at the repo
 root holds the decisions, verification log and open items; this file is the
 operator's quick reference.
 

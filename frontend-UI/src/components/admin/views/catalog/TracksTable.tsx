@@ -22,6 +22,7 @@ import {
 import { catalogCsvUrl, catalogTracksParams, useCatalogTracks, useTrackOperations } from "../../queries";
 import { DEFAULT_CATALOG_FILTER, type CatalogFilter, type CatalogSort, type CatalogSummary, type Period } from "../../types";
 import { ColumnToggles, ExportLink, Pager, SearchBox, useToggleSet } from "./shared";
+import { TrackPlayer } from "./TrackPlayer";
 
 // Actions that carry trackIds in their metadata, so "touched by" is meaningful.
 const TRACK_ACTIONS = [
@@ -44,11 +45,16 @@ export function accessTone(access: string | null): Tone {
   return access === "playable" ? "ok" : "danger";
 }
 
-function TrackOpsRow({ trackId, colSpan }: { trackId: string; colSpan: number }) {
+function TrackOpsRow({ trackId, title, permalinkUrl, colSpan }: { trackId: string; title: string; permalinkUrl: string | null; colSpan: number }) {
   const q = useTrackOperations(trackId);
+  // Player state lives here so it resets when the row collapses (unmount).
+  const [playerOpen, setPlayerOpen] = React.useState(false);
   return (
     <tr className="bg-primary/[0.04]">
       <td colSpan={colSpan} className="px-4 pb-3 pt-1 sm:px-5">
+        <div className="mb-3 max-w-[640px]">
+          <TrackPlayer permalinkUrl={permalinkUrl} title={title} open={playerOpen} onToggle={() => setPlayerOpen((o) => !o)} />
+        </div>
         <div className="mb-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-muted-foreground">Operations touching this track · latest 50</div>
         {q.isPending ? (
           <RowSkeleton rows={2} height="h-5" />
@@ -274,7 +280,7 @@ export function TracksTable({ period, enabled, summary, filter, onFilterChange }
                         </td>
                       )}
                     </tr>
-                    {open && <TrackOpsRow trackId={id} colSpan={COLS} />}
+                    {open && <TrackOpsRow trackId={id} title={t.title || `#${id}`} permalinkUrl={t.permalinkUrl} colSpan={COLS} />}
                   </React.Fragment>
                 );
               })}

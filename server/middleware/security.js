@@ -3,26 +3,52 @@ import logger from '../lib/logger.js';
 import { safeError } from '../lib/safe-error.js';
 
 /**
- * Security headers middleware
- * Configures helmet with appropriate security headers
+ * Content-Security-Policy directives shared by every page. `frameSrc` is
+ * 'none' everywhere except the admin console (see securityHeaders below):
+ * the console embeds SoundCloud's player widget, and that allowance must
+ * not leak to user-facing pages.
  */
-export const securityHeaders = helmet({
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
-      scriptSrc: ["'self'", "'unsafe-inline'", "https://cdnjs.buymeacoffee.com"], // unsafe-inline required for Next.js static export bootstrap scripts
-      imgSrc: ["'self'", "https:", "data:"], // Allow images from any HTTPS source
-      connectSrc: ["'self'", "https://api.soundcloud.com", "https://secure.soundcloud.com", "https://api-v2.soundcloud.com", "ws://localhost:*", "wss:"],
-      fontSrc: ["'self'", "data:", "https://fonts.gstatic.com"],
-      objectSrc: ["'none'"],
-      mediaSrc: ["'self'"],
-      frameSrc: ["'none'"],
-    },
-  },
-  crossOriginEmbedderPolicy: false, // Disable for SoundCloud embeds if needed
-  crossOriginResourcePolicy: { policy: "cross-origin" }, // Allow SoundCloud resources
-});
+const BASE_CSP_DIRECTIVES = {
+  defaultSrc: ["'self'"],
+  styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+  scriptSrc: ["'self'", "'unsafe-inline'", "https://cdnjs.buymeacoffee.com"], // unsafe-inline required for Next.js static export bootstrap scripts
+  imgSrc: ["'self'", "https:", "data:"], // Allow images from any HTTPS source
+  connectSrc: ["'self'", "https://api.soundcloud.com", "https://secure.soundcloud.com", "https://api-v2.soundcloud.com", "ws://localhost:*", "wss:"],
+  fontSrc: ["'self'", "data:", "https://fonts.gstatic.com"],
+  objectSrc: ["'none'"],
+  mediaSrc: ["'self'"],
+  frameSrc: ["'none'"],
+};
+
+/** The one origin the admin console may frame: SoundCloud's embed player. */
+export const ADMIN_FRAME_SRC = 'https://w.soundcloud.com';
+
+function buildHelmet(directives) {
+  return helmet({
+    contentSecurityPolicy: { directives },
+    crossOriginEmbedderPolicy: false, // Disable for SoundCloud embeds if needed
+    crossOriginResourcePolicy: { policy: "cross-origin" }, // Allow SoundCloud resources
+  });
+}
+
+const defaultHeaders = buildHelmet(BASE_CSP_DIRECTIVES);
+const adminHeaders = buildHelmet({ ...BASE_CSP_DIRECTIVES, frameSrc: [ADMIN_FRAME_SRC] });
+
+/** True for the admin console document and its sub-paths, never for /api. */
+export function isAdminPagePath(path) {
+  return path === '/admin' || path.startsWith('/admin/');
+}
+
+/**
+ * Security headers middleware. Every response gets the base policy; only
+ * the admin console document (`/admin`, `/admin/`) gets `frame-src` opened
+ * to the SoundCloud player. A CSP governs the document it is served with,
+ * so widening it here cannot affect any other page.
+ */
+export const securityHeaders = (req, res, next) => {
+  if (isAdminPagePath(req.path)) return adminHeaders(req, res, next);
+  return defaultHeaders(req, res, next);
+};
 
 
 /**

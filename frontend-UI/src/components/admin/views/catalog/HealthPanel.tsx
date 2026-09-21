@@ -1,13 +1,14 @@
 "use client";
 
 import * as React from "react";
-import { CheckCircle2, ExternalLink, RefreshCw } from "lucide-react";
+import { CheckCircle2, ExternalLink, Play, RefreshCw, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { fmtAbsolute, fmtInt, timeAgo } from "../../format";
 import { Empty, ErrorNotice, Panel, RowSkeleton, Segmented, SmallButton, TableShell, tdClass, thClass } from "../../primitives";
 import { CATALOG_PAGE_SIZE, useCatalogTracks, useReResolve } from "../../queries";
 import type { CatalogFilter, CatalogSummary, Period } from "../../types";
 import { Pager } from "./shared";
+import { TrackPlayer } from "./TrackPlayer";
 
 export type HealthState = "blocked" | "preview" | "gone" | "pending" | "not_found";
 
@@ -53,6 +54,10 @@ export function HealthPanel({ period, enabled, summary, state, onStateChange }: 
 
   const [selected, setSelected] = React.useState<Set<string>>(() => new Set());
   React.useEffect(() => setSelected(new Set()), [state, period, page]);
+  // One embedded player at a time; a blocked track's widget shows SoundCloud's
+  // own message, which is the quickest confirmation of what the catalog says.
+  const [playing, setPlaying] = React.useState<string | null>(null);
+  React.useEffect(() => setPlaying(null), [state, period, page]);
   const pageIds = rows.map((t) => String(t.id));
   const allOnPage = pageIds.length > 0 && pageIds.every((id) => selected.has(id));
   const toggleAll = () => setSelected(allOnPage ? new Set() : new Set(pageIds));
@@ -164,14 +169,19 @@ export function HealthPanel({ period, enabled, summary, state, onStateChange }: 
                 <th scope="col" className={cn(thClass, "text-right")}>Attempts</th>
                 <th scope="col" className={cn(thClass, "text-right")}>Touches</th>
                 <th scope="col" className={thClass}>Last seen</th>
+                <th scope="col" className={cn(thClass, "w-8")}>
+                  <span className="sr-only">Play</span>
+                </th>
               </tr>
             </thead>
             <tbody>
               {rows.map((t) => {
                 const id = String(t.id);
                 const checked = selected.has(id);
+                const isPlaying = playing === id;
                 return (
-                  <tr key={id} className={cn("transition-colors hover:bg-primary/[0.05]", checked && "bg-primary/[0.06]")}>
+                  <React.Fragment key={id}>
+                  <tr className={cn("transition-colors hover:bg-primary/[0.05]", (checked || isPlaying) && "bg-primary/[0.06]")}>
                     <td className={cn(tdClass, "pr-0")}>
                       <input
                         type="checkbox"
@@ -202,7 +212,30 @@ export function HealthPanel({ period, enabled, summary, state, onStateChange }: 
                     <td className={cn(tdClass, "whitespace-nowrap font-mono text-[11px] text-muted-foreground")} title={fmtAbsolute(t.lastSeenAt)}>
                       {t.lastSeenAt ? timeAgo(t.lastSeenAt) : "—"}
                     </td>
+                    <td className={cn(tdClass, "text-right")}>
+                      {t.permalinkUrl && (
+                        <button
+                          type="button"
+                          aria-pressed={isPlaying}
+                          aria-label={isPlaying ? "Close player" : `Play ${t.title || `track ${id}`} here`}
+                          onClick={() => setPlaying(isPlaying ? null : id)}
+                          className={cn("inline-flex h-6 w-6 items-center justify-center rounded", isPlaying ? "bg-primary/15 text-primary" : "text-muted-foreground hover:text-primary")}
+                        >
+                          {isPlaying ? <X className="h-3.5 w-3.5" aria-hidden="true" /> : <Play className="h-3.5 w-3.5" aria-hidden="true" />}
+                        </button>
+                      )}
+                    </td>
                   </tr>
+                  {isPlaying && (
+                    <tr className="bg-primary/[0.04]">
+                      <td colSpan={8} className="px-4 pb-3 pt-1 sm:px-5">
+                        <div className="max-w-[640px]">
+                          <TrackPlayer permalinkUrl={t.permalinkUrl} title={t.title || `#${id}`} open onToggle={() => setPlaying(null)} />
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                  </React.Fragment>
                 );
               })}
             </tbody>

@@ -10,6 +10,10 @@ Search Console change of address (Cole, two clicks), soak, decommission.
 Read `MIGRATION.md` ("CUTOVER DONE") first.
 
 ## Just done
+- Embedded SoundCloud player in the catalog (expanded track row + Health
+  rows), with `frame-src https://w.soundcloud.com` applied to the `/admin`
+  document only — `securityHeaders` now dispatches on `isAdminPagePath`;
+  every other page keeps `frame-src 'none'` (test pins it).
 - Catalog view extended: playlists and artists roll-up listings, per-day
   touch series, CSV export of any filtered list, optional duration/seen
   columns, distinct-tracks counter, and Health with the console's first

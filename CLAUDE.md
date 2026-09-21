@@ -480,7 +480,14 @@ time-series, genre/access bars that filter, Tracks with optional
 duration/first-seen/last-seen columns and CSV export, Playlists, the Artists
 roll-up (not-playable share per artist), and Health — the blocked / preview /
 gone / pending / not-found lists with the console's only write, **Re-resolve**
-(`POST /api/admin/catalog/re-resolve`, ≤200 ids per click). Each view fetches only what it
+(`POST /api/admin/catalog/re-resolve`, ≤200 ids per click). An expanded
+track row (and each Health row) can mount SoundCloud's embed player on
+demand, one at a time; it is a plain iframe on `w.soundcloud.com`, no
+token involved. The `frame-src` allowance for it is scoped to the `/admin`
+document only: `securityHeaders` in `server/middleware/security.js`
+serves a second helmet instance for `isAdminPagePath` and the base policy
+(`frame-src 'none'`) everywhere else — `tests/routes/csp-admin-frame.test.js`
+pins that. Each view fetches only what it
 needs through the hooks in `queries.ts` (react-query; live views re-poll every
 30 s while the tab is visible and keep stale data on screen while refetching —
 never a skeleton flash). Archive queries are all-time and never poll.

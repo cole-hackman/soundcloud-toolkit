@@ -42,7 +42,7 @@ soundcloud-tool/
 │   │   ├── growth.js             # Growth/discovery suite — /growth/* (discover, engage, analytics, history, follow-backs, reverse, stats)
 │   │   ├── admin.js              # Admin dashboard — stats, operations, catalog, feedback (every route is authenticateUser + adminAuth)
 │   │   ├── auth.js               # OAuth2+PKCE login/callback, session /me, logout, account deletion
-│   │   └── feedback.js           # Rebrand name vote — status + submit
+│   │   └── feedback.js           # In-app feedback form (POST /, GET /mine) + the retired rebrand name vote
 │   ├── lib/
 │   │   ├── soundcloud-client.js  # SoundCloud API wrapper — token exchange, pagination, 401 refresh, 429 backoff, 30s fetch timeout
 │   │   ├── session.js            # signSession/unsignSession (HMAC-SHA256, timing-safe), parseSessionData (iat/TTL), SESSION_TTL_MS
@@ -76,8 +76,9 @@ soundcloud-tool/
 │   │   ├── auth.js               # authenticateUser() — session cookie → DB user → decrypted tokens
 │   │   ├── adminAuth.js          # adminAuth() — req.user.soundcloudId ∈ ADMIN_IDS; fails closed when unset
 │   │   ├── security.js           # securityHeaders, preventKeyLeakage, validateEnv, rejectUntrustedOrigin
-│   │   ├── validation.js         # express-validator rule sets (merge, bulk-unlike, resolve, growth, survey, etc.)
-│   │   └── rateLimiter.js        # Five rate limiters: api, auth, heavy, library-read, health
+│   │   ├── validation.js         # express-validator rule sets (merge, bulk-unlike, resolve, growth, survey, feedback, etc.)
+│   │   └── rateLimiter.js        # Five per-IP limiters (api, auth, heavy, library-read, health) plus
+│   │                             #   createUserLimiter() and the two per-USER feedback limiters
 │   └── package.json
 ├── frontend-UI/
 │   ├── src/
@@ -129,7 +130,7 @@ soundcloud-tool/
 │   └── package.json
 ├── tests/                        # Jest suites — lib units plus tests/routes/ (supertest authz/CSRF boundaries)
 ├── prisma/
-│   └── schema.prisma             # Single source of truth for the schema (16 models)
+│   └── schema.prisma             # Single source of truth for the schema (17 models)
 ├── docs/                         # Engineering review, SECURITY.md, perf audit, plans, incidents,
 │                                 #   sql/ migrations, api.json (SoundCloud's upstream spec)
 ├── .do/app.yaml                  # DigitalOcean App Platform deployment config
@@ -234,7 +235,7 @@ expires.
 
 ## Data Model
 
-The schema (`prisma/schema.prisma`) has **16 models**, not two:
+The schema (`prisma/schema.prisma`) has **17 models**, not two:
 
 | Model | Purpose |
 |-------|---------|
@@ -243,6 +244,7 @@ The schema (`prisma/schema.prisma`) has **16 models**, not two:
 | `OperationLog` | Per-operation analytics record — action, status, duration, track/playlist ids |
 | `Track` / `Playlist` | Harvested music catalog (populated opportunistically from resolved/browsed content) |
 | `GrowthAction` | Follow/like actions taken by the growth suite, plus follow-back outcomes |
+| `Feedback` | In-app feedback form submissions — login-required, stored only here (no email, no webhook). `messageHash` (sha256 of the normalized message) backs a 24-hour per-user duplicate check; `status` is `new\|seen\|done\|spam` and `adminNote` is admin-only |
 | `RebrandVote` | Rebrand name-vote responses — the vote is closed, rows retained read-only (`@@unique([userId, campaignId])`) |
 | `BetaSignup` | The retired SongSwipe beta survey — retained read-only for history |
 | `SurveyResponse` | The retired monetization survey — retained read-only for history |
@@ -430,6 +432,42 @@ All `/growth/*` routes are `authenticateUser`; the write-heavy ones also carry
 | `POST` | `/api/growth/reverse` | Unfollow previously followed targets (does not refund budget) |
 | `GET` | `/api/growth/stats` | Aggregate growth counters |
 
+### Feedback (`routes/feedback.js`)
+
+The live in-app "Send feedback" form. Login-required by decision, so every row
+is attributable — which is what lets the write path get away with a honeypot
+and a per-user limiter instead of a captcha. Storage is Postgres and nothing
+else: no email delivery, no webhook, no third-party widget.
+
+Not to be confused with the retired rebrand name vote, which lives in the same
+route file under `/survey` and is documented further down.
+
+| Method | Path | Body / Query | Description |
+|--------|------|--------------|-------------|
+| `POST` | `/api/feedback` | `{ type: 'bug'\|'feature'\|'other', message: string (10–2000), page?: '/route', email?: string, website?: string }` | Records one submission. **201** `{ id, createdAt }`; **400** on an invalid body; **409** `{ error: 'You already sent this recently' }` when the same user sent the same message inside 24h; **202** `{ accepted: true }` — and no row — when the `website` honeypot is filled |
+| `GET` | `/api/feedback/mine` | — | The user's own last 20, newest first: `{ items: [{ id, type, page, status, createdAt }] }`. `adminNote` and `message` are deliberately not selected |
+
+**Middleware order is load-bearing**:
+`authenticateUser, validateFeedback, feedbackHourlyLimiter, feedbackDailyLimiter, handler`.
+The validator runs **before** the limiters, for the same reason
+`validateRebrandVote` runs before the closed-campaign gate: a cross-site
+form-encoded post parses to an empty `req.body` under `express.json()` and
+dies at the validator with a 400. Putting the limiters first would also let a
+forged request burn a real user's feedback budget.
+`tests/routes/feedback.test.js` asserts that order directly.
+
+`feedbackHourlyLimiter` (5/hour) and `feedbackDailyLimiter` (20/24h) are the
+only **per-user** limiters in `rateLimiter.js` — every other tier is per-IP.
+They are built by `createUserLimiter()`, which keys on `req.user.id` and only
+falls back to `req.ip`. That fallback is unreachable behind `authenticateUser`;
+it exists so the key is never `undefined`. Mount one of these in *front* of
+`authenticateUser` and it silently becomes a per-IP limiter again.
+
+The honeypot answers **202**, not 400, so automation cannot learn which field
+gave it away, and its counter is `logger.debug` (a no-op outside development)
+so spam cannot fill the log in place of the table. The `message` and `email`
+never appear in any log line.
+
 ### Admin (`routes/admin.js`)
 
 Every admin route runs `authenticateUser` **then** `adminAuth`. `adminAuth`
@@ -450,6 +488,22 @@ is registered without the pair.
 | `GET` | `/api/admin/feedback/summary` | Retired beta-survey aggregates (API only) |
 | `GET` | `/api/admin/feedback` | Retired beta-survey response list (API only) |
 | `GET` | `/api/admin/feedback/beta-emails` | CSV export of beta opt-in emails (API only) |
+| `GET` | `/api/admin/feedback-items` | Live feedback inbox — `?status=&type=&page=1&pageSize=50` (capped at 200); `{ items, total, page, pageSize }`, newest first, sender attached |
+| `GET` | `/api/admin/feedback-items/summary` | `{ total, unread, byStatus, byType }` — every bucket seeded at zero |
+| `PATCH` | `/api/admin/feedback-items/:id` | Triage: `{ status?, adminNote? }`. 400 on an empty patch, 404 when the row is gone |
+| `GET` | `/api/admin/feedback-items.csv` | CSV attachment of the filtered set (`?status=`) |
+
+**`/feedback/*` and `/feedback-items*` are different tables.** `/feedback/*`
+is the retired SongSwipe beta survey (`BetaSignup`); `/feedback-items*` is the
+live in-app feedback form (`Feedback`). The path spelling is the only thing
+keeping them apart, so do not "tidy" one into the other.
+
+The `PATCH` writes `status` and `adminNote` and nothing else — no admin action
+can rewrite what a user said. An empty patch is refused rather than issued as a
+no-op write, because `updatedAt` is `@updatedAt` and would move anyway, making
+the row look freshly triaged. The list filters accept only the enumerated
+`status`/`type` values; anything else is dropped rather than passed to Prisma,
+so a typo returns everything instead of nothing.
 
 The three `/feedback/*` routes serve the retired SongSwipe beta survey. They
 still work, but nothing calls them — the admin dashboard shows only the live
@@ -521,7 +575,12 @@ invariant `tests/routes/feedback-authz.test.js` guards. Putting the gate first
 would retire that coverage along with the vote.
 
 Nothing collected is deleted. `RebrandVote` rows stay, and the admin read
-paths still serve the full tally and both write-in fields:
+paths still serve the full tally and both write-in fields.
+
+These four are the **closed vote**, not the live feedback form — that is
+`POST /api/feedback` and `GET /api/feedback/mine`, documented under
+[Feedback](#feedback-routesfeedbackjs) above. Both live in
+`routes/feedback.js`; only the vote is retired.
 
 | Method | Path | Description |
 |--------|------|-------------|

@@ -38,7 +38,7 @@ what runs.
 
 One-time setup for the workflow (already done for this repo, recorded here so
 it can be rebuilt): an Entra app registration with a federated credential
-whose subject is `repo:cole-hackman/soundcloud-toolkit:environment:azure`, the
+whose subject is `repo:cole-hackman/tracktoolkit:environment:azure`, the
 `Website Contributor` role on `rg-tracktoolkit`, and the repository variables
 `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`.
 

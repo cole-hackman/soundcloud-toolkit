@@ -78,7 +78,7 @@ untouched and remain the rollback plan.
 | Databases | `tracktoolkit` (empty, prod-to-be), `tracktoolkit-rehearsal` (throwaway) | |
 | Key Vault | `tracktoolkit-kv` | RBAC; secret names listed in `infra/deploy.sh` |
 | Log Analytics | `tracktoolkit-logs` | |
-| Entra app for GitHub OIDC | `gh-tracktoolkit-deploy` (appId 8b48e1d8-…) | federated subject `repo:cole-hackman/soundcloud-toolkit:environment:azure`, Website Contributor on the RG |
+| Entra app for GitHub OIDC | `gh-tracktoolkit-deploy` (appId 8b48e1d8-…) | federated subject `repo:cole-hackman/tracktoolkit:environment:azure`, Website Contributor on the RG |
 | GitHub | environment `azure`; variables `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID` | |
 
 Current production for reference: DigitalOcean app `sctoolkit-backend`
@@ -560,6 +560,16 @@ never down — read metric timestamps against `date -u`.
   `claude/modest-thompson-pukoby` (not created by this work).
 - This file and the other internal documents moved to `docs/internal/`.
   The Azure work is finished; further changes branch from `main`.
+
+## 2026-09-21 — repository renamed to cole-hackman/tracktoolkit
+
+GitHub redirects the old slug, but the Azure OIDC federated credential is
+matched on the token subject, which carries the current repo name. Updated
+`gh-env-azure` on app `gh-tracktoolkit-deploy` to
+`repo:cole-hackman/tracktoolkit:environment:azure` and re-ran the deploy
+workflow to prove the login. Local remote and README clone URL updated;
+`.do/app.yaml` and the DigitalOcean guides still say the old slug and are
+left as retired history.
 
 ## Blocked
 

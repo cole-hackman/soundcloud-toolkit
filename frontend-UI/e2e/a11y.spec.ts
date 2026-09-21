@@ -8,6 +8,8 @@ interface PageCase {
   needsMock?: boolean;
   /** Set when the page is known to fail today; names the phase that fixes it. */
   fixme?: string;
+  /** Expected HTTP status of the navigation response; defaults to 200. */
+  expectedStatus?: number;
 }
 
 const CONTRAST_FIXME =
@@ -19,14 +21,14 @@ const PAGES: PageCase[] = [
   { path: "/privacy/" },
   { path: "/accessibility/" },
   { path: "/login/", fixme: CONTRAST_FIXME },
-  { path: "/does-not-exist/" },
+  { path: "/does-not-exist/", expectedStatus: 404 },
   { path: "/dashboard/", needsMock: true, fixme: "Phase 1/2/6" },
   { path: "/like-manager/", needsMock: true, fixme: "Phase 1/2/6" },
   { path: "/playlist-modifier/", needsMock: true, fixme: "Phase 1/2/6" },
   { path: "/growth/", needsMock: true, fixme: "Phase 1/2/6" },
 ];
 
-for (const { path, needsMock, fixme } of PAGES) {
+for (const { path, needsMock, fixme, expectedStatus } of PAGES) {
   test(`has no serious/critical WCAG 2.2 AA violations: ${path}`, async ({ page }) => {
     test.fixme(!!fixme, fixme);
 
@@ -34,7 +36,11 @@ for (const { path, needsMock, fixme } of PAGES) {
       await mockApi(page);
     }
 
-    await page.goto(path);
+    const response = await page.goto(path);
+
+    if (expectedStatus !== undefined) {
+      expect(response?.status()).toBe(expectedStatus);
+    }
 
     const results = await new AxeBuilder({ page })
       .withTags(["wcag2a", "wcag2aa", "wcag22aa"])

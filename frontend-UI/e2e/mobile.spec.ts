@@ -20,7 +20,16 @@ const PAGES: PageCase[] = [
   { path: "/dashboard/", needsMock: true },
   { path: "/like-manager/", needsMock: true },
   { path: "/playlist-modifier/", needsMock: true },
-  { path: "/growth/", needsMock: true },
+  {
+    path: "/growth/",
+    needsMock: true,
+    // Measured against document.documentElement.clientWidth (fix round 1):
+    // scrollWidth=468 on m360 (clientWidth 360), 469 on m390 (clientWidth
+    // 390), 468 on m430 (clientWidth 430) — consistent ~468-469px overflow
+    // regardless of viewport, i.e. a fixed-width element, not a percentage
+    // one. See task-1-report.md fix round 1 for how this was found.
+    fixme: "Phase 6 — scrollWidth ~468-469px overflows clientWidth (360/390/430px) on all three mobile widths",
+  },
 ];
 
 /**
@@ -59,10 +68,20 @@ for (const { path, needsMock, fixme } of PAGES) {
 
     await page.goto(path);
 
-    const noOverflow = await page.evaluate(
-      () => document.documentElement.scrollWidth <= window.innerWidth,
+    // Compare against `clientWidth`, not `window.innerWidth`: on content
+    // wider than the device, Chromium's mobile emulation can expand the
+    // *layout* viewport (`innerWidth`) to fit it, and `scrollWidth` grows
+    // right along with it — the two drift together and the check can never
+    // fail. `document.documentElement.clientWidth` stays pinned to the
+    // actual device width regardless, so it is the correct comparand for
+    // "does this page require horizontal scrolling on a real phone."
+    const { scrollWidth, clientWidth } = await page.evaluate(() => ({
+      scrollWidth: document.documentElement.scrollWidth,
+      clientWidth: document.documentElement.clientWidth,
+    }));
+    expect(scrollWidth, `scrollWidth=${scrollWidth} clientWidth=${clientWidth}`).toBeLessThanOrEqual(
+      clientWidth,
     );
-    expect(noOverflow).toBe(true);
   });
 }
 

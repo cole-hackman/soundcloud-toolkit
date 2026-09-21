@@ -1,12 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import { Plus_Jakarta_Sans, Space_Grotesk } from "next/font/google";
-import Script from "next/script";
 import "./globals.css";
-import { GoogleAnalytics } from "@/components/Analytics";
 import { Providers } from "@/components/Providers";
 import { RebrandBanner } from "@/components/RebrandBanner";
-import { Analytics } from "@vercel/analytics/react";
-import { SpeedInsights } from "@vercel/speed-insights/next";
 
 const display = Space_Grotesk({
   subsets: ["latin"],
@@ -116,22 +112,6 @@ export default function RootLayout({
           <RebrandBanner />
           {children}
         </Providers>
-        <Script
-          src="https://cdnjs.buymeacoffee.com/1.0.0/button.prod.min.js"
-          data-name="bmc-button"
-          data-slug="hackman"
-          data-color="#fcffff"
-          data-emoji="☕"
-          data-font="Lato"
-          data-text="Support Me"
-          data-outline-color="#000000"
-          data-font-color="#000000"
-          data-coffee-color="#FFDD00"
-          strategy="afterInteractive"
-        />
-        <GoogleAnalytics />
-        <Analytics />
-        <SpeedInsights />
       </body>
     </html>
   );

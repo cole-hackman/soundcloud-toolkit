@@ -868,7 +868,6 @@ export default function AdminDashboard() {
   return (
     <div style={{ minHeight: "100vh", background: P.bg, color: P.text, fontFamily: "'Outfit', sans-serif", padding: 0, margin: 0 }}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
         @keyframes fadeSlideUp {
           from { opacity: 0; transform: translateY(16px); }
           to { opacity: 1; transform: translateY(0); }

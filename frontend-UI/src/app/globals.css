@@ -125,12 +125,6 @@ body::before {
   z-index: -1;
 }
 
-/* Ensure third-party widgets stay visible */
-.bmc-btn,
-.bmc-button {
-  z-index: 60 !important;
-}
-
 /* ─── Accessibility ──────────────────────────────────────── */
 
 /* Skip-to-content link — visible only when focused */

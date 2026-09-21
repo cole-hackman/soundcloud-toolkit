@@ -179,7 +179,7 @@ function SidebarGroup({
     <div>
       <button
         onClick={() => setOpen((o) => !o)}
-        className="w-full flex items-center justify-between px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70 hover:text-muted-foreground transition-colors"
+        className="w-full flex items-center justify-between px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors"
       >
         <span>{group.label}</span>
         <ChevronDown
@@ -349,7 +349,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <div className="mx-4 my-3 border-t border-gray-200/80 dark:border-border" />
 
       <div className="px-2 mb-1">
-        <span className="px-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+        <span className="px-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
           Info
         </span>
       </div>
@@ -420,7 +420,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   setDeleteConfirmText("");
                   setDeleteAccountOpen(true);
                 }}
-                className="mt-2 w-full text-center text-[10px] text-muted-foreground/70 hover:text-red-500 transition"
+                className="mt-2 w-full text-center text-xs text-muted-foreground-subtle hover:text-destructive-text transition"
               >
                 Delete account
               </button>
@@ -500,7 +500,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           {!effectiveCollapsed && (
             <button
               onClick={toggleSidebar}
-              className="p-1 rounded-md hover:bg-black/[0.04] dark:hover:bg-white/[0.04] text-muted-foreground/70 hidden lg:flex"
+              className="p-1 rounded-md hover:bg-black/[0.04] dark:hover:bg-white/[0.04] text-muted-foreground-subtle hidden lg:flex"
               aria-label="Collapse sidebar"
             >
               <ChevronLeft className="w-3.5 h-3.5" />

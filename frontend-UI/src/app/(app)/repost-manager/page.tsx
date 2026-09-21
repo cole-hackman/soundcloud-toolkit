@@ -314,7 +314,7 @@ export default function RepostManagerPage() {
             {/* Controls — stay interactive while the list is still loading */}
             <div className="flex items-center gap-3 mb-4 flex-wrap">
               <div className="relative flex-1 min-w-[200px]">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/70" />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground-subtle" />
                 <input
                   type="text"
                   value={search}
@@ -335,7 +335,7 @@ export default function RepostManagerPage() {
               <button
                 onClick={selectAll}
                 disabled={loading}
-                className="text-sm text-primary hover:text-primary font-medium whitespace-nowrap disabled:opacity-50"
+                className="text-sm text-primary-text hover:text-primary-text font-medium whitespace-nowrap disabled:opacity-50"
               >
                 {selected.size === filteredReposts.length
                   ? "Deselect All"
@@ -386,7 +386,7 @@ export default function RepostManagerPage() {
                   >
                     Select {Math.min(removableReposts.length, parsedLimit === Infinity ? removableReposts.length : parsedLimit)} to remove
                   </button>
-                  <span className="text-xs text-muted-foreground/70">
+                  <span className="text-xs text-muted-foreground-subtle">
                     {keptCount} kept · {removableReposts.length} removable in view
                     {!repostsState.isComplete && " (more still loading)"}
                   </span>
@@ -395,7 +395,7 @@ export default function RepostManagerPage() {
             )}
 
             {!loading && repostsStatus && (
-              <div className="text-sm text-muted-foreground/70 mb-2">{repostsStatus}</div>
+              <div className="text-sm text-muted-foreground-subtle mb-2">{repostsStatus}</div>
             )}
 
             {loading ? (
@@ -458,9 +458,9 @@ export default function RepostManagerPage() {
                         ) : (
                           <div className="w-10 h-10 rounded-lg bg-gray-200 dark:bg-secondary flex items-center justify-center flex-shrink-0">
                             {repost.resourceType === "playlist" ? (
-                              <ListMusic className="w-5 h-5 text-muted-foreground/70" />
+                              <ListMusic className="w-5 h-5 text-muted-foreground-subtle" />
                             ) : (
-                              <Music className="w-5 h-5 text-muted-foreground/70" />
+                              <Music className="w-5 h-5 text-muted-foreground-subtle" />
                             )}
                           </div>
                         )}
@@ -480,7 +480,7 @@ export default function RepostManagerPage() {
                           className={`text-xs font-semibold uppercase tracking-wide px-2 py-1 rounded-full shrink-0 ${
                             repost.resourceType === "playlist"
                               ? "bg-purple-100 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400"
-                              : "bg-orange-100 dark:bg-orange-900/20 text-primary"
+                              : "bg-orange-100 dark:bg-orange-900/20 text-primary-text"
                           }`}
                         >
                           {repost.resourceType}
@@ -494,7 +494,7 @@ export default function RepostManagerPage() {
             )}
 
             {!loading && repostsState.isLoadingMore && (
-              <div className="flex items-center justify-center gap-2 pt-3 text-xs text-muted-foreground/70">
+              <div className="flex items-center justify-center gap-2 pt-3 text-xs text-muted-foreground-subtle">
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
                 Loading more…
               </div>

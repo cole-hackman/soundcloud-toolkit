@@ -578,7 +578,7 @@ export default function FollowingLibraryPage() {
                             >
                               <div
                                 className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border ${
-                                  isSelected ? "border-primary bg-primary text-white" : "border-gray-300 text-transparent dark:border-muted-foreground/40"
+                                  isSelected ? "border-primary bg-primary text-primary-foreground" : "border-gray-300 text-transparent dark:border-input"
                                 }`}
                               >
                                 <Check className="h-3.5 w-3.5" />

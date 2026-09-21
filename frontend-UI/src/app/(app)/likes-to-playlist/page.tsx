@@ -351,7 +351,7 @@ export default function LikesToPlaylistPage() {
                     onClick={() => setAddMode("new")}
                     className={`flex-1 py-2 text-sm font-medium transition ${
                       addMode === "new"
-                        ? "bg-primary text-white"
+                        ? "bg-primary text-primary-foreground"
                         : "text-muted-foreground hover:bg-gray-50 dark:hover:bg-secondary/20"
                     }`}
                   >
@@ -361,7 +361,7 @@ export default function LikesToPlaylistPage() {
                     onClick={() => setAddMode("existing")}
                     className={`flex-1 py-2 text-sm font-medium transition ${
                       addMode === "existing"
-                        ? "bg-primary text-white"
+                        ? "bg-primary text-primary-foreground"
                         : "text-muted-foreground hover:bg-gray-50 dark:hover:bg-secondary/20"
                     }`}
                   >
@@ -393,12 +393,12 @@ export default function LikesToPlaylistPage() {
                     Target Playlist
                   </label>
                   {loadingPlaylists ? (
-                    <div className="flex items-center gap-2 py-3 text-sm text-muted-foreground/70">
+                    <div className="flex items-center gap-2 py-3 text-sm text-muted-foreground-subtle">
                       <LoadingSpinner size="sm" />
                       Loading playlists…
                     </div>
                   ) : userPlaylists.length === 0 ? (
-                    <p className="text-sm text-muted-foreground/70 py-3 text-center border-2 border-dashed border-gray-200 dark:border-border rounded-lg">
+                    <p className="text-sm text-muted-foreground-subtle py-3 text-center border-2 border-dashed border-gray-200 dark:border-border rounded-lg">
                       No playlists found
                     </p>
                   ) : targetPlaylist ? (
@@ -428,7 +428,7 @@ export default function LikesToPlaylistPage() {
                   ) : (
                     <button
                       onClick={() => setShowPlaylistPicker(true)}
-                      className="w-full px-4 py-3 rounded-lg border-2 border-dashed border-gray-300 dark:border-border text-sm text-muted-foreground/70 hover:border-primary hover:text-primary transition-all text-center"
+                      className="w-full px-4 py-3 rounded-lg border-2 border-dashed border-gray-300 dark:border-border text-sm text-muted-foreground-subtle hover:border-primary hover:text-primary transition-all text-center"
                     >
                       Choose a playlist…
                     </button>

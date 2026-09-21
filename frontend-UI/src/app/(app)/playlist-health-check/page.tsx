@@ -276,7 +276,7 @@ export default function PlaylistHealthCheckPage() {
                       {healthyCount} of {tracks.length} tracks healthy
                     </span>
                   </div>
-                  <span className={`text-lg font-bold ${healthPercent === 100 ? "text-green-600 dark:text-green-500" : healthPercent >= 80 ? "text-yellow-600 dark:text-yellow-500" : "text-red-600 dark:text-red-500"}`}>
+                  <span className={`text-lg font-bold ${healthPercent === 100 ? "text-success-text" : healthPercent >= 80 ? "text-warning-text" : "text-destructive-text"}`}>
                     {healthPercent}%
                   </span>
                 </div>
@@ -343,7 +343,7 @@ export default function PlaylistHealthCheckPage() {
                         key={track.id}
                         className={`flex items-center gap-4 p-3 rounded-xl ${status.icon === "bad" ? "bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-900/30" : status.icon === "warn" ? "bg-yellow-50 dark:bg-yellow-900/10 border border-yellow-200 dark:border-yellow-900/30" : "bg-gray-50 dark:bg-secondary/20 border border-transparent dark:border-border"}`}
                       >
-                        <span className="w-8 text-center text-sm text-muted-foreground/70">
+                        <span className="w-8 text-center text-sm text-muted-foreground-subtle">
                           {index + 1}
                         </span>
                         <img

@@ -402,7 +402,7 @@ export default function DownloadsPage() {
                 {/* Search filter */}
                 {playlists.length > 5 && (
                   <div className="relative mb-4">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/70" />
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground-subtle" />
                     <Input
                       type="text"
                       value={sourceSearch}
@@ -518,7 +518,7 @@ export default function DownloadsPage() {
                       ? `Auto-downloading… ${hdCompleted}/${hdTotal}`
                       : `Done — ${hdCompleted}/${hdTotal}`}
                     {hdFailed > 0 && (
-                      <span className="ml-2 text-red-500 dark:text-red-400">({hdFailed} failed)</span>
+                      <span className="ml-2 text-destructive-text">({hdFailed} failed)</span>
                     )}
                   </span>
                   <button
@@ -663,7 +663,7 @@ export default function DownloadsPage() {
                         Export queue (JSON)
                       </Button>
                       {!extInstalled && (
-                        <span className="text-xs text-muted-foreground/70 self-center">
+                        <span className="text-xs text-muted-foreground-subtle self-center">
                           Track Toolkit extension required
                         </span>
                       )}
@@ -753,7 +753,7 @@ export default function DownloadsPage() {
                         key={track.id}
                         className={`group flex items-center gap-4 rounded-xl bg-gray-50 p-3 transition-colors dark:bg-secondary/20 ${hypedditMode ? "opacity-40" : "hover:bg-gray-100 dark:hover:bg-secondary/40"}`}
                       >
-                        <span className="w-8 text-center text-sm text-muted-foreground/70">
+                        <span className="w-8 text-center text-sm text-muted-foreground-subtle">
                           {index + 1}
                         </span>
                         <img

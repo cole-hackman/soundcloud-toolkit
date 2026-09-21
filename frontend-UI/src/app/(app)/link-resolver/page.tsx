@@ -219,7 +219,7 @@ function LinkResolverContent() {
               />
               <div className="flex-1">
                 <div className="flex items-center gap-3 mb-2">
-                  <span className="px-3 py-1 bg-primary/10 text-primary rounded-full text-sm font-medium capitalize">
+                  <span className="px-3 py-1 bg-primary/10 text-primary-text rounded-full text-sm font-medium capitalize">
                     {resource.kind}
                   </span>
                   {meta?.cached && (
@@ -250,7 +250,7 @@ function LinkResolverContent() {
                 {tags.length > 0 && (
                   <div className="flex flex-wrap gap-2 mb-4">
                     {tags.slice(0, 8).map((tag) => (
-                      <span key={tag} className="text-xs px-2 py-1 rounded-full bg-primary/10 text-primary">
+                      <span key={tag} className="text-xs px-2 py-1 rounded-full bg-primary/10 text-primary-text">
                         #{tag}
                       </span>
                     ))}
@@ -277,7 +277,7 @@ function LinkResolverContent() {
                       href={resource.permalink_url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center gap-2 text-primary hover:underline"
+                      className="inline-flex items-center gap-2 text-primary-text hover:underline"
                     >
                       Open on SoundCloud
                       <ExternalLink className="w-4 h-4" />
@@ -285,26 +285,26 @@ function LinkResolverContent() {
                   )}
                   <button
                     onClick={() => copyText(resource.permalink_url || meta?.source_url || url)}
-                    className="inline-flex items-center gap-2 text-muted-foreground hover:text-primary"
+                    className="inline-flex items-center gap-2 text-muted-foreground hover:text-primary-text"
                   >
                     <Copy className="w-4 h-4" />
                     Copy URL
                   </button>
                   <button
                     onClick={() => copyText(resource.id)}
-                    className="inline-flex items-center gap-2 text-muted-foreground hover:text-primary"
+                    className="inline-flex items-center gap-2 text-muted-foreground hover:text-primary-text"
                   >
                     <Copy className="w-4 h-4" />
                     Copy ID
                   </button>
                   {resource.type === "track" && resource.download_url && (
-                    <a href={resource.download_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 text-muted-foreground hover:text-primary">
+                    <a href={resource.download_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 text-muted-foreground hover:text-primary-text">
                       <Download className="w-4 h-4" />
                       Download
                     </a>
                   )}
                   {resource.type === "track" && resource.purchase_url && (
-                    <a href={resource.purchase_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 text-muted-foreground hover:text-primary">
+                    <a href={resource.purchase_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 text-muted-foreground hover:text-primary-text">
                       <ShoppingBag className="w-4 h-4" />
                       {resource.purchase_title || "Purchase"}
                     </a>
@@ -318,7 +318,7 @@ function LinkResolverContent() {
                     {resource.type === "track" && resource.permalink_url && (
                       <NextLink
                         href="/downloads"
-                        className="rounded-lg border border-border px-3 py-2 text-sm text-foreground hover:border-primary hover:text-primary"
+                        className="rounded-lg border border-border px-3 py-2 text-sm text-foreground hover:border-primary hover:text-primary-text"
                       >
                         Open downloads tool
                       </NextLink>
@@ -326,7 +326,7 @@ function LinkResolverContent() {
                     {resource.type === "track" && resource.id && (
                       <NextLink
                         href={`/likes-to-playlist?id=${encodeURIComponent(String(resource.id))}`}
-                        className="rounded-lg border border-border px-3 py-2 text-sm text-foreground hover:border-primary hover:text-primary"
+                        className="rounded-lg border border-border px-3 py-2 text-sm text-foreground hover:border-primary hover:text-primary-text"
                       >
                         Add this liked track
                       </NextLink>
@@ -334,7 +334,7 @@ function LinkResolverContent() {
                     {resource.type === "playlist" && resource.permalink_url && (
                       <NextLink
                         href={`/playlist-cloner?url=${encodeURIComponent(resource.permalink_url)}`}
-                        className="rounded-lg border border-border px-3 py-2 text-sm text-foreground hover:border-primary hover:text-primary"
+                        className="rounded-lg border border-border px-3 py-2 text-sm text-foreground hover:border-primary hover:text-primary-text"
                       >
                         Clone playlist
                       </NextLink>
@@ -342,7 +342,7 @@ function LinkResolverContent() {
                     {resource.type === "playlist" && (
                       <NextLink
                         href="/playlist-health-check"
-                        className="rounded-lg border border-border px-3 py-2 text-sm text-foreground hover:border-primary hover:text-primary"
+                        className="rounded-lg border border-border px-3 py-2 text-sm text-foreground hover:border-primary hover:text-primary-text"
                       >
                         Check playlist health
                       </NextLink>
@@ -352,7 +352,7 @@ function LinkResolverContent() {
                         href={resource.permalink_url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="rounded-lg border border-border px-3 py-2 text-sm text-foreground hover:border-primary hover:text-primary"
+                        className="rounded-lg border border-border px-3 py-2 text-sm text-foreground hover:border-primary hover:text-primary-text"
                       >
                         Open profile
                       </a>
@@ -368,7 +368,7 @@ function LinkResolverContent() {
 
             {/* Raw Data */}
             <details className="mt-8">
-              <summary className="cursor-pointer text-sm text-muted-foreground hover:text-primary">
+              <summary className="cursor-pointer text-sm text-muted-foreground hover:text-primary-text">
                 View raw data
               </summary>
               <pre className="mt-4 p-4 bg-secondary/20 rounded-lg overflow-x-auto text-xs text-foreground">

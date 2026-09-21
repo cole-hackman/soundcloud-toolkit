@@ -12,20 +12,21 @@ interface PageCase {
   expectedStatus?: number;
 }
 
-const CONTRAST_FIXME =
-  "Phase 1 — brand-orange text/background combinations are under the 4.5:1 contrast minimum";
-
 const PAGES: PageCase[] = [
-  { path: "/", fixme: CONTRAST_FIXME },
+  { path: "/" },
   { path: "/about/" },
   { path: "/privacy/" },
   { path: "/accessibility/" },
-  { path: "/login/", fixme: CONTRAST_FIXME },
+  { path: "/login/" },
   { path: "/does-not-exist/", expectedStatus: 404 },
-  { path: "/dashboard/", needsMock: true, fixme: "Phase 1/2/6" },
-  { path: "/like-manager/", needsMock: true, fixme: "Phase 1/2/6" },
-  { path: "/playlist-modifier/", needsMock: true, fixme: "Phase 1/2/6" },
-  { path: "/growth/", needsMock: true, fixme: "Phase 1/2/6" },
+  { path: "/dashboard/", needsMock: true },
+  {
+    path: "/like-manager/",
+    needsMock: true,
+    fixme: "Phase 6 — the sort <select> has no accessible name (select-name)",
+  },
+  { path: "/playlist-modifier/", needsMock: true },
+  { path: "/growth/", needsMock: true },
 ];
 
 for (const { path, needsMock, fixme, expectedStatus } of PAGES) {
@@ -35,6 +36,14 @@ for (const { path, needsMock, fixme, expectedStatus } of PAGES) {
     if (needsMock) {
       await mockApi(page);
     }
+
+    // Audit the settled page. The landing's `animate-fade-in-up` entrances
+    // hold a partial opacity for ~400ms, and axe reads the blended color as a
+    // contrast failure on whatever it happens to catch mid-flight. Reduced
+    // motion collapses those animations to their end state via the
+    // `prefers-reduced-motion` block in globals.css, which is also the state
+    // an a11y audit should be measuring.
+    await page.emulateMedia({ reducedMotion: "reduce" });
 
     const response = await page.goto(path);
 

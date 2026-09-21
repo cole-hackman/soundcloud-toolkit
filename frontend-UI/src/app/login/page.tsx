@@ -150,10 +150,10 @@ export default function LoginPage() {
                         </p>
                       </div>
                       <div className="rounded-2xl bg-primary/10 px-3 py-2 text-right">
-                        <div className="text-lg font-semibold text-primary">
+                        <div className="text-xl font-bold text-primary-text">
                           10+
                         </div>
-                        <div className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+                        <div className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
                           tools
                         </div>
                       </div>
@@ -190,7 +190,7 @@ export default function LoginPage() {
                     By connecting, you agree to our{" "}
                     <Link
                       href="/privacy"
-                      className="font-medium text-primary hover:underline"
+                      className="font-medium text-primary-text hover:underline"
                     >
                       Privacy Policy
                     </Link>
@@ -198,19 +198,19 @@ export default function LoginPage() {
                   </p>
                   <div className="flex items-center justify-center gap-4 text-xs text-muted-foreground">
                     <Link
-                      className="transition-colors hover:text-primary"
+                      className="transition-colors hover:text-primary-text"
                       href="/about"
                     >
                       About
                     </Link>
                     <Link
-                      className="transition-colors hover:text-primary"
+                      className="transition-colors hover:text-primary-text"
                       href="/privacy"
                     >
                       Privacy
                     </Link>
                     <Link
-                      className="transition-colors hover:text-primary"
+                      className="transition-colors hover:text-primary-text"
                       href="/accessibility"
                     >
                       Accessibility

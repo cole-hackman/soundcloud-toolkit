@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
+import { SupportLink } from "@/components/SupportLink";
 
 export default function AboutPage() {
   return (
@@ -29,6 +30,16 @@ export default function AboutPage() {
               Created by music lovers, for music lovers, we understand the
               frustration of managing large music libraries and the limitations
               of native SoundCloud features.
+            </p>
+            <p className="text-sm text-muted-foreground">
+              Formerly SoundCloud Toolkit — same product, new name. See the{" "}
+              <Link
+                href="/faq/#rebrand"
+                className="font-medium text-foreground underline underline-offset-2 transition hover:text-primary"
+              >
+                rebrand FAQ
+              </Link>{" "}
+              for why it changed.
             </p>
 
             <section>
@@ -125,7 +136,7 @@ export default function AboutPage() {
 
             <section>
               <h2 className="text-2xl font-bold mb-4 text-foreground">
-                Free &amp; Open
+                Free to Use
               </h2>
               <p>
                 Track Toolkit is completely free to use. We&apos;re committed to
@@ -158,6 +169,26 @@ export default function AboutPage() {
                 this limit and remove duplicates to ensure your playlists are
                 valid. This is a SoundCloud platform limitation, not a
                 limitation of our tools.
+              </p>
+            </section>
+
+            <section>
+              <h2 className="text-2xl font-bold mb-4 text-foreground">
+                Contact
+              </h2>
+              <p>
+                Questions, bug reports, or feature requests —{" "}
+                <SupportLink subject="Track Toolkit support">
+                  email us
+                </SupportLink>
+                . See the{" "}
+                <Link
+                  href="/faq"
+                  className="font-medium text-foreground underline underline-offset-2 transition hover:text-primary"
+                >
+                  FAQ
+                </Link>{" "}
+                for quick answers first.
               </p>
             </section>
 

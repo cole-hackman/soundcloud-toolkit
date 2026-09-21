@@ -23,7 +23,7 @@ import { securityHeaders, preventKeyLeakage, validateEnv, rejectUntrustedOrigin 
 import { legacyHostRedirect } from './middleware/legacy-redirect.js';
 import { mountStaticSite } from './lib/static-site.js';
 import logger from './lib/logger.js';
-import { safeError } from './lib/safe-error.js';
+import { errorHandler } from './middleware/errorHandler.js';
 import { createScMetrics } from './lib/token-context.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -189,28 +189,7 @@ if (existsSync(FRONTEND_BUILD_PATH)) {
 }
 
 // Error handling middleware
-app.use((err, req, res, next) => {
-  logger.error('Unhandled error:', safeError(err));
-  
-  // Sanitize error message to prevent information leakage
-  let errorMessage = 'Something went wrong';
-  if (process.env.NODE_ENV === 'development') {
-    // In development, show error but sanitize secrets
-    const msg = String(err.message || '');
-    // Remove potential secrets from error messages
-    errorMessage = msg
-      .replace(/client_secret[=:]\S+/gi, 'client_secret=***')
-      .replace(/secret[=:]\S+/gi, 'secret=***')
-      .replace(/token[=:]\S+/gi, 'token=***')
-      .replace(/key[=:]\S+/gi, 'key=***')
-      .replace(/password[=:]\S+/gi, 'password=***');
-  }
-  
-  res.status(err.status || 500).json({ 
-    error: 'Internal server error',
-    message: errorMessage
-  });
-});
+app.use(errorHandler);
 
 // 404 handler for API routes only
 app.use('/api/*', (req, res) => {

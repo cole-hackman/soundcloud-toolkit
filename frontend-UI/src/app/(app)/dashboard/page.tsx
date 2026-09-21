@@ -30,6 +30,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Card, EmptyState, Input, PageContainer, Skeleton, Button } from "@/components/ui";
+import { SupportLink } from "@/components/SupportLink";
 import { WhatsNewModal } from "@/components/WhatsNewModal";
 import {
   dismissWhatsNew,
@@ -329,9 +330,14 @@ function StatsErrorFallback({ resetErrorBoundary }: { resetErrorBoundary: () => 
         title="Couldn't load your stats"
         description="The backend may be sleeping or unreachable. Retry to refresh your dashboard."
         action={
-          <Button onClick={resetErrorBoundary} variant="default">
-            Retry
-          </Button>
+          <div className="flex flex-col items-center gap-2 sm:flex-row">
+            <Button onClick={resetErrorBoundary} variant="default">
+              Retry
+            </Button>
+            <span className="text-xs text-muted-foreground">
+              or <SupportLink subject="Track Toolkit support">email us</SupportLink>
+            </span>
+          </div>
         }
       />
     </Card>

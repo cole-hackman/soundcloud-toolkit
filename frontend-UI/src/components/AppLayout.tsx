@@ -2,8 +2,10 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { ErrorBoundary } from "react-error-boundary";
 import { useAuth } from "@/contexts/AuthContext";
 import { LoadingSpinner } from "@/components/ui";
+import { AppErrorFallback } from "@/components/AppErrorFallback";
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -50,7 +52,11 @@ export function AppLayout({ children }: AppLayoutProps) {
     return null;
   }
 
-  return <>{children}</>;
+  return (
+    <ErrorBoundary FallbackComponent={AppErrorFallback}>
+      {children}
+    </ErrorBoundary>
+  );
 }
 
 export default AppLayout;

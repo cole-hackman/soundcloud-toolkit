@@ -497,6 +497,51 @@ cutover Bicep params re-declare the same bindings idempotently. No traffic
 is routed yet: the OAuth redirect URI, `APP_URL` and the old domain's DNS
 are unchanged, and the app still uses `tracktoolkit-rehearsal`.
 
+## Incident 2026-09-21 — admin dashboard 500s (Prisma pool exhaustion)
+
+Symptom: `/admin` requests 500 after ~10 s; `/api/auth/me` too during the
+burst. Not the old database: the app was (and is) on `tracktoolkit-pg` /
+`tracktoolkit`. Container log: Prisma `P2024` "Timed out fetching a new
+connection from the connection pool (pool timeout: 10, connection limit: 3)".
+
+Cause: Prisma sizes its pool at `cpus*2+1`; the B1 App Service has one vCPU
+→ 3 connections. The admin page fires 7 requests at once, `/admin/stats`
+alone issues 12 queries, and two catalog queries are slow on B1ms
+(`/admin/catalog/summary` 5.5 s, `/admin/catalog/tracks` 13.5 s measured
+alone) — everything queued behind them past the 10 s pool timeout.
+Reproduced with a concurrent burst (all requests ~8 s), so the previous
+report at 15:47 UTC simply crossed the line.
+
+Fix (config only): Key Vault `database-url` now ends
+`?sslmode=require&connection_limit=10&pool_timeout=30` (server max 50, one
+app instance). After the re-resolve nudge the same 8-request burst, run
+twice: all 200; the five aggregate endpoints and `/api/auth/me` in 0.7–1.5 s,
+the two catalog endpoints at their own ~7.5 s cost; zero `P2024` since.
+
+Catalog queries (done 2026-09-21, same day): profiled with EXPLAIN ANALYZE
+on the Azure database. Two causes, two fixes:
+- No visibility map / hint bits after `pg_restore`: the genre breakdown was
+  an 11.8 s seq scan dirtying pages. `VACUUM (ANALYZE) "tracks",
+  "operation_logs"` → 0.48 s (index-only scan). Added as step 4b of
+  `docs/azure-db-cutover.md`.
+- `docs/sql/2026-catalog-admin-indexes.sql`, applied `CONCURRENTLY`: a
+  partial index on `operation_logs("createdAt") WHERE metadata ? 'trackIds'`
+  (touches CTE 666 → 443 ms; it no longer reads the 79 % of rows it
+  discarded) and an expression index on
+  `COALESCE("artistId"::text, "artistName")` (distinct-artist count 2.1 s →
+  0.7 s warm; a cold reading right after the build was 5.2 s, which is why
+  it was briefly dropped and re-added). Neither can be declared in
+  `schema.prisma`, so a `prisma db push` would drop them — the file header
+  says so.
+- Endpoints after: `/admin/catalog/summary` 5.5 → 2.6 s, `/admin/catalog/tracks`
+  13.5 → 4.6 s alone; in the dashboard burst the worst request went from
+  8.3 s to about 6 s and nothing else exceeded 1.2 s. The remaining cost is
+  the touches aggregation itself (381 k array elements → 214 k track ids,
+  computed once per parallel worker) and would need a query change
+  (`MATERIALIZED` CTE, or a materialised touches table) or a larger tier. Also: while investigating, an Azure Monitor query with
+`--interval PT1M` returned future buckets as `is_db_alive=0`; the server was
+never down — read metric timestamps against `date -u`.
+
 ## Blocked
 
 ### B1. Key Vault secret writes — CLEARED 2026-09-20

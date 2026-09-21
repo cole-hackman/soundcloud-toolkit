@@ -39,6 +39,7 @@ describe('account deletion cascade coverage', () => {
     // unexpectedly, a relation was probably reshaped — re-verify deletion.
     for (const expected of [
       'BetaSignup',
+      'Feedback',
       'GrowthAction',
       'LibraryCachePage',
       'LibraryCacheState',

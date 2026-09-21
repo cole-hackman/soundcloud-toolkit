@@ -26,6 +26,10 @@ read-only `pg_dump`. Neon stays intact and is the rollback.
 ```bash
 export NEON_DIRECT='postgresql://neondb_owner:<pw>@ep-fancy-morning-afbejaye.c-2.us-west-2.aws.neon.tech/neondb?sslmode=require'
 export AZURE_PROD='postgresql://tracktoolkit_admin:<url-encoded pw>@tracktoolkit-pg.postgres.database.azure.com:5432/tracktoolkit?sslmode=require'
+# The value the APP gets (Key Vault `database-url`) carries Prisma pool settings on top:
+#   ...?sslmode=require&connection_limit=10&pool_timeout=30
+# Prisma's default pool is (cpus*2+1) = 3 on the one-vCPU App Service, which the
+# admin dashboard's parallel queries exhaust (P2024, 2026-09-21). Server max is 50.
 mkdir -p ~/cutover && cd ~/cutover
 ```
 

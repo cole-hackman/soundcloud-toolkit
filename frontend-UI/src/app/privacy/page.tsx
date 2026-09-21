@@ -97,16 +97,22 @@ const COLLECTED: { data: string; source: string; why: string; kept: string }[] =
     kept: "7 days",
   },
   {
-    data: "Growth tools history: the SoundCloud accounts you chose to follow or like, their public name, avatar and follower counts, and whether they followed back",
+    data: "Growth tools history: the SoundCloud accounts you chose to follow or like, their public name, avatar and follower counts, whether they followed back, the label you gave the session, and the accounts you picked as inspiration for it (their names and ids)",
     source: "SoundCloud, when you run the Growth tools",
     why: "To show you your history and let you undo it",
     kept: "12 months",
   },
   {
-    data: "Public track and playlist catalog: title, artist name and id, genre, duration, availability and playlist owner id, for tracks that pass through the tools",
+    data: "Public track and playlist catalog: title, artist name and id, genre, duration, availability and public link for a track; title, owner id and track count for a playlist — for anything that passes through the tools",
     source: "SoundCloud public data",
     why: "To show availability, and to study — in aggregate, and only by the operator — which genres and artists the tools handle",
     kept: "While the service runs. It is not tied to your account, and it is not removed when you delete your account",
+  },
+  {
+    data: "Library index and assistant drafts from an unreleased feature: copies of your likes and playlist tracks, and any messages you exchanged with the assistant",
+    source: "You, when that feature was tested",
+    why: "Left over from testing; no live tool reads or writes it",
+    kept: "While your account exists; deleted with it",
   },
   {
     data: "Feedback you send in the app: your message, which tool you were on, and an email address if you choose to give one",
@@ -272,9 +278,11 @@ export default function PrivacyPage() {
               <p className="mt-4">
                 Browser storage holds interface preferences — whether the
                 sidebar is collapsed, light or dark theme, which tools you used
-                recently, which announcements you have dismissed — and, on the
-                Downloads page, the download queue you build. All of that stays
-                in your browser and is never sent to us.
+                recently, which announcements you have dismissed, which warnings
+                you have acknowledged (the Growth risk notice), and whether the
+                Chrome extension is installed — and, on the Downloads page, the
+                download queue you build. All of that stays in your browser and
+                is never sent to us.
               </p>
               <p className="mt-4">
                 None of these track you across sites, which is why there is no
@@ -391,7 +399,7 @@ export default function PrivacyPage() {
                 <li>Our secrets live in a managed vault, not in the code.</li>
                 <li>The site and the API are HTTPS only.</li>
                 <li>Session cookies are signed and HttpOnly.</li>
-                <li>Every write is checked against the origin it came from.</li>
+                <li>Writes that arrive from another website are rejected.</li>
               </ul>
             </section>
 

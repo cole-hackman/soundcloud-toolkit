@@ -32,7 +32,7 @@
         "noDistractingElements": "off",
         "noHeaderScope": "off",
         "noInteractiveElementToNoninteractiveRole": "off",
-        "noLabelWithoutControl": "off",
+        "noLabelWithoutControl": "warn",
         "noNoninteractiveElementToInteractiveRole": "off",
         "noNoninteractiveTabindex": "off",
         "noPositiveTabindex": "off",
@@ -40,9 +40,9 @@
         "noRedundantRoles": "off",
         "noSvgWithoutTitle": "off",
         "useAltText": "off",
-        "useKeyWithClickEvents": "off",
+        "useKeyWithClickEvents": "warn",
         "useKeyWithMouseEvents": "off",
-        "useButtonType": "off"
+        "useButtonType": "warn"
       }
     }
   },

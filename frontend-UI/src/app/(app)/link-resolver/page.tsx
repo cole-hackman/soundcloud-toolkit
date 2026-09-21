@@ -260,6 +260,7 @@ function LinkResolverContent() {
                 {resource.permalink_url && (resource.type === "track" || resource.type === "playlist") && (
                   <div className="mb-6 rounded-xl overflow-hidden border border-border shadow-sm">
                     <iframe
+                      title={`SoundCloud player: ${title}`}
                       width="100%"
                       height={resource.type === "playlist" ? "350" : "166"}
                       scrolling="no"

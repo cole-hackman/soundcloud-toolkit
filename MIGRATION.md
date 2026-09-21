@@ -518,11 +518,27 @@ app instance). After the re-resolve nudge the same 8-request burst, run
 twice: all 200; the five aggregate endpoints and `/api/auth/me` in 0.7–1.5 s,
 the two catalog endpoints at their own ~7.5 s cost; zero `P2024` since.
 
-Follow-ups: the two catalog queries are genuinely slow on this tier
-(`track.groupBy` over 578k rows and the `metadata ? 'trackIds'` scan over
-`operation_logs`); they were faster on Neon's larger compute. Options: an
-index on `operation_logs` for the JSONB key, caching the catalog summary, or
-a B2s tier. Also: while investigating, an Azure Monitor query with
+Catalog queries (done 2026-09-21, same day): profiled with EXPLAIN ANALYZE
+on the Azure database. Two causes, two fixes:
+- No visibility map / hint bits after `pg_restore`: the genre breakdown was
+  an 11.8 s seq scan dirtying pages. `VACUUM (ANALYZE) "tracks",
+  "operation_logs"` → 0.48 s (index-only scan). Added as step 4b of
+  `docs/azure-db-cutover.md`.
+- `docs/sql/2026-catalog-admin-indexes.sql`, applied `CONCURRENTLY`: a
+  partial index on `operation_logs("createdAt") WHERE metadata ? 'trackIds'`
+  (touches CTE 666 → 443 ms; it no longer reads the 79 % of rows it
+  discarded) and an expression index on
+  `COALESCE("artistId"::text, "artistName")` (distinct-artist count 2.1 s →
+  0.7 s warm; a cold reading right after the build was 5.2 s, which is why
+  it was briefly dropped and re-added). Neither can be declared in
+  `schema.prisma`, so a `prisma db push` would drop them — the file header
+  says so.
+- Endpoints after: `/admin/catalog/summary` 5.5 → 2.6 s, `/admin/catalog/tracks`
+  13.5 → 4.6 s alone; in the dashboard burst the worst request went from
+  8.3 s to about 6 s and nothing else exceeded 1.2 s. The remaining cost is
+  the touches aggregation itself (381 k array elements → 214 k track ids,
+  computed once per parallel worker) and would need a query change
+  (`MATERIALIZED` CTE, or a materialised touches table) or a larger tier. Also: while investigating, an Azure Monitor query with
 `--interval PT1M` returned future buckets as `is_db_alive=0`; the server was
 never down — read metric timestamps against `date -u`.
 

@@ -145,6 +145,21 @@ Measured: **3 s**. Output is `CREATE TABLE` / `CREATE INDEX` for what
 `--clean` had just dropped and `already exists, skipping` notices for the
 rest — both fine.
 
+### 4b. VACUUM ANALYZE the restored tables
+
+`pg_restore` leaves the tables with no visibility map and no hint bits, so
+the first scans are slow (each page gets written on first read) and
+index-only scans are impossible. On 2026-09-21 the admin genre breakdown
+took 11.8 s until this ran, 0.5 s after.
+
+```bash
+time docker run --rm postgres:17 psql "$AZURE_PROD" -c 'VACUUM (ANALYZE) "tracks", "operation_logs"; VACUUM (ANALYZE);'
+```
+
+Measured: **~25 s** for the two big tables (the full-database pass adds a
+few seconds). Then apply `docs/sql/2026-catalog-admin-indexes.sql` (also
+not in the Prisma schema; see its header).
+
 ### 5. Verify
 
 ```bash

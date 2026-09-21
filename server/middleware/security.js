@@ -3,22 +3,32 @@ import logger from '../lib/logger.js';
 import { safeError } from '../lib/safe-error.js';
 
 /**
+ * Content-Security-Policy directives.
+ *
+ * Exported so `tests/security-headers.test.js` can assert the no-third-party
+ * posture directly: the app loads no analytics, no tag manager and no external
+ * fonts or widgets, so the only script and style sources are our own origin
+ * plus `'unsafe-inline'`.
+ */
+export const cspDirectives = {
+  defaultSrc: ["'self'"],
+  styleSrc: ["'self'", "'unsafe-inline'"],
+  scriptSrc: ["'self'", "'unsafe-inline'"], // unsafe-inline required for Next.js static export bootstrap scripts
+  imgSrc: ["'self'", "https:", "data:"], // Allow images from any HTTPS source
+  connectSrc: ["'self'", "https://api.soundcloud.com", "https://secure.soundcloud.com", "https://api-v2.soundcloud.com", "ws://localhost:*", "wss:"],
+  fontSrc: ["'self'", "data:"], // next/font self-hosts the webfonts into the static export
+  objectSrc: ["'none'"],
+  mediaSrc: ["'self'"],
+  frameSrc: ["'none'"],
+};
+
+/**
  * Security headers middleware
  * Configures helmet with appropriate security headers
  */
 export const securityHeaders = helmet({
   contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
-      scriptSrc: ["'self'", "'unsafe-inline'", "https://cdnjs.buymeacoffee.com"], // unsafe-inline required for Next.js static export bootstrap scripts
-      imgSrc: ["'self'", "https:", "data:"], // Allow images from any HTTPS source
-      connectSrc: ["'self'", "https://api.soundcloud.com", "https://secure.soundcloud.com", "https://api-v2.soundcloud.com", "ws://localhost:*", "wss:"],
-      fontSrc: ["'self'", "data:", "https://fonts.gstatic.com"],
-      objectSrc: ["'none'"],
-      mediaSrc: ["'self'"],
-      frameSrc: ["'none'"],
-    },
+    directives: cspDirectives,
   },
   crossOriginEmbedderPolicy: false, // Disable for SoundCloud embeds if needed
   crossOriginResourcePolicy: { policy: "cross-origin" }, // Allow SoundCloud resources

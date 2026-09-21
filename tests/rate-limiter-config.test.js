@@ -73,9 +73,64 @@ describe('rate limiter tiers are configured as documented', () => {
       .toBeLessThan(limiters.apiRateLimiter.options.max);
   });
 
-  test('no limiter defines a custom keyGenerator (default handles IPv6 correctly)', () => {
+  test('no per-IP limiter defines a custom keyGenerator (default handles IPv6 correctly)', () => {
     for (const name of ['apiRateLimiter', 'authRateLimiter', 'heavyOperationRateLimiter', 'libraryReadRateLimiter', 'healthCheckRateLimiter']) {
       expect(limiters[name].options.keyGenerator).toBeUndefined();
     }
+  });
+});
+
+describe('per-user limiters key on the account, not the address', () => {
+  afterAll(() => {
+    process.env.NODE_ENV = ORIGINAL_NODE_ENV;
+  });
+
+  test('feedback hourly: 5 / hour', () => {
+    expect(limiters.feedbackHourlyLimiter.options).toMatchObject({
+      windowMs: 60 * MINUTE, max: 5, standardHeaders: true, legacyHeaders: false,
+    });
+  });
+
+  test('feedback daily: 20 / 24 hours', () => {
+    // The hourly window alone would permit 120 submissions a day; this is the
+    // ceiling that actually bounds the inbox.
+    expect(limiters.feedbackDailyLimiter.options).toMatchObject({
+      windowMs: 24 * 60 * MINUTE, max: 20, standardHeaders: true, legacyHeaders: false,
+    });
+  });
+
+  test('the daily budget is larger than one hour of the hourly budget', () => {
+    // Otherwise the hourly limiter would be dead code.
+    expect(limiters.feedbackDailyLimiter.options.max)
+      .toBeGreaterThan(limiters.feedbackHourlyLimiter.options.max);
+  });
+
+  test('both key on req.user.id, falling back to req.ip', () => {
+    for (const name of ['feedbackHourlyLimiter', 'feedbackDailyLimiter']) {
+      const { keyGenerator } = limiters[name].options;
+      expect(typeof keyGenerator).toBe('function');
+      expect(keyGenerator({ user: { id: 'user-a' }, ip: '203.0.113.9' })).toBe('user-a');
+      // Unauthenticated is unreachable on the routes these are mounted on —
+      // they always sit behind authenticateUser — but the key must never come
+      // back undefined, which would bucket every such request together.
+      expect(keyGenerator({ ip: '203.0.113.9' })).toBe('203.0.113.9');
+    }
+  });
+
+  test('both disable the IP-fallback validation that would log at startup', () => {
+    // express-rate-limit v8 flags a custom keyGenerator that reads req.ip
+    // without the ipKeyGenerator helper. It logs ERR_ERL_KEY_GEN_IPV6 on every
+    // module load rather than throwing, so the flag is what keeps startup
+    // output clean — and makes the trade-off deliberate rather than ignored.
+    for (const name of ['feedbackHourlyLimiter', 'feedbackDailyLimiter']) {
+      expect(limiters[name].options.validate).toEqual({ keyGeneratorIpFallback: false });
+    }
+  });
+
+  test('createUserLimiter wraps the message in the app-wide error shape', () => {
+    const limiter = limiters.createUserLimiter({
+      windowMs: 1000, max: 1, message: 'Slow down.',
+    });
+    expect(limiter.options.message).toEqual({ error: 'Slow down.' });
   });
 });

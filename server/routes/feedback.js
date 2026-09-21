@@ -1,9 +1,12 @@
+import crypto from 'crypto';
 import express from 'express';
 import prisma from '../lib/prisma.js';
 import logger from '../lib/logger.js';
 import { safeError } from '../lib/safe-error.js';
+import { extractClientInfo } from '../lib/analytics.js';
 import { authenticateUser } from '../middleware/auth.js';
-import { validateRebrandVote } from '../middleware/validation.js';
+import { validateFeedback, validateRebrandVote } from '../middleware/validation.js';
+import { feedbackDailyLimiter, feedbackHourlyLimiter } from '../middleware/rateLimiter.js';
 
 const router = express.Router();
 
@@ -133,6 +136,140 @@ router.post('/survey', authenticateUser, validateRebrandVote, async (req, res) =
   } catch (error) {
     logger.error('survey submit error', safeError(error));
     res.status(500).json(safeError(error, 'Failed to submit survey response'));
+  }
+});
+
+/* ------------------------------------------------------------------------ *
+ * In-app feedback — the live "Send feedback" form.
+ *
+ * Distinct from everything above it in this file: the survey routes are a
+ * retired name vote kept for history, this is the thing users actually reach
+ * today. Login-required, stored in Postgres, and it goes nowhere else — no
+ * email delivery, no webhook, no third-party widget.
+ * ------------------------------------------------------------------------ */
+
+/** 24 hours, in ms — the window the duplicate check looks back over. */
+const FEEDBACK_DEDUPE_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+/** How many of their own submissions GET /mine hands back. */
+const FEEDBACK_MINE_LIMIT = 20;
+
+/**
+ * C0 control characters, except the two that are legitimate in a multi-line
+ * message: \n (0x0A) and \t (0x09). \r is deliberately in the strip set, so a
+ * CRLF body normalizes to LF rather than keeping a stray carriage return that
+ * would make an otherwise identical re-submission hash differently.
+ */
+const C0_CONTROL_CHARS = /[\u0000-\u0008\u000B-\u001F]/g;
+
+/**
+ * The dedupe key: whitespace-collapsed, lowercased, trimmed, then sha256'd.
+ * Hashing rather than comparing the text keeps the index narrow and means the
+ * lookup never has to put the message itself in a query.
+ */
+function hashMessage(message) {
+  const normalized = message.toLowerCase().replace(/\s+/g, ' ').trim();
+  return crypto.createHash('sha256').update(normalized).digest('hex');
+}
+
+/**
+ * POST /api/feedback
+ *
+ * Middleware order is load-bearing: `validateFeedback` runs BEFORE the two
+ * limiters. A cross-site form-encoded post parses to an empty req.body under
+ * express.json() and dies at the validator with a 400 — the same fail-closed
+ * CSRF invariant the survey route above relies on. Putting the limiters first
+ * would also let a forged request burn a real user's feedback budget.
+ */
+router.post(
+  '/',
+  authenticateUser,
+  validateFeedback,
+  feedbackHourlyLimiter,
+  feedbackDailyLimiter,
+  async (req, res) => {
+    try {
+      const { type, message, page, email, website } = req.body;
+
+      // Honeypot. A real form leaves `website` empty because the field is
+      // hidden; anything that fills it in is automation. The answer is a
+      // plain 202 with no row written — indistinguishable from success, so a
+      // bot has nothing to tune against. Debug-only counter: logging it at
+      // info level would hand spam a way to fill the log instead of the table.
+      if (typeof website === 'string' && website.trim() !== '') {
+        logger.debug('feedback honeypot tripped', { userId: req.user.id });
+        return res.status(202).json({ accepted: true });
+      }
+
+      // express-validator has already trimmed `message`; this strips the
+      // control characters that survive a trim and would otherwise sit in the
+      // admin inbox as invisible junk.
+      const cleanMessage = message.replace(C0_CONTROL_CHARS, '');
+      const messageHash = hashMessage(cleanMessage);
+
+      // Same person, same message, inside a day → almost always a double
+      // submit, or someone re-sending because nothing visibly happened. The
+      // window is enforced here rather than by a unique index on purpose: the
+      // same report weeks later is legitimate and should land.
+      const duplicate = await prisma.feedback.findFirst({
+        where: {
+          userId: req.user.id,
+          messageHash,
+          createdAt: { gte: new Date(Date.now() - FEEDBACK_DEDUPE_WINDOW_MS) },
+        },
+        select: { id: true },
+      });
+      if (duplicate) {
+        return res.status(409).json({ error: 'You already sent this recently' });
+      }
+
+      const created = await prisma.feedback.create({
+        data: {
+          // From the session, never from the body. A client-supplied userId or
+          // soundcloudId is ignored outright.
+          userId: req.user.id,
+          soundcloudId: req.user.soundcloudId,
+          type,
+          message: cleanMessage,
+          page: page || null,
+          email: email || null,
+          clientInfo: extractClientInfo(req),
+          messageHash,
+        },
+        select: { id: true, createdAt: true },
+      });
+
+      // Deliberately no message and no email in the log line. Both are user
+      // content, and the log is the one place they have no reason to be.
+      logger.info('feedback received', { userId: req.user.id, type });
+
+      return res.status(201).json({ id: created.id, createdAt: created.createdAt });
+    } catch (error) {
+      logger.error('feedback submit error', safeError(error));
+      return res.status(500).json(safeError(error, 'Failed to submit feedback'));
+    }
+  }
+);
+
+/**
+ * GET /api/feedback/mine
+ * The user's own last 20 submissions, so the form can show that something was
+ * received and where it got to. `adminNote` is not selected — it is internal
+ * triage, and the user is not its audience.
+ */
+router.get('/mine', authenticateUser, async (req, res) => {
+  try {
+    const items = await prisma.feedback.findMany({
+      where: { userId: req.user.id },
+      orderBy: { createdAt: 'desc' },
+      take: FEEDBACK_MINE_LIMIT,
+      select: { id: true, type: true, page: true, status: true, createdAt: true },
+    });
+
+    res.json({ items });
+  } catch (error) {
+    logger.error('feedback mine error', safeError(error));
+    res.status(500).json(safeError(error, 'Failed to load your feedback'));
   }
 });
 

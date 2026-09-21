@@ -900,3 +900,85 @@ export const validateReverseGrowthActions = [
   }),
   handleValidationErrors
 ];
+
+/**
+ * The in-app feedback vocabulary. Exported so the routes, the admin patch
+ * validator and the Prisma model's comments all agree on one list instead of
+ * three drifting copies — the columns are plain strings, so nothing at the
+ * database level enforces these.
+ */
+export const FEEDBACK_TYPES = ['bug', 'feature', 'other'];
+export const FEEDBACK_STATUSES = ['new', 'seen', 'done', 'spam'];
+
+/**
+ * Validation rules for POST /api/feedback.
+ *
+ * This runs BEFORE the per-user rate limiters on the route, for the same
+ * reason validateRebrandVote runs before the closed-campaign gate: a
+ * cross-site form-encoded post parses to an empty req.body under
+ * express.json(), and the validator is what turns that into a 400. Moving it
+ * behind the limiters would spend a user's feedback budget on requests they
+ * never made.
+ *
+ * `website` is the honeypot. It validates successfully — the route, not the
+ * validator, decides what a filled-in one means, so a bot gets the same
+ * shaped answer as a human rather than a 400 that tells it which field to
+ * leave alone next time.
+ */
+export const validateFeedback = [
+  body('type')
+    .isIn(FEEDBACK_TYPES)
+    .withMessage(`type must be one of: ${FEEDBACK_TYPES.join(', ')}`),
+  body('message')
+    .isString()
+    .withMessage('message must be a string')
+    .trim()
+    .isLength({ min: 10, max: 2000 })
+    .withMessage('message must be between 10 and 2000 characters'),
+  body('page')
+    .optional({ nullable: true })
+    .isString()
+    .withMessage('page must be a string')
+    .trim()
+    .matches(/^\/[a-z0-9\-\/]{0,199}$/)
+    .withMessage('page must be an app route path'),
+  body('email')
+    .optional({ nullable: true, checkFalsy: true })
+    .isEmail()
+    .withMessage('email must be a valid email address')
+    .normalizeEmail()
+    .isLength({ max: 254 })
+    .withMessage('email must be at most 254 characters'),
+  body('website')
+    .optional()
+    .isString()
+    .withMessage('website must be a string')
+    .isLength({ max: 200 })
+    .withMessage('website must be at most 200 characters'),
+  handleValidationErrors
+];
+
+/**
+ * Validation rules for PATCH /api/admin/feedback-items/:id — triage only.
+ * Nothing the user wrote is editable from here; status and adminNote are the
+ * only two columns this route may touch.
+ */
+export const validateFeedbackPatch = [
+  param('id')
+    .isString()
+    .withMessage('id must be a string')
+    .trim()
+    .isLength({ min: 1, max: 64 })
+    .withMessage('id must be between 1 and 64 characters'),
+  body('status')
+    .optional()
+    .isIn(FEEDBACK_STATUSES)
+    .withMessage(`status must be one of: ${FEEDBACK_STATUSES.join(', ')}`),
+  body('adminNote')
+    .optional({ nullable: true })
+    .isString()
+    .withMessage('adminNote must be a string')
+    .isLength({ max: 2000 })
+    .withMessage('adminNote must be at most 2000 characters'),
+  handleValidationErrors
+];

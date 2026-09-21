@@ -105,3 +105,58 @@ export const healthCheckRateLimiter = createLimiter({
   skipSuccessfulRequests: true, // Don't count successful health checks
 });
 
+/**
+ * Per-USER limiter, as opposed to every limiter above it, which is per-IP.
+ *
+ * Feedback is login-required, so the account is the thing worth budgeting:
+ * per-IP would let one person on a phone and a laptop spend two budgets, and
+ * would make a shared office NAT share one. The key is `req.user.id`, which
+ * only exists because these limiters are always mounted AFTER
+ * `authenticateUser` — mount one in front of it and every request keys on the
+ * `req.ip` fallback instead, silently turning it back into a per-IP limiter.
+ *
+ * `validate.keyGeneratorIpFallback: false` switches off express-rate-limit v8's
+ * guard against custom key generators that touch `req.ip` without the
+ * `ipKeyGenerator` helper. The guard exists because an IPv6 user with a /64 can
+ * rotate addresses to buy a fresh budget. That is accepted here: the fallback
+ * is unreachable on the routes these limiters are mounted on, and anyone who
+ * did reach it would be unauthenticated and have nothing to spend the budget
+ * on. Left on, the guard dumps an ERR_ERL_KEY_GEN_IPV6 error to the console
+ * every time the module loads — it does not throw, so the flag buys a clean
+ * startup and an explicit record of the trade-off rather than a fixed crash.
+ *
+ * @param {{ windowMs: number, max: number, message: string }} options
+ */
+export function createUserLimiter({ windowMs, max, message }) {
+  return createLimiter({
+    windowMs,
+    max,
+    message: { error: message },
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: (req) => req.user?.id || req.ip,
+    validate: { keyGeneratorIpFallback: false },
+  });
+}
+
+/**
+ * Feedback write budget — two windows, both per user.
+ *
+ * The hourly one absorbs a burst: someone hitting a bug, sending a report,
+ * hitting it again and sending a second. The daily one is the actual ceiling,
+ * because an hourly limit alone permits 120 submissions a day. Five an hour is
+ * far more than anyone sends in good faith and cheap enough that a genuine
+ * back-and-forth never touches it.
+ */
+export const feedbackHourlyLimiter = createUserLimiter({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 5,
+  message: 'Too much feedback sent in the last hour, please try again later.',
+});
+
+export const feedbackDailyLimiter = createUserLimiter({
+  windowMs: 24 * 60 * 60 * 1000, // 24 hours
+  max: 20,
+  message: 'Too much feedback sent today, please try again tomorrow.',
+});
+

@@ -10,6 +10,8 @@ import {
   validateRebrandVote,
   validateEvent,
   validateBulkLike,
+  validateFeedback,
+  validateFeedbackPatch,
 } from '../server/middleware/validation.js';
 
 async function runValidation(middlewares, { params = {}, query = {}, body = {} } = {}) {
@@ -296,6 +298,170 @@ describe('bulk like validator', () => {
   test('rejects non-positive track ids', async () => {
     const result = await runValidation(validateBulkLike, {
       body: { trackIds: [0] },
+    });
+
+    expect(result.statusCode).toBe(400);
+  });
+});
+
+describe('feedback validator', () => {
+  const validBody = {
+    type: 'bug',
+    message: 'The merge tool stalled at 400 tracks and never finished.',
+    page: '/combine',
+  };
+
+  test('accepts a well-formed feedback body', async () => {
+    const result = await runValidation(validateFeedback, { body: { ...validBody } });
+
+    expect(result.statusCode).toBeNull();
+  });
+
+  test('accepts a body with no page and no email', async () => {
+    const result = await runValidation(validateFeedback, {
+      body: { type: 'feature', message: 'Please add a dark mode toggle to the sidebar.' },
+    });
+
+    expect(result.statusCode).toBeNull();
+  });
+
+  test('rejects a message of 9 characters', async () => {
+    // 10 is the floor: shorter than that is almost always a mis-click or a
+    // test submission, and there is nothing to act on.
+    const result = await runValidation(validateFeedback, {
+      body: { ...validBody, message: '123456789' },
+    });
+
+    expect(result.statusCode).toBe(400);
+    expect(result.payload.error).toBe('Validation failed');
+  });
+
+  test('rejects a 9-character message padded out with whitespace', async () => {
+    // .trim() runs before .isLength(), so padding cannot buy length.
+    const result = await runValidation(validateFeedback, {
+      body: { ...validBody, message: '          123456789          ' },
+    });
+
+    expect(result.statusCode).toBe(400);
+  });
+
+  test('rejects a message over 2000 characters', async () => {
+    const result = await runValidation(validateFeedback, {
+      body: { ...validBody, message: 'a'.repeat(2001) },
+    });
+
+    expect(result.statusCode).toBe(400);
+  });
+
+  test('rejects an unknown type', async () => {
+    const result = await runValidation(validateFeedback, {
+      body: { ...validBody, type: 'complaint' },
+    });
+
+    expect(result.statusCode).toBe(400);
+  });
+
+  test('rejects a missing type', async () => {
+    const result = await runValidation(validateFeedback, {
+      body: { message: validBody.message },
+    });
+
+    expect(result.statusCode).toBe(400);
+  });
+
+  test('rejects an absolute URL as the page', async () => {
+    // page is an app route, not somewhere to smuggle a link into the inbox.
+    const result = await runValidation(validateFeedback, {
+      body: { ...validBody, page: 'https://evil.example.com/phish' },
+    });
+
+    expect(result.statusCode).toBe(400);
+  });
+
+  test('rejects a page with a query string', async () => {
+    const result = await runValidation(validateFeedback, {
+      body: { ...validBody, page: '/combine?playlist=123' },
+    });
+
+    expect(result.statusCode).toBe(400);
+  });
+
+  test('rejects a page that does not start with a slash', async () => {
+    const result = await runValidation(validateFeedback, {
+      body: { ...validBody, page: 'combine' },
+    });
+
+    expect(result.statusCode).toBe(400);
+  });
+
+  test('rejects a malformed email when one is supplied', async () => {
+    const result = await runValidation(validateFeedback, {
+      body: { ...validBody, email: 'not-an-address' },
+    });
+
+    expect(result.statusCode).toBe(400);
+  });
+
+  test('accepts an empty-string email as "no email given"', async () => {
+    // checkFalsy: an untouched optional input posts '' rather than being absent.
+    const result = await runValidation(validateFeedback, {
+      body: { ...validBody, email: '' },
+    });
+
+    expect(result.statusCode).toBeNull();
+  });
+
+  test('a filled honeypot still passes validation', async () => {
+    // The route, not the validator, decides what a filled `website` means. A
+    // 400 here would tell a bot exactly which field to leave alone next time.
+    const result = await runValidation(validateFeedback, {
+      body: { ...validBody, website: 'http://spam.example.com' },
+    });
+
+    expect(result.statusCode).toBeNull();
+  });
+
+  test('an empty body fails closed', async () => {
+    // This is the CSRF invariant: a cross-site form-encoded post parses to an
+    // empty req.body under express.json(), and the validator rejects it.
+    const result = await runValidation(validateFeedback, { body: {} });
+
+    expect(result.statusCode).toBe(400);
+  });
+});
+
+describe('admin feedback patch validator', () => {
+  test('accepts a status change', async () => {
+    const result = await runValidation(validateFeedbackPatch, {
+      params: { id: 'fb-1' },
+      body: { status: 'done' },
+    });
+
+    expect(result.statusCode).toBeNull();
+  });
+
+  test('accepts an admin note', async () => {
+    const result = await runValidation(validateFeedbackPatch, {
+      params: { id: 'fb-1' },
+      body: { adminNote: 'Reproduced — fixed in the next deploy.' },
+    });
+
+    expect(result.statusCode).toBeNull();
+  });
+
+  test('rejects an unknown status', async () => {
+    const result = await runValidation(validateFeedbackPatch, {
+      params: { id: 'fb-1' },
+      body: { status: 'archived' },
+    });
+
+    expect(result.statusCode).toBe(400);
+  });
+
+  test('rejects an admin note over 2000 characters', async () => {
+    const result = await runValidation(validateFeedbackPatch, {
+      params: { id: 'fb-1' },
+      body: { adminNote: 'a'.repeat(2001) },
     });
 
     expect(result.statusCode).toBe(400);

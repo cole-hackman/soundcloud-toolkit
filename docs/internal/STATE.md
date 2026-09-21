@@ -7,7 +7,7 @@ www, api) 301/308 to it. DigitalOcean is frozen (broken DATABASE_URL), Vercel
 and Neon untouched — all three are the rollback until a one-week soak ends.
 Verified end to end (browser login + playlists, 2026-09-20 19:44). Open:
 Search Console change of address (Cole, two clicks), soak, decommission.
-Read `MIGRATION.md` ("CUTOVER DONE") first.
+Read `docs/internal/MIGRATION.md` ("CUTOVER DONE") first.
 
 ## Just done
 - Embedded SoundCloud player in the catalog (expanded track row + Health
@@ -25,6 +25,15 @@ Read `MIGRATION.md` ("CUTOVER DONE") first.
   accessible inspector drawer, app tokens + ThemeContext instead of a private
   theme, `isAdmin` on AuthContext and a sidebar link for admins. Rendered and
   checked in Chromium against mocked admin responses (dark, light, mobile).
+- 2026-09-21 branch cleanup: PR #46 + #47 merged (`llms.txt`, then rewritten
+  for Track Toolkit / tracktoolkit.com), PR #27 closed, nine remote branches
+  deleted (all seven merged feature branches plus the dead `initialized` and
+  `backup-remote-main`). Kept: `feature/ai-library-chat` (owns production
+  tables), `codex-branding` (archived runner-up logo), PR #28 (stale draft),
+  and `claude/modest-thompson-pukoby` (created by another session).
+- Internal docs moved out of the repo root into `docs/internal/` (this file,
+  MIGRATION.md, ANALYSIS.md, DATA-COLLECTION.md, NOTES.md, TERMS-CHECK.md);
+  every reference updated. Root is README, CLAUDE.md, AGENTS.md, LICENSE.
 - ec6688b (PR #43) — branding hand-off on the live origin: JSON-LD logo →
   `/brand/icon-512.png`, README follow-ups current; verified on
   https://tracktoolkit.com: all /brand assets + manifest 200 with correct
@@ -127,7 +136,14 @@ Read `MIGRATION.md` ("CUTOVER DONE") first.
   `SESSION_TTL_MS`, not by cookie maxAge alone. There is deliberately no
   server-side revocation list — documented as a known limitation, not a bug
   to "fix" with a session table unless that tradeoff is revisited (2026-08-25).
-- Licensed MIT, © 2026 Cole Hackman (2026-08-25).
+- ~~Licensed MIT, © 2026 Cole Hackman (2026-08-25).~~ Relicensed to
+  PolyForm Shield 1.0.0 (2026-09-21): anyone may clone, run, modify and
+  contribute, but not use the code to provide a product or service that
+  competes with Track Toolkit. Not OSI open source. Copies obtained under
+  MIT before this date remain MIT for those copies; the license does not
+  protect the idea, only the code.
+- Internal working documents live in `docs/internal/`, never the repo root;
+  the root is what a visitor sees first (2026-09-21).
 
 - Azure target is App Service (Linux B1, one instance, pinned) serving the
   API and `frontend-UI/out` from ONE origin; session cookie goes to

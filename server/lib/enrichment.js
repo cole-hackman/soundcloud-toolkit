@@ -71,7 +71,7 @@ export async function enrichTrackIds(trackIds, accessToken, refreshToken, { maxB
       missing += absent.length;
       if (absent.length > 0) {
         // Previously-resolved rows that vanished upstream: keep the metadata,
-        // mark them gone. (TERMS-CHECK.md clause 2 decides if this must
+        // mark them gone. (docs/internal/TERMS-CHECK.md clause 2 decides if this must
         // become a hard delete.)
         await prisma.track.updateMany({
           where: { id: { in: absent }, title: { not: null } },

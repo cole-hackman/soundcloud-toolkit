@@ -1,4 +1,4 @@
-# DATA-COLLECTION.md — Music Dataset Spec for Track Toolkit
+# docs/internal/DATA-COLLECTION.md — Music Dataset Spec for Track Toolkit
 
 **Date:** 2026-08-09 · **Status: SPEC ONLY — nothing here is implemented.** Awaiting approval.
 **Goal:** persist the track and playlist identity behind every operation so an admin can explore what music moves through the tool.
@@ -14,7 +14,7 @@ These are not spec items — they're regressions the audit tripped over, verifie
 1. **Clone is broken in production since the Aug 6 deploy.** All four clone logging references use `source.id` (`server/routes/api.js:645, 649, 688, 692`) but no `source` variable exists — the route defines `resource` (`:558`) and `sourceId` (`:573`). The ReferenceError fires *after* the playlist is created on SoundCloud, inside the route's try, so every clone **succeeds upstream but returns a 500 to the user**, skips cache invalidation, and logs nothing. Export corroboration: clone averaged ~4 rows/day for months (461 rows), last row 2026-08-05, zero rows after the deploy. Fix: `sourceId` at 645/649, and `sourceId` / `newPlaylist.id` at 688/692.
 2. **playlist-compare metadata logs undefined.** The log site reads `comparison.summary.commonTrackCount` / `.playlistA.uniqueCount` / `.playlistB.uniqueCount` (`api.js:500-502`), but the library returns `overlapCount` / `uniqueToACount` / `uniqueToBCount` (`server/lib/playlist-compare.js:52-54`). All three serialize away; the export's playlist-compare rows contain only `playlistIds`.
 
-Related data finding, same family: **bulk-like failures are invisible.** On Aug 7 one user ran 13 batches; after the first two, every batch succeeded on 0 of ~100 items — all logged `status: 'success'` (hardcoded, `api.js:2297-2304`). ~900 likes silently didn't happen. Same window as the bulk-unlike/unfollow failure bursts in ANALYSIS.md §5.1.
+Related data finding, same family: **bulk-like failures are invisible.** On Aug 7 one user ran 13 batches; after the first two, every batch succeeded on 0 of ~100 items — all logged `status: 'success'` (hardcoded, `api.js:2297-2304`). ~900 likes silently didn't happen. Same window as the bulk-unlike/unfollow failure bursts in docs/internal/ANALYSIS.md §5.1.
 
 ---
 
@@ -178,7 +178,7 @@ At current pace (verified: 355k track-touches/month; 81%-distinct early, declini
 | `playlists` catalog | thousands/mo | negligible |
 | Deferred join table (if ever) | ~4M rows/yr | ~250 MB — the reason it's deferred |
 
-Comfortably inside a Neon paid tier; no retention policy *needed* year one. Sensible defaults anyway: revisit at 2 GB; if `view:*` events turn out to be live (ANALYSIS.md §5.8), prune those after 12 months — they're the only high-volume/low-value rows on the horizon.
+Comfortably inside a Neon paid tier; no retention policy *needed* year one. Sensible defaults anyway: revisit at 2 GB; if `view:*` events turn out to be live (docs/internal/ANALYSIS.md §5.8), prune those after 12 months — they're the only high-volume/low-value rows on the horizon.
 
 ### 3.6 Privacy and SoundCloud API terms
 

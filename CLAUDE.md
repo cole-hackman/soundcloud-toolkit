@@ -57,7 +57,7 @@ soundcloud-tool/
 │   │   ├── resolve-cache.js      # In-memory /api/resolve cache (5-min TTL, 1000-entry cap)
 │   │   ├── social-cache.js       # Per-user collection cache + read-through tiering (loadUserCollection, loadCachedPlaylists)
 │   │   ├── snapshot-cache.js     # Postgres tier — page rows, stale-while-revalidate, fails soft
-│   │   ├── auth-cache.js         # 30s memo of user + decrypted tokens (see Landmines in STATE.md)
+│   │   ├── auth-cache.js         # 30s memo of user + decrypted tokens (see Landmines in docs/internal/STATE.md)
 │   │   ├── request-cache.js      # Generic namespaced per-user TTL cache backing social-cache
 │   │   ├── merge-utils.js        # Dedup + 500-track chunking for merge/from-likes
 │   │   ├── playlist-transfer.js  # Move/duplicate a track between playlists
@@ -136,7 +136,8 @@ soundcloud-tool/
 │                                 #   sql/ migrations, api.json (SoundCloud's upstream spec)
 ├── .do/app.yaml                  # DigitalOcean App Platform deployment config
 ├── package.json                  # Root scripts (dev, build, server, test)
-├── STATE.md                      # Session state + decision log (read this first)
+├── docs/internal/                # STATE.md (session state + decisions — read first), MIGRATION.md,
+│                                 #   ANALYSIS.md, DATA-COLLECTION.md, NOTES.md, TERMS-CHECK.md
 └── CLAUDE.md                     # This file
 ```
 

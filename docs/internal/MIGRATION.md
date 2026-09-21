@@ -78,7 +78,7 @@ untouched and remain the rollback plan.
 | Databases | `tracktoolkit` (empty, prod-to-be), `tracktoolkit-rehearsal` (throwaway) | |
 | Key Vault | `tracktoolkit-kv` | RBAC; secret names listed in `infra/deploy.sh` |
 | Log Analytics | `tracktoolkit-logs` | |
-| Entra app for GitHub OIDC | `gh-tracktoolkit-deploy` (appId 8b48e1d8-…) | federated subject `repo:cole-hackman/soundcloud-toolkit:environment:azure`, Website Contributor on the RG |
+| Entra app for GitHub OIDC | `gh-tracktoolkit-deploy` (appId 8b48e1d8-…) | federated subject `repo:cole-hackman@83625748/tracktoolkit@1053639544:environment:azure` (GitHub now issues the subject with the owner and repository ids embedded, so it survives renames), Website Contributor on the RG |
 | GitHub | environment `azure`; variables `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID` | |
 
 Current production for reference: DigitalOcean app `sctoolkit-backend`
@@ -322,13 +322,13 @@ Pre-existing gaps noticed on the way (not fixed): `/og-image.png` is
 referenced by the OpenGraph and Twitter metadata but does not exist in
 `frontend-UI/public`, so link previews are already broken today; the JSON-LD
 `aggregateRating` (4.8 from 150) has no data behind it, which conflicts with
-the "no fabricated social proof" decision in STATE.md; `vercel.json` still
+the "no fabricated social proof" decision in docs/internal/STATE.md; `vercel.json` still
 rewrites `/api` to api.soundcloudtoolkit.com and is dead weight once Vercel
 is gone.
 
 ## Work item 5 — Verification
 
-On `azure/migration` (5cb6a0d + MIGRATION.md commits), 2026-09-19:
+On `azure/migration` (5cb6a0d + docs/internal/MIGRATION.md commits), 2026-09-19:
 
 | check | result |
 |---|---|
@@ -541,6 +541,38 @@ on the Azure database. Two causes, two fixes:
   (`MATERIALIZED` CTE, or a materialised touches table) or a larger tier. Also: while investigating, an Azure Monitor query with
 `--interval PT1M` returned future buckets as `is_db_alive=0`; the server was
 never down — read metric timestamps against `date -u`.
+
+## 2026-09-21 — repository cleanup
+
+- PRs: #44 (post-cutover docs/SQL), #46 (`llms.txt`), #47 (`llms.txt`
+  rewritten for Track Toolkit / tracktoolkit.com — the salvaged file still
+  said "SC Toolkit" and pointed at the old domain) merged; #27 (planning)
+  closed. #28 (Rekordbox sync, draft, 124 commits behind) left open.
+- Remote branches deleted after verifying each was an ancestor of main:
+  `azure/migration`, `prep/domain-switch`, `claude-branding`,
+  `claude/keen-newton-02qlh4`, `claude/cache-serving-races`,
+  `claude/fix-snapshot-invalidation-races`,
+  `claude/rebrand-survey-names-3ue8dk`; plus `initialized` and
+  `backup-remote-main` (2025 history with no relation to main).
+- Kept: `feature/ai-library-chat` (130 commits; owns the `chat_*`,
+  `indexed_*`, `library_snapshots` tables the production schema declares),
+  `codex-branding` (archived runner-up identity, per the logo decision),
+  `claude/modest-thompson-pukoby` (not created by this work).
+- This file and the other internal documents moved to `docs/internal/`.
+  The Azure work is finished; further changes branch from `main`.
+
+## 2026-09-21 — repository renamed to cole-hackman/tracktoolkit
+
+GitHub redirects the old slug, but the Azure OIDC federated credential is
+matched on the token subject, which carries the current repo name. Updated
+`gh-env-azure` on app `gh-tracktoolkit-deploy`. The plain
+`repo:cole-hackman/tracktoolkit:environment:azure` form still failed
+(AADSTS700213): GitHub now issues the subject with ids embedded,
+`repo:cole-hackman@83625748/tracktoolkit@1053639544:environment:azure`.
+That exact string is the credential now; deploy run 35659806107 passed
+login, deploy and smoke test. It survives future renames. Local remote and README clone URL updated;
+`.do/app.yaml` and the DigitalOcean guides still say the old slug and are
+left as retired history.
 
 ## Blocked
 

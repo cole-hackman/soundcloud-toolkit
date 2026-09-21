@@ -2,4 +2,5 @@
 
 This file previously duplicated CLAUDE.md and drifted out of date.
 CLAUDE.md is the single authoritative project brief — read that instead.
-Session state lives in STATE.md.
+Session state lives in docs/internal/STATE.md; migration and incident
+records in docs/internal/MIGRATION.md.

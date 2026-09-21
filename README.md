@@ -12,7 +12,7 @@ processed all-time** (users and tracks as of August 25, 2026; the 90-day active
 figure is from August 2026 and has not been re-measured since)
 
 Numbers come from the production `operation_log` table (see
-[ANALYSIS.md](ANALYSIS.md) for methodology).
+[docs/internal/ANALYSIS.md](docs/internal/ANALYSIS.md) for methodology).
 
 Live at [soundcloudtoolkit.com](https://soundcloudtoolkit.com) — the domain
 move is still outstanding; see "Rebrand follow-ups" below.
@@ -64,7 +64,7 @@ Library & Export, and Discovery & Links. Underneath them:
 Requires Node 18+, a Postgres database (Neon works), and a SoundCloud OAuth
 app (client ID and secret from developers.soundcloud.com).
 
-    git clone https://github.com/cole-hackman/soundcloud-toolkit
+    git clone https://github.com/cole-hackman/tracktoolkit
     cd soundcloud-toolkit
     npm install
     cp .env.example .env   # SoundCloud credentials, DATABASE_URL, generated secrets
@@ -150,7 +150,7 @@ is left is outside the repository and has to be done by hand, in this order:
 
 1. ~~Register the new domain and point it at the app.~~ Done (2026-09-20):
    `tracktoolkit.com` and `www` serve the app from Azure App Service; the
-   old `soundcloudtoolkit.com` hosts 301/308 to it (`MIGRATION.md`).
+   old `soundcloudtoolkit.com` hosts 301/308 to it (`docs/internal/MIGRATION.md`).
 2. SoundCloud OAuth app registration: ~~redirect URI~~ done
    (`https://tracktoolkit.com/api/auth/callback`, 2026-09-20). Still to do:
    rename the app to "Track Toolkit" and upload
@@ -182,4 +182,8 @@ PostgreSQL (Azure Flexible Server) · Azure App Service
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+PolyForm Shield 1.0.0 — see [LICENSE](LICENSE). You may clone, run, modify
+and contribute to this code for any purpose except providing a product or
+service that competes with Track Toolkit. It is source-available, not
+OSI open source. Releases before 2026-09-21 were MIT and remain so for the
+copies obtained under it.

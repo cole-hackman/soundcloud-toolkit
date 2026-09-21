@@ -6,7 +6,7 @@
 
 ## Signature 1 — clone: deploy regression. Confidence: HIGH. Fixed in this branch.
 
-`dcb4d21` (authored Jul 26, first deployed Aug 6) introduced four references to an undefined `source` variable in the clone route's logging calls (the defined variable is `sourceId`). The ReferenceError fires after the playlist is created on SoundCloud, so every clone since the deploy created the playlist, returned a 500, and logged nothing. **Attribution correction to DATA-COLLECTION.md §0:** the bug came from `dcb4d21`, not `42bf56a` (whose diff contains no clone hunks).
+`dcb4d21` (authored Jul 26, first deployed Aug 6) introduced four references to an undefined `source` variable in the clone route's logging calls (the defined variable is `sourceId`). The ReferenceError fires after the playlist is created on SoundCloud, so every clone since the deploy created the playlist, returned a 500, and logged nothing. **Attribution correction to docs/internal/DATA-COLLECTION.md §0:** the bug came from `dcb4d21`, not `42bf56a` (whose diff contains no clone hunks).
 
 **User impact — duplicate playlists:** a user who retried saw "Failed to clone playlist" while each attempt actually created the playlist. They'd find the duplicates in their SoundCloud library as multiple identically-titled "Clone of <name>" playlists created seconds apart, all with the "Cloned from <url>" description this app writes. No automated cleanup is included (deliberately — nothing in this branch deletes user playlists).
 

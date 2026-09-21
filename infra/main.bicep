@@ -5,7 +5,7 @@
 // data, and one Key Vault holds every secret. Deploy with infra/deploy.sh;
 // application code ships via .github/workflows/azure-deploy.yml.
 //
-// Design notes are in MIGRATION.md ("Work item 1"). The short version:
+// Design notes are in docs/internal/MIGRATION.md ("Work item 1"). The short version:
 //   * App Service over Container Apps: no registry, no Dockerfile, single
 //     instance is the default, health-check restarts and managed TLS built in.
 //   * Same-origin over Static Web Apps: session cookie can drop from
@@ -38,7 +38,7 @@ param assignDeployerKvRole bool = true
 @description('Optional public IP allowed through the Postgres firewall for pg_dump/pg_restore. Empty string skips the rule.')
 param clientIp string = ''
 
-@description('Custom hostnames to bind to the web app. Empty until DNS points here — bindings fail verification otherwise. See MIGRATION.md work item 4.')
+@description('Custom hostnames to bind to the web app. Empty until DNS points here — bindings fail verification otherwise. See docs/internal/MIGRATION.md work item 4.')
 param customHostnames array = []
 
 @description('Attach the App Service managed certificate named after each custom hostname (must already exist). False only for the first deploy of a brand-new hostname.')
@@ -66,7 +66,7 @@ param growthAutocheck bool = false
 @allowed(['lax', 'none', 'strict'])
 param sessionCookieSameSite string = 'lax'
 
-@description('Comma-separated legacy hostnames that Express 301/308-redirects to appUrl (the soundcloudtoolkit.com retirement). Empty disables the middleware. See MIGRATION.md work item 4.')
+@description('Comma-separated legacy hostnames that Express 301/308-redirects to appUrl (the soundcloudtoolkit.com retirement). Empty disables the middleware. See docs/internal/MIGRATION.md work item 4.')
 param legacyRedirectHosts string = ''
 
 var planName = '${baseName}-plan'
@@ -165,7 +165,7 @@ resource pgDbRehearsal 'Microsoft.DBforPostgreSQL/flexibleServers/databases@2024
 
 // 0.0.0.0 is Azure's sentinel for "services inside Azure", which is how the
 // App Service outbound IPs reach the server without VNet integration.
-// Follow-up (MIGRATION.md): move to a private endpoint once the stack is live.
+// Follow-up (docs/internal/MIGRATION.md): move to a private endpoint once the stack is live.
 resource pgAllowAzure 'Microsoft.DBforPostgreSQL/flexibleServers/firewallRules@2024-08-01' = {
   parent: pg
   name: 'AllowAllAzureServicesAndResourcesWithinAzureIps'

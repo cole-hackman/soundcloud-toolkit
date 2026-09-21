@@ -1,6 +1,6 @@
 # Azure infrastructure
 
-Everything Track Toolkit needs on Azure, as code. `MIGRATION.md` at the repo
+Everything Track Toolkit needs on Azure, as code. `docs/internal/MIGRATION.md` at the repo
 root holds the decisions, verification log and open items; this file is the
 operator's quick reference.
 
@@ -38,7 +38,7 @@ what runs.
 
 One-time setup for the workflow (already done for this repo, recorded here so
 it can be rebuilt): an Entra app registration with a federated credential
-whose subject is `repo:cole-hackman/soundcloud-toolkit:environment:azure`, the
+whose subject is `repo:cole-hackman@83625748/tracktoolkit@1053639544:environment:azure` (GitHub now issues the subject with the owner and repository ids embedded, so it survives renames), the
 `Website Contributor` role on `rg-tracktoolkit`, and the repository variables
 `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`.
 

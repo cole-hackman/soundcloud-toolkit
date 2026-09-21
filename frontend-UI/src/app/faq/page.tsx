@@ -6,9 +6,9 @@ import { StructuredData, type FAQ } from "@/components/StructuredData";
 import { SupportLink } from "@/components/SupportLink";
 
 // The rename FAQ, always expanded — this is the content people arrive
-// looking for, from a redirected bookmark or a search result. Plain text
-// answers live alongside a `link` so the same content can render with a
-// working <Link> on the page and as plain text in the FAQPage JSON-LD.
+// looking for, from a redirected bookmark or a search result. Rendered as
+// plain-text h3+p on the page (see the brief: a heading inside <summary> is
+// invalid HTML) and reused verbatim in the FAQPage JSON-LD below.
 interface RebrandFaq {
   question: string;
   answer: string;
@@ -118,12 +118,12 @@ const privacyFaqs: FAQ[] = [
   {
     question: "What does Track Toolkit store about me?",
     answer:
-      "We store your SoundCloud profile basics (ID, username, avatar), encrypted OAuth tokens, and a log of the operations you run — nothing else. See the Privacy Policy for the full breakdown.",
+      "We store your SoundCloud profile basics (ID, username, avatar), encrypted OAuth tokens, and a log of the operations you run. The Privacy Policy lists everything we keep, including cached copies of your library and your Growth history.",
   },
   {
     question: "Do you use analytics cookies or trackers?",
     answer:
-      "No. Track Toolkit doesn't run any analytics, advertising, or tracking cookies — there's nothing to opt out of because nothing is being tracked.",
+      "No. Track Toolkit runs no analytics or advertising scripts and sets no tracking cookies, so there's nothing to opt out of. We do keep a first-party log of which tools you run, described in the Privacy Policy.",
   },
 ];
 
@@ -303,14 +303,15 @@ export default function FaqPage() {
                   <p>
                     We store your SoundCloud profile basics (ID, username,
                     avatar), encrypted OAuth tokens, and a log of the
-                    operations you run — nothing else. See the{" "}
+                    operations you run. The{" "}
                     <Link
                       href="/privacy"
                       className="font-medium text-foreground underline underline-offset-2 transition hover:text-primary"
                     >
                       Privacy Policy
                     </Link>{" "}
-                    for the full breakdown.
+                    lists everything we keep, including cached copies of your
+                    library and your Growth history.
                   </p>
                 </FaqDetails>
                 <FaqDetails question={privacyFaqs[1].question}>

@@ -1,0 +1,17 @@
+# SC Toolkit
+
+> SoundCloud playlist management tools for power users.
+
+Primary site: https://www.soundcloudtoolkit.com/
+About: https://www.soundcloudtoolkit.com/about/
+Privacy: https://www.soundcloudtoolkit.com/privacy/
+
+Summary:
+- SC Toolkit helps SoundCloud users merge, split, clean, and organize playlists.
+- Key tools include playlist combine, likes to playlist, playlist health check, following manager, like manager, downloads, and link resolver.
+- Authentication uses SoundCloud OAuth. Users manage their own SoundCloud data through the app.
+
+Preferred citations:
+- Use the homepage for product overview.
+- Use the about page for product background.
+- Use the privacy page for data handling and token storage details.

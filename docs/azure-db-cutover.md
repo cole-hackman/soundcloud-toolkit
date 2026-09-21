@@ -26,6 +26,10 @@ read-only `pg_dump`. Neon stays intact and is the rollback.
 ```bash
 export NEON_DIRECT='postgresql://neondb_owner:<pw>@ep-fancy-morning-afbejaye.c-2.us-west-2.aws.neon.tech/neondb?sslmode=require'
 export AZURE_PROD='postgresql://tracktoolkit_admin:<url-encoded pw>@tracktoolkit-pg.postgres.database.azure.com:5432/tracktoolkit?sslmode=require'
+# The value the APP gets (Key Vault `database-url`) carries Prisma pool settings on top:
+#   ...?sslmode=require&connection_limit=10&pool_timeout=30
+# Prisma's default pool is (cpus*2+1) = 3 on the one-vCPU App Service, which the
+# admin dashboard's parallel queries exhaust (P2024, 2026-09-21). Server max is 50.
 mkdir -p ~/cutover && cd ~/cutover
 ```
 
@@ -140,6 +144,21 @@ time docker run --rm -v "$PWD/../soundcloud-toolkit/docs/sql:/sql:ro" postgres:1
 Measured: **3 s**. Output is `CREATE TABLE` / `CREATE INDEX` for what
 `--clean` had just dropped and `already exists, skipping` notices for the
 rest — both fine.
+
+### 4b. VACUUM ANALYZE the restored tables
+
+`pg_restore` leaves the tables with no visibility map and no hint bits, so
+the first scans are slow (each page gets written on first read) and
+index-only scans are impossible. On 2026-09-21 the admin genre breakdown
+took 11.8 s until this ran, 0.5 s after.
+
+```bash
+time docker run --rm postgres:17 psql "$AZURE_PROD" -c 'VACUUM (ANALYZE) "tracks", "operation_logs"; VACUUM (ANALYZE);'
+```
+
+Measured: **~25 s** for the two big tables (the full-database pass adds a
+few seconds). Then apply `docs/sql/2026-catalog-admin-indexes.sql` (also
+not in the Prisma schema; see its header).
 
 ### 5. Verify
 

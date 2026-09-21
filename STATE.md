@@ -16,6 +16,13 @@ Read `MIGRATION.md` ("CUTOVER DONE") first.
   accessible inspector drawer, app tokens + ThemeContext instead of a private
   theme, `isAdmin` on AuthContext and a sidebar link for admins. Rendered and
   checked in Chromium against mocked admin responses (dark, light, mobile).
+- ec6688b (PR #43) — branding hand-off on the live origin: JSON-LD logo →
+  `/brand/icon-512.png`, README follow-ups current; verified on
+  https://tracktoolkit.com: all /brand assets + manifest 200 with correct
+  types, og:image/canonical/apple-touch-icon in the served head, landing nav
+  and login show the mark, opengraph.xyz renders the new card; GitHub social
+  preview uploaded. Sidebar/dark/mobile screenshots still owed (needs a login
+  in the automation window).
 - c9af1df — PR #41: Track Toolkit identity shipped (three-bar mark, wordmarks,
   maskable icons, opaque touch icon, 1200x630 og-image, generated Logo.tsx,
   legacy icon files replaced in place; see Decisions 2026-09-20 "Logo").
@@ -36,10 +43,11 @@ Read `MIGRATION.md` ("CUTOVER DONE") first.
    coverage on both properties.
 3. After a week: decommission DigitalOcean app, then Vercel, keep Neon a
    month; rotate the SoundCloud client secret.
-4. Branding leftovers outside the web app: SoundCloud OAuth app name
-   "Track Toolkit" + `icon-512.png` as its icon; GitHub social preview
-   (`og-image.png`); Chrome extension icons from `docs/brand/extension/`
-   and its listing renamed — only then may the two legacy icon files go.
+4. Branding leftovers outside the web app (Cole): SoundCloud OAuth app
+   name "Track Toolkit" + `frontend-UI/public/brand/icon-512.png` as its
+   icon; Chrome extension icons from `docs/brand/extension/` + listing
+   renamed — only then may the two legacy icon files go. GitHub social
+   preview is done.
 
 ## Decisions
 - **Logo: the `claude-branding` shifted-bar mark** (2026-09-20). Three

@@ -12,6 +12,9 @@ export default {
       fontFamily: {
         display: ["var(--font-display)", "system-ui", "sans-serif"],
         sans: ["var(--font-sans)", "system-ui", "sans-serif"],
+        // --font-mono has a system fallback in globals.css; the admin layout
+        // overrides it with JetBrains Mono via next/font.
+        mono: ["var(--font-mono)", "ui-monospace", "SFMono-Regular", "Menlo", "Consolas", "monospace"],
       },
       colors: {
         background: 'hsl(var(--background))',

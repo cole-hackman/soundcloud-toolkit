@@ -900,3 +900,18 @@ export const validateReverseGrowthActions = [
   }),
   handleValidationErrors
 ];
+
+/**
+ * Admin catalog re-resolve: an explicit list of track ids to refetch from
+ * SoundCloud. Capped at 200 (four enrichment batches) so one click cannot
+ * queue an unbounded crawl.
+ */
+export const validateAdminReResolve = [
+  body('trackIds')
+    .isArray({ min: 1, max: 200 })
+    .withMessage('trackIds must be an array with 1-200 items'),
+  body('trackIds.*')
+    .isInt({ min: 1 })
+    .withMessage('Each trackId must be a positive integer'),
+  handleValidationErrors
+];

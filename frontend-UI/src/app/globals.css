@@ -11,6 +11,11 @@
        there is no banner. */
     --announcement-h: 0px;
 
+    /* Monospace stack for readouts. The admin layout overrides this with a
+       self-hosted JetBrains Mono (next/font); everywhere else it is the
+       system mono. */
+    --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+
     /* Light mode — Midnight Studio */
     --background: 45 20% 97%;
     --foreground: 222 47% 11%;
@@ -263,4 +268,65 @@ textarea:focus-visible {
 @keyframes shimmer-spin {
   from { transform: rotate(0deg); }
   to   { transform: rotate(360deg); }
+}
+
+/* ─── Admin console ──────────────────────────────────────── */
+
+/* Faint technical grid behind the console, fading out down the page so the
+   body's own gradients still show through. */
+.admin-console {
+  position: relative;
+}
+
+/* The grid lives on a pseudo-element: masking the console itself would fade
+   its content and create a stacking context that traps the inspector drawer
+   under the sticky announcement banner. */
+.admin-console::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image:
+    linear-gradient(hsl(var(--border) / 0.28) 1px, transparent 1px),
+    linear-gradient(90deg, hsl(var(--border) / 0.28) 1px, transparent 1px);
+  background-size: 32px 32px;
+  -webkit-mask-image: linear-gradient(to bottom, black 0, black 40vh, transparent 110vh);
+  mask-image: linear-gradient(to bottom, black 0, black 40vh, transparent 110vh);
+}
+
+.admin-root {
+  font-variant-numeric: tabular-nums;
+}
+
+@keyframes admin-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Staggered reveal for panels and tiles; each sets --i to its slot. */
+.admin-reveal {
+  animation: admin-reveal 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: calc(var(--i, 0) * 40ms);
+}
+
+@keyframes admin-drawer-in {
+  from {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.admin-drawer {
+  animation: admin-drawer-in 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
 }

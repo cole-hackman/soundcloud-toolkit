@@ -1,0 +1,84 @@
+// Minimal static file server over `frontend-UI/out`, for the Playwright e2e
+// harness only (never used in production — that's Express, see
+// server/index.js).
+//
+// It mirrors the *target* lookup order the static-serving middleware will
+// have from Task 2 on: exact file -> "<path>/index.html" -> "<path>.html" ->
+// "404.html" served with an actual 404 status. Today's Express still falls
+// back to root index.html for an unmatched route (a SPA catch-all); this
+// harness intentionally does NOT reproduce that, because Task 2 replaces it
+// with a real 404, and the point of e2e/a11y.spec.ts hitting a
+// `/does-not-exist/` URL is to exercise that behavior once it lands.
+import { createServer } from "node:http";
+import { readFile, stat } from "node:fs/promises";
+import { extname, join, normalize } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const ROOT = fileURLToPath(new URL("../out/", import.meta.url));
+const PORT = process.env.PORT ? Number(process.env.PORT) : 4173;
+
+const CONTENT_TYPES = {
+  ".html": "text/html; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+  ".mjs": "text/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
+  ".svg": "image/svg+xml",
+  ".png": "image/png",
+  ".ico": "image/x-icon",
+  ".txt": "text/plain; charset=utf-8",
+  ".xml": "application/xml",
+  ".webmanifest": "application/manifest+json",
+};
+
+function contentTypeFor(path) {
+  return CONTENT_TYPES[extname(path)] || "application/octet-stream";
+}
+
+async function isFile(path) {
+  try {
+    const stats = await stat(path);
+    return stats.isFile();
+  } catch {
+    return false;
+  }
+}
+
+/** Resolve a request path to a file under ROOT, or fall back to 404.html. */
+async function resolveFile(requestUrl) {
+  const pathname = decodeURIComponent(requestUrl.split("?")[0] || "/");
+  const relative = normalize(pathname).replace(/^\/+/, "");
+
+  const candidates = [
+    join(ROOT, relative),
+    join(ROOT, relative, "index.html"),
+    join(ROOT, `${relative}.html`),
+  ];
+
+  for (const candidate of candidates) {
+    // Path-traversal guard: never serve a file outside ROOT.
+    if (!candidate.startsWith(ROOT)) continue;
+    if (await isFile(candidate)) {
+      return { file: candidate, status: 200 };
+    }
+  }
+
+  return { file: join(ROOT, "404.html"), status: 404 };
+}
+
+const server = createServer(async (req, res) => {
+  const { file, status } = await resolveFile(req.url || "/");
+  try {
+    const body = await readFile(file);
+    res.writeHead(status, { "Content-Type": contentTypeFor(file) });
+    res.end(body);
+  } catch {
+    res.writeHead(500, { "Content-Type": "text/plain; charset=utf-8" });
+    res.end("Internal server error");
+  }
+});
+
+server.listen(PORT, () => {
+  // eslint-disable-next-line no-console
+  console.log(`[e2e static-server] serving ${ROOT} on http://localhost:${PORT}`);
+});

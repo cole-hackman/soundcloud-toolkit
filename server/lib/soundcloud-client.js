@@ -51,6 +51,69 @@ export async function fetchWithTimeout(url, options = {}, timeoutMs = SC_FETCH_T
   }
 }
 
+/** Sign-out is best-effort courtesy on a path the user is already leaving.
+ *  It gets its own short deadline so a slow SoundCloud cannot hold a
+ *  disconnect or an account deletion open for the full 30s fetch budget. */
+const SC_SIGN_OUT_TIMEOUT_MS = 5_000;
+
+/**
+ * Tell SoundCloud to invalidate this access token (`POST /sign-out`), so
+ * disconnecting here also drops the grant on their side rather than only
+ * forgetting it on ours.
+ *
+ * Never throws. Every caller is already committed to tearing the local session
+ * down; a failure upstream must not turn a successful disconnect into a 500.
+ * Returns whether SoundCloud acknowledged it, for logging only.
+ */
+export async function signOut(accessToken) {
+  if (!accessToken) return false;
+  try {
+    const response = await fetchWithTimeout('https://api.soundcloud.com/sign-out', {
+      method: 'POST',
+      headers: {
+        'Authorization': `OAuth ${accessToken}`,
+        'Accept': 'application/json',
+      },
+    }, SC_SIGN_OUT_TIMEOUT_MS);
+
+    if (!response.ok) {
+      // 401 here is a success in disguise: the token was already dead.
+      logger.warn(`[account] SoundCloud sign-out returned ${response.status}`);
+      return false;
+    }
+    return true;
+  } catch (error) {
+    // Includes the AbortError from the 5s deadline.
+    logger.warn(`[account] SoundCloud sign-out failed: ${error?.name || 'Error'}`);
+    return false;
+  }
+}
+
+/**
+ * Does this failed token-endpoint response mean the authorization is gone for
+ * good, as opposed to SoundCloud having a bad minute?
+ *
+ * Only `invalid_grant` on a 400/401 counts, plus a bare 401 with no parsable
+ * body (SoundCloud sometimes returns one for a revoked grant). Network errors,
+ * timeouts, 429 and every 5xx deliberately do NOT count: disconnecting a user
+ * because SoundCloud was briefly down would log them out and delete their
+ * tokens over a transient blip.
+ */
+export function isInvalidGrantResponse(status, bodyText) {
+  if (status !== 400 && status !== 401) return false;
+
+  const text = typeof bodyText === 'string' ? bodyText.trim() : '';
+  if (text) {
+    try {
+      return JSON.parse(text)?.error === 'invalid_grant';
+    } catch {
+      // Unparsable body — a 400 could be anything, a 401 is unambiguous.
+      return status === 401;
+    }
+  }
+  return status === 401;
+}
+
 /**
  * In-flight token refreshes, keyed by userId. SoundCloud rotates the refresh
  * token on every exchange, so two concurrent 401s for the same user would
@@ -132,7 +195,12 @@ class SoundCloudClient {
     if (!response.ok) {
       const errorText = await response.text();
       // Sanitize error - don't include full response body
-      throw new Error(`Token refresh failed: ${response.status}`);
+      const error = new Error(`Token refresh failed: ${response.status}`);
+      // Flag (rather than re-encode in the message) so the caller can tell a
+      // revoked authorization from a transient failure without string-matching
+      // a message that is deliberately kept free of response detail.
+      error.invalidGrant = isInvalidGrantResponse(response.status, errorText);
+      throw error;
     }
 
     return parseScJson(response, { context: 'Token refresh', allowEmpty: false });
@@ -160,7 +228,30 @@ class SoundCloudClient {
 
   /** The original, un-deduplicated refresh+persist. Do not call directly. */
   async _refreshAndPersistNow(refreshToken, userId) {
-    const newTokens = await this.refreshTokens(refreshToken);
+    let newTokens;
+    try {
+      newTokens = await this.refreshTokens(refreshToken);
+    } catch (error) {
+      // SoundCloud says the grant is gone — the user revoked us from their
+      // account settings, or the refresh token was invalidated upstream. The
+      // stored pair is dead weight and every later request would 401 against
+      // it, so tear the connection down now. No signOut: there is nothing
+      // left to sign out of.
+      if (error?.invalidGrant && userId) {
+        try {
+          // Dynamic import: account-lifecycle imports signOut from this
+          // module, so a static import here would close the cycle at
+          // module-evaluation time.
+          const { disconnectUser } = await import('./account-lifecycle.js');
+          await disconnectUser(userId, { reason: 'revoked' });
+        } catch (disconnectError) {
+          logger.error('[account] disconnect after revocation failed:', disconnectError);
+        }
+      }
+      // Rethrow either way: scRequest still converts this into the generic
+      // "Token refresh failed" the caller has always seen.
+      throw error;
+    }
 
     if (!userId) {
       logger.warn('Token refresh completed without user context; refreshed tokens were not persisted', {

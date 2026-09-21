@@ -16,6 +16,14 @@ model User {
   username     String
   displayName  String?
   avatarUrl    String?
+  /// Stamped by the OAuth callback on every login. Drives the inactive-account
+  /// purge in server/lib/retention.js; null on rows that predate the column,
+  /// which fall back to updatedAt there.
+  lastLoginAt    DateTime?
+  /// Set when the user disconnects (POST /api/auth/disconnect) or when
+  /// SoundCloud reports the authorization revoked. Tokens are already gone by
+  /// then; the row itself is purged a week later by the retention job.
+  disconnectedAt DateTime?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -35,7 +43,23 @@ model User {
   libraryCachePages     LibraryCachePage[]
   libraryCacheStates    LibraryCacheState[]
 
+  @@index([lastLoginAt])
+  @@index([disconnectedAt])
   @@map("users")
+}
+
+/// Counters that must outlive the rows they were computed from.
+///
+/// The only entry today is `lifetime_distinct_users`: the retention job
+/// snapshots `COUNT(DISTINCT userId)` over operation_logs before it purges
+/// rows older than the retention window, so the all-time figure survives the
+/// purge. Values are monotonic — a run only ever raises them.
+model Metric {
+  key       String   @id
+  value     BigInt
+  updatedAt DateTime @updatedAt
+
+  @@map("metrics")
 }
 
 model SurveyResponse {

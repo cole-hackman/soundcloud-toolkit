@@ -120,3 +120,146 @@ Consequences, as implemented:
   re-check items 1–3 above — a background sweep is service-operator analytics,
   not user-serving activity, and sits squarely under any purpose-limitation
   clause.
+
+---
+
+# Answers (2026-09-22)
+
+The four questions above are now answered. The terms were checked **outside
+this environment** — egress is still blocked here, so the findings below are
+recorded as substance, not as transcription. Each heading states what the
+terms require and, in a `> TERMS:` block, leaves a slot for the exact sentence
+to be pasted in from
+https://developers.soundcloud.com/docs/api/terms-of-use. **Do not treat the
+paraphrases as quotations**; if a decision ever turns on precise wording,
+fill the slots first.
+
+Items that remain non-compliant are marked as such rather than quietly closed.
+
+## Finding A — a privacy policy is required
+
+> TERMS: _[paste the privacy-policy clause verbatim]_
+
+**Substance.** A readily accessible privacy policy is a condition of using the
+API. It must describe what is collected, how it is used, and how a user gets
+it deleted.
+
+**What this branch does.** The privacy page is the disclosure surface; the
+mechanisms it must be able to point at now exist rather than being described
+in the abstract:
+
+- `GET /api/auth/export` — every row keyed to the user, as a JSON download.
+- `DELETE /api/auth/account` — deletes the account; every per-user table
+  cascades (guarded by `tests/account-deletion-cascade.test.js`).
+- `POST /api/auth/disconnect` — the middle step: hands the grant back and
+  destroys the stored tokens without deleting the account.
+
+The catalog is disclosed rather than hidden: it is a cross-user store of
+public SoundCloud metadata, and Finding C is why it survives in that form.
+
+## Finding B — delete within 7 days after disconnect
+
+> TERMS: _[paste the disconnect/revocation deletion clause verbatim]_
+
+**Substance.** When a user disconnects **or otherwise revokes access**, data
+obtained through the API for that user must be deleted within seven days.
+Revocation counts even when the user never opens this app — that is the part
+that drove most of this branch.
+
+**What this branch does.**
+
+| Requirement | Mechanism |
+|---|---|
+| A disconnect action exists | `POST /api/auth/disconnect` → `disconnectUser()` |
+| Revocation is noticed without the user telling us | `invalid_grant` at the refresh choke point runs the same teardown with `reason: 'revoked'` |
+| Credentials go immediately | `tokens` row deleted, auth memo invalidated, library caches and durable snapshots dropped — synchronous, not deferred to the job |
+| Everything else within 7 days | retention step 2: `users.disconnectedAt < now - 7d` → `user.deleteMany`, cascading to operation logs, growth actions, votes, cache pages |
+| Coming back does not get you deleted | a successful OAuth callback sets `lastLoginAt` and clears `disconnectedAt` |
+
+The seven days are spent as a grace period, not a delay: the API-derived data
+is already unreachable the moment the tokens go, and the window exists only so
+a reconnect within the week restores the account instead of starting over.
+**The window is a constant in `server/lib/retention.js`
+(`DISCONNECTED_GRACE_DAYS = 7`), not an env var** — it should not be possible
+to push it past the deadline from a deployment dashboard.
+
+Residual risk: the job runs daily, so the worst case is 7 days plus up to one
+interval. That is inside the deadline, but if `RETENTION_INTERVAL_MS` is ever
+raised the margin shrinks. Treat the interval as compliance-relevant, not a
+tuning knob.
+
+## Finding C — caching is session-based only
+
+> TERMS: _[paste the caching / no-separate-database clause verbatim]_
+
+**Substance.** SoundCloud content may be cached only for the duration of the
+user's session and only as needed to operate the application, and a separate
+database of SoundCloud content may not be built or maintained. This is the
+restrictive reading question 1 anticipated, and it is **narrower than a fixed
+TTL** — it also answers question 3.
+
+**What this branch does, and what it does not.**
+
+- The library cache (`library_cache_pages` / `library_cache_states`) is now
+  bounded: retention step 1 deletes rows older than `CACHE_TTL_DAYS` (7).
+  Seven days is longer than a session, so **this is not yet compliant** — it
+  is bounded where it used to be unbounded. Session scope means tying eviction
+  to the session TTL; that work is not done here.
+- The **catalog** (`tracks` / `playlists`) is the "separate database of
+  SoundCloud content" this finding names. Question 3's own conclusion applies:
+  do not run the backfill, drop the admin aggregate view, and either drop the
+  catalog or narrow it to a per-request cache. **The backfill remains unrun
+  and its flag default-off.** The catalog is not removed by this branch, and
+  that is a known gap — not an argument that it is permitted.
+- Operation-log metadata retains touched-ID arrays. Retention step 4 purges
+  logs older than `OPLOG_RETENTION_DAYS` (365), which bounds it, and
+  snapshots the distinct-user count first so the all-time figure survives
+  without keeping the rows.
+
+**Still open after this branch:** session-scoped (not 7-day) library-cache
+eviction; the catalog's existence and the admin aggregate view built on it.
+
+## Finding D — reflect upstream removals
+
+> TERMS: _[paste the upstream-removal clause verbatim]_
+
+**Substance.** When content is removed from SoundCloud or made private, the
+application must reflect that and remove cached copies. This answers question
+2 in the negative, exactly as question 2 predicted: *"retaining last-known
+metadata under a `'gone'` flag is exactly the retention the clause prohibits —
+the flag does not change what is stored."*
+
+**What this branch does.** Retention step 8 strips the metadata from `gone`
+rows on every run:
+
+```
+track.updateMany({
+  where: { access: 'gone', title: { not: null } },
+  data: { title: null, artistName: null, genre: null,
+          genreNormalized: null, permalinkUrl: null },
+})
+```
+
+What survives is the numeric SoundCloud ID and the `gone` status — the opaque
+tombstone question 2 allowed for, with no cached content attached. Historical
+operation logs still resolve; aggregate views lose deleted tracks from their
+trends, which question 2 said to accept rather than argue against.
+
+The complementary half is unchanged: `server/lib/enrichment.js` marks rows
+`gone` when `GET /tracks?ids=` stops returning them, and re-resolution clears
+the flag if a track reappears. **That detection is piggyback-only** — it runs
+during a user's operations, so a track nobody touches can stay stale
+indefinitely. A background availability sweep would fix the latency but is
+itself service-operator activity under Finding C, which is why it is still not
+built. This is a real gap in "reflect that change", not a solved problem.
+
+## Summary
+
+| Finding | Status after this branch |
+|---|---|
+| A — privacy policy | Export, delete and disconnect all exist and work |
+| B — 7-day deletion after disconnect | **Met**, with revocation detected automatically |
+| C — session-only caching, no separate database | **Partially addressed**: caches bounded, backfill still unrun; catalog and admin aggregate remain open |
+| D — reflect upstream removals | **Metadata now stripped**; detection latency remains a gap |
+
+Nothing here changes the standing instruction on the backfill: it stays off.

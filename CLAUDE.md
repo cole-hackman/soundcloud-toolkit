@@ -41,7 +41,7 @@ soundcloud-tool/
 │   │   ├── api.js                # Core tools — playlists, likes, followings, reposts, resolve, library, transfer/compare/clone, exports, proxy-download
 │   │   ├── growth.js             # Growth/discovery suite — /growth/* (discover, engage, analytics, history, follow-backs, reverse, stats)
 │   │   ├── admin.js              # Admin dashboard — stats, operations, catalog, feedback (every route is authenticateUser + adminAuth)
-│   │   ├── auth.js               # OAuth2+PKCE login/callback, session /me, logout, account deletion
+│   │   ├── auth.js               # OAuth2+PKCE login/callback, session /me, logout, disconnect, export, account deletion
 │   │   └── feedback.js           # Rebrand name vote — status + submit
 │   ├── lib/
 │   │   ├── soundcloud-client.js  # SoundCloud API wrapper — token exchange, pagination, 401 refresh, 429 backoff, 30s fetch timeout
@@ -71,6 +71,8 @@ soundcloud-tool/
 │   │   ├── download-utils.js     # Download URL + CDN redirect allowlists
 │   │   ├── growth-engine.js      # Discovery scoring, follow budget, background engagement jobs
 │   │   ├── growth-scheduler.js   # Daily follow-back check scheduler (GROWTH_AUTOCHECK)
+│   │   ├── account-lifecycle.js  # disconnectUser() — sign-out, token deletion, cache teardown
+│   │   ├── retention.js          # Daily purge job + runRetentionOnce() + lifetime-user snapshot
 │   │   └── token-context.js      # AsyncLocalStorage token context for refresh propagation
 │   ├── middleware/
 │   │   ├── auth.js               # authenticateUser() — session cookie → DB user → decrypted tokens
@@ -234,7 +236,7 @@ expires.
 
 ## Data Model
 
-The schema (`prisma/schema.prisma`) has **16 models**, not two:
+The schema (`prisma/schema.prisma`) has **17 models**, not two:
 
 | Model | Purpose |
 |-------|---------|
@@ -249,6 +251,7 @@ The schema (`prisma/schema.prisma`) has **16 models**, not two:
 | `chat_conversations` / `chat_messages` | AI library chat (owned by `feature/ai-library-chat`; declared here so `prisma db push` does not drop them) |
 | `indexed_likes` / `indexed_playlist_tracks` / `library_snapshots` | Library indexing for that same feature — same db-push caveat |
 | `LibraryCachePage` / `LibraryCacheState` | Persistent tier of the library cache — one row per 200-item page plus a sync-state row. **Not** the same thing as `library_snapshots` above |
+| `Metric` | Counters that must outlive the rows they were computed from. One key today: `lifetime_distinct_users`, snapshotted before each operation-log purge. Deliberately **not** per-user, so it is absent from the deletion cascade by design |
 
 The two models this app touches on every request are detailed below.
 
@@ -261,9 +264,15 @@ The two models this app touches on every request are detailed below.
 | `username` | `String` | SC username (URL slug) |
 | `displayName` | `String?` | Display name (may differ from username) |
 | `avatarUrl` | `String?` | Profile picture URL |
+| `lastLoginAt` | `DateTime?` | Stamped by the OAuth callback on every login. Drives the dormant-account purge; null on rows predating the column, which fall back to `updatedAt` |
+| `disconnectedAt` | `DateTime?` | Set by `POST /api/auth/disconnect` or by revocation detection; cleared on the next successful login. Rows still stamped after 7 days are deleted by the retention job |
 | `createdAt` | `DateTime` | Auto |
 | `updatedAt` | `DateTime` | Auto |
 | `tokens` | `Token[]` | One-to-many relation (effectively one per user) |
+
+Both new columns are indexed (`@@index([lastLoginAt])`, `@@index([disconnectedAt])`)
+so the daily retention sweep is a range scan rather than a full table scan.
+Additive SQL: `docs/sql/2026-09-account-lifecycle.sql` (**not applied**).
 
 ### `Token` (`tokens` table)
 
@@ -295,8 +304,14 @@ All endpoints (except `/health`, `/`, and auth redirects) require a valid `sessi
 | `GET` | `/api/auth/callback` | Exchanges OAuth code; sets session cookie; redirects to `/dashboard` |
 | `POST` | `/api/auth/logout` | Clears `session` cookie; returns `{ success: true }` |
 | `GET` | `/api/auth/me` | Returns `{ userId, username, avatarUrl, displayName }` from session |
+| `POST` | `/api/auth/disconnect` | Hands the SoundCloud grant back (`signOut`), deletes the `Token` row, stamps `User.disconnectedAt`, drops every cache keyed to the user, clears the session cookie. The account survives; logging back in clears the stamp |
+| `GET` | `/api/auth/export` | The caller's full data export as a JSON attachment (`heavyOperationRateLimiter`). Token ciphertext is never included — only `expiresAt` |
 
-Rate limited: `authRateLimiter` (5 requests / 15 min)
+Rate limited: `authRateLimiter` (5 requests / 15 min) on `/login` + `/callback` only
+
+`POST /api/auth/disconnect` takes **no body**, so the empty-body fail-closed
+CSRF layer has nothing to act on — `rejectUntrustedOrigin` is the whole guard.
+`tests/routes/account-deletion.test.js` asserts a cross-site POST gets 403.
 
 ### User Profile
 
@@ -461,6 +476,70 @@ list is wanted.
 | Method | Path | Description |
 |--------|------|-------------|
 | `DELETE` | `/api/auth/account` | Delete the account and cascade-delete all owned rows |
+
+### Account lifecycle & retention
+
+There are three exits, not two. **Logout** forgets the session cookie and
+nothing else — the encrypted token pair stays and the next login picks it back
+up. **Delete** (`DELETE /api/auth/account`) is irreversible. **Disconnect**
+(`POST /api/auth/disconnect`) is the middle: `disconnectUser()` in
+[`lib/account-lifecycle.js`](server/lib/account-lifecycle.js) hands the grant
+back via `signOut`, deletes the `Token` row, stamps `User.disconnectedAt`, and
+drops every cache derived from that grant. The account survives — logging back
+in clears the stamp — but the retention job deletes the row after 7 days.
+
+**It must call `invalidateCachedAuth`.** `lib/auth-cache.js` memoizes the
+*decrypted* token pair for 30 seconds; without that call a request inside the
+window would keep working against tokens that no longer exist. Same landmine
+as the refresh path.
+
+**Revocation is detected, not merely handled.** A user revoking the app from
+SoundCloud's own settings never tells this service. `refreshTokensAndPersist`
+— the single refresh choke point — treats `invalid_grant` on a 400/401, or a
+bare 401 with no parsable body, as revocation and runs the same teardown with
+`reason: 'revoked'`. **429, every 5xx, timeouts and network errors
+deliberately do not**: disconnecting everyone because SoundCloud had a bad
+minute would be a self-inflicted outage. The thrown error is unchanged, so
+callers still see the generic "Token refresh failed".
+
+**Retention** ([`lib/retention.js`](server/lib/retention.js)) runs 10 minutes
+after boot and then every `RETENTION_INTERVAL_MS`. Eight steps, each one bulk
+statement, each isolated — a step that throws is logged (`[retention] <step>
+removed N`) and the rest still run; `runRetentionOnce()` never rejects, so the
+interval cannot die. It is exported for tests and for a REPL.
+
+| # | Step | Window |
+|---|------|--------|
+| 1 | `LibraryCachePage` (by `createdAt`) + `LibraryCacheState` (by `updatedAt`) | `CACHE_TTL_DAYS` (7) |
+| 2 | Users still stamped `disconnectedAt` | 7 days (constant, see below) |
+| 3 | Dormant users (`lastLoginAt`, or `updatedAt` when null) | `INACTIVE_MONTHS` (24) |
+| 4 | Lifetime-user snapshot **then** `OperationLog` purge | `OPLOG_RETENTION_DAYS` (365) |
+| 5 | `GrowthAction` | 365 days |
+| 6 | `Feedback` (guarded on `prisma.feedback`) | 730 days |
+| 7 | `BetaSignup.email` → null | every run |
+| 8 | Catalog `gone` rows lose their metadata | every run |
+
+Three things that look arbitrary but are not:
+
+- **Step 4's order.** The snapshot of `COUNT(DISTINCT userId)` over
+  `operation_logs` is written to `Metric.lifetime_distinct_users` *before* the
+  purge, or the all-time figure would shrink every time rows aged out. The
+  metric is monotonic — a run only raises it — and admin `/stats` surfaces it
+  as `lifetimeUsers` (null before the first run).
+- **The 7-day disconnect window is a constant, not an env var.** It is the
+  SoundCloud terms' deletion deadline; it should not be possible to push past
+  it from a deployment dashboard. `RETENTION_INTERVAL_MS` eats into its margin,
+  so treat that as compliance-relevant too. See `docs/internal/TERMS-CHECK.md`.
+- **`INACTIVE_MONTHS` is calendar months in UTC.** Local-time `setMonth` shifts
+  the cutoff by an hour across a DST boundary, making the same input produce
+  different cutoffs depending on host timezone and time of year.
+
+`GET /api/auth/export` is the read side of the same story: every row keyed to
+the caller, as a dated JSON attachment. The `Token` record contributes
+`expiresAt` only — `encrypted` and `refresh` are excluded at the `select`, so
+the ciphertext never leaves Postgres. Note that `req.user` is the full row
+**with its `tokens` relation included**, which is why the route names fields
+explicitly instead of spreading it.
 
 > `docs/api.json` is **SoundCloud's own OpenAPI spec** (68 upstream paths under
 > `https://api.soundcloud.com`), kept as a reference for what the upstream API
@@ -719,6 +798,11 @@ clone, and every bulk write.
 | `CHROME_EXTENSION_IDS` | No | Comma-separated extension IDs allowed as credentialed origins (CORS + `rejectUntrustedOrigin`) |
 | `SESSION_COOKIE_SAMESITE` | No | `lax`, `none` or `strict` for the session cookie. Unset keeps the historical default (`none` in production). Same-origin hosting sets `lax` |
 | `LEGACY_REDIRECT_HOSTS` | No | Comma-separated hostnames Express redirects to `APP_URL` (301 GET/HEAD, 308 otherwise). Unset disables the middleware |
+| `RETENTION_ENABLED` | No | Set to `false` to disable the daily retention purge. **Defaults to on** — a retention policy that is off by default is not a policy |
+| `RETENTION_INTERVAL_MS` | No | Sweep period (default 24h). First run is always 10 min after boot. Compliance-relevant, not a tuning knob: raising it eats the margin on the 7-day deletion deadline |
+| `CACHE_TTL_DAYS` | No | Library-cache page/state lifetime in days (default `7`) |
+| `INACTIVE_MONTHS` | No | Dormant-account window in **calendar months** (default `24`) |
+| `OPLOG_RETENTION_DAYS` | No | `OperationLog` lifetime in days (default `365`) |
 
 ### Frontend (`frontend-UI/.env.local`)
 

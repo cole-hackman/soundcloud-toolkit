@@ -9,6 +9,7 @@ import logger from '../lib/logger.js';
 import { safeError } from '../lib/safe-error.js';
 import { logOperation } from '../lib/analytics.js';
 import { authenticateUser } from '../middleware/auth.js';
+import { heavyOperationRateLimiter } from '../middleware/rateLimiter.js';
 import { invalidateCachedAuth } from '../lib/auth-cache.js';
 import { requestCache } from '../lib/request-cache.js';
 import { dropSnapshots } from '../lib/snapshot-cache.js';
@@ -311,6 +312,86 @@ router.delete('/account', authenticateUser, async (req, res) => {
   } catch (error) {
     logger.error('Account deletion error:', safeError(error));
     res.status(500).json({ error: 'Failed to delete account' });
+  }
+});
+
+/**
+ * GET /api/auth/export
+ *
+ * Everything this service stores about the authenticated user, as one JSON
+ * download. Deliberately a full dump rather than a summary — the point is that
+ * a person can see the actual rows, not a description of them.
+ *
+ * Two invariants:
+ *   1. Every query is scoped to req.user.id. There is no id parameter to
+ *      tamper with, and nothing here reads a foreign row.
+ *   2. The token record contributes its expiry only. `encrypted` and `refresh`
+ *      are AES-GCM ciphertext of live credentials and never leave the server,
+ *      exported or not. Both are asserted by tests/routes/export.test.js.
+ *
+ * BigInt columns (soundcloudId on the vote/survey tables, growth target ids)
+ * serialize through the BigInt.prototype.toJSON patch in server/index.js.
+ */
+router.get('/export', authenticateUser, heavyOperationRateLimiter, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const scope = { where: { userId } };
+
+    // `feedback` arrives with the feedback feature; until then the delegate is
+    // absent from the generated client and asking for it would throw.
+    const feedbackQuery = prisma.feedback
+      ? prisma.feedback.findMany(scope)
+      : Promise.resolve([]);
+
+    const [
+      token,
+      operationLogs,
+      growthActions,
+      feedback,
+      rebrandVotes,
+      surveyResponses,
+      betaSignups,
+      libraryCacheState,
+      libraryCachePages,
+    ] = await Promise.all([
+      prisma.token.findFirst({ where: { userId }, select: { expiresAt: true } }),
+      prisma.operationLog.findMany(scope),
+      prisma.growthAction.findMany(scope),
+      feedbackQuery,
+      prisma.rebrandVote.findMany(scope),
+      prisma.surveyResponse.findMany(scope),
+      prisma.betaSignup.findMany(scope),
+      prisma.libraryCacheState.findMany(scope),
+      prisma.libraryCachePage.findMany({
+        where: { userId },
+        select: { resource: true, pageIndex: true, itemCount: true, items: true },
+      }),
+    ]);
+
+    const { id, soundcloudId, username, displayName, avatarUrl, createdAt, lastLoginAt } = req.user;
+
+    const payload = {
+      schemaVersion: 1,
+      generatedAt: new Date().toISOString(),
+      user: { id, soundcloudId, username, displayName, avatarUrl, createdAt, lastLoginAt },
+      // Expiry only — see the invariant above.
+      token: token ? { expiresAt: token.expiresAt } : null,
+      operationLogs,
+      growthActions,
+      feedback,
+      rebrandVotes,
+      surveyResponses,
+      betaSignups,
+      libraryCacheState,
+      libraryCachePages,
+    };
+
+    const day = new Date().toISOString().slice(0, 10);
+    res.setHeader('Content-Disposition', `attachment; filename="track-toolkit-export-${day}.json"`);
+    res.json(payload);
+  } catch (error) {
+    logger.error('Account export error:', safeError(error));
+    res.status(500).json({ error: 'Failed to build export' });
   }
 });
 

@@ -2,6 +2,20 @@
 
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
+import { SupportLink } from "@/components/SupportLink";
+
+const LAST_REVIEWED = "2026-09-22";
+
+// Seeded from the audit that drove this rewrite. Task 16 will prune this
+// list as each item is fixed — remove an entry only once it's actually
+// resolved, not when it merely looks fixed.
+const KNOWN_ISSUES: string[] = [
+  "The mobile navigation drawer is not yet a proper dialog for screen readers.",
+  "Some bulk operations do not announce progress as they run.",
+  "Some icon-only buttons lack accessible names.",
+  "Some form fields lack visible labels.",
+  "Orange text on light backgrounds is below 4.5:1 contrast in places.",
+];
 
 export default function AccessibilityPage() {
   return (
@@ -18,84 +32,67 @@ export default function AccessibilityPage() {
             </Link>
           </div>
 
-          <h1 className="text-3xl md:text-4xl font-bold mb-6 text-foreground">
+          <h1 className="text-3xl md:text-4xl font-bold mb-3 text-foreground">
             Accessibility Statement
           </h1>
+          <p className="text-sm text-muted-foreground mb-8">
+            Last reviewed: {LAST_REVIEWED}
+          </p>
 
-          <div className="space-y-6 text-muted-foreground leading-relaxed">
-            <p className="text-lg">
-              Track Toolkit is committed to ensuring digital accessibility for people
-              with disabilities. We are continually improving the user experience
-              for everyone and applying the relevant accessibility standards to
-              ensure our application is usable by all music lovers.
-            </p>
-
+          <div className="space-y-8 text-muted-foreground leading-relaxed">
             <section>
               <h2 className="text-2xl font-bold mb-4 text-foreground">
-                Conformance Status
+                Our target
               </h2>
               <p>
-                The Web Content Accessibility Guidelines (WCAG) defines requirements
-                for designers and developers to improve accessibility for people with
-                disabilities. It defines three levels of conformance: Level A, Level
-                AA, and Level AAA.
-              </p>
-              <p className="mt-2">
-                Track Toolkit aims to adhere as closely as possible to the WCAG 2.1 Level
-                AA standards. We strive to provide an inclusive experience, though we
-                recognize that some areas of the site may still need improvement.
+                Track Toolkit aims to meet WCAG 2.2 Level AA. No
+                accessibility statute requires this of a free service run by
+                one person — we&apos;re doing it anyway because it&apos;s the
+                right bar to hold ourselves to.
               </p>
             </section>
 
             <section>
               <h2 className="text-2xl font-bold mb-4 text-foreground">
-                Accessibility Features
+                Conformance status
               </h2>
-              <ul className="list-disc list-inside space-y-2 ml-4 mb-4">
+              <p>
+                Track Toolkit <strong className="text-foreground">partially
+                conforms</strong> to WCAG 2.2 Level AA. &quot;Partially
+                conforms&quot; means some parts of the site do not yet meet
+                the standard — see Known issues below for the specifics we
+                already know about.
+              </p>
+            </section>
+
+            <section>
+              <h2 className="text-2xl font-bold mb-4 text-foreground">
+                How we test
+              </h2>
+              <ul className="list-disc list-inside space-y-2 ml-4">
                 <li>
-                  <strong className="text-foreground">Keyboard Navigation:</strong>{" "}
-                  Most of our interactive elements and pages can be navigated using
-                  standard keyboard controls (Tab, Enter, Space, and Arrow keys).
+                  Automated axe checks at 1280px, 430px, 390px, and 360px
+                  viewport widths
                 </li>
-                <li>
-                  <strong className="text-foreground">Screen Reader Support:</strong>{" "}
-                  We use semantic HTML and ARIA labels where appropriate to provide
-                  context and meaning to screen reader users.
-                </li>
-                <li>
-                  <strong className="text-foreground">Color Contrast:</strong>{" "}
-                  We have carefully selected our color palette in both light and
-                  dark modes to ensure sufficient contrast for readability.
-                </li>
-                <li>
-                  <strong className="text-foreground">Focus Indicators:</strong>{" "}
-                  Clear focus indicators are provided for links, buttons, and form
-                  inputs to help users track their location on the page.
-                </li>
+                <li>Keyboard-only walkthroughs of every page and tool</li>
+                <li>VoiceOver testing on iOS</li>
               </ul>
             </section>
 
             <section>
               <h2 className="text-2xl font-bold mb-4 text-foreground">
-                Current Limitations
+                Known issues
               </h2>
               <p>
-                Despite our best efforts to ensure accessibility of Track Toolkit, there
-                may be some limitations. Below is a description of known limitations:
+                These are the accessibility gaps we&apos;re aware of right
+                now. This list shrinks as each one is fixed — it isn&apos;t
+                exhaustive, and finding something that isn&apos;t listed here
+                is useful feedback, not a surprise to us.
               </p>
-              <ul className="list-disc list-inside space-y-2 ml-4 mt-2 mb-4">
-                <li>
-                  <strong className="text-foreground">Third-Party Content:</strong>{" "}
-                  Some embedded content, such as SoundCloud widgets or external links,
-                  may not be fully accessible, as they are controlled by third
-                  parties.
-                </li>
-                <li>
-                  <strong className="text-foreground">Drag and Drop:</strong>{" "}
-                  Certain features, like reordering tracks via drag and drop, might
-                  have limited keyboard accessibility. We are actively exploring
-                  alternative ways to provide this functionality.
-                </li>
+              <ul className="list-disc list-inside space-y-2 ml-4 mt-2">
+                {KNOWN_ISSUES.map((issue) => (
+                  <li key={issue}>{issue}</li>
+                ))}
               </ul>
             </section>
 
@@ -104,18 +101,21 @@ export default function AccessibilityPage() {
                 Feedback
               </h2>
               <p>
-                We welcome your feedback on the accessibility of Track Toolkit. If you
-                encounter any accessibility barriers or have suggestions on how we
-                can improve, please don&apos;t hesitate to reach out.
+                If you run into an accessibility barrier, we want to know
+                about it.{" "}
+                <SupportLink subject="Accessibility issue on Track Toolkit">
+                  Email us
+                </SupportLink>{" "}
+                with what you were trying to do and what happened, or use the{" "}
+                <Link
+                  href="/feedback/"
+                  className="font-medium text-foreground underline underline-offset-2 transition hover:text-primary"
+                >
+                  feedback form
+                </Link>
+                .
               </p>
             </section>
-
-            <div className="pt-6 border-t border-border">
-              <p className="text-sm text-muted-foreground">
-                <strong className="text-foreground">Note:</strong> This statement
-                was last updated on {new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}.
-              </p>
-            </div>
           </div>
         </article>
       </div>

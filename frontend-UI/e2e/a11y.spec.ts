@@ -19,6 +19,7 @@ const PAGES: PageCase[] = [
   { path: "/", fixme: CONTRAST_FIXME },
   { path: "/about/" },
   { path: "/faq/" },
+  { path: "/terms/" },
   { path: "/privacy/" },
   { path: "/accessibility/" },
   { path: "/login/", fixme: CONTRAST_FIXME },

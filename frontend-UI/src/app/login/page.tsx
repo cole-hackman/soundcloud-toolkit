@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardHeader, CardFooter, LoadingSpinner, Button } from "@/components/ui";
+import { SupportLink } from "@/components/SupportLink";
 import { ArrowUpRight } from "lucide-react";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "";
@@ -199,22 +200,19 @@ export default function LoginPage() {
                   <div className="flex items-center justify-center gap-4 text-xs text-muted-foreground">
                     <Link
                       className="transition-colors hover:text-primary"
-                      href="/about"
-                    >
-                      About
-                    </Link>
-                    <Link
-                      className="transition-colors hover:text-primary"
                       href="/privacy"
                     >
                       Privacy
                     </Link>
                     <Link
                       className="transition-colors hover:text-primary"
-                      href="/accessibility"
+                      href="/terms"
                     >
-                      Accessibility
+                      Terms
                     </Link>
+                    <SupportLink className="transition-colors hover:text-primary">
+                      Contact
+                    </SupportLink>
                   </div>
                 </CardFooter>
               </Card>

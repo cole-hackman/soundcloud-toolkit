@@ -36,6 +36,7 @@ import {
   FileUp,
   Sparkles,
   ListPlus,
+  Gauge,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/contexts/ThemeContext";
@@ -112,6 +113,11 @@ const FOOTER_ITEMS = [
   { href: "/privacy", label: "Privacy", icon: Shield },
   { href: "/accessibility", label: "Accessibility", icon: Shield },
 ];
+
+// Only rendered for accounts on ADMIN_IDS (the server reports `isAdmin` on
+// /api/auth/me). The page itself gates again, so this is a shortcut, not a
+// boundary.
+const ADMIN_ITEM = { href: "/admin", label: "Admin console", icon: Gauge };
 
 /* ── Collapsible sidebar group ── */
 
@@ -354,7 +360,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </span>
       </div>
       <div className="space-y-0.5 px-2 mb-6">
-        {FOOTER_ITEMS.map((item) => {
+        {[...FOOTER_ITEMS, ...(user?.isAdmin ? [ADMIN_ITEM] : [])].map((item) => {
           const Icon = item.icon;
           return (
             <Link

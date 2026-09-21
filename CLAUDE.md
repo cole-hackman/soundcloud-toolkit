@@ -106,6 +106,7 @@ soundcloud-tool/
 │   │   │   │   ├── export/
 │   │   │   │   ├── downloads/
 │   │   │   │   └── layout.tsx    # App shell with sidebar and auth guard
+│   │   │   ├── admin/            # Admin console (page.tsx + layout.tsx); UI lives in components/admin/
 │   │   │   ├── login/page.tsx
 │   │   │   ├── about/page.tsx
 │   │   │   ├── privacy/page.tsx
@@ -113,6 +114,7 @@ soundcloud-tool/
 │   │   │   └── page.tsx          # Landing page
 │   │   ├── components/
 │   │   │   ├── ui/               # shadcn-style primitive components
+│   │   │   ├── admin/            # Admin console — AdminConsole shell, typed react-query hooks, views/ (Overview, Operations, Performance, Catalog, Archive)
 │   │   │   ├── AppShell.tsx      # Sidebar layout wrapper
 │   │   │   ├── RebrandBanner.tsx  # Site-wide "now Track Toolkit" strip (localStorage-gated)
 │   │   │   ├── RebrandAnnouncement.tsx      # Auth gate for the one-time rebrand modal
@@ -450,10 +452,27 @@ is registered without the pair.
 | `GET` | `/api/admin/feedback` | Retired beta-survey response list (API only) |
 | `GET` | `/api/admin/feedback/beta-emails` | CSV export of beta opt-in emails (API only) |
 
-The three `/feedback/*` routes serve the retired SongSwipe beta survey. They
-still work, but nothing calls them — the admin dashboard shows only the live
-rebrand vote. Reach them by URL when the historical data or the beta invite
-list is wanted.
+The three `/feedback/*` routes serve the retired SongSwipe beta survey. The
+console's Archive view reads `/feedback/summary` and links the beta-emails CSV;
+the response list is reachable by URL only.
+
+### Admin console (`frontend-UI/src/components/admin/`)
+
+`/admin` is a tabbed console, not one scrolling page: **Overview** (alert
+strip, KPI tiles, activity trend, outcome bar, feature usage/reach, errors),
+**Operations** (the searchable log with an inspector drawer), **Performance**
+(the `readLatency` p95 ranking and write health), **Catalog** and **Archive**
+(closed rebrand vote, retired beta survey). The active view is the URL hash
+(`/admin#operations`); keys 1–5 switch views. Each view fetches only what it
+needs through the hooks in `queries.ts` (react-query; live views re-poll every
+30 s while the tab is visible and keep stale data on screen while refetching —
+never a skeleton flash). Archive queries are all-time and never poll.
+
+The console uses the app's HSL tokens and `ThemeContext` (no private theme),
+plus JetBrains Mono via `next/font` from `app/admin/layout.tsx` for readouts.
+Access: `AdminConsole` gates on `user.isAdmin` from `/api/auth/me` before any
+admin request is made; the sidebar shows an "Admin console" link only to
+admins. Server-side `adminAuth` remains the real boundary.
 
 ### Account
 

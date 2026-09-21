@@ -10,6 +10,12 @@ Search Console change of address (Cole, two clicks), soak, decommission.
 Read `MIGRATION.md` ("CUTOVER DONE") first.
 
 ## Just done
+- Admin console rebuilt (`frontend-UI/src/components/admin/`): five tabbed
+  views instead of one 1,600-line scroll, react-query polling that keeps
+  stale data visible, the previously unrendered `readLatency` p95 table, an
+  accessible inspector drawer, app tokens + ThemeContext instead of a private
+  theme, `isAdmin` on AuthContext and a sidebar link for admins. Rendered and
+  checked in Chromium against mocked admin responses (dark, light, mobile).
 - c9af1df — PR #41: Track Toolkit identity shipped (three-bar mark, wordmarks,
   maskable icons, opaque touch icon, 1200x630 og-image, generated Logo.tsx,
   legacy icon files replaced in place; see Decisions 2026-09-20 "Logo").

@@ -74,15 +74,18 @@ export function Sparkline({
 
 export type TrendMetric = keyof Omit<DailyPoint, "date">;
 
-interface TrendChartProps {
-  data: DailyPoint[];
-  metric: TrendMetric;
+/** Any zero-filled daily series: a `date` label plus numeric metrics. */
+export type DailySeriesPoint = { date: string };
+
+interface TrendChartProps<T extends DailySeriesPoint> {
+  data: T[];
+  metric: Exclude<keyof T, "date"> & string;
   label: string;
   tone?: Tone;
   height?: number;
 }
 
-export function TrendChart({ data, metric, label, tone = "primary", height = 220 }: TrendChartProps) {
+export function TrendChart<T extends DailySeriesPoint>({ data, metric, label, tone = "primary", height = 220 }: TrendChartProps<T>) {
   const [wrapRef, width] = useElementWidth<HTMLDivElement>(640);
   const [hover, setHover] = React.useState<number | null>(null);
   const gradientId = React.useId();
@@ -113,8 +116,10 @@ export function TrendChart({ data, metric, label, tone = "primary", height = 220
   const gridSteps = 4;
   const grid = Array.from({ length: gridSteps + 1 }, (_, i) => Math.round((max / gridSteps) * i));
 
-  // At most ~6 x labels, always including the first and last day.
-  const labelEvery = Math.max(Math.ceil(n / 6), 1);
+  // As many x labels as fit at ~80px each (never more than 6), always
+  // including the first and last day.
+  const maxLabels = Math.min(6, Math.max(Math.floor(cw / 80), 2));
+  const labelEvery = Math.max(Math.ceil(n / maxLabels), 1);
   const xLabels = data
     .map((d, i) => ({ i, d }))
     .filter(({ i }) => i === 0 || i === n - 1 || (i % labelEvery === 0 && n - 1 - i >= labelEvery / 2));

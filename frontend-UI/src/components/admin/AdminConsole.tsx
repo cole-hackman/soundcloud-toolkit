@@ -14,7 +14,7 @@ import { Segmented } from "./primitives";
 import { POLL_MS } from "./queries";
 import { DEFAULT_OPS_FILTER, PERIODS, VIEWS, type OperationsFilter, type Period, type View } from "./types";
 import { ArchiveView } from "./views/ArchiveView";
-import { CatalogView } from "./views/CatalogView";
+import { CatalogView } from "./views/catalog/CatalogView";
 import { OperationsView } from "./views/OperationsView";
 import { OverviewView } from "./views/OverviewView";
 import { PerformanceView } from "./views/PerformanceView";
@@ -29,9 +29,10 @@ function isPeriod(value: string | null): value is Period {
   return PERIODS.some((p) => p.value === value);
 }
 
+// The hash is `#<view>` or `#<view>/<sub>` (the Catalog view owns its sub-part).
 function readHashView(): View {
   if (typeof window === "undefined") return "overview";
-  const raw = window.location.hash.replace(/^#/, "");
+  const raw = window.location.hash.replace(/^#/, "").split("/")[0];
   return isView(raw) ? raw : "overview";
 }
 

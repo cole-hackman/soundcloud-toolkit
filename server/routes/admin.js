@@ -5,7 +5,10 @@ import logger from '../lib/logger.js';
 import { safeError } from '../lib/safe-error.js';
 import { authenticateUser } from '../middleware/auth.js';
 import { adminAuth } from '../middleware/adminAuth.js';
-import { getAnalyticsWriteHealth } from '../lib/analytics.js';
+import { getAnalyticsWriteHealth, logOperation } from '../lib/analytics.js';
+import { heavyOperationRateLimiter } from '../middleware/rateLimiter.js';
+import { validateAdminReResolve } from '../middleware/validation.js';
+import { enrichTrackIds } from '../lib/enrichment.js';
 
 const router = express.Router();
 
@@ -33,6 +36,7 @@ const ACTION_NAMES = {
   'auth-logout': 'Logout',
   'followed-likes-to-playlist': "Followed User's Likes → Playlist",
   'followed-playlist-clone': "Followed User's Playlist Clone",
+  'admin-re-resolve': 'Admin: Re-resolve catalog tracks',
 };
 
 const ACTION_COLORS = {
@@ -59,6 +63,7 @@ const ACTION_COLORS = {
   'auth-logout': '#64748B',
   'followed-likes-to-playlist': '#0D9488',
   'followed-playlist-clone': '#0D9488',
+  'admin-re-resolve': '#64748B',
 };
 
 const FEATURE_NAMES = {
@@ -105,6 +110,81 @@ function periodToCutoff(period) {
 
 function validPeriod(p) {
   return ['1d', '7d', '30d', '90d', 'month', 'all'].includes(p) ? p : '30d';
+}
+
+/**
+ * Number of days a daily series should span for a period. For 'all' the
+ * count comes from the earliest row actually returned, capped at a year —
+ * otherwise a long-lived account would ask for a multi-decade day-by-day
+ * series. The aggregate cards still cover full history; this only bounds
+ * chart resolution.
+ */
+function periodDayCount(period, cutoff, rows) {
+  if (period === '1d') return 1;
+  if (period === '7d') return 7;
+  if (period === '90d') return 90;
+  if (period === 'month') return Math.max(Math.ceil((Date.now() - cutoff.getTime()) / 86_400_000), 1);
+  if (period === 'all') {
+    const earliestDates = rows.map(r => new Date(r.day).getTime());
+    const earliest = earliestDates.length > 0 ? Math.min(...earliestDates) : Date.now();
+    return Math.min(Math.max(Math.ceil((Date.now() - earliest) / 86_400_000) + 1, 1), 365);
+  }
+  return 30;
+}
+
+/**
+ * Zero-fill `days` calendar days ending today. `rowSets` are DATE_TRUNC'd
+ * query results (each row has `day`); `build` receives the matching row from
+ * each set (or undefined) and returns the numeric fields for that day.
+ */
+function fillDays(days, rowSets, build) {
+  const dayKey = (d) => new Date(d).toISOString().slice(0, 10);
+  const indexes = rowSets.map(rows => new Map(rows.map(r => [dayKey(r.day), r])));
+  const result = [];
+  for (let i = 0; i < days; i++) {
+    const d = new Date();
+    d.setDate(d.getDate() - (days - 1 - i));
+    d.setHours(0, 0, 0, 0);
+    const key = d.toISOString().slice(0, 10);
+    result.push({
+      date: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+      ...build(...indexes.map(m => m.get(key))),
+    });
+  }
+  return result;
+}
+
+const CSV_MAX_ROWS = 10_000;
+
+/** Send rows as a CSV attachment (RFC 4180 quoting, BOM for Excel). */
+function sendCsv(res, filename, header, rows) {
+  const escape = (v) => {
+    if (v === null || v === undefined) return '';
+    const str = v instanceof Date ? v.toISOString() : String(v);
+    return /[",\n\r]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
+  };
+  const lines = [header.map(escape).join(',')];
+  for (const row of rows) lines.push(header.map(k => escape(row[k])).join(','));
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  res.send(`\ufeff${lines.join('\n')}`);
+}
+
+function strParam(v) {
+  return typeof v === 'string' && v.trim() ? v.trim() : null;
+}
+
+/** Shared paging/sorting parse for the catalog listings. */
+function listParams(req, sorts, defaultSort, defaultOrder = 'DESC') {
+  const csv = req.query.format === 'csv';
+  const page = Math.max(parseInt(req.query.page) || 1, 1);
+  const pageSize = csv
+    ? CSV_MAX_ROWS
+    : Math.min(Math.max(parseInt(req.query.pageSize) || 25, 1), 100);
+  // Object.hasOwn, not truthiness: '?sort=constructor' must not reach Prisma.raw
+  const sortKey = Object.hasOwn(sorts, req.query.sort) ? req.query.sort : defaultSort;
+  const order = req.query.order === 'asc' ? 'ASC' : req.query.order === 'desc' ? 'DESC' : defaultOrder;
+  return { csv, page: csv ? 1 : page, pageSize, sortKey, order };
 }
 
 /**
@@ -355,43 +435,12 @@ router.get('/daily', authenticateUser, adminAuth, async (req, res) => {
       `,
     ]);
 
-    let days;
-    if (period === '1d') days = 1;
-    else if (period === '7d') days = 7;
-    else if (period === '90d') days = 90;
-    else if (period === 'month') {
-      days = Math.max(Math.ceil((Date.now() - cutoff.getTime()) / 86_400_000), 1);
-    } else if (period === 'all') {
-      // Derive the day count from the earliest activity actually returned above,
-      // rather than the epoch cutoff, and cap it — otherwise a long-lived account
-      // would ask for a multi-decade day-by-day series. The top stat cards (which
-      // hit /stats, not /daily) still aggregate over full history regardless of
-      // this cap; it only bounds the trend chart's resolution.
-      const earliestDates = [...opsRows, ...userRows].map(r => new Date(r.day).getTime());
-      const earliest = earliestDates.length > 0 ? Math.min(...earliestDates) : Date.now();
-      days = Math.min(Math.max(Math.ceil((Date.now() - earliest) / 86_400_000) + 1, 1), 365);
-    } else {
-      days = 30;
-    }
-    const result = [];
-
-    for (let i = 0; i < days; i++) {
-      const d = new Date();
-      d.setDate(d.getDate() - (days - 1 - i));
-      d.setHours(0, 0, 0, 0);
-      const dayStr = d.toISOString().slice(0, 10);
-      const label = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-
-      const opsRow = opsRows.find(r => new Date(r.day).toISOString().slice(0, 10) === dayStr);
-      const userRow = userRows.find(r => new Date(r.day).toISOString().slice(0, 10) === dayStr);
-
-      result.push({
-        date: label,
-        tracks: opsRow ? Number(opsRow.tracks) : 0,
-        operations: opsRow ? Number(opsRow.operations) : 0,
-        newUsers: userRow ? Number(userRow.new_users) : 0,
-      });
-    }
+    const days = periodDayCount(period, cutoff, [...opsRows, ...userRows]);
+    const result = fillDays(days, [opsRows, userRows], (opsRow, userRow) => ({
+      tracks: opsRow ? Number(opsRow.tracks) : 0,
+      operations: opsRow ? Number(opsRow.operations) : 0,
+      newUsers: userRow ? Number(userRow.new_users) : 0,
+    }));
 
     res.json({ daily: result });
   } catch (err) {
@@ -543,61 +592,68 @@ const CATALOG_SORTS = {
   title: 't."title"',
   artist: 't."artistName"',
   firstSeen: 't."firstSeenAt"',
+  lastSeen: 't."lastSeenAt"',
+  duration: 't."durationMs"',
 };
+
+/** Per-track touch counts in the window from operation_logs.metadata.trackIds. */
+function trackTouchesCte(cutoff, action) {
+  return Prisma.sql`
+    SELECT (jsonb_array_elements_text(metadata->'trackIds'))::bigint AS track_id,
+           COUNT(*) AS touch_count,
+           COUNT(DISTINCT "userId") AS user_count,
+           MAX("createdAt") AS last_touched
+    FROM operation_logs
+    WHERE "createdAt" >= ${cutoff} AND metadata ? 'trackIds'
+      ${action ? Prisma.sql`AND action = ${action}` : Prisma.empty}
+    GROUP BY 1
+  `;
+}
+
+/** WHERE fragment for the track filters shared by the listing, CSV and health views. */
+function trackFilterSql({ genre, artist, access, resolveStatus }) {
+  const filters = [];
+  if (genre) {
+    filters.push(genre === '(none)'
+      ? Prisma.sql`t."genreNormalized" IS NULL`
+      : Prisma.sql`t."genreNormalized" = ${genre}`);
+  }
+  if (artist) filters.push(Prisma.sql`t."artistName" ILIKE ${'%' + artist + '%'}`);
+  if (access) {
+    if (access === 'unknown') filters.push(Prisma.sql`t."access" IS NULL`);
+    else if (access === 'not_playable') filters.push(Prisma.sql`t."access" IN ('blocked', 'preview', 'gone')`);
+    else filters.push(Prisma.sql`t."access" = ${access}`);
+  }
+  if (resolveStatus) filters.push(Prisma.sql`t."resolveStatus" = ${resolveStatus}`);
+  return filters.length > 0 ? Prisma.sql`WHERE ${Prisma.join(filters, ' AND ')}` : Prisma.empty;
+}
 
 /**
  * GET /api/admin/catalog/tracks
- *   ?period=&genre=&artist=&access=&resolveStatus=&action=&sort=&order=&page=&pageSize=
+ *   ?period=&genre=&artist=&access=&resolveStatus=&action=&sort=&order=&page=&pageSize=&format=csv
  *
  * Paginated catalog rows with period-scoped touch counts. Aggregate by
  * default — no user identity in this listing; per-user drill-down is the
  * separate /catalog/tracks/:id/operations endpoint. With an action filter
  * the join tightens to tracks actually touched by that action in-period;
  * otherwise zero-touch rows stay visible so gaps (unresolved, null genre,
- * blocked/preview) can be explored.
+ * blocked/preview) can be explored. `access=not_playable` is the union of
+ * blocked, preview and gone. `format=csv` returns the same filtered set as
+ * a download, capped at CSV_MAX_ROWS.
  */
 router.get('/catalog/tracks', authenticateUser, adminAuth, async (req, res) => {
   try {
     const period = validPeriod(req.query.period);
     const cutoff = periodToCutoff(period);
-    const page = Math.max(parseInt(req.query.page) || 1, 1);
-    const pageSize = Math.min(Math.max(parseInt(req.query.pageSize) || 25, 1), 100);
-    // Object.hasOwn, not truthiness: '?sort=constructor' must not reach Prisma.raw
-    const sortKey = Object.hasOwn(CATALOG_SORTS, req.query.sort) ? req.query.sort : 'touches';
-    const order = req.query.order === 'asc' ? 'ASC' : 'DESC';
-    const genre = typeof req.query.genre === 'string' && req.query.genre.trim() ? req.query.genre.trim() : null;
-    const artist = typeof req.query.artist === 'string' && req.query.artist.trim() ? req.query.artist.trim() : null;
-    const access = typeof req.query.access === 'string' && req.query.access.trim() ? req.query.access.trim() : null;
-    const resolveStatus = typeof req.query.resolveStatus === 'string' && req.query.resolveStatus.trim() ? req.query.resolveStatus.trim() : null;
-    const action = typeof req.query.action === 'string' && req.query.action.trim() ? req.query.action.trim() : null;
+    const { csv, page, pageSize, sortKey, order } = listParams(req, CATALOG_SORTS, 'touches');
+    const genre = strParam(req.query.genre);
+    const artist = strParam(req.query.artist);
+    const access = strParam(req.query.access);
+    const resolveStatus = strParam(req.query.resolveStatus);
+    const action = strParam(req.query.action);
 
-    const touchesCte = Prisma.sql`
-      SELECT (jsonb_array_elements_text(metadata->'trackIds'))::bigint AS track_id,
-             COUNT(*) AS touch_count,
-             COUNT(DISTINCT "userId") AS user_count,
-             MAX("createdAt") AS last_touched
-      FROM operation_logs
-      WHERE "createdAt" >= ${cutoff} AND metadata ? 'trackIds'
-        ${action ? Prisma.sql`AND action = ${action}` : Prisma.empty}
-      GROUP BY 1
-    `;
-
-    const filters = [];
-    if (genre) {
-      filters.push(genre === '(none)'
-        ? Prisma.sql`t."genreNormalized" IS NULL`
-        : Prisma.sql`t."genreNormalized" = ${genre}`);
-    }
-    if (artist) filters.push(Prisma.sql`t."artistName" ILIKE ${'%' + artist + '%'}`);
-    if (access) {
-      filters.push(access === 'unknown'
-        ? Prisma.sql`t."access" IS NULL`
-        : Prisma.sql`t."access" = ${access}`);
-    }
-    if (resolveStatus) filters.push(Prisma.sql`t."resolveStatus" = ${resolveStatus}`);
-    const whereSql = filters.length > 0
-      ? Prisma.sql`WHERE ${Prisma.join(filters, ' AND ')}`
-      : Prisma.empty;
+    const touchesCte = trackTouchesCte(cutoff, action);
+    const whereSql = trackFilterSql({ genre, artist, access, resolveStatus });
 
     // Action filter means "touched by this action" — inner join; otherwise
     // keep zero-touch catalog rows visible.
@@ -622,7 +678,7 @@ router.get('/catalog/tracks', authenticateUser, adminAuth, async (req, res) => {
         ORDER BY ${orderSql}
         LIMIT ${pageSize} OFFSET ${(page - 1) * pageSize}
       `,
-      prisma.$queryRaw`
+      csv ? Promise.resolve([{ total: 0 }]) : prisma.$queryRaw`
         WITH touches AS (${touchesCte})
         SELECT COUNT(*)::int AS total
         FROM "tracks" t
@@ -630,6 +686,13 @@ router.get('/catalog/tracks', authenticateUser, adminAuth, async (req, res) => {
         ${whereSql}
       `,
     ]);
+
+    if (csv) {
+      return sendCsv(res, `catalog-tracks-${period}.csv`, [
+        'id', 'title', 'artistName', 'artistId', 'genre', 'genreNormalized', 'durationMs', 'access',
+        'resolveStatus', 'permalinkUrl', 'touches', 'users', 'last_touched', 'firstSeenAt', 'lastSeenAt',
+      ], rows);
+    }
 
     res.json({
       tracks: rows,
@@ -642,6 +705,259 @@ router.get('/catalog/tracks', authenticateUser, adminAuth, async (req, res) => {
   } catch (err) {
     logger.error('[admin/catalog/tracks] Error:', safeError(err));
     res.status(500).json({ error: 'Failed to fetch catalog tracks' });
+  }
+});
+
+/**
+ * GET /api/admin/catalog/daily?period=
+ *
+ * Per-day catalog activity in the window: track touches (every track id in
+ * an operation's metadata counts once per operation), distinct tracks
+ * touched, and playlist touches. Zero-filled like /daily.
+ */
+router.get('/catalog/daily', authenticateUser, adminAuth, async (req, res) => {
+  try {
+    const period = validPeriod(req.query.period);
+    const cutoff = periodToCutoff(period);
+
+    const [trackRows, playlistRows] = await Promise.all([
+      prisma.$queryRaw`
+        SELECT DATE_TRUNC('day', "createdAt") AS day,
+               COUNT(*)::int AS touches,
+               COUNT(DISTINCT track_id)::int AS distinct_tracks
+        FROM (
+          SELECT "createdAt", (jsonb_array_elements_text(metadata->'trackIds'))::bigint AS track_id
+          FROM operation_logs
+          WHERE "createdAt" >= ${cutoff} AND metadata ? 'trackIds'
+        ) t
+        GROUP BY day
+        ORDER BY day ASC
+      `,
+      prisma.$queryRaw`
+        SELECT DATE_TRUNC('day', "createdAt") AS day,
+               COUNT(*)::int AS touches
+        FROM (
+          SELECT "createdAt", jsonb_array_elements_text(metadata->'playlistIds') AS playlist_id
+          FROM operation_logs
+          WHERE "createdAt" >= ${cutoff} AND metadata ? 'playlistIds'
+        ) p
+        GROUP BY day
+        ORDER BY day ASC
+      `,
+    ]);
+
+    const days = periodDayCount(period, cutoff, [...trackRows, ...playlistRows]);
+    const daily = fillDays(days, [trackRows, playlistRows], (t, p) => ({
+      touches: t ? Number(t.touches) : 0,
+      distinctTracks: t ? Number(t.distinct_tracks) : 0,
+      playlistTouches: p ? Number(p.touches) : 0,
+    }));
+
+    res.json({ daily });
+  } catch (err) {
+    logger.error('[admin/catalog/daily] Error:', safeError(err));
+    res.status(500).json({ error: 'Failed to fetch catalog daily series' });
+  }
+});
+
+const PLAYLIST_SORTS = {
+  touches: 'touches',
+  users: 'users',
+  lastTouched: 'last_touched',
+  title: 'p."title"',
+  trackCount: 'p."trackCount"',
+  firstSeen: 'p."firstSeenAt"',
+  lastSeen: 'p."lastSeenAt"',
+};
+
+/**
+ * GET /api/admin/catalog/playlists?period=&q=&sort=&order=&page=&pageSize=&format=csv
+ *
+ * The harvested playlists table with period-scoped touch counts from
+ * operation_logs.metadata.playlistIds. Same shape and posture as the track
+ * listing: aggregate only, no user identity.
+ */
+router.get('/catalog/playlists', authenticateUser, adminAuth, async (req, res) => {
+  try {
+    const period = validPeriod(req.query.period);
+    const cutoff = periodToCutoff(period);
+    const { csv, page, pageSize, sortKey, order } = listParams(req, PLAYLIST_SORTS, 'touches');
+    const q = strParam(req.query.q);
+    const owner = strParam(req.query.owner);
+
+    const touchesCte = Prisma.sql`
+      SELECT (jsonb_array_elements_text(metadata->'playlistIds'))::bigint AS playlist_id,
+             COUNT(*) AS touch_count,
+             COUNT(DISTINCT "userId") AS user_count,
+             MAX("createdAt") AS last_touched
+      FROM operation_logs
+      WHERE "createdAt" >= ${cutoff} AND metadata ? 'playlistIds'
+      GROUP BY 1
+    `;
+    const filters = [];
+    if (q) filters.push(Prisma.sql`p."title" ILIKE ${'%' + q + '%'}`);
+    if (owner && /^\d+$/.test(owner)) filters.push(Prisma.sql`p."ownerScId" = ${BigInt(owner)}`);
+    const whereSql = filters.length > 0 ? Prisma.sql`WHERE ${Prisma.join(filters, ' AND ')}` : Prisma.empty;
+    const orderSql = Prisma.raw(`${PLAYLIST_SORTS[sortKey]} ${order} NULLS LAST, p.id ASC`);
+
+    const [rows, countRows] = await Promise.all([
+      prisma.$queryRaw`
+        WITH touches AS (${touchesCte})
+        SELECT p.id, p.title, p."ownerScId", p."trackCount", p."firstSeenAt", p."lastSeenAt",
+               COALESCE(tc.touch_count, 0)::int AS touches,
+               COALESCE(tc.user_count, 0)::int AS users,
+               tc.last_touched
+        FROM "playlists" p
+        LEFT JOIN touches tc ON tc.playlist_id = p.id
+        ${whereSql}
+        ORDER BY ${orderSql}
+        LIMIT ${pageSize} OFFSET ${(page - 1) * pageSize}
+      `,
+      csv ? Promise.resolve([{ total: 0 }]) : prisma.$queryRaw`
+        SELECT COUNT(*)::int AS total FROM "playlists" p ${whereSql}
+      `,
+    ]);
+
+    if (csv) {
+      return sendCsv(res, `catalog-playlists-${period}.csv`, [
+        'id', 'title', 'ownerScId', 'trackCount', 'touches', 'users', 'last_touched', 'firstSeenAt', 'lastSeenAt',
+      ], rows);
+    }
+
+    res.json({
+      playlists: rows,
+      total: Number(countRows[0]?.total ?? 0),
+      page,
+      pageSize,
+      sort: sortKey,
+      order: order.toLowerCase(),
+    });
+  } catch (err) {
+    logger.error('[admin/catalog/playlists] Error:', safeError(err));
+    res.status(500).json({ error: 'Failed to fetch catalog playlists' });
+  }
+});
+
+const ARTIST_SORTS = {
+  tracks: 'tracks',
+  touches: 'touches',
+  notPlayable: 'not_playable_share',
+  unresolved: 'unresolved',
+  name: 'artist_name',
+  lastTouched: 'last_touched',
+};
+
+/**
+ * GET /api/admin/catalog/artists?period=&q=&sort=&order=&page=&pageSize=&format=csv
+ *
+ * Catalog rolled up by artist: track count, period touches, and how much of
+ * the artist's catalog is not playable (blocked/preview/gone) or unresolved.
+ * Keyed by SoundCloud user id when known, else by name; rows with neither
+ * are excluded because they cannot be attributed.
+ */
+router.get('/catalog/artists', authenticateUser, adminAuth, async (req, res) => {
+  try {
+    const period = validPeriod(req.query.period);
+    const cutoff = periodToCutoff(period);
+    const { csv, page, pageSize, sortKey, order } = listParams(req, ARTIST_SORTS, 'touches');
+    const q = strParam(req.query.q);
+
+    const touchesCte = trackTouchesCte(cutoff, null);
+    const whereSql = q
+      ? Prisma.sql`WHERE (t."artistId" IS NOT NULL OR t."artistName" IS NOT NULL) AND t."artistName" ILIKE ${'%' + q + '%'}`
+      : Prisma.sql`WHERE t."artistId" IS NOT NULL OR t."artistName" IS NOT NULL`;
+    const orderSql = Prisma.raw(`${ARTIST_SORTS[sortKey]} ${order} NULLS LAST, artist_key ASC`);
+
+    const groupedCte = Prisma.sql`
+      SELECT COALESCE(t."artistId"::text, t."artistName") AS artist_key,
+             MAX(t."artistName") AS artist_name,
+             MIN(t."artistId") AS artist_id,
+             COUNT(*)::int AS tracks,
+             COALESCE(SUM(tc.touch_count), 0)::int AS touches,
+             COUNT(*) FILTER (WHERE t."access" IN ('blocked', 'preview', 'gone'))::int AS not_playable,
+             COUNT(*) FILTER (WHERE t."resolveStatus" <> 'resolved')::int AS unresolved,
+             (COUNT(*) FILTER (WHERE t."access" IN ('blocked', 'preview', 'gone')))::float / COUNT(*) AS not_playable_share,
+             MAX(tc.last_touched) AS last_touched
+      FROM "tracks" t
+      LEFT JOIN touches tc ON tc.track_id = t.id
+      ${whereSql}
+      GROUP BY 1
+    `;
+
+    const [rows, countRows] = await Promise.all([
+      prisma.$queryRaw`
+        WITH touches AS (${touchesCte}), grouped AS (${groupedCte})
+        SELECT artist_key, artist_name AS "artistName", artist_id AS "artistId",
+               tracks, touches, not_playable AS "notPlayable", unresolved,
+               ROUND((not_playable_share * 100)::numeric, 1)::float AS "notPlayablePct",
+               last_touched
+        FROM grouped
+        ORDER BY ${orderSql}
+        LIMIT ${pageSize} OFFSET ${(page - 1) * pageSize}
+      `,
+      csv ? Promise.resolve([{ total: 0 }]) : prisma.$queryRaw`
+        SELECT COUNT(DISTINCT COALESCE(t."artistId"::text, t."artistName"))::int AS total
+        FROM "tracks" t
+        ${whereSql}
+      `,
+    ]);
+
+    if (csv) {
+      return sendCsv(res, `catalog-artists-${period}.csv`, [
+        'artistName', 'artistId', 'tracks', 'touches', 'notPlayable', 'notPlayablePct', 'unresolved', 'last_touched',
+      ], rows);
+    }
+
+    res.json({
+      artists: rows,
+      total: Number(countRows[0]?.total ?? 0),
+      page,
+      pageSize,
+      sort: sortKey,
+      order: order.toLowerCase(),
+    });
+  } catch (err) {
+    logger.error('[admin/catalog/artists] Error:', safeError(err));
+    res.status(500).json({ error: 'Failed to fetch catalog artists' });
+  }
+});
+
+/**
+ * POST /api/admin/catalog/re-resolve   { trackIds: number[] }  (1-200)
+ *
+ * The console's one write: refetch the given tracks from SoundCloud through
+ * the enrichment path, forced, using the admin's own token. Rows that come
+ * back are upserted (a blocked track that is playable again flips to
+ * playable); rows SoundCloud no longer returns are marked gone. Guarded by
+ * the heavy-operation limiter and the global Origin check on /api; the
+ * body is JSON-only like every other mutation.
+ */
+router.post('/catalog/re-resolve', authenticateUser, adminAuth, heavyOperationRateLimiter, validateAdminReResolve, async (req, res) => {
+  const trackIds = [...new Set(req.body.trackIds.map(Number))];
+  const startedAt = Date.now();
+  try {
+    const result = await enrichTrackIds(trackIds, req.accessToken, req.refreshToken, { force: true });
+    void logOperation({
+      req,
+      action: 'admin-re-resolve',
+      trackIds,
+      status: result.candidates === 0 ? 'partial' : 'success',
+      durationMs: Date.now() - startedAt,
+      metadata: { requested: trackIds.length, candidates: result.candidates, fetched: result.fetched, missing: result.missing },
+    });
+    res.json({ requested: trackIds.length, ...result });
+  } catch (err) {
+    logger.error('[admin/catalog/re-resolve] Error:', safeError(err));
+    void logOperation({
+      req,
+      action: 'admin-re-resolve',
+      trackIds,
+      status: 'error',
+      durationMs: Date.now() - startedAt,
+      errorCode: 'RE_RESOLVE_FAILED',
+      errorMessage: err?.message,
+    });
+    res.status(502).json({ error: 'Re-resolve failed while talking to SoundCloud' });
   }
 });
 

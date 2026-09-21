@@ -172,7 +172,7 @@ export interface CatalogTracksResponse {
   order: "asc" | "desc";
 }
 
-export type CatalogSort = "touches" | "users" | "lastTouched" | "title" | "artist";
+export type CatalogSort = "touches" | "users" | "lastTouched" | "title" | "artist" | "firstSeen" | "lastSeen" | "duration";
 
 export interface CatalogFilter {
   genre: string;
@@ -195,6 +195,92 @@ export const DEFAULT_CATALOG_FILTER: CatalogFilter = {
   order: "desc",
   page: 1,
 };
+
+export interface CatalogDailyPoint {
+  date: string;
+  touches: number;
+  distinctTracks: number;
+  playlistTouches: number;
+}
+
+export interface CatalogPlaylist {
+  id: number | string;
+  title: string | null;
+  ownerScId: number | string | null;
+  trackCount: number | null;
+  firstSeenAt: string | null;
+  lastSeenAt: string | null;
+  touches: number;
+  users: number;
+  last_touched: string | null;
+}
+
+export interface CatalogPlaylistsResponse {
+  playlists: CatalogPlaylist[];
+  total: number;
+  page: number;
+  pageSize: number;
+  sort: string;
+  order: "asc" | "desc";
+}
+
+export type PlaylistSort = "touches" | "users" | "lastTouched" | "title" | "trackCount" | "firstSeen" | "lastSeen";
+
+export interface PlaylistFilter {
+  q: string;
+  sort: PlaylistSort;
+  order: "asc" | "desc";
+  page: number;
+}
+
+export const DEFAULT_PLAYLIST_FILTER: PlaylistFilter = { q: "", sort: "touches", order: "desc", page: 1 };
+
+export interface CatalogArtist {
+  artist_key: string;
+  artistName: string | null;
+  artistId: number | string | null;
+  tracks: number;
+  touches: number;
+  notPlayable: number;
+  unresolved: number;
+  notPlayablePct: number;
+  last_touched: string | null;
+}
+
+export interface CatalogArtistsResponse {
+  artists: CatalogArtist[];
+  total: number;
+  page: number;
+  pageSize: number;
+  sort: string;
+  order: "asc" | "desc";
+}
+
+export type ArtistSort = "tracks" | "touches" | "notPlayable" | "unresolved" | "name" | "lastTouched";
+
+export interface ArtistFilter {
+  q: string;
+  sort: ArtistSort;
+  order: "asc" | "desc";
+  page: number;
+}
+
+export const DEFAULT_ARTIST_FILTER: ArtistFilter = { q: "", sort: "touches", order: "desc", page: 1 };
+
+export interface ReResolveResult {
+  requested: number;
+  candidates: number;
+  fetched: number;
+  missing: number;
+}
+
+export type CatalogSubView = "tracks" | "playlists" | "artists" | "health";
+export const CATALOG_SUBVIEWS: ReadonlyArray<{ id: CatalogSubView; label: string }> = [
+  { id: "tracks", label: "Tracks" },
+  { id: "playlists", label: "Playlists" },
+  { id: "artists", label: "Artists" },
+  { id: "health", label: "Health" },
+];
 
 export interface TrackOperation {
   id: string;

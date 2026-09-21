@@ -1,13 +1,19 @@
 "use client";
 
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api";
 import type {
   AdminStats,
+  ArtistFilter,
   BetaSurveySummary,
+  CatalogArtistsResponse,
+  CatalogDailyPoint,
   CatalogFilter,
+  CatalogPlaylistsResponse,
   CatalogSummary,
   CatalogTracksResponse,
+  PlaylistFilter,
+  ReResolveResult,
   DailyPoint,
   OperationRow,
   OperationsFilter,
@@ -60,6 +66,11 @@ export const adminKeys = {
   catalogTracks: (period: Period, filter: CatalogFilter) =>
     ["admin", "catalog", "tracks", period, filter] as const,
   trackOperations: (trackId: string) => ["admin", "catalog", "track-ops", trackId] as const,
+  catalogDaily: (period: Period) => ["admin", "catalog", "daily", period] as const,
+  catalogPlaylists: (period: Period, filter: PlaylistFilter) =>
+    ["admin", "catalog", "playlists", period, filter] as const,
+  catalogArtists: (period: Period, filter: ArtistFilter) =>
+    ["admin", "catalog", "artists", period, filter] as const,
   rebrandSummary: () => ["admin", "rebrand", "summary"] as const,
   rebrandVotes: () => ["admin", "rebrand", "votes"] as const,
   betaSurvey: () => ["admin", "feedback", "summary"] as const,
@@ -120,23 +131,119 @@ export function useCatalogTracks(period: Period, filter: CatalogFilter, enabled:
   return useQuery({
     queryKey: adminKeys.catalogTracks(period, filter),
     queryFn: () => {
-      const params = new URLSearchParams({
-        period,
-        page: String(filter.page),
-        pageSize: String(CATALOG_PAGE_SIZE),
-        sort: filter.sort,
-        order: filter.order,
-      });
-      if (filter.genre) params.set("genre", filter.genre);
-      if (filter.artist) params.set("artist", filter.artist);
-      if (filter.access) params.set("access", filter.access);
-      if (filter.resolveStatus) params.set("resolveStatus", filter.resolveStatus);
-      if (filter.action) params.set("action", filter.action);
+      const params = catalogTracksParams(period, filter);
+      params.set("page", String(filter.page));
+      params.set("pageSize", String(CATALOG_PAGE_SIZE));
       return adminGet<CatalogTracksResponse>(`/api/admin/catalog/tracks?${params.toString()}`);
     },
     enabled,
     placeholderData: keepPreviousData,
     staleTime: 60_000,
+  });
+}
+
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "";
+
+/** Query string for the track listing; shared by the table and its CSV link. */
+export function catalogTracksParams(period: Period, filter: CatalogFilter): URLSearchParams {
+  const params = new URLSearchParams({ period, sort: filter.sort, order: filter.order });
+  if (filter.genre) params.set("genre", filter.genre);
+  if (filter.artist) params.set("artist", filter.artist);
+  if (filter.access) params.set("access", filter.access);
+  if (filter.resolveStatus) params.set("resolveStatus", filter.resolveStatus);
+  if (filter.action) params.set("action", filter.action);
+  return params;
+}
+
+export function catalogCsvUrl(kind: "tracks" | "playlists" | "artists", params: URLSearchParams): string {
+  const p = new URLSearchParams(params);
+  p.set("format", "csv");
+  return `${API_BASE}/api/admin/catalog/${kind}?${p.toString()}`;
+}
+
+export function useCatalogDaily(period: Period, enabled: boolean) {
+  return useQuery({
+    queryKey: adminKeys.catalogDaily(period),
+    queryFn: async () => {
+      const data = await adminGet<{ daily: CatalogDailyPoint[] }>(`/api/admin/catalog/daily?period=${period}`);
+      return data.daily ?? [];
+    },
+    enabled,
+    placeholderData: keepPreviousData,
+    staleTime: 60_000,
+  });
+}
+
+export function catalogPlaylistsParams(period: Period, filter: PlaylistFilter): URLSearchParams {
+  const params = new URLSearchParams({ period, sort: filter.sort, order: filter.order });
+  if (filter.q) params.set("q", filter.q);
+  return params;
+}
+
+export function useCatalogPlaylists(period: Period, filter: PlaylistFilter, enabled: boolean) {
+  return useQuery({
+    queryKey: adminKeys.catalogPlaylists(period, filter),
+    queryFn: () => {
+      const params = catalogPlaylistsParams(period, filter);
+      params.set("page", String(filter.page));
+      params.set("pageSize", String(CATALOG_PAGE_SIZE));
+      return adminGet<CatalogPlaylistsResponse>(`/api/admin/catalog/playlists?${params.toString()}`);
+    },
+    enabled,
+    placeholderData: keepPreviousData,
+    staleTime: 60_000,
+  });
+}
+
+export function catalogArtistsParams(period: Period, filter: ArtistFilter): URLSearchParams {
+  const params = new URLSearchParams({ period, sort: filter.sort, order: filter.order });
+  if (filter.q) params.set("q", filter.q);
+  return params;
+}
+
+export function useCatalogArtists(period: Period, filter: ArtistFilter, enabled: boolean) {
+  return useQuery({
+    queryKey: adminKeys.catalogArtists(period, filter),
+    queryFn: () => {
+      const params = catalogArtistsParams(period, filter);
+      params.set("page", String(filter.page));
+      params.set("pageSize", String(CATALOG_PAGE_SIZE));
+      return adminGet<CatalogArtistsResponse>(`/api/admin/catalog/artists?${params.toString()}`);
+    },
+    enabled,
+    placeholderData: keepPreviousData,
+    staleTime: 60_000,
+  });
+}
+
+/**
+ * The console's one write. On success every catalog query is invalidated so
+ * the health list, summary and tables reflect the refreshed rows.
+ */
+export function useReResolve() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (trackIds: Array<number | string>) => {
+      const res = await apiFetch("/api/admin/catalog/re-resolve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ trackIds: trackIds.map(Number) }),
+      });
+      if (!res.ok) {
+        let message: string | undefined;
+        try {
+          const body = await res.json();
+          if (typeof body?.error === "string") message = body.error;
+        } catch {
+          /* not JSON */
+        }
+        throw new AdminHttpError(res.status, message ?? (res.status === 429 ? "Rate limited — try again later." : undefined));
+      }
+      return (await res.json()) as ReResolveResult;
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["admin", "catalog"] });
+    },
   });
 }
 

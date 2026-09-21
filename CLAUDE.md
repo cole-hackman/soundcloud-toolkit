@@ -446,6 +446,17 @@ is registered without the pair.
 | `GET` | `/api/admin/catalog/summary` | Harvested music-catalog summary |
 | `GET` | `/api/admin/catalog/tracks` | Catalog track list |
 | `GET` | `/api/admin/catalog/tracks/:id/operations` | Operations touching one track |
+| `GET` | `/api/admin/catalog/daily` | Per-day track touches, distinct tracks and playlist touches (zero-filled) |
+| `GET` | `/api/admin/catalog/playlists` | Harvested playlists with period touches; `q`, sort, paging, `format=csv` |
+| `GET` | `/api/admin/catalog/artists` | Catalog rolled up by artist: tracks, touches, not-playable share, unresolved; `format=csv` |
+| `POST` | `/api/admin/catalog/re-resolve` | `{ trackIds }` (1–200): forced refetch through the enrichment path with the admin's token. `heavyOperationRateLimiter`; logged as `admin-re-resolve` |
+
+`/catalog/tracks` also accepts `access=not_playable` (blocked ∪ preview ∪ gone),
+sorts on `duration`, `firstSeen` and `lastSeen`, and `format=csv` (the
+current filter set, up to 10,000 rows, no COUNT query). The CSV writer and
+the day-filling helpers (`periodDayCount`, `fillDays`) are shared by
+`/daily` and `/catalog/daily`. `tests/routes/admin-catalog.test.js` covers
+the re-resolve guards and the CSV contract.
 | `GET` | `/api/admin/rebrand/summary` | Rebrand name-vote tally + write-in counts |
 | `GET` | `/api/admin/rebrand` | Rebrand vote list (write-in names, feature requests) |
 | `GET` | `/api/admin/feedback/summary` | Retired beta-survey aggregates (API only) |
@@ -463,7 +474,13 @@ strip, KPI tiles, activity trend, outcome bar, feature usage/reach, errors),
 **Operations** (the searchable log with an inspector drawer), **Performance**
 (the `readLatency` p95 ranking and write health), **Catalog** and **Archive**
 (closed rebrand vote, retired beta survey). The active view is the URL hash
-(`/admin#operations`); keys 1–5 switch views. Each view fetches only what it
+(`/admin#operations`); keys 1–5 switch views. Catalog has its own sub-views
+in the hash (`#catalog/tracks|playlists|artists|health`): the touches
+time-series, genre/access bars that filter, Tracks with optional
+duration/first-seen/last-seen columns and CSV export, Playlists, the Artists
+roll-up (not-playable share per artist), and Health — the blocked / preview /
+gone / pending / not-found lists with the console's only write, **Re-resolve**
+(`POST /api/admin/catalog/re-resolve`, ≤200 ids per click). Each view fetches only what it
 needs through the hooks in `queries.ts` (react-query; live views re-poll every
 30 s while the tab is visible and keep stale data on screen while refetching —
 never a skeleton flash). Archive queries are all-time and never poll.

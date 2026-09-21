@@ -64,7 +64,7 @@ Library & Export, and Discovery & Links. Underneath them:
 Requires Node 18+, a Postgres database (Neon works), and a SoundCloud OAuth
 app (client ID and secret from developers.soundcloud.com).
 
-    git clone https://github.com/cole-hackman/soundcloud-toolkit
+    git clone https://github.com/cole-hackman/tracktoolkit
     cd soundcloud-toolkit
     npm install
     cp .env.example .env   # SoundCloud credentials, DATABASE_URL, generated secrets

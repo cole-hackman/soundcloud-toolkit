@@ -57,9 +57,6 @@ export const metadata: Metadata = {
       "max-snippet": -1,
     },
   },
-  alternates: {
-    canonical: "https://tracktoolkit.com/",
-  },
   openGraph: {
     type: "website",
     locale: "en_US",
@@ -109,7 +106,6 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${display.variable} ${sans.variable}`}>
       <head>
-        <link rel="canonical" href="https://tracktoolkit.com/" />
         <meta name="theme-color" content="#FF5500" />
       </head>
       <body className="antialiased font-sans">

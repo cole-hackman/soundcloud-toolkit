@@ -5,7 +5,7 @@ import { ArrowLeft } from "lucide-react";
 
 export default function AboutPage() {
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <main id="main-content" tabIndex={-1} className="min-h-screen bg-background text-foreground focus:outline-none">
       <div className="max-w-4xl mx-auto px-6 py-10 md:py-16">
         <article className="rounded-xl border border-border bg-surface p-8 shadow-elevation-1 md:p-12 dark:glass-card">
           <div className="mb-6">
@@ -172,6 +172,6 @@ export default function AboutPage() {
           </div>
         </article>
       </div>
-    </div>
+    </main>
   );
 }

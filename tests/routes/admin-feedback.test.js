@@ -33,10 +33,12 @@ afterEach(() => {
 });
 
 beforeEach(() => {
-  findMany.mockClear().mockResolvedValue([]);
-  count.mockClear().mockResolvedValue(0);
-  groupBy.mockClear().mockResolvedValue([]);
-  update.mockClear();
+  // mockReset, not mockClear: mockClear leaves the implementation in place, so
+  // a rejection set by one test would leak into the next one's default.
+  findMany.mockReset().mockResolvedValue([]);
+  count.mockReset().mockResolvedValue(0);
+  groupBy.mockReset().mockResolvedValue([]);
+  update.mockReset();
   // The mocked session user is soundcloudId 111; this makes them an admin.
   process.env.ADMIN_IDS = '111';
 });
@@ -259,12 +261,15 @@ describe('PATCH /api/admin/feedback-items/:id', () => {
   test('a missing row is a 404, not a 500', async () => {
     const notFound = new Error('not found');
     notFound.code = 'P2025';
-    update.mockRejectedValue(notFound);
+    update.mockImplementation(() => Promise.reject(notFound));
 
     const res = await request(app)
       .patch('/api/admin/feedback-items/fb-gone')
       .send({ status: 'done' });
 
+    // Asserted before the status so a mock that failed to take effect reads as
+    // "the rejection never happened" rather than as a mysterious 200.
+    expect(update).toHaveBeenCalledTimes(1);
     expect(res.status).toBe(404);
   });
 });

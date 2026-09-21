@@ -78,7 +78,7 @@ untouched and remain the rollback plan.
 | Databases | `tracktoolkit` (empty, prod-to-be), `tracktoolkit-rehearsal` (throwaway) | |
 | Key Vault | `tracktoolkit-kv` | RBAC; secret names listed in `infra/deploy.sh` |
 | Log Analytics | `tracktoolkit-logs` | |
-| Entra app for GitHub OIDC | `gh-tracktoolkit-deploy` (appId 8b48e1d8-…) | federated subject `repo:cole-hackman/tracktoolkit:environment:azure`, Website Contributor on the RG |
+| Entra app for GitHub OIDC | `gh-tracktoolkit-deploy` (appId 8b48e1d8-…) | federated subject `repo:cole-hackman@83625748/tracktoolkit@1053639544:environment:azure` (GitHub now issues the subject with the owner and repository ids embedded, so it survives renames), Website Contributor on the RG |
 | GitHub | environment `azure`; variables `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID` | |
 
 Current production for reference: DigitalOcean app `sctoolkit-backend`
@@ -565,9 +565,12 @@ never down — read metric timestamps against `date -u`.
 
 GitHub redirects the old slug, but the Azure OIDC federated credential is
 matched on the token subject, which carries the current repo name. Updated
-`gh-env-azure` on app `gh-tracktoolkit-deploy` to
-`repo:cole-hackman/tracktoolkit:environment:azure` and re-ran the deploy
-workflow to prove the login. Local remote and README clone URL updated;
+`gh-env-azure` on app `gh-tracktoolkit-deploy`. The plain
+`repo:cole-hackman/tracktoolkit:environment:azure` form still failed
+(AADSTS700213): GitHub now issues the subject with ids embedded,
+`repo:cole-hackman@83625748/tracktoolkit@1053639544:environment:azure`.
+That exact string is the credential now; deploy run 35659806107 passed
+login, deploy and smoke test. It survives future renames. Local remote and README clone URL updated;
 `.do/app.yaml` and the DigitalOcean guides still say the old slug and are
 left as retired history.
 

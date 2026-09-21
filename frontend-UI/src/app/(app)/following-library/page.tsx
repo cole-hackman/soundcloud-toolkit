@@ -473,7 +473,7 @@ export default function FollowingLibraryPage() {
                         </div>
                         <p className="text-sm text-muted-foreground">Tap tracks to select; use the bottom bar for bulk actions.</p>
                       </div>
-                      <Button variant="secondary" className="shrink-0" onClick={selectLoadedTracks} disabled={tracks.length === 0}>
+                      <Button nowrap variant="secondary" className="shrink-0" onClick={selectLoadedTracks} disabled={tracks.length === 0}>
                         {selectedTracks.size === tracks.length && tracks.length > 0 ? "Clear loaded" : "Select loaded"}
                       </Button>
                     </div>
@@ -542,7 +542,7 @@ export default function FollowingLibraryPage() {
                         </div>
                         <p className="text-sm text-muted-foreground">Select playlists, add an optional name prefix, then clone from the bar below.</p>
                       </div>
-                      <Button variant="secondary" className="shrink-0" onClick={selectLoadedPlaylists} disabled={playlists.length === 0}>
+                      <Button nowrap variant="secondary" className="shrink-0" onClick={selectLoadedPlaylists} disabled={playlists.length === 0}>
                         {selectedPlaylists.size === playlists.length && playlists.length > 0 ? "Clear loaded" : "Select loaded"}
                       </Button>
                     </div>
@@ -609,7 +609,7 @@ export default function FollowingLibraryPage() {
 
               {nextHref && (
                 <CardFooter className="flex justify-center border-t border-border/60 bg-muted/10 py-4">
-                  <Button variant="secondary" onClick={() => fetchLibraryPage(activeTab, false)} disabled={loadingMore}>
+                  <Button nowrap variant="secondary" onClick={() => fetchLibraryPage(activeTab, false)} disabled={loadingMore}>
                     {loadingMore && <Loader2 className="h-4 w-4 animate-spin" />}
                     Load more
                   </Button>

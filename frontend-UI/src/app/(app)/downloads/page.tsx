@@ -628,7 +628,7 @@ export default function DownloadsPage() {
                         <X className="w-4 h-4" />
                         Cancel
                       </Button>
-                      <Button
+                      <Button nowrap
                         onClick={() =>
                           setSelectedHypedditIds(new Set(hypedditTracks.map((t) => t.id)))
                         }
@@ -638,7 +638,7 @@ export default function DownloadsPage() {
                         Select All ({hypedditTracks.length})
                       </Button>
                       {selectedHypedditIds.size > 0 && (
-                        <Button
+                        <Button nowrap
                           onClick={() => setSelectedHypedditIds(new Set())}
                           variant="secondary"
                           className="h-10 px-4 text-muted-foreground"

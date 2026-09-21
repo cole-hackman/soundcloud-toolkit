@@ -1,6 +1,9 @@
 export { Card, CardHeader, CardContent, CardFooter } from "./Card";
 export { Button } from "./Button";
+export { IconButton } from "./IconButton";
 export { Input } from "./Input";
+export { Field } from "./Field";
+export { Select } from "./Select";
 export { LoadingSpinner } from "./LoadingSpinner";
 export { EmptyState } from "./EmptyState";
 export { Skeleton } from "./Skeleton";

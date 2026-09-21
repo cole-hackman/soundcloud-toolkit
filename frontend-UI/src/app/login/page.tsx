@@ -128,7 +128,7 @@ export default function LoginPage() {
                         </code>{" "}
                         is set.
                       </div>
-                      <Button
+                      <Button nowrap
                         variant="ghost"
                         className="mt-2 h-8 px-2 text-[11px] text-amber-900 hover:bg-amber-100/80 dark:text-amber-50 dark:hover:bg-amber-900/60"
                         onClick={retryAuth}

@@ -68,7 +68,7 @@ export function BulkReviewDetails({
       </div>
       {exportFilename && items.length > 0 && (
         <div className="mt-3">
-          <Button variant="outline" className="h-8 px-3 py-1 text-xs" onClick={exportItems}>
+          <Button nowrap variant="outline" className="h-8 px-3 py-1 text-xs" onClick={exportItems}>
             Export selection
           </Button>
         </div>

@@ -1056,7 +1056,7 @@ export default function GrowthPage() {
                   <History className="w-4 h-4" />
                   View Campaign History
                 </Button>
-                <Button 
+                <Button nowrap
                   onClick={() => {
                     setSelectedInspirations(new Set());
                     setDiscoveryStep(1);

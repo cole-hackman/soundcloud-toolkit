@@ -133,7 +133,7 @@ export default function LibraryAuditPage() {
             {result ? "Restart from the top" : "Run playlist audit"}
           </Button>
           {result && (
-            <Button variant="outline" onClick={exportCsv}>
+            <Button nowrap variant="outline" onClick={exportCsv}>
               <Download className="h-4 w-4" />
               Export CSV
             </Button>
@@ -234,7 +234,7 @@ export default function LibraryAuditPage() {
                   {result.page.hasMore ? " — more to audit" : " — end of your library"}
                 </p>
                 <div className="flex gap-2">
-                  <Button
+                  <Button nowrap
                     variant="outline"
                     onClick={() => runAudit(Math.max(0, offset - PAGE_SIZE))}
                     disabled={loading || offset === 0}
@@ -242,7 +242,7 @@ export default function LibraryAuditPage() {
                     <ChevronLeft className="h-4 w-4" />
                     Previous {PAGE_SIZE}
                   </Button>
-                  <Button
+                  <Button nowrap
                     variant="outline"
                     onClick={() => runAudit(offset + PAGE_SIZE)}
                     disabled={loading || !result.page.hasMore || offset + PAGE_SIZE > MAX_OFFSET}

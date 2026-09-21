@@ -123,7 +123,7 @@ export default function PlaylistComparePage() {
         ) : (
           <div className="space-y-6">
             <div className="flex justify-end">
-              <Button variant="outline" onClick={exportCsv}>
+              <Button nowrap variant="outline" onClick={exportCsv}>
                 <Download className="h-4 w-4" />
                 Export CSV
               </Button>

@@ -46,7 +46,7 @@ export function SelectionBanner({
             {actionLabel}
           </PulsatingButton>
         ) : (
-          <Button
+          <Button nowrap
             variant={actionVariant}
             className="h-10 px-4"
             onClick={onAction}

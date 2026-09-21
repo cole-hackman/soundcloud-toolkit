@@ -21,6 +21,7 @@ BigInt.prototype.toJSON = function () {
 import { apiRateLimiter, authRateLimiter, heavyOperationRateLimiter, healthCheckRateLimiter } from './middleware/rateLimiter.js';
 import { securityHeaders, preventKeyLeakage, validateEnv, rejectUntrustedOrigin } from './middleware/security.js';
 import { legacyHostRedirect } from './middleware/legacy-redirect.js';
+import { mountStaticSite } from './lib/static-site.js';
 import logger from './lib/logger.js';
 import { safeError } from './lib/safe-error.js';
 import { createScMetrics } from './lib/token-context.js';
@@ -158,41 +159,15 @@ app.get('/health', healthCheckRateLimiter, (req, res) => {
 // Serve Next.js static export in production
 if (existsSync(FRONTEND_BUILD_PATH)) {
   logger.info(`Serving frontend from ${FRONTEND_BUILD_PATH}`);
-  
-  // Serve static files from Next.js build
-  app.use(express.static(FRONTEND_BUILD_PATH, {
-    maxAge: '1d',
-    etag: true,
-  }));
-  
-  // Handle client-side routing - serve index.html for non-API routes
-  app.get('*', (req, res, next) => {
-    // Skip API routes
-    if (req.path.startsWith('/api/') || req.path === '/health') {
-      return next();
-    }
-    
-    // Try to serve the specific page's HTML file (Next.js static export creates folder/index.html)
-    const pagePath = req.path.endsWith('/') ? req.path : req.path + '/';
-    const htmlFile = join(FRONTEND_BUILD_PATH, pagePath, 'index.html');
-    
-    if (existsSync(htmlFile)) {
-      return res.sendFile(htmlFile);
-    }
-    
-    // Try exact path with .html extension
-    const exactHtmlFile = join(FRONTEND_BUILD_PATH, req.path + '.html');
-    if (existsSync(exactHtmlFile)) {
-      return res.sendFile(exactHtmlFile);
-    }
-    
-    // Fallback to root index.html for client-side routing
-    const rootIndex = join(FRONTEND_BUILD_PATH, 'index.html');
-    if (existsSync(rootIndex)) {
-      return res.sendFile(rootIndex);
-    }
-    
-    next();
+
+  // Retired paths -> the page that replaced them. 301 (not a client-side
+  // redirect) so search engines and old bookmarks converge on the new URL.
+  mountStaticSite(app, FRONTEND_BUILD_PATH, {
+    aliases: {
+      '/sc-toolkit': '/faq/#rebrand',
+      '/soundcloud-toolkit': '/faq/#rebrand',
+      '/rebrand': '/faq/#rebrand',
+    },
   });
 } else {
   logger.info(`Frontend build not found at ${FRONTEND_BUILD_PATH} - API only mode`);

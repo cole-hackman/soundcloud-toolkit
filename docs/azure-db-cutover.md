@@ -84,7 +84,7 @@ route fails, so nothing is written. Rollback: restore the original value.
 Each change is a config redeploy of about two minutes.
 
 Do NOT destroy the DigitalOcean app at this point; it is the rollback until
-the new stack has soaked. Destroy it afterwards (see MIGRATION.md).
+the new stack has soaked. Destroy it afterwards (see docs/internal/MIGRATION.md).
 
 ### 1. Row counts on the source
 
@@ -184,7 +184,7 @@ Then the decrypt round-trip, which proves the `ENCRYPTION_KEY` the Azure app
 will use opens the token blobs that were just restored. Run from the repo
 root (it needs the generated Prisma client); it prints counts only, never a
 token. Rehearsal result: 4089/4089 rows with the production key, 0/5 with a
-wrong key (MIGRATION.md, work item 3).
+wrong key (docs/internal/MIGRATION.md, work item 3).
 
 ```bash
 cat > /tmp/decrypt-roundtrip.mjs <<'JS'
@@ -273,5 +273,5 @@ dropped to zero at 18:49:13, which was the go signal).
 The code deploy and the domain parameters were applied in parallel with the
 restore, which shortened the window, but the parameter deploy detached the
 custom hostnames' certificates for 14 minutes (fixed in `main.bicep`, see
-MIGRATION.md). Nothing was written to Neon after the freeze; it remains the
+docs/internal/MIGRATION.md). Nothing was written to Neon after the freeze; it remains the
 rollback copy.

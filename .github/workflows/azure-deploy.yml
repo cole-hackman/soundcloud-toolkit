@@ -1,7 +1,7 @@
 name: Deploy to Azure App Service
 
 # Manual only while the Azure stack runs in parallel with production. Once the
-# cutover in MIGRATION.md is done, add `push: branches: [main]` here and this
+# cutover in docs/internal/MIGRATION.md is done, add `push: branches: [main]` here and this
 # replaces DigitalOcean's deploy_on_push.
 #
 # Auth is OIDC (no long-lived secret): the `azure` GitHub environment is the

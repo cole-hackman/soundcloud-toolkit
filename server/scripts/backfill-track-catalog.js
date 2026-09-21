@@ -4,7 +4,7 @@
 //
 // ── GATED OFF BY DEFAULT ────────────────────────────────────────────────────
 // Bulk-fetching historical metadata may be constrained by SoundCloud's API
-// terms (see TERMS-CHECK.md — caching limits and dataset/aggregation clauses).
+// terms (see docs/internal/TERMS-CHECK.md — caching limits and dataset/aggregation clauses).
 // Do NOT run this until those questions are answered. It refuses to run
 // unless BACKFILL_TRACKS_ENABLED=true is set explicitly.
 //
@@ -24,7 +24,7 @@ async function main() {
   if (process.env.BACKFILL_TRACKS_ENABLED !== 'true') {
     console.error(
       'Refusing to run: BACKFILL_TRACKS_ENABLED is not "true".\n' +
-      'Read TERMS-CHECK.md first, then run with BACKFILL_TRACKS_ENABLED=true.'
+      'Read docs/internal/TERMS-CHECK.md first, then run with BACKFILL_TRACKS_ENABLED=true.'
     );
     process.exitCode = 1;
     return;

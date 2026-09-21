@@ -79,7 +79,7 @@ import {
 } from '../middleware/validation.js';
 const router = express.Router();
 
-// The domain moves with the Azure cutover (MIGRATION.md work item 4): the
+// The domain moves with the Azure cutover (docs/internal/MIGRATION.md work item 4): the
 // apex is canonical, and every soundcloudtoolkit.com host 301s to it via
 // server/middleware/legacy-redirect.js.
 const TRACK_TOOLKIT_PLAYLIST_SITE = 'tracktoolkit.com';

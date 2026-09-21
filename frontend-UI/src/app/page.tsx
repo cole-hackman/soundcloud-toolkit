@@ -188,7 +188,9 @@ const steps = [
 export default function Home() {
   const scrollToFeatures = () => {
     const el = document.getElementById("features");
-    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+    if (!el) return;
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    el.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "start" });
   };
 
   return (

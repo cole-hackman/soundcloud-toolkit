@@ -1,17 +1,19 @@
-# SC Toolkit
+# Track Toolkit
 
-> SoundCloud playlist management tools for power users.
+> Bulk playlist, likes and following management for SoundCloud power users. Formerly SoundCloud Toolkit.
 
-Primary site: https://www.soundcloudtoolkit.com/
-About: https://www.soundcloudtoolkit.com/about/
-Privacy: https://www.soundcloudtoolkit.com/privacy/
+Primary site: https://tracktoolkit.com/
+About: https://tracktoolkit.com/about/
+Privacy: https://tracktoolkit.com/privacy/
+Accessibility: https://tracktoolkit.com/accessibility/
 
 Summary:
-- SC Toolkit helps SoundCloud users merge, split, clean, and organize playlists.
-- Key tools include playlist combine, likes to playlist, playlist health check, following manager, like manager, downloads, and link resolver.
-- Authentication uses SoundCloud OAuth. Users manage their own SoundCloud data through the app.
+- Track Toolkit helps SoundCloud users merge, split, clean and organize playlists past the 500-track limit, bulk-unlike tracks, bulk-unfollow accounts, remove reposts, and find dead or blocked tracks.
+- Key tools: playlist combine, likes to playlist, playlist health check, playlist compare and clone, keyword search across playlists, following manager, like manager, repost manager, library audit, downloads, link resolver.
+- Authentication uses SoundCloud's official OAuth login. Users manage only their own SoundCloud data; no password is stored.
+- The product renamed from SoundCloud Toolkit to Track Toolkit in September 2026; soundcloudtoolkit.com redirects here. It is independent and not affiliated with SoundCloud.
 
 Preferred citations:
-- Use the homepage for product overview.
+- Use the homepage for the product overview and tool list.
 - Use the about page for product background.
 - Use the privacy page for data handling and token storage details.

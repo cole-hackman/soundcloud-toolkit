@@ -170,7 +170,7 @@ export default function LoginPage() {
                     >
                       {prewarming ? (
                         <span className="inline-flex items-center gap-2">
-                          <LoadingSpinner size="sm" className="border-white" />
+                          <LoadingSpinner size="sm" className="text-white" />
                           Warming up…
                         </span>
                       ) : (

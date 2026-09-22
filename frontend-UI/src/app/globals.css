@@ -98,7 +98,12 @@
     --popover-foreground: 210 40% 98%;
     --primary: 17 100% 52%; /* SoundCloud orange #FF5500 */
     --primary-foreground: 210 40% 2%;
-    --primary-text: 17 100% 52%;
+    /* Four points lighter than --primary, not equal to it. At 52% the brand
+       tint bottomed out at 4.35:1 on a card at `bg-primary/20` — the deepest
+       tint the gate now bounds — so the orange has to come up off the surface
+       colour to hold AA all the way down. 4.68:1 there, 6.12:1 on the plain
+       background. */
+    --primary-text: 17 100% 56%;
     --secondary: 215 21% 16%;
     --secondary-foreground: 210 40% 98%;
     --muted: 220 19% 18%;

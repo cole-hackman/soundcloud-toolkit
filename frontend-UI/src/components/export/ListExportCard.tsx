@@ -146,7 +146,7 @@ export function ListExportCard({
               emptyLinkHref && emptyLinkLabel ? (
                 <Link
                   href={emptyLinkHref}
-                  className="inline-flex min-h-11 items-center rounded-lg px-3 text-sm font-semibold text-primary-text hover:bg-accent hover:underline"
+                  className="inline-flex min-h-11 items-center rounded-lg px-3 text-sm font-semibold text-primary-text hover:bg-accent hover:text-accent-foreground hover:underline"
                 >
                   {emptyLinkLabel}
                 </Link>

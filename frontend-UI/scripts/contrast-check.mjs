@@ -19,13 +19,19 @@ const PAIRS = [
   ["muted-foreground-subtle", "background", 4.5, "subtle text"],
   ["primary-text", "background", 4.5, "orange as text"],
   ["primary-text", "card", 4.5, "orange as text on cards"],
-  // 3.0, not 4.5, because after the hovered-link fix the only things wearing
-  // the brand orange on `--accent` are icons — batch-link-resolver's
-  // open-on-SoundCloud button and following-manager's — and a glyph is a
-  // graphical object under 1.4.11. The three *text* links that used to pair
-  // these (batch-link-resolver's Clone and Downloads, ExportBackLink) now
-  // hover to `--accent-foreground`, gated on the next line. If this pair is
-  // ever put back on text, this threshold has to go to 4.5 — and it fails.
+  // 3.0 because the uses this gate knows about are icons, and a glyph is a
+  // graphical object under 1.4.11. It is NOT a statement that no text uses
+  // the pair — this script compares token pairs, it cannot see a call site,
+  // and a first sweep here missed two (the EmptyState links in
+  // ListExportCard and TrackExportCard) precisely because they carry
+  // `text-primary-text` at rest and add only `hover:bg-accent`, so grepping
+  // for `hover:text-primary-text` never found them.
+  //
+  // So before trusting this line, search BOTH forms:
+  //   `hover:text-primary-text`                  (hover swaps the colour in)
+  //   `text-primary-text` + `hover:bg-accent`    (hover swaps the surface in)
+  // Anything textual that turns up hovers to `--accent-foreground` instead,
+  // gated on the next line at the full 4.5.
   ["primary-text", "accent", 3.0, "orange ICON on a hovered row (1.4.11)"],
   ["accent-foreground", "accent", 4.5, "text on a hovered row"],
   ["primary-foreground", "primary", 4.5, "primary button label"],
@@ -55,10 +61,17 @@ const PAIRS = [
  *
  * Two bases per tint on purpose: a tint over `--background` and the same tint
  * over `--card` are different colours, and which one a component lands on is
- * a layout decision, so both have to hold. Where a component has a resting
- * and a hover tint, both alphas are listed — the deepest one is the bound the
- * token was chosen against, so a future call site may go that far and no
- * further.
+ * a layout decision, so both have to hold.
+ *
+ * **`bg-primary/20` is the deepest gated brand tint**, and that number is a
+ * contract in two directions: `--primary-text` was chosen so it holds there
+ * (dark mode had to come up to 56% for it), and no call site may go deeper,
+ * because past 20% nothing here says whether it still passes. The comment on
+ * `--primary-text` in globals.css quotes the same 20%; keep them in step.
+ *
+ * Bases are a floor, not the whole truth: a tint over a *toned* panel — say
+ * `ResultPanel tone="success"` — composites over a colour this gate has no
+ * token for. Staying inside the gated bound is necessary, not sufficient.
  */
 const TINTED_PAIRS = [
   ["destructive-foreground", "destructive", 0.9, "background", 4.5, "destructive button hover"],
@@ -67,8 +80,10 @@ const TINTED_PAIRS = [
   ["primary-foreground", "primary", 0.9, "card", 4.5, "primary button hover on a card"],
   ["primary-text", "primary", 0.1, "background", 4.5, "orange as text on the brand tint"],
   ["primary-text", "primary", 0.1, "card", 4.5, "orange as text on the brand tint, on a card"],
-  ["primary-text", "primary", 0.15, "background", 4.5, "…at the deepest brand tint in use (hover)"],
+  ["primary-text", "primary", 0.15, "background", 4.5, "…at the brand-tint hover"],
   ["primary-text", "primary", 0.15, "card", 4.5, "…same, on a card"],
+  ["primary-text", "primary", 0.2, "background", 4.5, "…at the DEEPEST gated brand tint"],
+  ["primary-text", "primary", 0.2, "card", 4.5, "…same, on a card — the binding case"],
   ["destructive-text", "destructive", 0.1, "background", 4.5, "destructive icon-button hover"],
   ["destructive-text", "destructive", 0.1, "card", 4.5, "destructive icon-button hover on a card"],
   ["muted-foreground", "secondary", 0.2, "background", 4.5, "secondary text on a tinted panel"],

@@ -153,7 +153,7 @@ export default function LibraryAuditPage() {
       <Card className="mb-6 flex flex-wrap items-center gap-3 p-4">
         <Button onClick={() => runAudit(0)} disabled={loading}>
           {loading ? (
-            <LoadingSpinner size="sm" className="border-white" />
+            <LoadingSpinner size="sm" className="text-white" />
           ) : (
             <RefreshCw aria-hidden="true" className="h-4 w-4" />
           )}

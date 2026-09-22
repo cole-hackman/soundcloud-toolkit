@@ -657,7 +657,7 @@ export default function DownloadsPage() {
                         variant="destructive"
                       >
                         {isRemoving ? (
-                          <LoadingSpinner className="w-4 h-4 border-current" />
+                          <LoadingSpinner className="w-4 h-4 text-current" />
                         ) : (
                           <Trash2 className="w-4 h-4" />
                         )}
@@ -777,7 +777,7 @@ export default function DownloadsPage() {
                                 className={getDownloadTone(track)}
                               >
                                 {downloadingTrackId === track.id ? (
-                                  <LoadingSpinner className="h-5 w-5 border-current" />
+                                  <LoadingSpinner className="h-5 w-5 text-current" />
                                 ) : (
                                   <Download className="h-5 w-5" />
                                 )}
@@ -851,7 +851,7 @@ export default function DownloadsPage() {
                           className={getDownloadTone(track)}
                         >
                           {downloadingTrackId === track.id ? (
-                            <LoadingSpinner className="h-5 w-5 border-current" />
+                            <LoadingSpinner className="h-5 w-5 text-current" />
                           ) : (
                             <Download className="w-5 h-5" />
                           )}

@@ -160,6 +160,60 @@ test.describe("useDialog focus trap", () => {
 });
 
 /**
+ * `LoadingSpinner` draws its ring with `border-current` and one transparent
+ * side, and is tinted through `text-*`. The transparent side is the whole
+ * animation — a uniform ring under `animate-spin` looks frozen.
+ *
+ * `cn` is tailwind-merge, which treats `border-<color>` as the parent of
+ * `border-t-<color>`, so a caller passing `border-white` silently drops
+ * `border-t-transparent` from the merged class list. Every caller used to do
+ * exactly that. This measures the rendered borders, so the regression cannot
+ * come back through a class-name change that still "looks right".
+ */
+test.describe("LoadingSpinner", () => {
+  test("keeps its transparent side when a caller recolours it", async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== "desktop", "viewport-independent; one project is enough");
+
+    await mockApi(page);
+    // Stall the audit so the button holds its loading state long enough to
+    // measure. Fulfilled late rather than never, so teardown stays clean.
+    await page.route("**/api/library/audit*", async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 10_000));
+      return route.fulfill(json({ page: { limit: 20, offset: 0, returned: 0, total: 0, hasMore: false }, failed: [], summary: {}, playlists: [] }));
+    });
+
+    await page.goto("/library-audit/");
+    await page.getByRole("button", { name: "Run playlist audit" }).click();
+
+    const spinner = page.getByRole("status", { name: "Loading" }).first();
+    await expect(spinner).toBeVisible();
+
+    const ring = await spinner.evaluate((el) => {
+      const s = getComputedStyle(el);
+      return {
+        top: s.borderTopColor,
+        right: s.borderRightColor,
+        bottom: s.borderBottomColor,
+        left: s.borderLeftColor,
+        width: s.borderTopWidth,
+      };
+    });
+
+    // The gap: exactly one side transparent, and it is the top.
+    expect(ring.top).toBe("rgba(0, 0, 0, 0)");
+    expect(ring.right).not.toBe("rgba(0, 0, 0, 0)");
+    expect(ring.bottom).not.toBe("rgba(0, 0, 0, 0)");
+    expect(ring.left).not.toBe("rgba(0, 0, 0, 0)");
+    expect(ring.width).not.toBe("0px");
+
+    // And the caller's `text-white` actually reached the ring — proving the
+    // colour override works *through* `border-current` rather than by
+    // replacing the border classes.
+    expect(ring.left).toBe("rgb(255, 255, 255)");
+  });
+});
+
+/**
  * `SelectableRow`'s root is a grid item in every consumer, and a grid item's
  * automatic minimum size is its min-content width. Without `min-w-0` one
  * unbreakable username sizes the column to itself and carries the row's own

@@ -446,7 +446,7 @@ export default function PlaylistKeywordSearchPage() {
           </div>
           <Button onClick={() => runSearch(0)} disabled={loading}>
             {loading ? (
-              <LoadingSpinner size="sm" className="border-white" />
+              <LoadingSpinner size="sm" className="text-white" />
             ) : (
               <Search aria-hidden="true" className="h-4 w-4" />
             )}

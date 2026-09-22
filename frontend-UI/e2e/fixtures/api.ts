@@ -73,6 +73,26 @@ const FAKE_FOLLOWINGS_PAGED = {
   next_href: null as string | null,
 };
 
+/**
+ * `GET /api/followers/paged` — the followers side of the following manager.
+ * Only the first fake following is also a follower, so the "Not Following
+ * Back" filter has something to actually filter and the toggle leaves its
+ * disabled-while-loading state.
+ */
+const FAKE_FOLLOWERS_PAGED = {
+  collection: [
+    {
+      id: 200,
+      username: "testfollowing1",
+      avatar_url: null,
+      followers_count: 100,
+      track_count: 10,
+      permalink_url: "https://soundcloud.com/testfollowing1",
+    },
+  ],
+  next_href: null as string | null,
+};
+
 /** What `POST /api/feedback` answers with on a 201 — id and timestamp only. */
 const FAKE_FEEDBACK_CREATED = {
   id: "fb_1",
@@ -169,6 +189,9 @@ export async function mockApi(page: Page): Promise<void> {
     }
     if (method === "GET" && (path === "/api/followings/paged" || path === "/api/followings")) {
       return route.fulfill(json(FAKE_FOLLOWINGS_PAGED));
+    }
+    if (method === "GET" && (path === "/api/followers/paged" || path === "/api/followers")) {
+      return route.fulfill(json(FAKE_FOLLOWERS_PAGED));
     }
     if (method === "GET" && path === "/api/growth/limits") {
       return route.fulfill(json(FAKE_GROWTH_LIMITS));

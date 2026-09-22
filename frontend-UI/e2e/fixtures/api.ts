@@ -61,6 +61,98 @@ const FAKE_LIKES_PAGED = {
   next_href: null as string | null,
 };
 
+/** `GET /api/playlists/:id` — one playlist with a short, obviously fake track
+ *  list. Track 1 carries a direct `download_url` and track 2 a Hypeddit
+ *  `purchase_url`, so the downloads page renders both download flavours. */
+const FAKE_PLAYLIST_DETAIL = {
+  id: 1,
+  title: "Sample Playlist 1",
+  tracks: [
+    {
+      id: 100,
+      title: "Sample Track 1",
+      user: { username: "testartist" },
+      artwork_url: null,
+      duration: 200000,
+      downloadable: true,
+      download_url: "https://api.soundcloud.com/tracks/100/download",
+      permalink_url: "https://soundcloud.com/testartist/sample-track-1",
+    },
+    {
+      id: 101,
+      title: "Sample Track 2",
+      user: { username: "testartist" },
+      artwork_url: null,
+      duration: 180000,
+      downloadable: false,
+      purchase_url: "https://hypeddit.com/example/sample-track-2",
+      permalink_url: "https://soundcloud.com/testartist/sample-track-2",
+    },
+  ],
+};
+
+/** `GET /api/recently-played` — the shape `useRecentlyPlayedQuery` reads. */
+const FAKE_RECENTLY_PLAYED = {
+  collection: Array.from({ length: 3 }, (_, i) => ({
+    id: 300 + i,
+    title: `Sample Track ${i + 1}`,
+    user: { username: "testartist" },
+    artwork_url: null,
+    duration: 200000,
+    permalink_url: `https://soundcloud.com/testartist/sample-track-${i + 1}`,
+  })),
+};
+
+/**
+ * `GET /api/activities` — one plain track activity and one repost. The repost
+ * carries a URN-shaped `reposter` with no username, which is the case the row
+ * subtitle must not print as a bare numeric id.
+ */
+const FAKE_ACTIVITIES = {
+  collection: [
+    {
+      type: "track",
+      created_at: "2026-09-20T12:00:00.000Z",
+      reposter: null,
+      origin: {
+        id: 400,
+        title: "Sample Track 1",
+        user: { username: "testartist" },
+        artwork_url: null,
+        duration: 200000,
+        permalink_url: "https://soundcloud.com/testartist/sample-track-1",
+      },
+    },
+    {
+      type: "track-repost",
+      created_at: "2026-09-19T12:00:00.000Z",
+      reposter: "soundcloud:users:1000002",
+      origin: {
+        id: 401,
+        title: "Sample Track 2",
+        user: { username: "testartist" },
+        artwork_url: null,
+        duration: 180000,
+        permalink_url: "https://soundcloud.com/testartist/sample-track-2",
+      },
+    },
+  ],
+};
+
+/** `GET /api/tracks/search` — genre-search results. */
+const FAKE_TRACK_SEARCH = {
+  collection: Array.from({ length: 2 }, (_, i) => ({
+    id: 500 + i,
+    title: `Sample Track ${i + 1}`,
+    user: { username: "testartist" },
+    artwork_url: null,
+    duration: 200000,
+    genre: "house",
+    permalink_url: `https://soundcloud.com/testartist/sample-track-${i + 1}`,
+  })),
+  next_href: null as string | null,
+};
+
 const FAKE_FOLLOWINGS_PAGED = {
   collection: Array.from({ length: 3 }, (_, i) => ({
     id: 200 + i,
@@ -164,8 +256,27 @@ export async function mockApi(page: Page): Promise<void> {
     if (method === "GET" && path === "/api/playlists") {
       return route.fulfill(json(FAKE_PLAYLISTS));
     }
+    if (method === "GET" && /^\/api\/playlists\/\d+$/.test(path)) {
+      return route.fulfill(
+        json({ ...FAKE_PLAYLIST_DETAIL, id: Number(path.split("/").pop()) }),
+      );
+    }
+    if (method === "GET" && path === "/api/recently-played") {
+      return route.fulfill(json(FAKE_RECENTLY_PLAYED));
+    }
+    if (method === "GET" && path === "/api/activities") {
+      return route.fulfill(json(FAKE_ACTIVITIES));
+    }
+    if (method === "GET" && path === "/api/tracks/search") {
+      return route.fulfill(json(FAKE_TRACK_SEARCH));
+    }
     if (method === "GET" && path === "/api/likes/paged") {
       return route.fulfill(json(FAKE_LIKES_PAGED));
+    }
+    if (method === "GET" && path === "/api/likes") {
+      return route.fulfill(
+        json({ collection: FAKE_LIKES_PAGED.collection, total: FAKE_LIKES_PAGED.collection.length }),
+      );
     }
     if (method === "GET" && (path === "/api/followings/paged" || path === "/api/followings")) {
       return route.fulfill(json(FAKE_FOLLOWINGS_PAGED));

@@ -33,6 +33,12 @@ const PAGES: PageCase[] = [
     // one. See task-1-report.md fix round 1 for how this was found.
     fixme: "Phase 6 — scrollWidth ~468-469px overflows clientWidth (360/390/430px) on all three mobile widths",
   },
+  { path: "/likes-to-playlist/", needsMock: true },
+  { path: "/playlist-to-likes/", needsMock: true },
+  { path: "/recently-played/", needsMock: true },
+  { path: "/activity-to-playlist/", needsMock: true },
+  { path: "/genre-search/", needsMock: true },
+  { path: "/downloads/", needsMock: true },
 ];
 
 /**
@@ -70,6 +76,13 @@ for (const { path, needsMock, fixme } of PAGES) {
     }
 
     await page.goto(path);
+
+    // Same reason as the settle wait in a11y.spec.ts: an `(app)` route shows
+    // a hydration/auth spinner first, and a spinner never overflows. Measure
+    // once the route's own content is mounted or the check proves nothing.
+    if (needsMock) {
+      await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+    }
 
     // Compare against `clientWidth`, not `window.innerWidth`: on content
     // wider than the device, Chromium's mobile emulation can expand the

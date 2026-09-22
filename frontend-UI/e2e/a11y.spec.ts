@@ -30,6 +30,12 @@ const PAGES: PageCase[] = [
   { path: "/playlist-modifier/", needsMock: true },
   { path: "/growth/", needsMock: true },
   { path: "/feedback/", needsMock: true },
+  { path: "/likes-to-playlist/", needsMock: true },
+  { path: "/playlist-to-likes/", needsMock: true },
+  { path: "/recently-played/", needsMock: true },
+  { path: "/activity-to-playlist/", needsMock: true },
+  { path: "/genre-search/", needsMock: true },
+  { path: "/downloads/", needsMock: true },
 ];
 
 for (const { path, needsMock, fixme, expectedStatus } of PAGES) {
@@ -52,6 +58,15 @@ for (const { path, needsMock, fixme, expectedStatus } of PAGES) {
 
     if (expectedStatus !== undefined) {
       expect(response?.status()).toBe(expectedStatus);
+    }
+
+    // `AppLayout` renders a hydration/auth spinner before the route's own
+    // markup. Analysing straight after `goto` can therefore scan the spinner,
+    // pass, and never audit the page at all — a green run that proves nothing.
+    // Waiting for the route's `h1` is the cheapest proof the real content is
+    // mounted, and every `(app)` page renders one through `PageHeader`.
+    if (needsMock) {
+      await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
     }
 
     const results = await new AxeBuilder({ page })

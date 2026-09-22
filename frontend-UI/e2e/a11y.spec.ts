@@ -58,11 +58,11 @@ const PAGES: PageCase[] = [
     needsMock: true,
     ready: (page) => page.getByRole("checkbox", { name: "Sample Track 1" }),
   },
-  {
-    path: "/genre-search/",
-    needsMock: true,
-    ready: (page) => page.getByRole("button", { name: "Search", exact: true }),
-  },
+  // No `ready` on purpose: genre-search's landing state is a static filter
+  // form with no query behind it and no skeleton branch, so there is nothing
+  // for a second gate to wait for that the `h1` does not already prove. Its
+  // results and dialog are audited by the dedicated test further down.
+  { path: "/genre-search/", needsMock: true },
   {
     path: "/downloads/",
     needsMock: true,
@@ -147,6 +147,14 @@ test("has no serious/critical violations: /genre-search/ results and add-to-play
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto("/genre-search/");
 
+  // The advanced panel is `hidden` rather than unmounted, so `aria-controls`
+  // always points at a real element; audit it open as well as closed.
+  const advanced = page.getByRole("button", { name: "Advanced filters" });
+  await expect(advanced).toHaveAttribute("aria-expanded", "false");
+  await advanced.click();
+  await expect(advanced).toHaveAttribute("aria-expanded", "true");
+  await expect(page.getByLabel("Min BPM")).toBeVisible();
+
   await page.getByRole("button", { name: "house", exact: true }).click();
   await page.getByRole("button", { name: "Search", exact: true }).click();
   await page.getByRole("checkbox", { name: "Sample Track 1" }).check();
@@ -163,6 +171,43 @@ test("has no serious/critical violations: /genre-search/ results and add-to-play
 
   await page.keyboard.press("Escape");
   await expect(dialog).toBeHidden();
+});
+
+/**
+ * A successful add clears the selection, which unmounts `SelectionBanner` and
+ * with it the button the dialog was opened from — so the focus `useDialog`
+ * would otherwise restore to no longer exists, and `.focus()` on a detached
+ * node silently leaves the user at `<body>`, above everything. The page hands
+ * focus to the results block instead.
+ */
+test("genre-search: focus survives a successful add", async ({ page }) => {
+  await mockApi(page);
+  await page.goto("/genre-search/");
+
+  await page.getByRole("button", { name: "house", exact: true }).click();
+  await page.getByRole("button", { name: "Search", exact: true }).click();
+  await page.getByRole("checkbox", { name: "Sample Track 1" }).check();
+
+  await page.getByRole("button", { name: /Add to Playlist/i }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toBeVisible();
+
+  await dialog.getByLabel("Playlist name").fill("E2E Sample Playlist");
+  await dialog.getByRole("button", { name: "Add tracks" }).click();
+
+  await expect(dialog).toBeHidden();
+  // Exact text: a looser match also catches the live region's copy of the
+  // same announcement, which is deliberately worded differently.
+  await expect(
+    page.getByText('1 track added to "Sample Playlist 9".', { exact: true }),
+  ).toBeVisible();
+
+  const focus = await page.evaluate(() => ({
+    isBody: document.activeElement === document.body,
+    text: (document.activeElement?.textContent || "").trim().slice(0, 40),
+  }));
+  expect(focus.isBody, "focus fell back to <body> after a successful add").toBe(false);
+  expect(focus.text).toContain("Results");
 });
 
 test("has no serious/critical violations: /downloads/ track list and selection mode", async ({
@@ -182,6 +227,13 @@ test("has no serious/critical violations: /downloads/ track list and selection m
   await expect(
     page.getByRole("button", { name: "Download Sample Track 2 via Hypeddit" }),
   ).toBeVisible();
+
+  // The button sets its own background, so `twMerge` has to drop the ghost
+  // variant's `hover:text-accent-foreground` — otherwise the icon changes
+  // colour on hover over green/purple and can fall below contrast.
+  await expect(
+    page.getByRole("button", { name: "Download Sample Track 1 (free download)" }),
+  ).not.toHaveClass(/hover:text-accent-foreground/);
 
   await expectNoBlockingViolations(page);
 

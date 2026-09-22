@@ -287,6 +287,20 @@ export async function mockApi(page: Page): Promise<void> {
     if (method === "GET" && path === "/api/growth/stats") {
       return route.fulfill(json(FAKE_GROWTH_STATS));
     }
+    if (method === "POST" && path === "/api/playlists/from-likes") {
+      return route.fulfill(
+        json({
+          playlist: {
+            id: 9,
+            title: "Sample Playlist 9",
+            permalink_url: "https://soundcloud.com/testuser/sets/sample-playlist-9",
+          },
+          totalTracks: 1,
+          addedCount: 1,
+          numPlaylistsCreated: 1,
+        }),
+      );
+    }
     if (method === "POST" && path === "/api/events") {
       return route.fulfill({ status: 204, body: "" });
     }

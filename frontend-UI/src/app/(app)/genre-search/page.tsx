@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Search, Plus, Music, ChevronDown } from "lucide-react";
 import { apiFetch } from "@/lib/api";
@@ -59,6 +59,19 @@ export default function GenreSearchPage() {
   const announce = useAnnounce();
   const advancedPanelId = useId();
   const addModeLabelId = useId();
+  const resultsRef = useRef<HTMLDivElement>(null);
+  /**
+   * Where focus goes when the dialog closes.
+   *
+   * Null for a cancel or an Escape, so `useDialog` falls back to whatever was
+   * focused before — the selection banner's button, which is still there. A
+   * successful add is different: it clears the selection, `SelectionBanner`
+   * returns null at a count of zero, and that button unmounts in the same
+   * commit. Focusing a detached node is a silent no-op that drops the user at
+   * `<body>`, above both the results and the success message, so on success
+   * this is pointed at the results block instead.
+   */
+  const dialogReturnFocusRef = useRef<HTMLElement | null>(null);
   // Search form state
   const [genre, setGenre] = useState("");
   const [tags, setTags] = useState("");
@@ -166,6 +179,8 @@ export default function GenreSearchPage() {
   };
 
   const handleOpenAddPanel = () => {
+    // Cancel/Escape should go back to the banner button that opened this.
+    dialogReturnFocusRef.current = null;
     setShowAddPanel(true);
     setAddSuccess("");
     setAddError("");
@@ -200,6 +215,9 @@ export default function GenreSearchPage() {
         const name = addMode === "existing" ? targetPlaylist?.title : (data.playlist?.title || playlistName);
         setAddSuccess(`${count} track${count !== 1 ? "s" : ""} added to "${name}".`);
         announce(`${count} track${count !== 1 ? "s" : ""} added to ${name}`, { assertive: true });
+        // Hand focus to the results block before the selection clears and the
+        // banner button this dialog was opened from stops existing.
+        dialogReturnFocusRef.current = resultsRef.current;
         setShowAddPanel(false);
         setSelectedTracks(new Set());
         setPlaylistName("");
@@ -283,19 +301,22 @@ export default function GenreSearchPage() {
           </div>
 
           {/* Advanced filters toggle */}
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={() => setShowAdvanced((v) => !v)}
             aria-expanded={showAdvanced}
             aria-controls={advancedPanelId}
-            className="flex min-h-11 items-center gap-1.5 text-sm text-muted-foreground transition hover:text-primary-text"
+            // -ml-3 cancels the button's own px-3 so the label still lines up
+            // with the fields above it.
+            className="-ml-3 text-muted-foreground"
           >
             <ChevronDown
               aria-hidden="true"
               className={`w-4 h-4 transition-transform ${showAdvanced ? "rotate-180" : ""}`}
             />
             Advanced filters
-          </button>
+          </Button>
 
           <div id={advancedPanelId} hidden={!showAdvanced}>
             <div className="grid grid-cols-2 gap-4 border-t border-gray-100 pt-4 dark:border-border">
@@ -356,7 +377,12 @@ export default function GenreSearchPage() {
         {/* Results */}
         {hasSearched && (
           <>
-            <SectionHeading className="mb-3">Results</SectionHeading>
+            {/* Focusable so a successful add has somewhere to land — see
+                `dialogReturnFocusRef`. It sits directly above the success
+                alert, so the outcome is the next thing read. */}
+            <div ref={resultsRef} tabIndex={-1} className="mb-3 focus:outline-none">
+              <SectionHeading>Results</SectionHeading>
+            </div>
 
             {/* Add success banner */}
             {addSuccess && (
@@ -432,6 +458,7 @@ export default function GenreSearchPage() {
           subtitle={`${selectedTracks.size} track${selectedTracks.size !== 1 ? "s" : ""} selected`}
           variant="sheet"
           size="sm"
+          returnFocusRef={dialogReturnFocusRef}
           footer={
             <div className="flex gap-3">
               <Button

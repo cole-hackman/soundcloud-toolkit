@@ -754,7 +754,7 @@ export default function DownloadsPage() {
                                   e.stopPropagation();
                                   handleDownload(track);
                                 }}
-                                className={`text-white ${getDownloadTone(track)}`}
+                                className={`text-white hover:text-white ${getDownloadTone(track)}`}
                               >
                                 {downloadingTrackId === track.id ? (
                                   <LoadingSpinner className="h-5 w-5 text-white" />
@@ -828,7 +828,7 @@ export default function DownloadsPage() {
                           label={getDownloadLabel(track)}
                           disabled={downloadingTrackId === track.id}
                           onClick={() => handleDownload(track)}
-                          className={`text-white ${getDownloadTone(track)}`}
+                          className={`text-white hover:text-white ${getDownloadTone(track)}`}
                         >
                           {downloadingTrackId === track.id ? (
                             <LoadingSpinner className="h-5 w-5 text-white" />

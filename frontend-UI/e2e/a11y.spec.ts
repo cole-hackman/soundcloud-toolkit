@@ -73,6 +73,16 @@ const PAGES: PageCase[] = [
       return page.getByRole("group", { name: "Filter tracks" });
     },
   },
+  {
+    path: "/library-audit/",
+    needsMock: true,
+    // Nothing is fetched until the audit is run, so run it: the metric cards,
+    // the findings rows and the pager are all downstream of that click.
+    ready: async (page) => {
+      await page.getByRole("button", { name: "Run playlist audit" }).click();
+      return page.getByRole("heading", { name: "Playlist findings" });
+    },
+  },
 ];
 
 for (const { path, needsMock, fixme, expectedStatus, ready } of PAGES) {

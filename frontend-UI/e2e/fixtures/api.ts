@@ -156,6 +156,63 @@ const FAKE_SEARCH_TRACKS = {
   },
 };
 
+/**
+ * `GET /api/library/audit`. One playlist with findings and one without, so
+ * both verdicts ("Issues found" / "Healthy") are on the page when it is
+ * audited.
+ */
+const FAKE_LIBRARY_AUDIT = {
+  page: {
+    limit: 20,
+    offset: 0,
+    returned: 2,
+    total: 2,
+    hasMore: false,
+    from: 1,
+    to: 2,
+    stale: false,
+    truncated: false,
+  },
+  failed: [] as unknown[],
+  summary: {
+    playlists: 2,
+    tracks: 52,
+    duplicates: 1,
+    unavailable: 2,
+    directDownloads: 3,
+    purchaseLinks: 1,
+    nearCap: 0,
+  },
+  playlists: [
+    {
+      id: 1,
+      title: "Sample Playlist 1",
+      trackCount: 12,
+      summary: {
+        totalTracks: 12,
+        duplicateTracks: 1,
+        unavailableTracks: 2,
+        directDownloads: 3,
+        purchaseLinks: 1,
+        nearCap: false,
+      },
+    },
+    {
+      id: 2,
+      title: "Sample Playlist 2",
+      trackCount: 40,
+      summary: {
+        totalTracks: 40,
+        duplicateTracks: 0,
+        unavailableTracks: 0,
+        directDownloads: 0,
+        purchaseLinks: 0,
+        nearCap: false,
+      },
+    },
+  ],
+};
+
 /** What `POST /api/feedback` answers with on a 201 — id and timestamp only. */
 const FAKE_FEEDBACK_CREATED = {
   id: "fb_1",
@@ -243,6 +300,9 @@ export async function mockApi(page: Page): Promise<void> {
     }
     if (method === "GET" && path === "/api/dashboard/summary") {
       return route.fulfill(json(FAKE_DASHBOARD_SUMMARY));
+    }
+    if (method === "GET" && path === "/api/library/audit") {
+      return route.fulfill(json(FAKE_LIBRARY_AUDIT));
     }
     if (method === "GET" && path === "/api/playlists/search-tracks") {
       return route.fulfill(json(FAKE_SEARCH_TRACKS));

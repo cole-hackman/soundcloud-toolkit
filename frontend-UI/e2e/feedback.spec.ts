@@ -63,7 +63,19 @@ test.describe("feedback form", () => {
     const box = await submit.boundingBox();
     expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
 
-    await submit.click();
+    const [request] = await Promise.all([
+      page.waitForRequest(
+        (req) => req.url().includes("/api/feedback") && req.method() === "POST",
+      ),
+      submit.click(),
+    ]);
+
+    expect(request.postDataJSON()).toMatchObject({
+      type: "bug",
+      page: "/like-manager",
+      website: "",
+      message: MESSAGE,
+    });
 
     const confirmation = page.getByRole("status").filter({ hasText: "Thanks" });
     await expect(confirmation).toBeVisible();

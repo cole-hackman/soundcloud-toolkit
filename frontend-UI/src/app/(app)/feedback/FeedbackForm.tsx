@@ -95,8 +95,6 @@ export function FeedbackForm() {
   const [page, setPage] = useState(() => parseFrom(searchParams.get("from")));
   const [pickingTool, setPickingTool] = useState(false);
   const [email, setEmail] = useState("");
-  /** Honeypot. Hidden from everyone; a bot that fills it gets a silent 202. */
-  const [website, setWebsite] = useState("");
 
   const [errors, setErrors] = useState<FieldErrors>({});
   const [formAlert, setFormAlert] = useState<React.ReactNode>(null);
@@ -138,9 +136,21 @@ export function FeedbackForm() {
     void loadRecent();
   }, [loadRecent]);
 
-  // Success replaces the form, so focus has to follow or it lands on <body>.
+  // Success replaces the form, and "Send another" replaces it back — either
+  // way the outgoing element is gone, so focus has to follow explicitly or it
+  // lands on <body>. Skip the very first run: that's the initial mount, where
+  // `result` is already null and nothing was just reset.
+  const skipFocusEffectRef = useRef(true);
   useEffect(() => {
-    if (result) confirmationRef.current?.focus();
+    if (skipFocusEffectRef.current) {
+      skipFocusEffectRef.current = false;
+      return;
+    }
+    if (result) {
+      confirmationRef.current?.focus();
+    } else {
+      firstRadioRef.current?.focus();
+    }
   }, [result]);
 
   function validate(): { errors: FieldErrors; focus: HTMLElement | null } {
@@ -173,6 +183,12 @@ export function FeedbackForm() {
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (submitting) return;
+
+    // Honeypot, read from the DOM rather than React state: a bot that sets
+    // `input.value = "x"` directly (no `input` event) still updates the DOM
+    // node, so `FormData` sees it even though React's controlled-input state
+    // never would have.
+    const website = String(new FormData(event.currentTarget).get("website") ?? "");
 
     setFormAlert(null);
     const { errors: found, focus } = validate();
@@ -255,7 +271,6 @@ export function FeedbackForm() {
     setType("");
     setMessage("");
     setEmail("");
-    setWebsite("");
     setErrors({});
     setFormAlert(null);
     announce("");
@@ -318,10 +333,15 @@ export function FeedbackForm() {
 
             {/* 1 — what is this about */}
             <fieldset className="min-w-0 border-0 p-0">
-              <legend className="text-sm font-semibold text-foreground">
+              <legend id={typeGroupId} className="text-sm font-semibold text-foreground">
                 What is this about? <span aria-hidden="true">*</span>
               </legend>
-              <div className="mt-2 grid gap-2 sm:grid-cols-3">
+              <div
+                role="radiogroup"
+                aria-required="true"
+                aria-labelledby={typeGroupId}
+                className="mt-2 grid gap-2 sm:grid-cols-3"
+              >
                 {TYPE_OPTIONS.map((option, index) => (
                   <label
                     key={option.value}
@@ -418,6 +438,7 @@ export function FeedbackForm() {
                   type="button"
                   variant="secondary"
                   aria-expanded={pickingTool}
+                  aria-label="Change tool"
                   onClick={() => setPickingTool((open) => !open)}
                 >
                   Change
@@ -477,17 +498,14 @@ export function FeedbackForm() {
             </div>
 
             {/* 5 — honeypot. Out of the accessibility tree and out of the tab
-                order; only automation ever fills it in. */}
+                order; only automation ever fills it in. Left uncontrolled —
+                read straight from the DOM in handleSubmit via FormData — so
+                a bot that sets `.value` without dispatching an `input` event
+                still gets caught. */}
             <div aria-hidden="true" className="absolute -left-[9999px] h-0 overflow-hidden">
               <label>
                 Website
-                <input
-                  name="website"
-                  tabIndex={-1}
-                  autoComplete="off"
-                  value={website}
-                  onChange={(event) => setWebsite(event.target.value)}
-                />
+                <input name="website" tabIndex={-1} autoComplete="off" />
               </label>
             </div>
 

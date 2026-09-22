@@ -4,7 +4,19 @@ import { useState } from "react";
 import { AlertTriangle, CheckCircle, ChevronLeft, ChevronRight, Download, ListChecks, RefreshCw } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { downloadCsv } from "@/lib/csv";
-import { Button, EmptyState, InlineAlert, LoadingSpinner, PageContainer, PageHeader, Skeleton } from "@/components/ui";
+import {
+  Button,
+  Card,
+  EmptyState,
+  InlineAlert,
+  LoadingSpinner,
+  PageContainer,
+  PageHeader,
+  ProgressBar,
+  SectionHeading,
+  Skeleton,
+  useAnnounce,
+} from "@/components/ui";
 
 interface AuditPlaylist {
   id: number;
@@ -59,16 +71,27 @@ const PAGE_SIZE = 20;
 const MAX_OFFSET = 10000;
 
 export default function LibraryAuditPage() {
+  const announce = useAnnounce();
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<AuditResult | null>(null);
   const [offset, setOffset] = useState(0);
+  // The offset a run is currently fetching, so the progress bar can say which
+  // page of the walk is in flight rather than which one finished last.
+  const [pendingOffset, setPendingOffset] = useState<number | null>(null);
   const [notice, setNotice] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
+  // A page walk has real progress — pages done out of pages there are — but
+  // only once a first run has told us how many playlists there are. Before
+  // that a run is one opaque request and says so instead of inventing a bar.
+  const totalPages = result?.page ? Math.max(1, Math.ceil(result.page.total / PAGE_SIZE)) : null;
+  const pageInFlight = pendingOffset === null ? 0 : Math.floor(pendingOffset / PAGE_SIZE) + 1;
 
   // Each run audits one page of playlists. SoundCloud returns them
   // oldest-first, so walking the offset is how a library larger than one page
   // gets fully covered.
   const runAudit = async (nextOffset = 0) => {
     setLoading(true);
+    setPendingOffset(nextOffset);
     setNotice(null);
     try {
       const response = await apiFetch(`/api/library/audit?limit=${PAGE_SIZE}&offset=${nextOffset}`);
@@ -80,17 +103,18 @@ export default function LibraryAuditPage() {
       setResult(data);
       setOffset(nextOffset);
       const range = data.page ? `${data.page.from}–${data.page.to}` : "";
-      setNotice({
-        type: "success",
-        text: data.summary.playlists === 0
+      const summary =
+        data.summary.playlists === 0
           ? "No playlists in this range."
-          : `Audited playlist${data.summary.playlists === 1 ? "" : "s"} ${range}.`,
-      });
+          : `Audited playlist${data.summary.playlists === 1 ? "" : "s"} ${range}. ${data.summary.duplicates} duplicate${data.summary.duplicates === 1 ? "" : "s"}, ${data.summary.unavailable} unavailable.`;
+      setNotice({ type: "success", text: summary });
+      announce(summary);
     } catch (error) {
       console.error("Library audit failed:", error);
       setNotice({ type: "error", text: "Could not run the audit. Try again." });
     } finally {
       setLoading(false);
+      setPendingOffset(null);
     }
   };
 
@@ -126,14 +150,18 @@ export default function LibraryAuditPage() {
         </InlineAlert>
       )}
 
-      <div className="mb-6 flex flex-wrap items-center gap-3 rounded-xl border border-border bg-card p-4">
+      <Card className="mb-6 flex flex-wrap items-center gap-3 p-4">
         <Button onClick={() => runAudit(0)} disabled={loading}>
-          {loading ? <LoadingSpinner size="sm" className="border-white" /> : <RefreshCw className="h-4 w-4" />}
+          {loading ? (
+            <LoadingSpinner size="sm" className="border-white" />
+          ) : (
+            <RefreshCw aria-hidden="true" className="h-4 w-4" />
+          )}
           {result ? "Restart from the top" : "Run playlist audit"}
         </Button>
         {result && (
           <Button nowrap variant="outline" onClick={exportCsv}>
-            <Download className="h-4 w-4" />
+            <Download aria-hidden="true" className="h-4 w-4" />
             Export CSV
           </Button>
         )}
@@ -141,32 +169,44 @@ export default function LibraryAuditPage() {
           {PAGE_SIZE} playlists per run, to stay friendly to SoundCloud&apos;s rate limits. Use
           Next to audit the following {PAGE_SIZE}.
         </p>
-      </div>
+      </Card>
 
       {loading ? (
         <div className="space-y-6">
-          <div className="grid gap-3 md:grid-cols-4">
+          {totalPages !== null ? (
+            <ProgressBar
+              label="Checking playlists"
+              value={Math.min(pageInFlight, totalPages)}
+              max={totalPages}
+              detail={`${PAGE_SIZE} playlists per page`}
+            />
+          ) : (
+            <p role="status" className="text-sm text-muted-foreground">
+              Checking playlists…
+            </p>
+          )}
+          <div aria-hidden="true" className="grid gap-3 md:grid-cols-4">
             {Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="rounded-xl border border-border bg-card p-4">
+              <Card key={i} className="p-4">
                 <Skeleton className="h-8 w-16 mb-2" />
                 <Skeleton className="h-4 w-24" />
-              </div>
+              </Card>
             ))}
           </div>
-          <div className="rounded-xl border border-border bg-card p-4 space-y-3">
+          <Card aria-hidden="true" className="p-4 space-y-3">
             {Array.from({ length: 5 }).map((_, i) => (
               <Skeleton key={i} className="h-14 rounded-lg" />
             ))}
-          </div>
+          </Card>
         </div>
       ) : !result ? (
-        <div className="rounded-xl border border-border bg-card p-8">
+        <Card className="p-8">
           <EmptyState
             icon={<ListChecks className="h-12 w-12" />}
             title="No audit yet"
             description="Run an audit to see which playlists need cleanup."
           />
-        </div>
+        </Card>
       ) : (
         <div className="space-y-6">
           {result.page?.stale && (
@@ -194,10 +234,10 @@ export default function LibraryAuditPage() {
             <Metric label="Unavailable" value={result.summary.unavailable} tone={result.summary.unavailable > 0 ? "warn" : "ok"} />
           </div>
 
-          <div className="rounded-xl border border-border bg-card">
-            <div className="border-b border-border px-4 py-3 text-sm font-semibold text-foreground">
+          <Card>
+            <SectionHeading className="border-b border-border px-4 py-3">
               Playlist findings
-            </div>
+            </SectionHeading>
             <div className="divide-y divide-border">
               {result.playlists.map((playlist) => {
                 const hasIssues =
@@ -212,33 +252,46 @@ export default function LibraryAuditPage() {
                         {playlist.summary.totalTracks} tracks • {playlist.summary.directDownloads} direct downloads • {playlist.summary.purchaseLinks} purchase links
                       </div>
                     </div>
-                    <div className="flex flex-wrap gap-2 text-xs">
+                    <div className="flex flex-wrap items-center gap-2 text-xs">
                       <Finding label={`${playlist.summary.duplicateTracks} duplicates`} active={playlist.summary.duplicateTracks > 0} />
                       <Finding label={`${playlist.summary.unavailableTracks} unavailable`} active={playlist.summary.unavailableTracks > 0} />
                       <Finding label={playlist.summary.nearCap ? "near cap" : "under cap"} active={playlist.summary.nearCap} />
-                      {hasIssues ? <AlertTriangle className="h-4 w-4 text-warning-text" /> : <CheckCircle className="h-4 w-4 text-success-text" />}
+                      {/* The verdict was a bare coloured icon — the one place on
+                          this page where a triangle and a tick were the whole
+                          difference between "fix this" and "fine". */}
+                      {hasIssues ? (
+                        <span className="inline-flex items-center gap-1 text-xs font-medium text-warning-text">
+                          <AlertTriangle aria-hidden="true" className="h-4 w-4" />
+                          Issues found
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 text-xs font-medium text-success-text">
+                          <CheckCircle aria-hidden="true" className="h-4 w-4" />
+                          Healthy
+                        </span>
+                      )}
                     </div>
                   </div>
                 );
               })}
             </div>
-          </div>
+          </Card>
 
           {result.page && (
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-3">
+            <Card className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
               <p className="text-sm text-muted-foreground">
                 {result.page.from === 0
                   ? "No playlists in this range"
                   : `Showing playlists ${result.page.from}–${result.page.to}`}
                 {result.page.hasMore ? " — more to audit" : " — end of your library"}
               </p>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <Button nowrap
                   variant="outline"
                   onClick={() => runAudit(Math.max(0, offset - PAGE_SIZE))}
                   disabled={loading || offset === 0}
                 >
-                  <ChevronLeft className="h-4 w-4" />
+                  <ChevronLeft aria-hidden="true" className="h-4 w-4" />
                   Previous {PAGE_SIZE}
                 </Button>
                 <Button nowrap
@@ -247,10 +300,10 @@ export default function LibraryAuditPage() {
                   disabled={loading || !result.page.hasMore || offset + PAGE_SIZE > MAX_OFFSET}
                 >
                   Next {PAGE_SIZE}
-                  <ChevronRight className="h-4 w-4" />
+                  <ChevronRight aria-hidden="true" className="h-4 w-4" />
                 </Button>
               </div>
-            </div>
+            </Card>
           )}
         </div>
       )}
@@ -260,12 +313,12 @@ export default function LibraryAuditPage() {
 
 function Metric({ label, value, tone }: { label: string; value: number; tone?: "ok" | "warn" }) {
   return (
-    <div className="rounded-xl border border-border bg-card p-4">
-      <div className={`text-2xl font-bold ${tone === "warn" ? "text-yellow-700 dark:text-yellow-400" : tone === "ok" ? "text-green-700 dark:text-green-400" : "text-foreground"}`}>
+    <Card className="p-4">
+      <div className={`text-2xl font-bold ${tone === "warn" ? "text-warning-text" : tone === "ok" ? "text-success-text" : "text-foreground"}`}>
         {value.toLocaleString()}
       </div>
       <div className="text-sm text-muted-foreground">{label}</div>
-    </div>
+    </Card>
   );
 }
 

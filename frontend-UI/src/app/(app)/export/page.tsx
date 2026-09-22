@@ -13,7 +13,7 @@ export default function ExportHubPage() {
         description="Download your SoundCloud data as text or CSV for DJ library matching, LLMs, and spreadsheets."
       />
 
-      <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground-subtle">
+      <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
         Choose what to export
       </h2>
 
@@ -22,10 +22,13 @@ export default function ExportHubPage() {
           <Card key={feature.id} className="group p-4 sm:p-5 hover:-translate-y-0.5">
             <Link href={feature.path} className="block">
               <div className="mb-3 flex items-start justify-between">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-[#FF5500] to-[#E64A00] text-white shadow-sm">
+                <div
+                  aria-hidden="true"
+                  className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-[#FF5500] to-[#E64A00] text-white shadow-sm"
+                >
                   <feature.icon className="h-5 w-5" />
                 </div>
-                <ArrowRight className="h-4 w-4 text-primary opacity-0 transition-opacity group-hover:opacity-100" />
+                <ArrowRight aria-hidden="true" className="h-4 w-4 text-primary opacity-0 transition-opacity group-hover:opacity-100" />
               </div>
               <h3 className="mb-1 text-base font-bold text-foreground transition group-hover:text-primary-text dark:text-foreground">
                 {feature.title}

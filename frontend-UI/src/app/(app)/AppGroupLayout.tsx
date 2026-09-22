@@ -76,10 +76,12 @@ export function AppGroupLayout({
   useEffect(() => {
     if (!pathname) return;
     // This layout is the only thing mounted for every route in the group, so
-    // it is what notices a navigation to a page that renders no PageHeader —
-    // `/dashboard/`. Without it, going tool → dashboard → same tool leaves
-    // the pathname back where the document loaded and the return trip looks
-    // like a fresh load, so the heading never takes focus.
+    // it is what notices a navigation that no `PageHeader` sees. Every route
+    // — `/dashboard/` included, since Phase 6 — renders one, so the flag is
+    // usually set by the header itself; the latch stays because this layout
+    // survives the unmount between two routes and a PageHeader does not, and
+    // because a future route without a header would silently lose the focus
+    // move again.
     markNavigated(pathname);
     updateRecentTools(pathname);
     logFeatureOpen(pathname);

@@ -48,6 +48,19 @@ const PAGES: PageCase[] = [
   // content to wait for.
   { path: "/genre-search/", needsMock: true },
   { path: "/downloads/", needsMock: true },
+  { path: "/playlist-keyword-search/", needsMock: true },
+  { path: "/playlist-health-check/", needsMock: true },
+  // No `ready` in the shared map: /export/ is a static hub of links.
+  { path: "/export/", needsMock: true },
+  { path: "/export/likes/", needsMock: true },
+  { path: "/export/playlists/", needsMock: true },
+  { path: "/export/followings/", needsMock: true },
+  { path: "/export/reposts/", needsMock: true },
+  { path: "/playlist-cloner/", needsMock: true },
+  { path: "/playlist-compare/", needsMock: true },
+  { path: "/batch-link-resolver/", needsMock: true },
+  { path: "/following-library/", needsMock: true },
+  { path: "/library-audit/", needsMock: true },
 ];
 
 /**
@@ -124,13 +137,15 @@ for (const { path, needsMock, fixme, ready = READY[path] } of PAGES) {
     // `loading.tsx` renders a skeleton, and a width taken then describes the
     // placeholder rather than the page. The main landmark and the `h1` clear
     // the spinner; the route's `ready` locator clears the skeleton and the
-    // empty state.
+    // empty state, and where the widest thing on the page — a toolbar, a
+    // table, a row of badges — is one interaction away, drives the page into
+    // the state that actually renders it.
     if (needsMock) {
       await expect(page.locator("main#main-content")).toBeVisible();
       await expect(page.getByRole("heading", { level: 1 }).first()).toBeVisible();
     }
     if (ready) {
-      await expect(ready(page).first()).toBeVisible();
+      await expect((await ready(page)).first()).toBeVisible();
     }
 
     // Compare against `clientWidth`, not `window.innerWidth`: on content

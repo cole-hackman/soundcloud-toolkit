@@ -1,9 +1,22 @@
 "use client";
 
-import { useEffect, useState, FormEvent } from "react";
+import { useEffect, useRef, useState, FormEvent } from "react";
 import { CopyPlus, ArrowRight, Music, Link as LinkIcon, Loader2, Link2 } from "lucide-react";
 import { apiFetch } from "@/lib/api";
-import { Button, Card, CardContent, CardHeader, InlineAlert, Input, PageContainer, PageHeader, ResultPanel } from "@/components/ui";
+import {
+  Button,
+  Card,
+  CardContent,
+  CardHeader,
+  Field,
+  InlineAlert,
+  Input,
+  PageContainer,
+  PageHeader,
+  ResultPanel,
+  SectionHeading,
+  useAnnounce,
+} from "@/components/ui";
 
 interface ClonedPlaylist {
   id?: number | string;
@@ -12,11 +25,17 @@ interface ClonedPlaylist {
 }
 
 export default function PlaylistClonerPage() {
+  const announce = useAnnounce();
   const [url, setUrl] = useState("");
   const [customTitle, setCustomTitle] = useState("");
   const [isCloning, setIsCloning] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  
+  // Our own required-field message, rendered under the input by `Field`. The
+  // browser's bubble is not in the accessibility tree and disappears on the
+  // next keystroke.
+  const [urlError, setUrlError] = useState<string | null>(null);
+  const urlRef = useRef<HTMLInputElement>(null);
+
   // Results
   const [resultPlaylists, setResultPlaylists] = useState<ClonedPlaylist[]>([]);
   const [stats, setStats] = useState<Record<string, unknown> | null>(null);
@@ -29,8 +48,13 @@ export default function PlaylistClonerPage() {
 
   const handleClone = async (e: FormEvent) => {
     e.preventDefault();
-    if (!url.trim()) return;
+    if (!url.trim()) {
+      setUrlError("Paste the link to the playlist you want to clone.");
+      urlRef.current?.focus();
+      return;
+    }
 
+    setUrlError(null);
     setIsCloning(true);
     setError(null);
     setResultPlaylists([]);
@@ -53,11 +77,17 @@ export default function PlaylistClonerPage() {
         throw new Error(data.error || "Failed to clone playlist");
       }
 
-      setResultPlaylists(data.playlists ? data.playlists : [data.playlist]);
+      const created: ClonedPlaylist[] = data.playlists ? data.playlists : [data.playlist];
+      setResultPlaylists(created);
       setStats(data.stats);
       setUrl("");
       setCustomTitle("");
+      announce(
+        `Cloned ${data.stats?.totalTracks ?? 0} tracks into ${created.length} playlist${created.length === 1 ? "" : "s"}.`,
+      );
     } catch (err: unknown) {
+      // `InlineAlert variant="error"` is `role="alert"` and is spoken on
+      // insertion, so an `announce` alongside it would say this twice.
       setError(err instanceof Error ? err.message : "An unexpected error occurred");
     } finally {
       setIsCloning(false);
@@ -73,54 +103,68 @@ export default function PlaylistClonerPage() {
 
       <Card className="mb-8">
         <CardHeader>
-          <div className="flex items-center gap-2 text-base font-semibold text-foreground">
-            <Link2 className="h-4 w-4 text-primary" />
-            Clone a public playlist
-          </div>
+          <SectionHeading className="text-base">
+            <span className="flex items-center gap-2">
+              <Link2 aria-hidden="true" className="h-4 w-4 text-primary" />
+              Clone a public playlist
+            </span>
+          </SectionHeading>
         </CardHeader>
         <CardContent>
-        <form onSubmit={handleClone} className="space-y-6">
+        {/* `noValidate` so the required check is ours: see `urlError`. */}
+        <form onSubmit={handleClone} noValidate className="space-y-6">
           <div className="space-y-4">
-            <div>
-              <label className="text-sm font-semibold mb-1.5 block">Original Playlist URL</label>
-              <div className="relative">
-                <LinkIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                  type="url"
-                  placeholder="https://soundcloud.com/username/sets/playlist-name"
-                  value={url}
-                  onChange={(e) => setUrl(e.target.value)}
-                  className="h-10 pl-9"
-                  required
-                />
-              </div>
-            </div>
+            <Field
+              label="Original playlist URL"
+              hint="Paste a public playlist link."
+              error={urlError ?? undefined}
+              required
+            >
+              {(field) => (
+                <div className="relative">
+                  <LinkIcon
+                    aria-hidden="true"
+                    className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground"
+                  />
+                  <Input
+                    {...field}
+                    ref={urlRef}
+                    type="url"
+                    inputMode="url"
+                    placeholder="https://soundcloud.com/username/sets/playlist-name"
+                    value={url}
+                    onChange={(e) => {
+                      setUrl(e.target.value);
+                      if (urlError) setUrlError(null);
+                    }}
+                    className="pl-9"
+                  />
+                </div>
+              )}
+            </Field>
 
-            <div>
-              <label className="text-sm font-semibold mb-1.5 block">Custom Name (Optional)</label>
-              <Input
-                type="text"
-                placeholder="Leave blank to use 'Clone of [Original Name]'"
-                value={customTitle}
-                onChange={(e) => setCustomTitle(e.target.value)}
-                className="h-10"
-              />
-            </div>
+            <Field label="Custom name (optional)">
+              {(field) => (
+                <Input
+                  {...field}
+                  type="text"
+                  placeholder="Leave blank to use 'Clone of [Original Name]'"
+                  value={customTitle}
+                  onChange={(e) => setCustomTitle(e.target.value)}
+                />
+              )}
+            </Field>
           </div>
 
-          <Button
-            type="submit"
-            disabled={!url.trim() || isCloning}
-            className="h-10 w-full px-4 sm:w-auto"
-          >
+          <Button type="submit" disabled={isCloning} className="w-full sm:w-auto">
             {isCloning ? (
               <>
-                <Loader2 className="w-4 h-4 animate-spin" />
+                <Loader2 aria-hidden="true" className="w-4 h-4 animate-spin" />
                 Cloning...
               </>
             ) : (
               <>
-                <CopyPlus className="w-4 h-4" />
+                <CopyPlus aria-hidden="true" className="w-4 h-4" />
                 Clone Playlist
               </>
             )}
@@ -144,22 +188,24 @@ export default function PlaylistClonerPage() {
           <div className="space-y-6">
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <Card className="flex items-center gap-4 p-4">
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-orange-500/10 text-orange-500">
+                <div aria-hidden="true" className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-orange-500/10 text-orange-500">
                   <Music className="w-6 h-6" />
                 </div>
-                <div>
+                {/* Label first in the DOM, number above it visually — a lone
+                    "37" read before "Tracks Cloned" counts nothing yet. */}
+                <div className="flex flex-col-reverse">
                   <p className="text-sm font-medium text-muted-foreground">Tracks Cloned</p>
-                  <h3 className="text-2xl font-bold text-foreground">{stats?.totalTracks?.toString() || "0"}</h3>
+                  <p className="text-2xl font-bold text-foreground">{stats?.totalTracks?.toString() || "0"}</p>
                 </div>
               </Card>
               {Number(stats?.numPlaylistsCreated) > 1 && (
                 <Card className="flex items-center gap-4 p-4">
-                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-orange-500/10 text-orange-500">
+                  <div aria-hidden="true" className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-orange-500/10 text-orange-500">
                     <CopyPlus className="w-6 h-6" />
                   </div>
-                  <div>
+                  <div className="flex flex-col-reverse">
                     <p className="text-sm font-medium text-muted-foreground">Parts Created</p>
-                    <h3 className="text-2xl font-bold text-foreground">{stats?.numPlaylistsCreated?.toString() || "0"}</h3>
+                    <p className="text-2xl font-bold text-foreground">{stats?.numPlaylistsCreated?.toString() || "0"}</p>
                   </div>
                 </Card>
               )}
@@ -168,8 +214,8 @@ export default function PlaylistClonerPage() {
             <div className="space-y-3">
               {resultPlaylists.map((pl, i) => (
                 <Card key={pl.id ?? i} className="p-4">
-                  <div className="flex items-center justify-between gap-4">
-                    <div>
+                  <div className="flex flex-wrap items-center justify-between gap-4">
+                    <div className="min-w-0">
                       <div className="font-semibold text-foreground">
                         {pl.title}
                       </div>
@@ -182,10 +228,11 @@ export default function PlaylistClonerPage() {
                         href={pl.permalink_url}
                         target="_blank"
                         rel="noreferrer"
-                        className="inline-flex h-10 shrink-0 items-center gap-2 rounded-lg border border-border/70 bg-surface px-4 text-sm font-semibold text-foreground transition hover:border-primary/40 hover:bg-surface-hover"
+                        aria-label={`Open ${pl.title ?? "the cloned playlist"} on SoundCloud`}
+                        className="inline-flex h-11 shrink-0 items-center gap-2 rounded-lg border border-border/70 bg-surface px-4 text-sm font-semibold text-foreground transition hover:border-primary/40 hover:bg-surface-hover"
                       >
                         Open
-                        <ArrowRight className="h-4 w-4" />
+                        <ArrowRight aria-hidden="true" className="h-4 w-4" />
                       </a>
                     )}
                   </div>

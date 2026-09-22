@@ -1,0 +1,276 @@
+import { test, expect, type Page } from "@playwright/test";
+import { mockApi } from "./fixtures/api";
+
+/**
+ * A control clipped by an `overflow: hidden` ancestor is invisible to both of
+ * the other checks: it does not contribute to `document.scrollWidth`, and axe
+ * does not flag it. So a button can sit entirely off the right edge of a phone
+ * — untappable — while the overflow test and the axe audit both pass.
+ *
+ * The usual cause is a row whose text does not shrink (`truncate` on the flex
+ * *container* rather than on the text's own element inside a `min-w-0` box, so
+ * the anonymous flex item's `min-width: auto` resolves to its nowrap
+ * min-content width) pushing its `shrink-0` siblings past the edge. Row width
+ * then comes from the title, not the viewport, which is why the same overflow
+ * appears identically at 360, 390 and 430.
+ *
+ * These runs re-serve the same routes with titles far too long for any phone
+ * and assert that every interactive element in `<main>` still has both edges
+ * inside the viewport. The long text is also asserted to be present, so a
+ * "fix" that simply drops the title cannot pass.
+ */
+
+const LONG =
+  "Absolutely Enormous Extended Bootleg Rework Of A Track Whose Name Will Never Fit On A Phone Screen At Any Width 2026";
+const LONG_USER = "testfollowing-with-an-extremely-long-display-name-that-never-fits";
+
+function json(body: unknown) {
+  return { status: 200, contentType: "application/json", body: JSON.stringify(body) };
+}
+
+const LONG_PLAYLISTS = {
+  collection: [1, 2, 3].map((id) => ({
+    id,
+    title: `${LONG} #${id}`,
+    track_count: 12,
+    artwork_url: null,
+    permalink_url: "https://soundcloud.com/testuser/sets/long",
+  })),
+  total: 3,
+};
+
+const LONG_PLAYLIST_DETAIL = {
+  id: 1,
+  title: `${LONG} #1`,
+  track_count: 3,
+  artwork_url: null,
+  tracks: [
+    { id: 100, title: `${LONG} A`, user: { username: LONG_USER }, artwork_url: null, duration: 200000, access: "playable", streamable: true, blocked_at: null },
+    { id: 101, title: `${LONG} B`, user: { username: LONG_USER }, artwork_url: null, duration: 200000, access: "preview", streamable: true, blocked_at: null },
+    { id: 102, title: `${LONG} C`, user: { username: LONG_USER }, artwork_url: null, duration: 200000, access: "blocked", streamable: false, blocked_at: "2026-01-01T00:00:00.000Z" },
+  ],
+};
+
+const LONG_SEARCH = {
+  keywords: ["sample"],
+  matches: [0, 1].map((i) => ({
+    trackId: 100 + i,
+    title: `${LONG} ${i}`,
+    artist: LONG_USER,
+    permalink_url: null,
+    position: i,
+    playlistId: 1,
+    playlistTitle: `${LONG} #1`,
+    keyword: "sample",
+    matchedIn: "title",
+  })),
+  stats: { playlistsSearched: 1, tracksScanned: 12, matchCount: 2, uniqueTrackCount: 2, playlistsFailed: 0 },
+  failed: [],
+  capped: false,
+  page: { limit: 20, offset: 0, returned: 2, total: 2, hasMore: false, from: 1, to: 2, stale: false, truncated: false },
+};
+
+const LONG_AUDIT = {
+  page: { limit: 20, offset: 0, returned: 1, total: 1, hasMore: false, from: 1, to: 1, stale: false, truncated: false },
+  failed: [],
+  summary: { playlists: 1, tracks: 12, duplicates: 1, unavailable: 2, directDownloads: 0, purchaseLinks: 0, nearCap: 0 },
+  playlists: [
+    {
+      id: 1,
+      title: `${LONG} #1`,
+      trackCount: 12,
+      summary: { totalTracks: 12, duplicateTracks: 1, unavailableTracks: 2, directDownloads: 0, purchaseLinks: 0, nearCap: false },
+    },
+  ],
+};
+
+const LONG_FOLLOWINGS = {
+  collection: [{ id: 200, username: LONG_USER, avatar_url: null, followers_count: 100, permalink_url: "https://soundcloud.com/x" }],
+  next_href: null,
+};
+
+const LONG_FOLLOWED_PLAYLISTS = {
+  collection: [{ id: 400, title: `${LONG} public`, user: { username: LONG_USER }, artwork_url: null, track_count: 9, permalink_url: "https://soundcloud.com/x/sets/y" }],
+  next_href: null,
+};
+
+const LONG_RESOLVE_BATCH = {
+  results: [
+    {
+      index: 0,
+      url: `https://soundcloud.com/${LONG_USER}/${LONG.replace(/ /g, "-")}`,
+      status: "ok",
+      data: { type: "playlist", id: 1, title: `${LONG} #1`, user: { username: LONG_USER }, track_count: 12, permalink_url: "https://soundcloud.com/x/sets/y" },
+    },
+    {
+      index: 1,
+      url: `https://soundcloud.com/${LONG_USER}/${LONG.replace(/ /g, "-")}-missing`,
+      status: "error",
+      error: `Not found: ${LONG}`,
+    },
+  ],
+  summary: { total: 2, ok: 1, error: 1 },
+  meta: { version: "2" },
+};
+
+const LONG_CLONE = {
+  playlists: [{ id: 11, title: `${LONG} (1/1)`, permalink_url: "https://soundcloud.com/x/sets/y" }],
+  stats: { totalTracks: 12, numPlaylistsCreated: 1 },
+};
+
+const LONG_COMPARE = {
+  summary: {
+    playlistA: { id: 1, title: `${LONG} #1`, trackCount: 2 },
+    playlistB: { id: 2, title: `${LONG} #2`, trackCount: 2 },
+    overlapCount: 1,
+    uniqueToACount: 1,
+    uniqueToBCount: 1,
+    overlapPercent: 33,
+  },
+  overlap: [{ id: 100, title: `${LONG} A`, user: { username: LONG_USER } }],
+  uniqueToA: [{ id: 101, title: `${LONG} B`, user: { username: LONG_USER } }],
+  uniqueToB: [{ id: 102, title: `${LONG} C`, user: { username: LONG_USER } }],
+};
+
+/** Registered after `mockApi`, so it runs first and falls through for the rest. */
+async function withLongTitles(page: Page): Promise<void> {
+  await page.route("**/api/**", async (route) => {
+    const { pathname } = new URL(route.request().url());
+    const method = route.request().method();
+
+    if (method === "GET" && pathname === "/api/playlists") return route.fulfill(json(LONG_PLAYLISTS));
+    if (method === "GET" && /^\/api\/playlists\/\d+$/.test(pathname)) return route.fulfill(json(LONG_PLAYLIST_DETAIL));
+    if (method === "GET" && pathname === "/api/playlists/search-tracks") return route.fulfill(json(LONG_SEARCH));
+    if (method === "GET" && pathname === "/api/library/audit") return route.fulfill(json(LONG_AUDIT));
+    if (method === "GET" && (pathname === "/api/followings" || pathname === "/api/followings/paged")) return route.fulfill(json(LONG_FOLLOWINGS));
+    if (method === "GET" && /^\/api\/followings\/\d+\/(liked-)?playlists\/paged$/.test(pathname)) return route.fulfill(json(LONG_FOLLOWED_PLAYLISTS));
+    if (method === "POST" && pathname === "/api/resolve/batch") return route.fulfill(json(LONG_RESOLVE_BATCH));
+    if (method === "POST" && pathname === "/api/playlists/clone") return route.fulfill(json(LONG_CLONE));
+    if (method === "POST" && pathname === "/api/playlists/compare") return route.fulfill(json(LONG_COMPARE));
+
+    return route.fallback();
+  });
+}
+
+/**
+ * Every interactive element in `<main>` has both horizontal edges inside the
+ * viewport. Zero-area elements are skipped (not rendered); everything else is
+ * something a finger has to be able to reach.
+ */
+async function assertNothingClipped(page: Page): Promise<void> {
+  const offscreen = await page
+    .locator("main a, main button, main input, main select, main textarea, main [role=tab]")
+    .evaluateAll((elements) => {
+      const viewport = document.documentElement.clientWidth;
+      return elements
+        .map((el) => {
+          const r = el.getBoundingClientRect();
+          return {
+            label: (el.getAttribute("aria-label") || el.textContent || "").trim().slice(0, 50),
+            left: Math.round(r.left),
+            right: Math.round(r.right),
+            viewport,
+            area: r.width * r.height,
+          };
+        })
+        .filter((box) => box.area > 0 && (box.right > box.viewport + 0.5 || box.left < -0.5));
+    });
+
+  expect(offscreen, JSON.stringify(offscreen, null, 2)).toEqual([]);
+}
+
+interface Case {
+  path: string;
+  /** Drives the page to the state that renders the long-titled rows. */
+  drive: (page: Page) => Promise<void>;
+  /** Proof the long text is on the page, so dropping the title cannot pass. */
+  proof: (page: Page) => Promise<void>;
+}
+
+const CASES: Case[] = [
+  {
+    path: "/playlist-keyword-search/",
+    drive: async (page) => {
+      await page.getByLabel("Keywords").fill("sample");
+      await page.getByRole("button", { name: "Search", exact: true }).click();
+      await page.getByRole("heading", { name: "Matches" }).waitFor();
+    },
+    proof: async (page) => expect(page.locator("main")).toContainText(LONG),
+  },
+  {
+    path: "/playlist-health-check/",
+    drive: async (page) => {
+      await page.getByRole("button", { name: new RegExp(LONG.slice(0, 30)) }).first().click();
+      await page.getByRole("group", { name: "Filter tracks" }).waitFor();
+    },
+    proof: async (page) => expect(page.locator("main")).toContainText(LONG),
+  },
+  {
+    path: "/library-audit/",
+    drive: async (page) => {
+      await page.getByRole("button", { name: "Run playlist audit" }).click();
+      await page.getByRole("heading", { name: "Playlist findings" }).waitFor();
+    },
+    proof: async (page) => expect(page.locator("main")).toContainText(LONG),
+  },
+  {
+    path: "/following-library/",
+    drive: async (page) => {
+      await page.getByRole("tab", { name: "Playlists", exact: true }).click();
+      await page.getByRole("checkbox", { name: new RegExp(LONG.slice(0, 30)) }).waitFor();
+    },
+    proof: async (page) => expect(page.locator("main")).toContainText(LONG_USER),
+  },
+  {
+    path: "/batch-link-resolver/",
+    drive: async (page) => {
+      await page.getByLabel("SoundCloud URLs (one per line)").fill("https://soundcloud.com/a/b");
+      await page.getByRole("button", { name: "Resolve All" }).click();
+      await page.getByRole("heading", { name: "Results" }).waitFor();
+    },
+    proof: async (page) => expect(page.locator("main")).toContainText(LONG),
+  },
+  {
+    path: "/playlist-compare/",
+    drive: async (page) => {
+      await page.getByLabel("Playlist A").selectOption({ index: 1 });
+      await page.getByLabel("Playlist B").selectOption({ index: 2 });
+      await page.getByRole("button", { name: "Compare" }).click();
+      await page.getByRole("heading", { name: /In both playlists/ }).waitFor();
+    },
+    proof: async (page) => expect(page.locator("main")).toContainText(LONG),
+  },
+  {
+    path: "/playlist-cloner/",
+    drive: async (page) => {
+      await page.getByLabel("Original playlist URL").fill("https://soundcloud.com/a/sets/b");
+      await page.getByRole("button", { name: "Clone Playlist" }).click();
+      await page.getByRole("heading", { name: "Cloning Complete" }).waitFor();
+    },
+    proof: async (page) => expect(page.locator("main")).toContainText(LONG),
+  },
+  {
+    path: "/export/playlists/",
+    drive: async (page) => {
+      await page.getByRole("button", { name: new RegExp(LONG.slice(0, 30)) }).first().click();
+      await page.getByRole("button", { name: "Load playlist tracks" }).click();
+      await page.getByText(/^[\d,]+ tracks? ready$/).waitFor();
+    },
+    proof: async (page) => expect(page.locator("main")).toContainText(LONG),
+  },
+];
+
+for (const { path, drive, proof } of CASES) {
+  test(`a title too long for the screen clips nothing: ${path}`, async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name === "desktop", "the failure mode is a phone-width one");
+
+    await mockApi(page);
+    await withLongTitles(page);
+    await page.goto(path);
+    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+
+    await drive(page);
+    await proof(page);
+    await assertNothingClipped(page);
+  });
+}

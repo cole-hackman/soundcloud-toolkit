@@ -49,6 +49,19 @@ const PAGES: PageCase[] = [
   // further down.
   { path: "/genre-search/", needsMock: true },
   { path: "/downloads/", needsMock: true },
+  { path: "/playlist-keyword-search/", needsMock: true },
+  { path: "/playlist-health-check/", needsMock: true },
+  // No `ready` in the shared map: /export/ is a static hub of links.
+  { path: "/export/", needsMock: true },
+  { path: "/export/likes/", needsMock: true },
+  { path: "/export/playlists/", needsMock: true },
+  { path: "/export/followings/", needsMock: true },
+  { path: "/export/reposts/", needsMock: true },
+  { path: "/playlist-cloner/", needsMock: true },
+  { path: "/playlist-compare/", needsMock: true },
+  { path: "/batch-link-resolver/", needsMock: true },
+  { path: "/following-library/", needsMock: true },
+  { path: "/library-audit/", needsMock: true },
 ];
 
 /** Audit whatever is on screen right now and fail on serious/critical. */
@@ -95,13 +108,23 @@ for (const { path, needsMock, fixme, expectedStatus, ready = READY[path] } of PA
     // is mounted. It is still not proof the *route's* content is: a
     // `loading.tsx` and every in-page skeleton branch render the same
     // `PageHeader`, so the route's `ready` locator is what clears the skeleton
-    // and the empty state.
+    // and the empty state — and, where the state worth auditing is one
+    // interaction away, drives the page into it.
     if (needsMock) {
       await expect(page.locator("main#main-content")).toBeVisible();
       await expect(page.getByRole("heading", { level: 1 }).first()).toBeVisible();
     }
     if (ready) {
-      await expect(ready(page).first()).toBeVisible();
+      await expect((await ready(page)).first()).toBeVisible();
+    }
+    if (needsMock) {
+      // Park the cursor. A `ready` hook that clicks leaves it wherever it
+      // clicked, and after the re-render some other control can be sitting
+      // under it — so axe measures a `:hover` style on an element nobody is
+      // pointing at, and which project's viewport happens to put a control
+      // there decides whether the run passes. Axe never hovers anything by
+      // itself; this restores that. (0,0) is over layout containers only.
+      await page.mouse.move(0, 0);
     }
 
     await expectNoBlockingViolations(page);
@@ -501,4 +524,86 @@ test("selection: shift-clicking the row body selects a range", async ({ page }) 
   await expect(page.getByRole("checkbox", { name: "Sample Track 2" })).toBeChecked();
   await expect(page.getByRole("checkbox", { name: "Sample Track 3" })).toBeChecked();
   await expect(page.getByRole("checkbox", { name: "Sample Track 4" })).not.toBeChecked();
+});
+
+/**
+ * The app's one real `role="tablist"`. ARIA's tab pattern is a keyboard
+ * contract, not a set of attributes: the strip is a single stop in the tab
+ * order and the arrow keys move between the tabs inside it. None of that is
+ * visible to axe, which is happy with three buttons that say they are tabs.
+ */
+test("following-library: the tab strip is one tab stop and the arrow keys move between tabs", async ({
+  page,
+}) => {
+  await mockApi(page);
+  await page.goto("/following-library/");
+
+  const likes = page.getByRole("tab", { name: "Liked Tracks" });
+  const playlists = page.getByRole("tab", { name: "Playlists", exact: true });
+  const liked = page.getByRole("tab", { name: "Liked Playlists" });
+
+  await expect(likes).toBeVisible();
+  await expect(likes).toHaveAttribute("aria-selected", "true");
+
+  // Roving tabIndex: only the selected tab is reachable with Tab.
+  await expect(likes).toHaveAttribute("tabindex", "0");
+  await expect(playlists).toHaveAttribute("tabindex", "-1");
+  await expect(liked).toHaveAttribute("tabindex", "-1");
+
+  await likes.focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(playlists).toBeFocused();
+  await expect(playlists).toHaveAttribute("aria-selected", "true");
+
+  await page.keyboard.press("End");
+  await expect(liked).toBeFocused();
+
+  await page.keyboard.press("Home");
+  await expect(likes).toBeFocused();
+
+  // ArrowLeft from the first tab wraps to the last.
+  await page.keyboard.press("ArrowLeft");
+  await expect(liked).toBeFocused();
+
+  // The panel is named by its tab, so a screen reader can tell which list it
+  // has landed in.
+  await expect(page.getByRole("tabpanel")).toHaveAccessibleName("Liked Playlists");
+});
+
+/**
+ * Switching tab must speak the count that arrived, not the one that left.
+ *
+ * Announcing from an effect on the array length got this wrong: the fetch
+ * starts in the same commit as the tab change, so on that render nothing is
+ * "loading" yet and the array is still the previous tab's — the region said
+ * "0 playlists loaded", then the real number a moment later. Every value the
+ * region takes is recorded, so a transient wrong one fails rather than being
+ * polled past.
+ */
+test("following-library: switching tab announces the count that arrived, never a stale one", async ({
+  page,
+}) => {
+  await mockApi(page);
+  await page.goto("/following-library/");
+
+  const live = page.locator("#app-live-region");
+  // The mocked user has 3 public likes and 2 public playlists.
+  await expect(live).toHaveText("3 tracks loaded.");
+
+  await page.evaluate(() => {
+    const region = document.querySelector("#app-live-region");
+    const seen: string[] = [];
+    (window as unknown as { __live: string[] }).__live = seen;
+    if (!region) return;
+    new MutationObserver(() => {
+      const text = (region.textContent || "").trim();
+      if (text) seen.push(text);
+    }).observe(region, { childList: true, characterData: true, subtree: true });
+  });
+
+  await page.getByRole("tab", { name: "Playlists", exact: true }).click();
+  await expect(live).toHaveText("2 playlists loaded.");
+
+  const spoken = await page.evaluate(() => (window as unknown as { __live: string[] }).__live);
+  expect(spoken, `live region said: ${JSON.stringify(spoken)}`).toEqual(["2 playlists loaded."]);
 });

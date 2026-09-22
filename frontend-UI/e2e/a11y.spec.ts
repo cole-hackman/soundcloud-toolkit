@@ -194,6 +194,44 @@ test("has no serious/critical violations: /downloads/ track list and selection m
 });
 
 /**
+ * "What's new" put a `<Button>` inside a `<Link>` — a control inside a
+ * control, which axe reports as `nested-interactive` and which leaves a
+ * screen reader describing one thing twice. The primary action is now the
+ * link itself, and this pins both that and the localStorage gate it must not
+ * have disturbed.
+ */
+test("What's new: the primary action is a link, and dismissal still persists", async ({
+  page,
+}) => {
+  await mockApi(page);
+  // `mockApi` pre-dismisses this announcement so it stays out of the way of
+  // every other test; this is the one test that wants to see it.
+  await page.addInitScript(() => {
+    try {
+      window.localStorage.removeItem("sc-toolkit-whatsnew-dismissed");
+    } catch {
+      // Private mode / blocked storage — nothing this init script can do.
+    }
+  });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto("/dashboard/");
+
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toHaveAccessibleName("What's new in Track Toolkit");
+  await expect(dialog.getByRole("link", { name: "Try Grow Your Network" })).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Try Grow Your Network" })).toHaveCount(0);
+
+  await expectNoBlockingViolations(page);
+
+  await dialog.getByRole("button", { name: "Got it" }).click();
+  await expect(dialog).toBeHidden();
+  expect(
+    await page.evaluate(() => window.localStorage.getItem("sc-toolkit-whatsnew-dismissed")),
+  ).toBe("2026-07-growth");
+});
+
+/**
  * The shared `Dialog` primitive, exercised through the one dialog that is
  * reachable from a mocked page without a write: the delete-account confirm in
  * the desktop sidebar. Covers the four things a modal has to get right —

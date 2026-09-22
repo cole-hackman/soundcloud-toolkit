@@ -6,6 +6,7 @@ import { safeError } from '../lib/safe-error.js';
 import { authenticateUser } from '../middleware/auth.js';
 import { adminAuth } from '../middleware/adminAuth.js';
 import { getAnalyticsWriteHealth } from '../lib/analytics.js';
+import { LIFETIME_METRIC_KEY } from '../lib/retention.js';
 
 const router = express.Router();
 
@@ -130,6 +131,14 @@ router.get('/stats', authenticateUser, adminAuth, async (req, res) => {
       ],
     };
 
+    // All-time distinct users, snapshotted by the retention job before it
+    // purges operation logs — so the headline figure does not shrink when rows
+    // age out of the 12-month window. Null until the job has run once, and
+    // soft-failing: a missing metrics table must not 500 the whole dashboard.
+    const lifetimeMetricQuery = prisma.metric
+      ? prisma.metric.findUnique({ where: { key: LIFETIME_METRIC_KEY } }).catch(() => null)
+      : Promise.resolve(null);
+
     const [
       totalUsers,
       newUsers,
@@ -143,6 +152,7 @@ router.get('/stats', authenticateUser, adminAuth, async (req, res) => {
       topErrors,
       avgLatencyRows,
       perActionLatencyRows,
+      lifetimeMetric,
     ] = await Promise.all([
       prisma.user.count(),
       prisma.user.count({ where: { createdAt: { gte: cutoff } } }),
@@ -225,6 +235,7 @@ router.get('/stats', authenticateUser, adminAuth, async (req, res) => {
         ORDER BY p95 DESC
         LIMIT 25
       `,
+      lifetimeMetricQuery,
     ]);
 
     const operationsCount = agg._count.id ?? 0;
@@ -294,6 +305,9 @@ router.get('/stats', authenticateUser, adminAuth, async (req, res) => {
 
     res.json({
       totalUsers,
+      // Null before the retention job's first run; a number afterwards, and
+      // never lower than totalUsers' historical peak.
+      lifetimeUsers: lifetimeMetric ? Number(lifetimeMetric.value) : null,
       newUsers,
       tracksProcessed,
       operationsCount,

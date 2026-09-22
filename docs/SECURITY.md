@@ -201,3 +201,73 @@ Sessions are HMAC-SHA256-signed cookies carrying `iat`; they expire 7 days
 after issuance server-side (`SESSION_TTL_MS`) regardless of cookie replay.
 Known limitation: there is no server-side revocation list — logout clears the
 cookie but a previously exfiltrated cookie stays valid until its TTL.
+
+## Account lifecycle: disconnect, revocation, export
+
+Three paths now exist where there used to be two (`server/routes/auth.js`,
+`server/lib/account-lifecycle.js`).
+
+**Disconnect** — `POST /api/auth/disconnect`. Logout forgets the session
+cookie and nothing else: the encrypted token pair stays in the database and
+the next login picks it straight back up. Disconnect hands the SoundCloud
+grant back (`POST https://api.soundcloud.com/sign-out`, best-effort, on its
+own 5s deadline), deletes the `tokens` row, and stamps `users.disconnectedAt`.
+The account survives — a later login clears the stamp — but if nobody comes
+back the retention job deletes the row (and everything cascading from it)
+after seven days.
+
+`disconnectUser()` calls `invalidateCachedAuth(userId)`. This is not optional:
+`server/lib/auth-cache.js` memoizes the **decrypted** token pair for 30
+seconds, so without it a request arriving inside that window would keep
+working against tokens that no longer exist. It runs inside a `finally`
+wrapped around the token delete, i.e. before the user update and the cache
+teardown, so a failure anywhere later in the function cannot leave the memo
+serving credentials whose database row is already gone. `disconnectUser` also
+drops the library request cache, the invalidation marks, and the durable
+snapshot tier, since all of it is derived from the grant just returned.
+
+The route takes no body, so the second CSRF layer (empty body → validator
+fails closed) has nothing to act on. `rejectUntrustedOrigin` is the whole
+guard, and `tests/routes/account-deletion.test.js` asserts a cross-site POST
+is refused with 403 before the handler runs.
+
+**Revocation detection.** A user can also revoke the app from SoundCloud's own
+settings page, which this service never hears about directly. It is detected
+at the single refresh choke point (`refreshTokensAndPersist`). Exactly two
+responses count, and the rule is deliberately narrow:
+
+1. a `400` or `401` whose JSON body is `{"error":"invalid_grant"}`;
+2. a `401` with an **empty** body.
+
+The teardown then runs with `reason: 'revoked'` and no sign-out call, because
+the token is already dead. The thrown error is unchanged, so the request
+surfaces exactly as it always did.
+
+What deliberately does **not** trigger it: a `401` with a non-empty body that
+is not JSON, plus `429`, every `5xx`, timeouts and network failures. The
+non-JSON `401` matters most — that shape is an HTML error page from a proxy,
+WAF or load balancer in front of the token endpoint far more often than it is
+a revocation, and treating it as one would destroy a live user's tokens
+because of someone else's infrastructure. Disconnecting people over a
+transient upstream failure would be a self-inflicted outage.
+`tests/routes/token-refresh.test.js` pins every branch, and
+`tests/soundcloud-signout.test.js` holds the full truth table for
+`isInvalidGrantResponse`.
+
+**Export** — `GET /api/auth/export`, `heavyOperationRateLimiter`. Returns
+every row keyed to the caller as one JSON attachment. Two invariants, both
+asserted in `tests/routes/export.test.js`:
+
+1. Every query is scoped to `req.user.id`; no identifier is read from the
+   request, so there is nothing to tamper with.
+2. The token record contributes `expiresAt` and nothing else. `encrypted` and
+   `refresh` are AES-256-GCM ciphertext of live credentials and are excluded
+   at the `select`, so they never leave Postgres. Note that `req.user` is the
+   full user row **with its `tokens` relation included** — spreading it into
+   the payload would ship both ciphertexts, which is why the route names
+   fields explicitly.
+
+**Retention** (`server/lib/retention.js`) enforces the stated windows daily.
+Relevant to this document: it deletes disconnected accounts after 7 days,
+dormant accounts after `INACTIVE_MONTHS`, and nulls the one free-text PII
+column left in the retired beta-survey table on every run.

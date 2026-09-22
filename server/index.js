@@ -127,6 +127,7 @@ app.use('/api', rejectUntrustedOrigin);
 import authRoutes from './routes/auth.js';
 import { soundcloudClient } from './lib/soundcloud-client.js';
 import { startGrowthScheduler } from './lib/growth-scheduler.js';
+import { startRetentionScheduler } from './lib/retention.js';
 import apiRoutes from './routes/api.js';
 import growthRoutes from './routes/growth.js';
 import adminRoutes from './routes/admin.js';
@@ -200,4 +201,8 @@ app.listen(PORT, () => {
   logger.info(`Server running on port ${PORT}`);
   logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`);
   startGrowthScheduler(soundcloudClient);
+  // Enforces the stated retention windows (library cache, disconnected and
+  // dormant accounts, operation logs, growth history, feedback, catalog
+  // metadata for tracks deleted upstream). RETENTION_ENABLED=false to disable.
+  startRetentionScheduler();
 });

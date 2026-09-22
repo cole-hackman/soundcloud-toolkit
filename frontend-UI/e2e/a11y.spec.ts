@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 import { mockApi } from "./fixtures/api";
 
@@ -10,6 +10,15 @@ interface PageCase {
   fixme?: string;
   /** Expected HTTP status of the navigation response; defaults to 200. */
   expectedStatus?: number;
+  /**
+   * Something only the route's *real* content renders — a row, a control, a
+   * toolbar. The `h1` alone is not enough: `loading.tsx` renders a
+   * `PageHeader` too, and an unmocked endpoint leaves an `EmptyState` that
+   * also has a heading. Either way axe would scan a placeholder and pass.
+   * A route without one is only guaranteed to have been audited past its
+   * spinner, not past its skeleton — add one when you touch that page.
+   */
+  ready?: (page: Page) => ReturnType<Page["locator"]>;
 }
 
 const PAGES: PageCase[] = [
@@ -27,13 +36,27 @@ const PAGES: PageCase[] = [
     needsMock: true,
     fixme: "Phase 6 — the sort <select> has no accessible name (select-name)",
   },
-  { path: "/playlist-modifier/", needsMock: true },
-  { path: "/growth/", needsMock: true },
-  { path: "/link-resolver/", needsMock: true },
+  {
+    path: "/playlist-modifier/",
+    needsMock: true,
+    ready: (page) => page.getByRole("button", { name: "Sample Playlist 1" }),
+  },
+  {
+    path: "/growth/",
+    needsMock: true,
+    // Suspends on `/api/followings`, so the h1 alone resolves against
+    // `growth/loading.tsx`'s own PageHeader while the skeleton is up.
+    ready: (page) => page.getByRole("checkbox", { name: "testfollowing1" }),
+  },
+  {
+    path: "/link-resolver/",
+    needsMock: true,
+    ready: (page) => page.getByLabel("SoundCloud URL"),
+  },
   { path: "/feedback/", needsMock: true },
 ];
 
-for (const { path, needsMock, fixme, expectedStatus } of PAGES) {
+for (const { path, needsMock, fixme, expectedStatus, ready } of PAGES) {
   test(`has no serious/critical WCAG 2.2 AA violations: ${path}`, async ({ page }) => {
     test.fixme(!!fixme, fixme);
 
@@ -64,6 +87,9 @@ for (const { path, needsMock, fixme, expectedStatus } of PAGES) {
     if (needsMock) {
       await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
     }
+    if (ready) {
+      await expect(ready(page)).toBeVisible();
+    }
 
     const results = await new AxeBuilder({ page })
       .withTags(["wcag2a", "wcag2aa", "wcag22aa"])
@@ -76,6 +102,67 @@ for (const { path, needsMock, fixme, expectedStatus } of PAGES) {
     expect(blocking, JSON.stringify(blocking, null, 2)).toEqual([]);
   });
 }
+
+/**
+ * /link-resolver/ only shows its form until something is resolved — the
+ * layout, the stat grid, the embed and the copy buttons all live in the
+ * result, which the page-list audit above never reaches.
+ */
+test("has no serious/critical WCAG 2.2 AA violations: /link-resolver/ result", async ({
+  page,
+}) => {
+  await mockApi(page);
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto("/link-resolver/");
+
+  await page
+    .getByLabel("SoundCloud URL")
+    .fill("https://soundcloud.com/testartist/sample-resolved-track");
+  await page.getByRole("button", { name: "Resolve" }).click();
+  await expect(
+    page.getByRole("heading", { level: 2, name: "Sample Resolved Track" }),
+  ).toBeVisible();
+
+  const results = await new AxeBuilder({ page })
+    .withTags(["wcag2a", "wcag2aa", "wcag22aa"])
+    .analyze();
+
+  const blocking = results.violations.filter(
+    (violation) => violation.impact === "serious" || violation.impact === "critical",
+  );
+
+  expect(blocking, JSON.stringify(blocking, null, 2)).toEqual([]);
+});
+
+/**
+ * The copy buttons are the page's only silent action: the clipboard write
+ * leaves nothing on screen of its own, so the label swap and the
+ * announcement are the whole of the feedback.
+ */
+test("link-resolver: copying swaps the label and announces it", async ({ page, context }) => {
+  // Chromium denies `navigator.clipboard.writeText` without this, which
+  // would exercise the failure branch instead of the success one.
+  await context.grantPermissions(["clipboard-write"]);
+  await mockApi(page);
+  await page.goto("/link-resolver/");
+
+  await page
+    .getByLabel("SoundCloud URL")
+    .fill("https://soundcloud.com/testartist/sample-resolved-track");
+  await page.getByRole("button", { name: "Resolve" }).click();
+
+  const copyUrl = page.getByRole("button", { name: "Copy URL" });
+  await expect(copyUrl).toBeVisible();
+  await copyUrl.click();
+
+  await expect(page.getByRole("button", { name: "Copied" })).toBeVisible();
+  // `LiveRegion` is `aria-live="polite"` and `sr-only`, so assert its text
+  // rather than its visibility.
+  await expect(page.locator("#app-live-region")).toHaveText("Copied");
+
+  // Reverts on its own, so the next copy is unambiguous.
+  await expect(copyUrl).toBeVisible({ timeout: 4000 });
+});
 
 /**
  * The shared `Dialog` primitive, exercised through the one dialog that is

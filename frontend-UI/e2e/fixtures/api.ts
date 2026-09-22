@@ -122,6 +122,38 @@ const FAKE_GROWTH_STATS = {
   uncheckedFollows: 0,
 };
 
+/**
+ * `POST /api/resolve?v=2` — the result state of /link-resolver/, which is the
+ * half of that page with the layout, the copy buttons and the embed in it.
+ * Without this the page only ever shows its empty form.
+ */
+const FAKE_RESOLVE = {
+  data: {
+    type: "track",
+    kind: "track",
+    id: 400,
+    title: "Sample Resolved Track",
+    username: "testartist",
+    user: { id: 1000002, username: "testartist" },
+    permalink_url: "https://soundcloud.com/testartist/sample-resolved-track",
+    artwork_url: null as string | null,
+    duration_ms: 214000,
+    description: "An obviously fake track used by the e2e harness.",
+    tag_list: "house techno",
+    created_at: "2026-01-02T03:04:05Z",
+    playback_count: 1234,
+    likes_count: 56,
+    reposts_count: 7,
+    comment_count: 8,
+  },
+  meta: {
+    version: "2",
+    source_url: "https://soundcloud.com/testartist/sample-resolved-track",
+    resolved_at: "2026-09-22T12:00:00.000Z",
+    cached: false,
+  },
+};
+
 /** `GET /api/growth/history` — the empty state of the Campaign History tab. */
 const FAKE_GROWTH_HISTORY = {
   actions: [] as unknown[],
@@ -185,6 +217,19 @@ export async function mockApi(page: Page): Promise<void> {
     },
   );
 
+  // The SoundCloud embed widget. Stubbed so a test never depends on a
+  // third-party origin being up, and so an axe run over the page is not
+  // scoring SoundCloud's own player markup (which has its own violations
+  // and is not ours to fix). The `<iframe>` element, and therefore its
+  // `title`, is still exactly what the page rendered.
+  await page.route("**/w.soundcloud.com/**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "text/html",
+      body: "<!doctype html><html lang=\"en\"><head><title>Player stub</title></head><body></body></html>",
+    }),
+  );
+
   await page.route("**/api/**", async (route) => {
     const request = route.request();
     const method = request.method();
@@ -225,6 +270,9 @@ export async function mockApi(page: Page): Promise<void> {
     }
     if (method === "GET" && path === "/api/growth/analytics") {
       return route.fulfill(json(FAKE_GROWTH_ANALYTICS));
+    }
+    if (method === "POST" && path === "/api/resolve") {
+      return route.fulfill(json(FAKE_RESOLVE));
     }
     if (method === "POST" && path === "/api/events") {
       return route.fulfill({ status: 204, body: "" });

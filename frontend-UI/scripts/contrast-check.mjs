@@ -19,6 +19,7 @@ const PAIRS = [
   ["muted-foreground-subtle", "background", 4.5, "subtle text"],
   ["primary-text", "background", 4.5, "orange as text"],
   ["primary-text", "card", 4.5, "orange as text on cards"],
+  ["primary-text", "accent", 4.5, "orange as text on a hovered row"],
   ["primary-foreground", "primary", 4.5, "primary button label"],
   ["destructive-foreground", "destructive", 4.5, "destructive button label"],
   ["destructive-text", "background", 4.5, "error text"],
@@ -26,6 +27,47 @@ const PAIRS = [
   ["warning-text", "background", 4.5, "warning text"],
   ["input", "background", 3.0, "1.4.11 control border"],
   ["ring", "background", 3.0, "1.4.11 focus ring"],
+  ["tone-foreground", "tone-download", 4.5, "free-download chip label"],
+  ["tone-foreground", "tone-purchase", 4.5, "purchase-link chip label"],
+  ["tone-foreground", "tone-match", 4.5, "high-match badge label"],
+];
+
+/**
+ * Pairs whose surface is an ALPHA utility rather than a token on its own:
+ * `[foreground, tint, alpha, base, threshold, note]` renders as
+ * `bg-<tint>/<alpha*100>` over `bg-<base>`.
+ *
+ * This list exists because checking resting token values alone is not enough
+ * to know what ships. `Button variant="destructive"` hovers to
+ * `bg-destructive/90`, and while `--destructive` passed on its own that
+ * composite put white at 4.32:1 — a hover below AA on every confirm button in
+ * the app, green on this gate the whole time. Same blind spot for the brand
+ * tints: `bg-primary/10 text-primary-text` is how an active nav item, a genre
+ * chip and a secondary CTA are built, and it measured 4.21:1.
+ *
+ * Two bases per tint on purpose: a tint over `--background` and the same tint
+ * over `--card` are different colours, and which one a component lands on is
+ * a layout decision, so both have to hold. Where a component has a resting
+ * and a hover tint, both alphas are listed — the deepest one is the bound the
+ * token was chosen against, so a future call site may go that far and no
+ * further.
+ */
+const TINTED_PAIRS = [
+  ["destructive-foreground", "destructive", 0.9, "background", 4.5, "destructive button hover"],
+  ["destructive-foreground", "destructive", 0.9, "card", 4.5, "destructive button hover on a card"],
+  ["primary-foreground", "primary", 0.9, "background", 4.5, "primary button hover"],
+  ["primary-foreground", "primary", 0.9, "card", 4.5, "primary button hover on a card"],
+  ["primary-text", "primary", 0.1, "background", 4.5, "orange as text on the brand tint"],
+  ["primary-text", "primary", 0.1, "card", 4.5, "orange as text on the brand tint, on a card"],
+  ["primary-text", "primary", 0.15, "background", 4.5, "…at the deepest brand tint in use (hover)"],
+  ["primary-text", "primary", 0.15, "card", 4.5, "…same, on a card"],
+  ["destructive-text", "destructive", 0.1, "background", 4.5, "destructive icon-button hover"],
+  ["destructive-text", "destructive", 0.1, "card", 4.5, "destructive icon-button hover on a card"],
+  ["muted-foreground", "secondary", 0.2, "background", 4.5, "secondary text on a tinted panel"],
+  ["muted-foreground-subtle", "secondary", 0.2, "background", 4.5, "subtle text on a tinted panel"],
+  ["muted-foreground-subtle", "secondary", 0.2, "card", 4.5, "subtle text on a tinted panel, on a card"],
+  ["tone-foreground", "tone-download", 0.9, "background", 4.5, "free-download chip hover"],
+  ["tone-foreground", "tone-purchase", 0.9, "background", 4.5, "purchase-link chip hover"],
 ];
 
 /** Light-mode `.text-gradient` stops, large text only (3:1). */
@@ -38,6 +80,22 @@ const ALLOWANCES = {
   "dark:input / background": {
     min: 2.9,
     reason: "border plus the --surface fill together identify the control",
+  },
+  // OPEN, not accepted. `hover:bg-accent hover:text-primary-text` is real text
+  // on three call sites (batch-link-resolver's two result-toolbar buttons and
+  // ExportBackLink) and it is below AA in both themes. Closing it means moving
+  // --accent or --primary-text far enough to repaint every hovered row, which
+  // is a palette decision no task owns yet; the icon-only users of the same
+  // pair (batch-link-resolver's copy button, following-manager's external
+  // link) are graphics and clear 3:1. Listed here so the number is printed on
+  // every run rather than going latent again — raise the floor, never lower it.
+  "light:primary-text / accent": {
+    min: 4.2,
+    reason: "OPEN — hovered-row orange is below AA; needs a palette ruling",
+  },
+  "dark:primary-text / accent": {
+    min: 3.7,
+    reason: "OPEN — hovered-row orange is below AA; needs a palette ruling",
   },
 };
 
@@ -91,21 +149,47 @@ function ratio(fg, bg) {
   return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
 }
 
+/** `background-color: hsl(tint / alpha)` painted over an opaque `base`. */
+function composite(tint, base, alpha) {
+  return tint.map((channel, i) => channel * alpha + base[i] * (1 - alpha));
+}
+
 const css = await readFile(CSS, "utf8");
+const light = parseBlock(css, ":root {");
 const themes = {
-  light: parseBlock(css, ":root {"),
-  dark: parseBlock(css, ".dark {"),
+  light,
+  // `.dark` only overrides the tokens it redeclares; everything else
+  // cascades down from `:root`. Modelling that is what lets a deliberately
+  // theme-independent token (the `--tone-*` chips) be declared once.
+  dark: { ...light, ...parseBlock(css, ".dark {") },
 };
 
 const rows = [];
+function token(theme, tokens, name) {
+  if (!tokens[name]) throw new Error(`${theme}: missing --${name}`);
+  return hslToRgb(tokens[name]);
+}
+
 for (const [theme, tokens] of Object.entries(themes)) {
   for (const [fg, bg, min, note] of PAIRS) {
-    if (!tokens[fg]) throw new Error(`${theme}: missing --${fg}`);
-    if (!tokens[bg]) throw new Error(`${theme}: missing --${bg}`);
     rows.push({
       theme,
       pair: `${fg} / ${bg}`,
-      value: ratio(hslToRgb(tokens[fg]), hslToRgb(tokens[bg])),
+      value: ratio(token(theme, tokens, fg), token(theme, tokens, bg)),
+      min,
+      note,
+    });
+  }
+  for (const [fg, tint, alpha, base, min, note] of TINTED_PAIRS) {
+    const surface = composite(
+      token(theme, tokens, tint),
+      token(theme, tokens, base),
+      alpha,
+    );
+    rows.push({
+      theme,
+      pair: `${fg} / ${tint}@${Math.round(alpha * 100)} on ${base}`,
+      value: ratio(token(theme, tokens, fg), surface),
       min,
       note,
     });

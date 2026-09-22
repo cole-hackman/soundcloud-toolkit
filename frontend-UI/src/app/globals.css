@@ -21,21 +21,36 @@
     --primary: 17 100% 52%; /* SoundCloud orange #FF5500 */
     /* Dark navy on #FF5500 is 5.45:1; white was 3.29:1. */
     --primary-foreground: 222 47% 11%;
-    /* The brand orange when it is TEXT rather than a surface: 4.75:1 on
-       --background, 5.04:1 on --card. Never use --primary for small text. */
-    --primary-text: 17 100% 40%;
+    /* The brand orange when it is TEXT rather than a surface. It has to clear
+       AA on the brand's own tint as well as on a plain surface, because
+       `bg-primary/10 text-primary-text` is how an active nav item, a genre
+       chip and a secondary CTA are all built: at the old 40% that tint
+       measured 4.21:1. At 35% it is 5.87:1 on --background, 6.23:1 on --card
+       and still ≥4.5:1 on the brand tint up to 20%. Never use --primary for
+       small text. */
+    --primary-text: 17 100% 35%;
     --secondary: 215 16% 88%;
     --secondary-foreground: 222 47% 11%;
     --muted: 215 16% 90%;
     --muted-foreground: 215 15% 40%;
     /* Replaces every alpha-modified muted text utility (the old
-       `text-muted-foreground` + opacity pairs measured 2.2-3.0:1). */
-    --muted-foreground-subtle: 215 15% 46%;
+       `text-muted-foreground` + opacity pairs measured 2.2-3.0:1). 44%, not
+       46%: it also has to hold on the `bg-secondary/20` panels it is most
+       often used on, where 46% measured 4.39:1. */
+    --muted-foreground-subtle: 215 15% 44%;
     --accent: 215 20% 84%;
     --accent-foreground: 222 47% 11%;
-    --destructive: 0 72% 51%;
+    /* 45%, not 51%. `Button variant="destructive"` hovers to
+       `bg-destructive/90`, and 51% composited at 90% over the page put white
+       at 4.32:1 — a hover that failed AA on every confirm button in the app
+       while the resting value passed. 45% is 5.81:1 resting and 5.12:1 at the
+       hover. */
+    --destructive: 0 72% 45%;
     --destructive-foreground: 0 0% 100%;
-    --destructive-text: 0 72% 51%;
+    /* Same value, for the same reason one level up: as text it sits on
+       `bg-destructive/10` (the destructive IconButton's hover) where 51%
+       measured 3.89:1. */
+    --destructive-text: 0 72% 45%;
     /* Status colors used as small text. The raw Tailwind green/amber utilities
        measured 2.0-3.5:1 on the light background. */
     --success-text: 142 71% 29%;
@@ -53,6 +68,24 @@
     --chart-3: 142 71% 45%;
     --chart-4: 48 96% 53%;
     --chart-5: 340 82% 52%;
+
+    /* Categorical surface tones.
+       Unlike --primary and --destructive these carry no state meaning: the
+       hue only tells one option apart from another (a free download from a
+       Hypeddit link, a high match from a medium one), and every one of them
+       is paired with words, so the colour is never the only signal.
+
+       They replace the raw Tailwind palette classes those chips used to
+       carry. `bg-green-500` was the worst of them: white on #22c55e is
+       2.28:1, below even the 3:1 floor a glyph needs.
+
+       Deliberately theme-independent — a filled chip reads the same in both
+       themes, and each is dark enough to carry --tone-foreground at AA both
+       at rest and at the `/90` hover. `.dark` inherits them from here. */
+    --tone-foreground: 0 0% 100%;
+    --tone-download: 142 72% 26%; /* a direct, free download */
+    --tone-purchase: 271 62% 42%; /* a Hypeddit or purchase link */
+    --tone-match: 22 88% 34%; /* the top discovery-score tier */
   }
 
   .dark {

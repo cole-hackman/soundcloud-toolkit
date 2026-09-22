@@ -7,12 +7,29 @@ import { ArrowLeft } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { usePageTitle } from "@/lib/usePageTitle";
 
+/** `/like-manager/` and `/like-manager` are the same route to us. */
+function normalizePathname(pathname: string): string {
+  return pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
+}
+
 /**
- * The route the last PageHeader was rendered for. Module-level on purpose:
- * a client-side navigation unmounts the old page and mounts a new one, so a
- * per-instance ref is always "first mount" and would never fire.
+ * The route the document itself was loaded at, and whether the router has
+ * since moved off it. Both are module-level on purpose: a client-side
+ * navigation unmounts the old page and mounts a new one, so a per-instance
+ * ref is always "first mount" and would never fire.
+ *
+ * Comparing against the *loaded* route rather than against "the last route a
+ * PageHeader rendered for" is what makes the commonest navigation in the app
+ * work: `/dashboard/` renders no PageHeader, so keyed off the latter the
+ * first tool page opened from the dashboard still looked like a first mount
+ * and never took focus. Once `hasNavigated` flips it stays flipped, so
+ * returning to the loaded route later still moves focus, while the route's
+ * own `loading.tsx` — which renders a second PageHeader for the same
+ * pathname — cannot steal focus during a fresh load.
  */
-let lastRenderedPathname: string | null = null;
+const loadedPathname =
+  typeof window === "undefined" ? null : normalizePathname(window.location.pathname);
+let hasNavigated = false;
 
 interface PageHeaderProps {
   title: string;
@@ -39,15 +56,17 @@ export function PageHeader({
   const headingRef = useRef<HTMLHeadingElement>(null);
 
   useEffect(() => {
-    // Skip the first header of the session: a fresh page load should keep
-    // whatever focus the browser gave it. On a client-side navigation the DOM
-    // is replaced under a focus position that no longer means anything, so
-    // move focus to the new page's heading — that is what tells a
-    // screen-reader user where they landed, and it puts Tab back at the top
-    // of the new content.
-    const previous = lastRenderedPathname;
-    lastRenderedPathname = pathname;
-    if (previous === null || previous === pathname) return;
+    // A fresh page load should keep whatever focus the browser gave it. On a
+    // client-side navigation the DOM is replaced under a focus position that
+    // no longer means anything, so move focus to the new page's heading —
+    // that is what tells a screen-reader user where they landed, and it puts
+    // Tab back at the top of the new content.
+    if (!hasNavigated) {
+      if (loadedPathname === null || normalizePathname(pathname) === loadedPathname) {
+        return;
+      }
+      hasNavigated = true;
+    }
     headingRef.current?.focus({ preventScroll: false });
   }, [pathname]);
 

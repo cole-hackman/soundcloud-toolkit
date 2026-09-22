@@ -130,7 +130,8 @@ export default function AccountPage() {
               alt=""
               width={56}
               height={56}
-              loading="lazy"
+              // Not lazy: it is the first image on the page and above the fold
+              // on every viewport, so deferring it only delays the paint.
               decoding="async"
               className="h-14 w-14 shrink-0 rounded-full ring-1 ring-border"
             />
@@ -175,9 +176,9 @@ export default function AccountPage() {
         <Card className="p-5">
           <h2 className={cardHeadingClass}>Disconnect SoundCloud</h2>
           <p className="mt-2 text-sm text-muted-foreground">
-            Signs you out and deletes your saved sign-in tokens now. Everything
-            else keyed to your account is deleted within 7 days unless you sign
-            in again. Your SoundCloud account is untouched.
+            Signs you out and deletes your saved sign-in tokens now. We keep the
+            rest for 7 days so you can sign back in and keep your account. After
+            that it is deleted. Your SoundCloud account is untouched.
           </p>
           {disconnectError ? (
             <InlineAlert variant="error" className="mt-4">
@@ -295,7 +296,7 @@ export default function AccountPage() {
       <ConfirmDialog
         open={disconnectOpen}
         title="Disconnect from SoundCloud?"
-        description="Your saved sign-in tokens are deleted straight away and you are signed out. Everything else keyed to your account is deleted within 7 days unless you sign in again."
+        description="Your saved sign-in tokens are deleted straight away and you are signed out. We keep the rest for 7 days so you can sign back in and keep your account. After that it is deleted."
         confirmLabel={disconnecting ? "Disconnecting…" : "Disconnect"}
         confirmDisabled={disconnecting}
         onConfirm={handleDisconnect}
@@ -320,7 +321,6 @@ export default function AccountPage() {
               {...field}
               value={deleteConfirmText}
               onChange={(e) => setDeleteConfirmText(e.target.value)}
-              placeholder="DELETE"
               autoComplete="off"
               autoCapitalize="characters"
               spellCheck={false}

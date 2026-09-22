@@ -350,8 +350,9 @@ export default function PrivacyPage() {
                 </li>
                 <li>
                   When you disconnect the app from your SoundCloud account, we
-                  delete your tokens immediately and the rest of your data
-                  within 7 days, unless you sign in again first.
+                  delete your tokens immediately. We keep the rest for 7 days so
+                  you can sign back in and keep your account. After that it is
+                  deleted.
                 </li>
               </ul>
             </section>

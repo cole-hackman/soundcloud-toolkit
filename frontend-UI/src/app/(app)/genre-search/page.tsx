@@ -232,7 +232,7 @@ export default function GenreSearchPage() {
                     className={`px-2.5 py-1 rounded-full text-xs font-medium transition ${
                       genre === g
                         ? "bg-primary text-primary-foreground"
-                        : "bg-gray-100 dark:bg-secondary/40 text-muted-foreground hover:bg-primary/10 hover:text-primary-text"
+                        : "bg-gray-100 dark:bg-secondary/40 text-muted-foreground dark:hover:bg-primary/10 hover:text-primary-text"
                     }`}
                   >
                     {g}

@@ -499,7 +499,7 @@ export default function FollowingManagerPage() {
                               href={user.permalink_url}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="text-primary hover:bg-primary/10 rounded flex-shrink-0"
+                              className="text-primary hover:text-primary-text dark:hover:bg-primary/10 rounded flex-shrink-0"
                               onClick={(e) => e.stopPropagation()}
                             >
                               <ExternalLink className="w-4 h-4" />

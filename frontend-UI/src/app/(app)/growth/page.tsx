@@ -969,9 +969,9 @@ export default function GrowthPage() {
                                   e.stopPropagation();
                                   previewTrack(sug.suggestedTrack!);
                                 }}
-                                className="text-primary hover:bg-primary/10 rounded shrink-0 p-1"
+                                className="group text-primary hover:text-primary-text dark:hover:bg-primary/10 rounded shrink-0 p-1"
                               >
-                                <Play className="w-4 h-4 fill-primary text-primary" />
+                                <Play className="w-4 h-4 fill-primary text-primary group-hover:fill-primary-text group-hover:text-primary-text" />
                               </button>
                             </div>
                           ) : (

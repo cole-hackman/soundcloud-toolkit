@@ -281,7 +281,7 @@ function ResultRow({
           href={result.data.permalink_url}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-primary hover:bg-primary/10 rounded flex-shrink-0"
+          className="text-primary hover:text-primary-text dark:hover:bg-primary/10 rounded flex-shrink-0"
         >
           <ExternalLink className="w-4 h-4" />
         </a>

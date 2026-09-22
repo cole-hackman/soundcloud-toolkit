@@ -99,15 +99,40 @@ All database operations use Prisma methods:
 - `prisma.user.upsert()` - User creation/update
 - `prisma.token.upsert()` - Token storage
 
-### No Raw SQL
-- No `$queryRaw` or `$executeRaw` calls found
-- All queries use Prisma's type-safe query builder
-- User input is validated before database operations
+### Raw SQL
+- Most queries use Prisma's type-safe query builder
+- Raw SQL does exist, and every occurrence is a **tagged template** —
+  `prisma.$queryRaw\`…\`` / `$executeRaw\`…\`` or `Prisma.sql\`…\`` — which
+  parameterises its interpolations. The unsafe variants (`$queryRawUnsafe`,
+  `$executeRawUnsafe`) are not used anywhere, and string-concatenated SQL is
+  not either
+- Call sites: `server/lib/retention.js` (the `COUNT(DISTINCT "userId")`
+  snapshot), `server/lib/catalog.js` and `server/lib/enrichment.js` (upserts
+  Prisma cannot express), `server/routes/admin.js` (aggregate reports) and
+  `server/scripts/backfill-track-catalog.js`
+- User input is validated before database operations; the admin aggregates
+  additionally accept only enumerated filter values, dropping anything else
+  rather than passing it through
 
 ## 5. Additional Security Measures
 
 ### Security Headers (Helmet)
-- Content Security Policy (CSP) configured
+- Content Security Policy configured in `server/middleware/security.js`. It
+  names **no third-party script, style or font source** — that is the
+  enforcement behind the privacy policy's plain-language promise that the app
+  runs no analytics and no advertising scripts. The only external host in it
+  is SoundCloud, in `connectSrc`
+- `frame-src` is `'none'` on every page **except the `/admin` document**,
+  which is served a second helmet instance adding
+  `frame-src https://w.soundcloud.com` for the embedded player and nothing
+  else. A CSP governs the document it is served with, so this cannot widen any
+  other page. `tests/routes/csp-admin-frame.test.js` pins both branches and
+  asserts every other directive is identical between them
+- `tests/security-headers.test.js` sweeps `scriptSrc`, `styleSrc`,
+  `connectSrc`, `fontSrc` **and `frameSrc`** for known tracker, widget and
+  font-host names, and checks the admin frame allowance **by value** — a test
+  that compared it to the constant that produced it would pass for any value
+  that constant was given
 - XSS protection headers
 - MIME type sniffing prevention
 - Frame options (clickjacking protection)
@@ -180,13 +205,22 @@ All database operations use Prisma methods:
 3. **Secrets Rotation**: Rotate API keys and secrets periodically
 4. **HTTPS**: Ensure HTTPS is enforced in production (handled by hosting provider)
 5. **Log Monitoring**: Monitor secure logs for patterns indicating security issues
-6. **Security Testing**: Consider implementing automated security testing in CI/CD pipeline
+6. **Security Testing**: `.github/workflows/azure-deploy.yml` runs the Jest
+   suite on every push to `main` and a failure blocks the deploy, so the
+   authz/CSRF/CSP boundary tests under `tests/routes/` and
+   `tests/security-headers.test.js` do gate a release. Dependency scanning
+   (`npm audit`) and the frontend's own checks are still manual.
 
 
 ## CSRF model
 
-Production cookies are `SameSite=None` (frontend and API live on different
-subdomains), so CSRF is handled in layers: (1) `rejectUntrustedOrigin`
+Production cookies are `SameSite=Lax` since the Azure cutover — the frontend
+and the API are one origin (`https://tracktoolkit.com`), so there is no
+cross-site request to carry a session cookie on. That is now the first layer,
+but it is set from an environment variable (`SESSION_COOKIE_SAMESITE`) and
+`resolveSessionSameSite` still defaults to `none` in production when it is
+unset, so the two layers built for the split-host deployment stay and are
+still the ones under test: (1) `rejectUntrustedOrigin`
 middleware rejects state-changing `/api` requests whose `Origin` header is not
 in the allowlist; (2) `express.json()` is deliberately the ONLY body parser —
 cross-site HTML form posts (urlencoded/text-plain) parse to an empty body and
@@ -214,7 +248,11 @@ grant back (`POST https://api.soundcloud.com/sign-out`, best-effort, on its
 own 5s deadline), deletes the `tokens` row, and stamps `users.disconnectedAt`.
 The account survives — a later login clears the stamp — but if nobody comes
 back the retention job deletes the row (and everything cascading from it)
-after seven days.
+after six days. Six, not seven: SoundCloud's terms give seven, the sweep runs
+daily, so the real worst case is the window plus up to one sweep interval, and
+seven would have been up to eight. `RETENTION_INTERVAL_MS` is clamped to a 24h
+maximum in code for the same reason. See `docs/internal/TERMS-CHECK.md`
+finding B.
 
 `disconnectUser()` calls `invalidateCachedAuth(userId)`. This is not optional:
 `server/lib/auth-cache.js` memoizes the **decrypted** token pair for 30
@@ -268,6 +306,6 @@ asserted in `tests/routes/export.test.js`:
    fields explicitly.
 
 **Retention** (`server/lib/retention.js`) enforces the stated windows daily.
-Relevant to this document: it deletes disconnected accounts after 7 days,
+Relevant to this document: it deletes disconnected accounts after 6 days,
 dormant accounts after `INACTIVE_MONTHS`, and nulls the one free-text PII
 column left in the retired beta-survey table on every run.

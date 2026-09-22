@@ -29,8 +29,13 @@ header of `deploy.sh` for the full list).
 
 ## Deploy the application
 
-`.github/workflows/azure-deploy.yml`, run manually from the Actions tab (or
-`gh workflow run azure-deploy.yml --ref <branch>`). It builds on Linux so the
+`.github/workflows/azure-deploy.yml`. **It runs on every push to `main`** (PR
+#52, 2026-09-22, which replaced DigitalOcean's `deploy_on_push`), so merging to
+`main` is deploying. Pushes that only touch `**.md`, `docs/**`, `infra/**`,
+`.gitignore` or `LICENSE` skip the run; infrastructure changes go through
+`infra/deploy.sh` instead. Manual dispatch stays for redeploys and for
+deploying a non-`main` ref (`gh workflow run azure-deploy.yml --ref <branch>`).
+It builds on Linux so the
 Prisma engine matches the App Service image, runs the Jest suite, builds the
 Next.js static export, and ships one zip. Oryx is disabled on the app
 (`SCM_DO_BUILD_DURING_DEPLOYMENT=false`), so what the workflow zips is exactly

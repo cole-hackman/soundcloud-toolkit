@@ -13,8 +13,24 @@
 -- TIMESTAMP(3), which is what Prisma emits for `DateTime` — timestamptz would
 -- register as schema drift on the next `prisma migrate diff`.
 --
--- Run this in the Neon SQL Editor, then deploy the backend. Not applied by
--- this branch.
+-- WHERE TO RUN THIS: the **Azure PostgreSQL Flexible Server** database
+-- `tracktoolkit` on `tracktoolkit-pg.postgres.database.azure.com`. Not Neon.
+-- Neon is the legacy database, kept only until decommission (see
+-- docs/internal/MIGRATION.md); production has read and written Azure since the
+-- 2026-09-20 cutover, so applying this to Neon changes nothing the app reads.
+--
+-- With psql, the same way docs/azure-db-cutover.md applies out-of-band SQL:
+--
+--   export AZURE_PROD='postgresql://tracktoolkit_admin:<url-encoded pw>@tracktoolkit-pg.postgres.database.azure.com:5432/tracktoolkit?sslmode=require'
+--   docker run --rm -v "$PWD/docs/sql:/sql:ro" postgres:17 \
+--     psql "$AZURE_PROD" -v ON_ERROR_STOP=1 -f /sql/2026-09-account-lifecycle.sql
+--
+-- (password: Key Vault `tracktoolkit-kv`, secret `postgres-admin-password`.)
+--
+-- RUN IT BEFORE THE BRANCH MERGES. `main` deploys to App Service on every
+-- push, so the merge itself ships the code; the first request that touches
+-- `users."lastLoginAt"`, `users."disconnectedAt"` or `metrics` before this has
+-- run is a 500. Not applied by this branch.
 
 -- ── users: lifecycle stamps ────────────────────────────────────────────────
 
@@ -44,7 +60,14 @@ CREATE INDEX IF NOT EXISTS "users_disconnectedAt_idx" ON "users"("disconnectedAt
 CREATE TABLE IF NOT EXISTS "metrics" (
     "key" TEXT NOT NULL,
     "value" BIGINT NOT NULL,
-    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    -- No DEFAULT, matching docs/sql/2026-09-feedback.sql and, more to the
+    -- point, matching what `prisma migrate diff --from-empty
+    -- --to-schema-datamodel prisma/schema.prisma --script` actually emits for
+    -- this column (verified 2026-09-22; `@updatedAt` produces a bare
+    -- `TIMESTAMP(3) NOT NULL`). Prisma writes the value on every create and
+    -- update, so a default would never be used — and having one here would
+    -- make a later diff against the live database report drift.
+    "updatedAt" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "metrics_pkey" PRIMARY KEY ("key")
 );

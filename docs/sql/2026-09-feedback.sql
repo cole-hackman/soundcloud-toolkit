@@ -9,7 +9,23 @@
 -- survey_responses, or any of the cross-branch tables (chat_*, indexed_*,
 -- library_snapshots).
 --
--- Run this in the Neon SQL Editor, then deploy the backend.
+-- WHERE TO RUN THIS: the **Azure PostgreSQL Flexible Server** database
+-- `tracktoolkit` on `tracktoolkit-pg.postgres.database.azure.com`. Not Neon.
+-- Neon is the legacy database, kept only until decommission (see
+-- docs/internal/MIGRATION.md); production has read and written Azure since the
+-- 2026-09-20 cutover, so applying this to Neon changes nothing the app reads.
+--
+-- With psql, the same way docs/azure-db-cutover.md applies out-of-band SQL:
+--
+--   export AZURE_PROD='postgresql://tracktoolkit_admin:<url-encoded pw>@tracktoolkit-pg.postgres.database.azure.com:5432/tracktoolkit?sslmode=require'
+--   docker run --rm -v "$PWD/docs/sql:/sql:ro" postgres:17 \
+--     psql "$AZURE_PROD" -v ON_ERROR_STOP=1 -f /sql/2026-09-feedback.sql
+--
+-- (password: Key Vault `tracktoolkit-kv`, secret `postgres-admin-password`.)
+--
+-- RUN IT BEFORE THE BRANCH MERGES. `main` deploys to App Service on every
+-- push, so the merge itself ships the code; the first `POST /api/feedback`,
+-- `GET /api/feedback/mine` or admin inbox read before this has run is a 500.
 
 CREATE TABLE IF NOT EXISTS "feedback" (
     "id" TEXT NOT NULL,

@@ -65,8 +65,9 @@ Library & Export, and Discovery & Links. Underneath them:
 
 ## Running it
 
-Requires Node 18+, a Postgres database (Neon works), and a SoundCloud OAuth
-app (client ID and secret from developers.soundcloud.com).
+Requires Node 18+, a Postgres database, and a SoundCloud OAuth app (client ID
+and secret from developers.soundcloud.com). Production runs Azure Database for
+PostgreSQL Flexible Server; any Postgres 14+ works for development.
 
     git clone https://github.com/cole-hackman/tracktoolkit
     cd soundcloud-toolkit
@@ -130,18 +131,21 @@ slow, and that's the predictable complaint.
   branch whose schema is missing production tables would drop those tables —
   the sharpest foot-gun in the repo.
 - Observability is application logs plus the in-database operation log. No
-  metrics, no alerting, no error tracker. The only scheduled automation is a
-  GitHub Actions cron pinging `/health` every five minutes.
-- 176 tests across 26 suites pass locally (crypto, merge logic, validation, the
-  follow engine, the API client wrapper, plus route-level authz/CSRF boundary
-  tests under `tests/routes/`), but no CI runs them on push, and the frontend
-  has no tests.
+  metrics, no alerting, no error tracker. Scheduled automation is a GitHub
+  Actions cron pinging `/health` every five minutes.
+- The Jest suite (crypto, merge logic, validation, the follow engine, the API
+  client wrapper, plus route-level authz/CSRF boundary tests under
+  `tests/routes/`) runs in CI on every push to `main`, and a failure blocks
+  the deploy. The frontend checks — `tsc`, `next lint`, the colour-contrast
+  gate and the Playwright suite — are not in CI yet and are run by hand.
 
 ## What I'd do next
 
 1. Surface what a merge filtered out. The counts already come back in the API
    response; the UI drops them on the floor.
-2. Wire the existing Jest suite into CI — the tests exist, nothing runs them.
+2. Put the frontend checks in CI too. The backend suite gates the deploy; the
+   Playwright/axe suite, `tsc`, lint and the contrast gate still depend on
+   somebody remembering to run them.
 3. Move background-job state from memory into Postgres so a restart doesn't
    orphan running follow sessions.
 4. Finish the AI library chat on `feature/ai-library-chat` — the index tables
@@ -182,8 +186,14 @@ is left is outside the repository and has to be done by hand, in this order:
 
 ## Stack
 
-Next.js 15 · React 18 · TypeScript · Tailwind CSS · Express · Prisma ·
+Next.js 15 · React 18 · TypeScript · Tailwind CSS 3.4 · Express · Prisma ·
 PostgreSQL (Azure Flexible Server) · Azure App Service
+
+The frontend has a Playwright suite with `@axe-core/playwright`
+(`frontend-UI/e2e/`): every page is audited for serious and critical
+accessibility violations and for horizontal overflow at 1280, 430, 390 and
+360 px, alongside a colour-contrast gate over the design tokens
+(`npm run contrast`).
 
 ## License
 

@@ -16,6 +16,14 @@ const PORT = Number(process.env.E2E_PORT || 4173);
 
 export default defineConfig({
   testDir: "e2e",
+  /**
+   * Checks that the server on `PORT` is *this* checkout's harness before any
+   * test runs — see e2e/global-setup.mjs. `reuseExistingServer` below cannot
+   * tell a healthy orphan from the server it meant to start, and an orphan
+   * serving another worktree's `out/` fails every test while describing code
+   * that is not under test.
+   */
+  globalSetup: "./e2e/global-setup.mjs",
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
@@ -29,6 +37,10 @@ export default defineConfig({
   webServer: {
     command: `node e2e/static-server.mjs --port=${PORT}`,
     port: PORT,
+    // Kept true so a hand-started harness survives a run. What makes it safe
+    // is `globalSetup`, which refuses to continue unless whatever is listening
+    // identifies itself as this checkout's server. Without that check this
+    // flag silently adopts an orphan — see the comment in global-setup.mjs.
     reuseExistingServer: true,
   },
 

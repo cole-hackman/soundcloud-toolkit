@@ -948,8 +948,29 @@ npx prisma studio         # Open GUI at localhost:5555
 cd frontend-UI
 npm run dev          # Next.js dev server with turbopack
 npm run build        # Static export → frontend-UI/out/
-npm run lint         # ESLint
+npm run lint         # ESLint (npx tsc --noEmit && next lint)
+npm run test:e2e     # Playwright against out/ — run `npm run build` first
 ```
+
+**E2E port, and the orphan that eats an afternoon.** The harness serves
+`frontend-UI/out/` on `E2E_PORT` (default 4173), and `webServer` is configured
+with `reuseExistingServer: true` so a hand-started server survives a run. That
+flag adopts *anything* already listening — an aborted run's leftover, or
+another worktree's harness serving a different checkout's `out/`. Such a server
+answers `/` with a healthy 200, so Playwright is satisfied, and the whole suite
+then runs against someone else's HTML and fails in ways that describe code you
+are not editing.
+
+`e2e/global-setup.mjs` refuses to start in that case: the static server exposes
+`/__e2e/identity` carrying the absolute `out/` path it is serving, and the run
+aborts unless that matches this checkout. The message names the command:
+
+```bash
+lsof -nP -iTCP:$E2E_PORT -sTCP:LISTEN   # find the process holding the port
+E2E_PORT=4211 npm run test:e2e          # or just use another port
+```
+
+Two checkouts running the suite at once need different `E2E_PORT` values.
 
 ---
 

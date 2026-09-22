@@ -30,6 +30,7 @@ import {
   usePlaylistDetailQuery,
   usePlaylistsQuery,
 } from "@/lib/queries";
+import { asArray } from "@/lib/api-shape";
 
 interface Playlist {
   id: number;
@@ -117,7 +118,7 @@ export default function DownloadsPage() {
     selectedSource != null && (isLikedSource ? likesQuery.isLoading : playlistDetailQuery.isLoading);
 
   const playlists = useMemo(
-    () => (playlistsQuery.data?.collection || []) as unknown as Playlist[],
+    () => asArray<Playlist>(playlistsQuery.data?.collection),
     [playlistsQuery.data?.collection],
   );
   const likesCount =
@@ -135,9 +136,9 @@ export default function DownloadsPage() {
       return;
     }
     if (isLikedSource) {
-      setTracks((likesQuery.data?.collection || []) as unknown as Track[]);
+      setTracks(asArray<Track>(likesQuery.data?.collection));
     } else if (playlistDetailQuery.data) {
-      setTracks((playlistDetailQuery.data.tracks || []) as unknown as Track[]);
+      setTracks(asArray<Track>(playlistDetailQuery.data.tracks));
     }
   }, [selectedSource, isLikedSource, likesQuery.data, playlistDetailQuery.data]);
 

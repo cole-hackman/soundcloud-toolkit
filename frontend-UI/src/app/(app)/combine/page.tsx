@@ -24,6 +24,7 @@ import {
   useAnnounce,
 } from "@/components/ui";
 import { invalidatePlaylistCaches, playlistsQueryOptions } from "@/lib/queries";
+import { asArray } from "@/lib/api-shape";
 
 interface Playlist {
   id: number;
@@ -41,7 +42,7 @@ export default function CombinePlaylistsPage() {
 
   const { data: playlistsData } = useSuspenseQuery(playlistsQueryOptions());
   const userPlaylists = useMemo(
-    () => (playlistsData?.collection || []) as unknown as Playlist[],
+    () => asArray<Playlist>(playlistsData?.collection),
     [playlistsData?.collection],
   );
 

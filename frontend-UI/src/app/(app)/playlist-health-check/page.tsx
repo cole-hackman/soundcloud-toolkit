@@ -22,6 +22,7 @@ import {
   usePlaylistDetailQuery,
   usePlaylistsQuery,
 } from "@/lib/queries";
+import { asArray } from "@/lib/api-shape";
 
 interface Playlist {
   id: number;
@@ -57,7 +58,7 @@ export default function PlaylistHealthCheckPage() {
   const playlistDetailQuery = usePlaylistDetailQuery(selectedPlaylist?.id ?? 0, {
     enabled: selectedPlaylist != null,
   });
-  const playlists = (playlistsQuery.data?.collection || []) as unknown as Playlist[];
+  const playlists = asArray<Playlist>(playlistsQuery.data?.collection);
   const loading = playlistsQuery.isLoading;
   const loadingTracks = selectedPlaylist != null && playlistDetailQuery.isLoading;
 
@@ -74,7 +75,7 @@ export default function PlaylistHealthCheckPage() {
     }
 
     if (playlistDetailQuery.data) {
-      setTracks((playlistDetailQuery.data.tracks || []) as unknown as Track[]);
+      setTracks(asArray<Track>(playlistDetailQuery.data.tracks));
     }
   }, [playlistDetailQuery.data, playlistDetailQuery.isError]);
 

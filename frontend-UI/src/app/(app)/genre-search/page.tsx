@@ -23,6 +23,7 @@ import {
   useAnnounce,
 } from "@/components/ui";
 import { invalidatePlaylistCaches, usePlaylistsQuery } from "@/lib/queries";
+import { asArray } from "@/lib/api-shape";
 
 const COMMON_GENRES = [
   "house", "techno", "ambient", "hip-hop", "drum-and-bass",
@@ -99,7 +100,7 @@ export default function GenreSearchPage() {
   const [addSuccess, setAddSuccess] = useState("");
   const [addError, setAddError] = useState("");
   const playlistsQuery = usePlaylistsQuery({ enabled: showAddPanel && addMode === "existing" });
-  const userPlaylists = (playlistsQuery.data?.collection || []) as unknown as Playlist[];
+  const userPlaylists = asArray<Playlist>(playlistsQuery.data?.collection);
   const loadingPlaylists = playlistsQuery.isLoading;
 
   const buildSearchParams = () => {

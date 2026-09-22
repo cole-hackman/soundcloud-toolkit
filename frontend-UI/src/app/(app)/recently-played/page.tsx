@@ -27,6 +27,7 @@ import {
   usePlaylistsQuery,
 } from "@/lib/queries";
 import { useDebouncedValue } from "@/lib/useDebouncedValue";
+import { asArray } from "@/lib/api-shape";
 
 interface Track {
   id: number;
@@ -64,11 +65,11 @@ export default function RecentlyPlayedPage() {
   });
 
   const tracks = useMemo(
-    () => (recentlyPlayedQuery.data?.collection || []) as unknown as Track[],
+    () => asArray<Track>(recentlyPlayedQuery.data?.collection),
     [recentlyPlayedQuery.data?.collection],
   );
   const playlists = useMemo(
-    () => (playlistsQuery.data?.collection || []) as unknown as Playlist[],
+    () => asArray<Playlist>(playlistsQuery.data?.collection),
     [playlistsQuery.data?.collection],
   );
   const loading = recentlyPlayedQuery.isLoading;
@@ -151,7 +152,7 @@ export default function RecentlyPlayedPage() {
         }
       } else if (selectedPlaylistId) {
         if (selectedPlaylistQuery.data) {
-          const existingIds = ((selectedPlaylistQuery.data.tracks || []) as unknown as Track[]).map((t) => t.id);
+          const existingIds = (asArray<Track>(selectedPlaylistQuery.data.tracks)).map((t) => t.id);
           const mergedIds = [...existingIds, ...trackIds];
           const response = await apiFetch(`/api/playlists/${selectedPlaylistId}`, {
             method: "PUT",

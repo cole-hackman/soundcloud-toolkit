@@ -26,6 +26,7 @@ import {
   invalidatePlaylistCaches,
   queryKeys,
 } from "@/lib/queries";
+import { asArray } from "@/lib/api-shape";
 
 // SoundCloud bulk endpoints cap at 100 ids per request; chunk larger playlists.
 const LIKE_BATCH_SIZE = 100;
@@ -65,13 +66,13 @@ export default function PlaylistToLikesPage() {
 
   const playlistsQuery = usePlaylistsQuery();
   const playlists = useMemo(
-    () => (playlistsQuery.data?.collection || []) as unknown as PlaylistOption[],
+    () => asArray<PlaylistOption>(playlistsQuery.data?.collection),
     [playlistsQuery.data?.collection],
   );
 
   const detailQuery = usePlaylistDetailQuery(selectedPlaylist?.id ?? 0);
   const tracks = useMemo(
-    () => (detailQuery.data?.tracks || []) as unknown as PlaylistTrack[],
+    () => asArray<PlaylistTrack>(detailQuery.data?.tracks),
     [detailQuery.data?.tracks],
   );
 

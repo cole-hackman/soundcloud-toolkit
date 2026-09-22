@@ -39,6 +39,7 @@ import {
 } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { invalidatePlaylistCaches, useFollowingsQuery, usePlaylistsQuery } from "@/lib/queries";
+import { asArray } from "@/lib/api-shape";
 
 interface Following {
   id: number;
@@ -121,11 +122,11 @@ export default function FollowingLibraryPage() {
   const followingsQuery = useFollowingsQuery();
   const ownPlaylistsQuery = usePlaylistsQuery({ enabled: addMode === "existing" });
   const followings = useMemo(
-    () => (followingsQuery.data?.collection || []) as unknown as Following[],
+    () => asArray<Following>(followingsQuery.data?.collection),
     [followingsQuery.data?.collection],
   );
   const ownPlaylists = useMemo(
-    () => (ownPlaylistsQuery.data?.collection || []) as unknown as Playlist[],
+    () => asArray<Playlist>(ownPlaylistsQuery.data?.collection),
     [ownPlaylistsQuery.data?.collection],
   );
   const loadingUsers = followingsQuery.isLoading;

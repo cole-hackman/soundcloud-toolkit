@@ -15,6 +15,9 @@ import type { Page } from "@playwright/test";
 
 const FAKE_USER = {
   userId: "u1",
+  // The account page prints this back as "SoundCloud id N"; it is the same
+  // fake numeric id FAKE_ME carries.
+  soundcloudId: 1000001,
   username: "testuser",
   displayName: "Test User",
   avatarUrl: null as string | null,
@@ -82,6 +85,34 @@ const FAKE_FEEDBACK_CREATED = {
 /** `GET /api/feedback/mine` — empty, so the "Your recent reports" list stays
  *  out of the way of the submit flow under test. */
 const FAKE_FEEDBACK_MINE = { items: [] as unknown[] };
+
+/**
+ * A stand-in for `GET /api/auth/export`. Shaped like the real payload's
+ * envelope but with one obviously-fake row per collection — the account page
+ * only navigates to this route, so nothing renders it.
+ */
+const FAKE_EXPORT = {
+  schemaVersion: 1,
+  generatedAt: "2026-09-22T12:00:00.000Z",
+  user: {
+    id: "u1",
+    soundcloudId: 1000001,
+    username: "testuser",
+    displayName: "Test User",
+    avatarUrl: null as string | null,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    lastLoginAt: "2026-09-22T11:00:00.000Z",
+  },
+  token: { expiresAt: "2026-09-23T11:00:00.000Z" },
+  operationLogs: [] as unknown[],
+  growthActions: [] as unknown[],
+  feedback: [] as unknown[],
+  rebrandVotes: [] as unknown[],
+  surveyResponses: [] as unknown[],
+  betaSignups: [] as unknown[],
+  libraryCacheState: [] as unknown[],
+  libraryCachePages: [] as unknown[],
+};
 
 const FAKE_GROWTH_LIMITS = {
   dailyCap: 50,
@@ -184,6 +215,27 @@ export async function mockApi(page: Page): Promise<void> {
     }
     if (method === "GET" && path === "/api/feedback/mine") {
       return route.fulfill(json(FAKE_FEEDBACK_MINE));
+    }
+
+    // ── Account page (see e2e/account.spec.ts) ──
+    // The real route answers with `Content-Disposition: attachment`, so the
+    // browser saves the file instead of navigating; keep that here, otherwise
+    // the click would replace the page under the rest of the test.
+    if (method === "GET" && path === "/api/auth/export") {
+      return route.fulfill({
+        ...json(FAKE_EXPORT),
+        headers: {
+          "content-type": "application/json",
+          "content-disposition":
+            'attachment; filename="track-toolkit-export-2026-09-22.json"',
+        },
+      });
+    }
+    if (method === "POST" && path === "/api/auth/disconnect") {
+      return route.fulfill(json({ success: true }));
+    }
+    if (method === "DELETE" && path === "/api/auth/account") {
+      return route.fulfill(json({ success: true }));
     }
 
     // eslint-disable-next-line no-console

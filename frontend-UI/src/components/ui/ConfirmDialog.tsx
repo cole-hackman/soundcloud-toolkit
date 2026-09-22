@@ -12,6 +12,12 @@ interface ConfirmDialogProps {
   confirmLabel?: string;
   cancelLabel?: string;
   variant?: "default" | "destructive";
+  /**
+   * Blocks the confirm button. For a prompt that asks the person to type
+   * something before they can go ahead, so the gate is visible in the button
+   * rather than only enforced by a handler that silently returns early.
+   */
+  confirmDisabled?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
   children?: React.ReactNode;
@@ -36,6 +42,7 @@ export function ConfirmDialog({
   confirmLabel = "Confirm",
   cancelLabel = "Cancel",
   variant = "default",
+  confirmDisabled = false,
   onConfirm,
   onCancel,
   children,
@@ -87,6 +94,7 @@ export function ConfirmDialog({
             type="button"
             variant={variant === "destructive" ? "destructive" : "default"}
             onClick={onConfirm}
+            disabled={confirmDisabled}
             className="flex-1"
           >
             {confirmLabel}

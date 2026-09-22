@@ -91,11 +91,15 @@ for (const { path, needsMock, fixme } of PAGES) {
  * `opacity-0 group-hover:opacity-100` below `sm`: invisible on a phone, and
  * still tappable, so a stray touch reordered or removed a track with nothing
  * on screen to explain it.
+ *
+ * Runs on **every** project, not just mobile: the fix is "visible at every
+ * width", and a desktop hover-reveal would be just as much a regression in
+ * the other direction. Only the overflow assertion is mobile-scoped.
  */
 test("playlist-modifier row actions are visible and fit: /playlist-modifier/", async ({
   page,
 }, testInfo) => {
-  test.skip(!MOBILE_PROJECTS.includes(testInfo.project.name), "mobile projects only");
+  const isMobile = MOBILE_PROJECTS.includes(testInfo.project.name);
 
   await mockApi(page);
   await page.goto("/playlist-modifier/");
@@ -106,15 +110,26 @@ test("playlist-modifier row actions are visible and fit: /playlist-modifier/", a
     name: "More actions for Sample Playlist Track 1",
   });
   await expect(moreActions).toBeVisible();
+  // No hover, no focus — they are simply on.
   await expect(moreActions).toHaveCSS("opacity", "1");
 
-  const { scrollWidth, clientWidth } = await page.evaluate(() => ({
-    scrollWidth: document.documentElement.scrollWidth,
-    clientWidth: document.documentElement.clientWidth,
-  }));
-  expect(scrollWidth, `scrollWidth=${scrollWidth} clientWidth=${clientWidth}`).toBeLessThanOrEqual(
-    clientWidth,
-  );
+  if (isMobile) {
+    const { scrollWidth, clientWidth } = await page.evaluate(() => ({
+      scrollWidth: document.documentElement.scrollWidth,
+      clientWidth: document.documentElement.clientWidth,
+    }));
+    expect(
+      scrollWidth,
+      `scrollWidth=${scrollWidth} clientWidth=${clientWidth}`,
+    ).toBeLessThanOrEqual(clientWidth);
+  } else {
+    // The inline reorder/remove trio only renders from `sm` up; it must be on
+    // without a hover too.
+    await expect(page.getByRole("button", { name: "Move down" }).first()).toHaveCSS(
+      "opacity",
+      "1",
+    );
+  }
 
   // The sheet replaces a popover that was clipped inside the virtual
   // scroller; on a phone it is also where reorder and remove live.
@@ -174,6 +189,53 @@ test("growth tabs: arrow keys move between panels and none of them overflow: /gr
       `${await tab.textContent()}: scrollWidth=${scrollWidth} clientWidth=${clientWidth}`,
     ).toBeLessThanOrEqual(clientWidth);
   }
+});
+
+/**
+ * `GET /api/growth/history` is cast from `unknown`, so TypeScript vouched for
+ * `sessions`/`actions` it had never seen: a response missing either key took
+ * the whole History tab down on `sessions.length`. The empty state is the
+ * honest answer, and it has to fit a phone like everything else.
+ */
+test("growth history survives a response with no sessions: /growth/", async ({
+  page,
+}, testInfo) => {
+  test.skip(!MOBILE_PROJECTS.includes(testInfo.project.name), "mobile projects only");
+
+  await mockApi(page);
+  // Registered after `mockApi`, so it wins for this one endpoint.
+  await page.route("**/api/growth/history", (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: "{}" }),
+  );
+
+  const crashes: string[] = [];
+  page.on("pageerror", (error) => crashes.push(error.message));
+
+  await page.goto("/growth/");
+
+  // Awaiting the response is load-bearing. While the query is still in
+  // flight `data` is `undefined`, which every version of this code handles;
+  // the crash only happens on the re-render that receives `{}`. Assert
+  // before that lands and the test passes with the bug still in place.
+  const responded = page.waitForResponse(
+    (response) => response.url().includes("/api/growth/history"),
+  );
+  await page.getByRole("tab", { name: "History" }).click();
+  await responded;
+
+  await expect(page.getByText("No sessions logged")).toBeVisible();
+  // Nothing is selectable, so the panel rendered rather than being replaced
+  // by an error boundary.
+  await expect(page.getByRole("button", { name: "Check" })).toBeVisible();
+  expect(crashes, crashes.join("\n")).toEqual([]);
+
+  const { scrollWidth, clientWidth } = await page.evaluate(() => ({
+    scrollWidth: document.documentElement.scrollWidth,
+    clientWidth: document.documentElement.clientWidth,
+  }));
+  expect(scrollWidth, `scrollWidth=${scrollWidth} clientWidth=${clientWidth}`).toBeLessThanOrEqual(
+    clientWidth,
+  );
 });
 
 test("dashboard tap targets are at least 24x24: /dashboard/", async ({ page }, testInfo) => {

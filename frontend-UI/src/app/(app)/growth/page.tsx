@@ -264,9 +264,22 @@ export default function GrowthPage() {
   // Fetch History & Stats
   const historyQuery = useGrowthHistoryQuery({ enabled: activeTab === 'history' });
   const historyData = historyQuery.data as unknown as
-    | { actions: GrowthAction[]; sessions: SessionGroup[] }
+    | { actions?: GrowthAction[]; sessions?: SessionGroup[] }
     | undefined;
   const refetchHistory = historyQuery.refetch;
+
+  // Normalised once, and every read below goes through these. The raw shape
+  // is cast from `unknown`, so TypeScript was vouching for arrays it had
+  // never seen: a response missing either key — a `{}` from an error path, a
+  // rename upstream — turned `historyData.sessions.length` into a render
+  // crash that took the whole History tab down. Empty arrays render the
+  // empty state instead, which is the honest answer to "no history".
+  const historySessions: SessionGroup[] = Array.isArray(historyData?.sessions)
+    ? historyData.sessions
+    : [];
+  const historyActions: GrowthAction[] = Array.isArray(historyData?.actions)
+    ? historyData.actions
+    : [];
 
   const { data: statsData, refetch: refetchStats } = useGrowthStatsQuery({
     enabled: activeTab === 'history' || activeTab === 'analytics',
@@ -624,8 +637,8 @@ export default function GrowthPage() {
     !searchInspirations || f.username?.toLowerCase().includes(searchInspirations.toLowerCase())
   );
 
-  const selectedSession = historyData?.sessions.find(s => s.sessionId === selectedSessionId);
-  const sessionActions = historyData?.actions.filter(a => a.sessionId === selectedSessionId) || [];
+  const selectedSession = historySessions.find(s => s.sessionId === selectedSessionId);
+  const sessionActions = historyActions.filter(a => a.sessionId === selectedSessionId);
 
   return (
     <PageContainer maxWidth="wide" className="pb-28">
@@ -1148,7 +1161,7 @@ export default function GrowthPage() {
                     nowrap
                     className="px-2"
                     onClick={() => checkFollowbacksMutation.mutate(null)}
-                    disabled={checkingFollowbacks || historyData?.actions.length === 0}
+                    disabled={checkingFollowbacks || historyActions.length === 0}
                   >
                     {checkingFollowbacks ? (
                       <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />
@@ -1160,7 +1173,7 @@ export default function GrowthPage() {
                   </Button>
                 </div>
 
-                {!historyData || historyData.sessions.length === 0 ? (
+                {historySessions.length === 0 ? (
                   <EmptyState
                     icon={<Clock className="w-8 h-8" />}
                     title="No sessions logged"
@@ -1168,7 +1181,7 @@ export default function GrowthPage() {
                   />
                 ) : (
                   <div className="space-y-2 max-h-[60dvh] overflow-y-auto">
-                    {historyData.sessions.map((sess) => {
+                    {historySessions.map((sess) => {
                       const isActive = selectedSessionId === sess.sessionId;
                       const followbackPercent = sess.totalActions > 0
                         ? Math.round((sess.followedBack / sess.totalActions) * 100)

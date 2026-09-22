@@ -73,14 +73,17 @@ type TransferAction = "move" | "duplicate";
 type BannerState = { tone: "success" | "warning" | "error"; text: string } | null;
 
 /**
- * Row actions are always on below `sm`. They used to be `opacity-0` with a
- * `group-hover` reveal there, which on a touch screen means an invisible but
- * fully tappable cluster sitting on top of every row — the worst of both
- * failures. Hover-to-reveal is kept from `sm` up, where a pointer exists, and
- * `group-focus-within` keeps it reachable from the keyboard.
+ * Row actions are visible at every width, full stop.
+ *
+ * They used to be `opacity-0 group-hover:opacity-100 sm:opacity-100`: on a
+ * touch screen that is an invisible but fully tappable cluster sitting on top
+ * of every row — a stray touch reordered or removed a track with nothing on
+ * screen to explain it. There is no hover-reveal to preserve on the other
+ * side of it either, because from `sm` up the cluster was already permanently
+ * visible; reintroducing one would have been a regression for mouse users, so
+ * the reveal is gone rather than moved.
  */
-const ROW_ACTIONS_CLASS =
-  "flex shrink-0 items-center gap-1 transition opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100";
+const ROW_ACTIONS_CLASS = "flex shrink-0 items-center gap-1";
 
 /**
  * The download affordance for a track row. Both states carry visible text —
@@ -750,7 +753,7 @@ export default function PlaylistModifierPage() {
                   {filteredLikedTracks.map((track) => (
                     <div
                       key={track.id}
-                      className="flex items-center gap-3 sm:gap-4 p-3 rounded-xl bg-gray-50 dark:bg-secondary/20 group"
+                      className="flex items-center gap-3 sm:gap-4 p-3 rounded-xl bg-gray-50 dark:bg-secondary/20"
                     >
                       <img
                         src={track.artwork_url || "/brand/icon-192.png"}
@@ -905,7 +908,7 @@ export default function PlaylistModifierPage() {
                       className="pb-2"
                     >
                     <div
-                      className="flex items-center gap-3 sm:gap-4 p-3 rounded-xl bg-gray-50 dark:bg-secondary/20 group"
+                      className="flex items-center gap-3 sm:gap-4 p-3 rounded-xl bg-gray-50 dark:bg-secondary/20"
                     >
                       <span className="hidden sm:block w-8 text-center text-sm text-muted-foreground-subtle">
                         {globalIndex + 1}

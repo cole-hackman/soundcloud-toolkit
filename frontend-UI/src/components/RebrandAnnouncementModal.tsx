@@ -82,7 +82,7 @@ export function RebrandAnnouncementModal({
           <Link
             href="/faq/#rebrand"
             onClick={onAcknowledge}
-            className="inline-flex h-11 items-center justify-center rounded-lg border border-border px-4 text-sm font-medium text-foreground transition hover:border-primary/40 hover:text-primary sm:flex-1"
+            className="inline-flex h-11 items-center justify-center rounded-lg border border-border px-4 text-sm font-medium text-foreground transition hover:border-primary/40 hover:text-primary-text sm:flex-1"
           >
             Read the FAQ
           </Link>

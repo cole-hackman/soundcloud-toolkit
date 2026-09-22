@@ -35,7 +35,7 @@ export default function AboutPage() {
               Formerly SoundCloud Toolkit — same product, new name. See the{" "}
               <Link
                 href="/faq/#rebrand"
-                className="font-medium text-foreground underline underline-offset-2 transition hover:text-primary"
+                className="font-medium text-foreground underline underline-offset-2 transition hover:text-primary-text"
               >
                 rebrand FAQ
               </Link>{" "}
@@ -184,7 +184,7 @@ export default function AboutPage() {
                 . See the{" "}
                 <Link
                   href="/faq"
-                  className="font-medium text-foreground underline underline-offset-2 transition hover:text-primary"
+                  className="font-medium text-foreground underline underline-offset-2 transition hover:text-primary-text"
                 >
                   FAQ
                 </Link>{" "}

@@ -65,7 +65,7 @@ const thClass =
 const tdClass = "border-b border-border px-3 py-3 align-top text-sm";
 /** In-sentence link, matching the FAQ's. */
 const inlineLinkClass =
-  "font-medium text-foreground underline underline-offset-2 transition hover:text-primary";
+  "font-medium text-foreground underline underline-offset-2 transition hover:text-primary-text";
 
 /** Rows of the "What we collect and why" table. */
 const COLLECTED: { data: string; source: string; why: string; kept: string }[] = [

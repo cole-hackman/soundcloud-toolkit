@@ -36,7 +36,14 @@ const PAGES: PageCase[] = [
   { path: "/accessibility/" },
   { path: "/login/" },
   { path: "/does-not-exist/", expectedStatus: 404 },
-  { path: "/dashboard/", needsMock: true },
+  {
+    path: "/dashboard/",
+    needsMock: true,
+    // `dashboard/loading.tsx` skeletons the header instead of rendering a
+    // `PageHeader`, so the h1 alone would be a fair gate here — but the tool
+    // search only exists on the loaded page, which is the stronger signal.
+    ready: async (page) => page.getByLabel("Search tools"),
+  },
   {
     path: "/like-manager/",
     needsMock: true,
@@ -54,6 +61,16 @@ const PAGES: PageCase[] = [
       await page.getByLabel("Keywords").fill("sample");
       await page.getByRole("button", { name: "Search", exact: true }).click();
       return page.getByRole("heading", { name: "Matches" });
+    },
+  },
+  {
+    path: "/playlist-health-check/",
+    needsMock: true,
+    // The scan results — summary bar, filter pills, per-row badges — only
+    // exist once a playlist is picked.
+    ready: async (page) => {
+      await page.getByRole("button", { name: /Sample Playlist 1/ }).click();
+      return page.getByRole("group", { name: "Filter tracks" });
     },
   },
 ];
@@ -84,6 +101,14 @@ for (const { path, needsMock, fixme, expectedStatus, ready } of PAGES) {
     // `PageCase.ready`.
     if (needsMock) {
       await expect(await (ready ?? h1)(page)).toBeVisible();
+
+      // Park the cursor. A `ready` hook that clicks leaves it wherever it
+      // clicked, and after the re-render some other control can be sitting
+      // under it — so axe measures a `:hover` style on an element nobody is
+      // pointing at, and which project's viewport happens to put a control
+      // there decides whether the run passes. Axe never hovers anything by
+      // itself; this restores that. (0,0) is over layout containers only.
+      await page.mouse.move(0, 0);
     }
 
     const results = await new AxeBuilder({ page })

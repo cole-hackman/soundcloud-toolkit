@@ -74,6 +74,25 @@ const FAKE_FOLLOWINGS_PAGED = {
 };
 
 /**
+ * `GET /api/playlists/:id`. One of each health state, so the health check's
+ * summary bar, filter pills and per-row badges are all really on the page when
+ * it is audited — an all-playable list would render none of them.
+ */
+const FAKE_PLAYLIST_DETAIL = {
+  id: 1,
+  title: "Sample Playlist 1",
+  track_count: 4,
+  artwork_url: null as string | null,
+  permalink_url: "https://soundcloud.com/testuser/sets/sample-playlist-1",
+  tracks: [
+    { id: 100, title: "Sample Track 1", user: { username: "testartist" }, artwork_url: null, duration: 200000, access: "playable", streamable: true, blocked_at: null },
+    { id: 101, title: "Sample Track 2", user: { username: "testartist" }, artwork_url: null, duration: 210000, access: "playable", streamable: true, blocked_at: null },
+    { id: 102, title: "Sample Track 3", user: { username: "testartist" }, artwork_url: null, duration: 190000, access: "preview", streamable: true, blocked_at: null },
+    { id: 103, title: "Sample Track 4", user: { username: "testartist" }, artwork_url: null, duration: 180000, access: "blocked", streamable: false, blocked_at: "2026-01-01T00:00:00.000Z" },
+  ],
+};
+
+/**
  * `GET /api/playlists/search-tracks`. Two of the three rows are the same track
  * in the same playlist, which is what makes the "x2 in this playlist" badge —
  * the widest thing on a match row — part of what gets audited and measured.
@@ -230,6 +249,11 @@ export async function mockApi(page: Page): Promise<void> {
     }
     if (method === "GET" && path === "/api/playlists") {
       return route.fulfill(json(FAKE_PLAYLISTS));
+    }
+    if (method === "GET" && /^\/api\/playlists\/\d+$/.test(path)) {
+      return route.fulfill(
+        json({ ...FAKE_PLAYLIST_DETAIL, id: Number(path.split("/").pop()) }),
+      );
     }
     if (method === "GET" && path === "/api/likes/paged") {
       return route.fulfill(json(FAKE_LIKES_PAGED));

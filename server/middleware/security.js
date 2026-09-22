@@ -3,12 +3,15 @@ import logger from '../lib/logger.js';
 import { safeError } from '../lib/safe-error.js';
 
 /**
- * Content-Security-Policy directives.
+ * Content-Security-Policy directives shared by every page.
  *
  * Exported so `tests/security-headers.test.js` can assert the no-third-party
  * posture directly: the app loads no analytics, no tag manager and no external
  * fonts or widgets, so the only script and style sources are our own origin
  * plus `'unsafe-inline'`.
+ *
+ * `frameSrc` is `'none'` here and stays that way on every user-facing page.
+ * The admin console is the single exception — see `securityHeaders` below.
  */
 export const cspDirectives = {
   defaultSrc: ["'self'"],
@@ -22,17 +25,35 @@ export const cspDirectives = {
   frameSrc: ["'none'"],
 };
 
+/** The one origin the admin console may frame: SoundCloud's embed player. */
+export const ADMIN_FRAME_SRC = 'https://w.soundcloud.com';
+
+function buildHelmet(directives) {
+  return helmet({
+    contentSecurityPolicy: { directives },
+    crossOriginEmbedderPolicy: false, // Disable for SoundCloud embeds if needed
+    crossOriginResourcePolicy: { policy: "cross-origin" }, // Allow SoundCloud resources
+  });
+}
+
+const defaultHeaders = buildHelmet(cspDirectives);
+const adminHeaders = buildHelmet({ ...cspDirectives, frameSrc: [ADMIN_FRAME_SRC] });
+
+/** True for the admin console document and its sub-paths, never for /api. */
+export function isAdminPagePath(path) {
+  return path === '/admin' || path.startsWith('/admin/');
+}
+
 /**
- * Security headers middleware
- * Configures helmet with appropriate security headers
+ * Security headers middleware. Every response gets the base policy; only
+ * the admin console document (`/admin`, `/admin/`) gets `frame-src` opened
+ * to the SoundCloud player. A CSP governs the document it is served with,
+ * so widening it here cannot affect any other page.
  */
-export const securityHeaders = helmet({
-  contentSecurityPolicy: {
-    directives: cspDirectives,
-  },
-  crossOriginEmbedderPolicy: false, // Disable for SoundCloud embeds if needed
-  crossOriginResourcePolicy: { policy: "cross-origin" }, // Allow SoundCloud resources
-});
+export const securityHeaders = (req, res, next) => {
+  if (isAdminPagePath(req.path)) return adminHeaders(req, res, next);
+  return defaultHeaders(req, res, next);
+};
 
 
 /**

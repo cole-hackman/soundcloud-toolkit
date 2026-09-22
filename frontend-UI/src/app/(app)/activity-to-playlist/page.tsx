@@ -11,6 +11,7 @@ import {
   LoadingSpinner,
   PageContainer,
   PageHeader,
+  SelectableList,
   Skeleton,
   TrackRow,
 } from "@/components/ui";
@@ -241,7 +242,7 @@ export default function ActivityToPlaylistPage() {
                 </button>
               </div>
 
-              <div className="space-y-2 max-h-[600px] overflow-y-auto">
+              <SelectableList className="max-h-[600px] overflow-y-auto">
                 {filteredActivities.map((activity, index) => {
                   const track = activity.origin;
                   const isSelected = selected.has(track.id);
@@ -259,6 +260,7 @@ export default function ActivityToPlaylistPage() {
 
                   return (
                     <TrackRow
+                      as="li"
                       key={track.id}
                       track={{
                         ...track,
@@ -269,7 +271,7 @@ export default function ActivityToPlaylistPage() {
                     />
                   );
                 })}
-              </div>
+              </SelectableList>
             </div>
 
             {/* Save panel */}

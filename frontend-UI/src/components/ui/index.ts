@@ -11,6 +11,8 @@ export { ProgressBar } from "./ProgressBar";
 export { SectionHeading } from "./SectionHeading";
 export { EmptyState } from "./EmptyState";
 export { Skeleton } from "./Skeleton";
+export { SelectableRow } from "./SelectableRow";
+export { SelectableList } from "./SelectableList";
 export { TrackRow } from "./TrackRow";
 export { SelectionBanner } from "./SelectionBanner";
 export { Dialog } from "./Dialog";

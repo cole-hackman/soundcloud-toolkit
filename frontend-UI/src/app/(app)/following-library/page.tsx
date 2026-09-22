@@ -27,6 +27,7 @@ import {
   PageContainer,
   PageHeader,
   ResultPanel,
+  SelectableList,
   SelectionBanner,
   Skeleton,
   TrackRow,
@@ -509,9 +510,10 @@ export default function FollowingLibraryPage() {
                       emptyTitle="No public liked tracks"
                       emptyDescription="This user may keep likes private, or the API may not expose them."
                     >
-                      <div className="space-y-2">
+                      <SelectableList>
                         {tracks.map((track) => (
                           <TrackRow
+                            as="li"
                             key={track.id}
                             track={{
                               id: track.id,
@@ -529,7 +531,7 @@ export default function FollowingLibraryPage() {
                             onToggle={() => toggleTrack(track.id)}
                           />
                         ))}
-                      </div>
+                      </SelectableList>
                     </ContentListState>
                   </>
                 ) : (

@@ -11,6 +11,7 @@ import {
   LoadingSpinner,
   PageContainer,
   PageHeader,
+  SelectableList,
   SelectionBanner,
   TrackRow,
 } from "@/components/ui";
@@ -340,11 +341,12 @@ export default function GenreSearchPage() {
               />
             ) : (
               <>
-                <div className="space-y-2">
+                <SelectableList>
                   {results.map((track) => {
                     const isSelected = selectedTracks.has(track.id);
                     return (
                       <TrackRow
+                        as="li"
                         key={track.id}
                         track={{
                           ...track,
@@ -363,7 +365,7 @@ export default function GenreSearchPage() {
                       />
                     );
                   })}
-                </div>
+                </SelectableList>
 
                 {nextHref && (
                   <div className="mt-6 text-center">

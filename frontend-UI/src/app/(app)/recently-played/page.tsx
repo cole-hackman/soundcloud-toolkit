@@ -11,6 +11,7 @@ import {
   LoadingSpinner,
   PageContainer,
   PageHeader,
+  SelectableList,
   Skeleton,
   TrackRow,
 } from "@/components/ui";
@@ -220,13 +221,14 @@ export default function RecentlyPlayedPage() {
                 </button>
               </div>
 
-              <div className="space-y-2 max-h-[600px] overflow-y-auto">
+              <SelectableList className="max-h-[600px] overflow-y-auto">
                 {filteredTracks.map((track) => {
                   const isSelected = selected.has(track.id);
                   const subtitle = `${track.user?.username || "Unknown"} • ${formatDuration(track.duration)}`;
-                  
+
                   return (
                     <TrackRow
+                      as="li"
                       key={track.id}
                       track={{
                         ...track,
@@ -237,7 +239,7 @@ export default function RecentlyPlayedPage() {
                     />
                   );
                 })}
-              </div>
+              </SelectableList>
             </div>
 
             {/* Save panel */}

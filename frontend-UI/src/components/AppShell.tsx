@@ -409,6 +409,23 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     if (stored !== null) setSidebarCollapsed(stored === "true");
   }, []);
 
+  // The drawer is a phone affordance, but `Dialog` has no breakpoint of its
+  // own — rotating a tablet past `lg` while it was open left it sitting over
+  // the desktop rail with the body still scroll-locked.
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const desktop = window.matchMedia("(min-width: 1024px)");
+    if (desktop.matches) {
+      setMobileOpen(false);
+      return;
+    }
+    const onChange = (event: MediaQueryListEvent) => {
+      if (event.matches) setMobileOpen(false);
+    };
+    desktop.addEventListener("change", onChange);
+    return () => desktop.removeEventListener("change", onChange);
+  }, [mobileOpen]);
+
   const toggleSidebar = () => {
     const next = !sidebarCollapsed;
     setSidebarCollapsed(next);
@@ -433,7 +450,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         )}
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
-        onFocusCapture={() => setHasFocusWithin(true)}
+        onFocusCapture={(event) => {
+          // Keyboard focus only. Chromium (and Firefox off macOS) focuses a
+          // <button> on mousedown, so a plain focus check would mean clicking
+          // "Collapse sidebar" immediately re-expanded the rail and the
+          // control looked dead until you clicked somewhere else.
+          const target = event.target as HTMLElement;
+          if (typeof target.matches === "function" && target.matches(":focus-visible")) {
+            setHasFocusWithin(true);
+          }
+        }}
         onBlurCapture={(event) => {
           const next = event.relatedTarget as Node | null;
           if (!next || !asideRef.current?.contains(next)) setHasFocusWithin(false);

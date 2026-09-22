@@ -74,13 +74,72 @@ for (const { path, needsMock, fixme, expectedStatus } of PAGES) {
   });
 }
 
-/*
- * The shared `Dialog` primitive used to be exercised here through the
- * sidebar's delete-account confirm. That control moved to `/account` with the
- * rest of account management, so the primitive is now covered by the mobile
- * drawer — the one modal reachable from a mocked page without a write. See
- * `e2e/drawer.spec.ts`.
+/**
+ * The shared `Dialog` primitive, exercised through a confirm that is reachable
+ * from a mocked page without a write: `/like-manager/`'s bulk-unlike prompt.
+ * (It used to be the sidebar's delete-account confirm; that moved to
+ * `/account`.) Covers the five things a modal has to get right — it is
+ * labelled by its visible heading, `initialFocusRef` beats "first focusable",
+ * Tab wraps rather than escaping, Escape closes it, and focus goes back where
+ * it came from.
+ *
+ * The panel's focusables in DOM order are: "Export selection"
+ * (BulkReviewDetails), Cancel, then the confirm button. Cancel is in the
+ * middle, which is the point — it is focused first only because
+ * `ConfirmDialog` passes it as `initialFocusRef`.
  */
+test("Dialog: labelled by its heading, honours initialFocusRef, wraps Tab, Escape restores focus", async ({
+  page,
+}) => {
+  await mockApi(page);
+  await page.goto("/like-manager/");
+
+  // Select a track so the banner — and with it the trigger — appears.
+  const firstRow = page.getByRole("checkbox", { name: "Sample Track 1" });
+  await expect(firstRow).toBeVisible();
+  await firstRow.focus();
+  await page.keyboard.press("Space");
+
+  // Opened from the keyboard on purpose: Chromium does not focus a <button>
+  // on a mouse click, so a click would leave `document.body` as the element to
+  // restore to and the last assertion would prove nothing.
+  const trigger = page.getByRole("button", { name: /Unlike Selected/ });
+  await expect(trigger).toBeVisible();
+  await trigger.focus();
+  await trigger.press("Enter");
+
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toBeVisible();
+
+  // aria-labelledby must resolve to the visible h2, not to a hidden string.
+  await expect(dialog).toHaveAccessibleName("Unlike selected tracks?");
+  await expect(
+    dialog.getByRole("heading", { level: 2, name: "Unlike selected tracks?" }),
+  ).toBeVisible();
+
+  const exportButton = dialog.getByRole("button", { name: "Export selection" });
+  const cancel = dialog.getByRole("button", { name: "Cancel" });
+  const confirm = dialog.getByRole("button", { name: "Unlike", exact: true });
+
+  // Opens on Cancel, so a stray Enter never confirms a destructive action —
+  // and it is not the first focusable, so this can only pass via
+  // `initialFocusRef`.
+  await expect(cancel).toBeFocused();
+
+  // Shift+Tab off the first element wraps to the last, and Tab off the last
+  // wraps back to the first. Both assertions fail the moment focus is allowed
+  // to reach the page behind the dialog.
+  await page.keyboard.press("Shift+Tab");
+  await expect(exportButton).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(confirm).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(exportButton).toBeFocused();
+
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+  await expect(trigger).toBeFocused();
+});
 
 /**
  * Selection is a real checkbox, and the banner that appears is a status

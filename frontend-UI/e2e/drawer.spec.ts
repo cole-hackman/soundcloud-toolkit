@@ -77,15 +77,22 @@ test.describe("mobile drawer", () => {
     // The page behind a drawer must not scroll under it.
     expect(await bodyOverflow(page)).toBe("hidden");
 
-    // More presses than a short dialog has focusable elements, so the trap
-    // has to hold across the whole nav for this to pass.
-    for (let i = 0; i < 12; i += 1) {
-      await page.keyboard.press("Tab");
-      expect(
-        await focusIsInsideDialog(page),
-        `focus escaped the drawer after ${i + 1} Tab(s)`,
-      ).toBe(true);
-    }
+    // The trap is asserted at the two edges where it actually does something.
+    // Walking Tab a fixed number of times proves nothing here: the drawer has
+    // ~36 focusable elements, so focus would never reach the end and the loop
+    // would pass with no trap at all.
+    const closeButton = dialog.getByRole("button", { name: "Close menu" });
+    const lastFocusable = dialog.getByRole("link", { name: "Support Me", exact: true });
+
+    await expect(closeButton).toBeFocused();
+
+    // Backwards off the first element wraps to the last...
+    await page.keyboard.press("Shift+Tab");
+    await expect(lastFocusable).toBeFocused();
+
+    // ...and forwards off the last wraps back to the first.
+    await page.keyboard.press("Tab");
+    await expect(closeButton).toBeFocused();
   });
 
   test("Escape closes it, returns focus to the hamburger and unlocks body scroll", async ({

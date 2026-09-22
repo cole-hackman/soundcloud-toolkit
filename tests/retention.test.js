@@ -114,11 +114,17 @@ describe('cutoff dates', () => {
     }
   });
 
-  test('disconnected accounts are removed after a 7-day grace period', async () => {
+  // SIX days, not seven, and this expectation is a compliance assertion rather
+  // than a description of the code. The SoundCloud terms cap deletion at 7 days
+  // after a disconnect; this job sweeps once a day, so the real worst case is
+  // the grace period PLUS up to one interval. Seven would put that worst case
+  // past the ceiling. If this test is ever "fixed" by moving it back to 7,
+  // read docs/internal/TERMS-CHECK.md finding B before changing the constant.
+  test('disconnected accounts are removed after a 6-day grace period, keeping the daily sweep inside the terms\' 7-day ceiling', async () => {
     await runRetentionOnce(NOW);
 
     expect(userDeleteMany).toHaveBeenNthCalledWith(1, {
-      where: { disconnectedAt: { lt: daysBefore(7) } },
+      where: { disconnectedAt: { lt: daysBefore(6) } },
     });
   });
 

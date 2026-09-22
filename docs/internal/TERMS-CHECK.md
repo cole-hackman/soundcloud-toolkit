@@ -204,12 +204,33 @@ Seven-day limit, quote **fragment** as retrieved:
 | A disconnect action exists | `POST /api/auth/disconnect` → `disconnectUser()` |
 | Revocation is detected without the user telling this app | `invalid_grant` at the refresh choke point runs the same teardown with `reason: 'revoked'` |
 | Credentials destroyed immediately | `tokens` row deleted, auth memo invalidated, library caches and durable snapshots dropped — synchronous, not deferred to the job |
-| Remaining rows removed after 7 days | retention step 2: `users.disconnectedAt < now - 7d` → `user.deleteMany`, cascading to operation logs, growth actions, votes, cache pages |
+| Remaining rows removed after 6 days | retention step 2: `users.disconnectedAt < now - 6d` → `user.deleteMany`, cascading to operation logs, growth actions, votes, cache pages |
 | Reconnecting cancels the deletion | a successful OAuth callback sets `lastLoginAt` and clears `disconnectedAt` |
 
-`DISCONNECTED_GRACE_DAYS = 7` is a constant in `server/lib/retention.js`, not
+`DISCONNECTED_GRACE_DAYS = 6` is a constant in `server/lib/retention.js`, not
 an environment variable, so the window cannot be widened from a deployment
 dashboard.
+
+**RESOLVED 2026-09-22 — the deadline is now met, and it was not before.**
+This was `7`, which read as compliant and was not. The sweep runs once a day,
+so the time from the disconnect to the row's deletion is the grace period plus
+however long until the next run — at seven, a worst case of 7 days + one
+`RETENTION_INTERVAL_MS`, i.e. up to eight days, outside a ceiling the retrieved
+text states as an absolute ("in any case within 7 days"). Dropping the constant
+to `6` puts the same worst case at 6 days + one daily interval ≈ 7, inside the
+ceiling, while leaving the sweep's cadence alone.
+
+So, against the wording as retrieved, this mechanism now meets the 7-day limit
+rather than straddling it. The three user-facing statements of the window —
+the disconnect card and the dialog description in
+`frontend-UI/src/app/(app)/account/page.tsx`, and the retention section of
+`frontend-UI/src/app/privacy/page.tsx` — all say six days, in identical words,
+so the policy people are shown is the policy the job enforces.
+`tests/retention.test.js` asserts the cutoff, and its comment says why the
+number is 6, so a future tidy-up cannot quietly restore the breach.
+
+The items below are unchanged: they are about the wording, which is still
+unverified, not about the arithmetic, which is now correct either way.
 
 **To verify, and it matters:**
 
@@ -217,11 +238,13 @@ dashboard.
    no surrounding sentence, so the condition it attaches to is unknown from
    here. It may or may not be the same event as the revocation clause above.
 2. **Whether "as soon as reasonably possible" (revocation clause) is
-   compatible with a 7-day grace period at all.** The two retrieved passages
-   use different standards. This branch assumes the credentials-immediately /
-   rows-within-7-days split satisfies both, but that assumption rests on
+   compatible with a grace period at all.** The two retrieved passages use
+   different standards. This branch assumes the credentials-immediately /
+   rows-within-6-days split satisfies both, but that assumption rests on
    unverified wording. If "as soon as reasonably possible" governs the user
-   rows too, the grace period has to go.
+   rows too, the grace period has to go — shortening it from 7 to 6 does not
+   answer this question, it only removes the arithmetic breach against the
+   other clause.
 3. **Scope.** Whether "all Personal Data and User Content pertaining to that
    user" reaches catalog rows enriched via that user's token. The schema still
    records no provenance, so as question 4 above already noted, the rule could
@@ -230,8 +253,12 @@ dashboard.
    attempted. A dormant user's revocation may go unnoticed for as long as the
    session TTL; whether that meets either standard is unverified.
 
-The worst case is also bounded by the job cadence: 7 days plus up to one
-`RETENTION_INTERVAL_MS`. Treat that variable as compliance-relevant.
+The worst case is bounded by the job cadence: 6 days plus up to one
+`RETENTION_INTERVAL_MS`, so at the default 24h it lands at roughly 7 days and
+inside the ceiling. That is exactly the margin the sixth day buys, which makes
+`RETENTION_INTERVAL_MS` compliance-relevant rather than a tuning knob: raise it
+above 24h and the worst case crosses the deadline again even though the
+constant still says 6.
 
 ## Finding C — session-based caching (questions 1 and 3)
 
@@ -317,7 +344,7 @@ applies.
 | Finding | Status after this branch |
 |---|---|
 | A — privacy policy | Export, delete and disconnect all exist and work; minimisation ceilings to verify |
-| B — deletion on revocation / 7 days | Mechanism in place; wording to verify (trigger for the 7-day fragment, and whether a grace period is compatible with "as soon as reasonably possible") |
+| B — deletion on revocation / 7 days | **Meets the retrieved wording** as of 2026-09-22: the grace period is 6 days, so the daily sweep's worst case (grace + one interval) lands inside the 7-day ceiling instead of past it. Wording still to verify (trigger for the 7-day fragment, and whether a grace period is compatible with "as soon as reasonably possible" at all) |
 | C — session-based caching | **Does not meet the retrieved wording.** Caches bounded by duration, not session; catalog and admin aggregate untouched; backfill unrun |
 | D — uploader removals | Metadata now stripped from `gone` rows; rests on question 2's reasoning, not on verified text; detection latency remains a gap |
 

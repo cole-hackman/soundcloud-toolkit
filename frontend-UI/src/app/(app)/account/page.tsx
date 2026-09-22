@@ -22,7 +22,7 @@ const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "";
 
 /**
  * What the retention job in `server/lib/retention.js` actually enforces —
- * `CACHE_TTL_DAYS` (7), `DISCONNECTED_GRACE_DAYS` (7), `INACTIVE_MONTHS` (24),
+ * `CACHE_TTL_DAYS` (7), `DISCONNECTED_GRACE_DAYS` (6), `INACTIVE_MONTHS` (24),
  * `OPLOG_RETENTION_DAYS` (365), `GROWTH_RETENTION_DAYS` (365) and
  * `FEEDBACK_RETENTION_DAYS` (730). If those change, this table is wrong.
  */
@@ -177,7 +177,7 @@ export default function AccountPage() {
           <h2 className={cardHeadingClass}>Disconnect SoundCloud</h2>
           <p className="mt-2 text-sm text-muted-foreground">
             Signs you out and deletes your saved sign-in tokens now. We keep the
-            rest for 7 days so you can sign back in and keep your account. After
+            rest for 6 days so you can sign back in and keep your account. After
             that it is deleted. Your SoundCloud account is untouched.
           </p>
           {disconnectError ? (
@@ -296,7 +296,7 @@ export default function AccountPage() {
       <ConfirmDialog
         open={disconnectOpen}
         title="Disconnect from SoundCloud?"
-        description="Your saved sign-in tokens are deleted straight away and you are signed out. We keep the rest for 7 days so you can sign back in and keep your account. After that it is deleted."
+        description="Your saved sign-in tokens are deleted straight away and you are signed out. We keep the rest for 6 days so you can sign back in and keep your account. After that it is deleted."
         confirmLabel={disconnecting ? "Disconnecting…" : "Disconnect"}
         confirmDisabled={disconnecting}
         onConfirm={handleDisconnect}

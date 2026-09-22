@@ -22,7 +22,7 @@
  *
  * Windows (env-overridable where the brief calls for it):
  *   library cache   CACHE_TTL_DAYS         7 days
- *   disconnected    (constant)             7 days
+ *   disconnected    (constant)             6 days
  *   inactive        INACTIVE_MONTHS        24 months
  *   operation logs  OPLOG_RETENTION_DAYS   365 days
  *   growth actions  (constant)             365 days
@@ -42,8 +42,21 @@ const numFromEnv = (name, fallback) => {
 
 /** Grace period between a disconnect and the row being removed. Short on
  *  purpose — the tokens are already gone, so this is the window in which
- *  logging back in still restores the account rather than starting over. */
-const DISCONNECTED_GRACE_DAYS = 7;
+ *  logging back in still restores the account rather than starting over.
+ *
+ *  SIX, not seven, and the difference is the whole point. The SoundCloud
+ *  terms give a hard ceiling — deletion "without undue delay, but in any case
+ *  within 7 days" (docs/internal/TERMS-CHECK.md, finding B). This sweep runs
+ *  once a day, so a row stamped just after a run waits out its grace period
+ *  AND then up to a further RETENTION_INTERVAL_MS before the next sweep sees
+ *  it. At seven the worst case is 7 days + one interval — over the ceiling.
+ *  At six the same worst case is 6 days + one daily interval ≈ 7, so every
+ *  row is gone inside the deadline rather than just after it.
+ *
+ *  Consequences of touching this: raising it back to 7 reopens the breach;
+ *  raising RETENTION_INTERVAL_MS past 24h does the same by eating the day of
+ *  margin this number buys. Both are compliance changes, not tuning. */
+const DISCONNECTED_GRACE_DAYS = 6;
 const GROWTH_RETENTION_DAYS = 365;
 const FEEDBACK_RETENTION_DAYS = 730;
 
@@ -170,7 +183,9 @@ export async function runRetentionOnce(now = Date.now()) {
     prisma.libraryCacheState.deleteMany({ where: { updatedAt: { lt: cacheCutoff } } }), results);
 
   // 2. Accounts that disconnected and did not come back. Logging in clears
-  //    disconnectedAt, so anything still stamped a week later is settled.
+  //    disconnectedAt, so anything still stamped six days later is settled.
+  //    Six, not seven: see DISCONNECTED_GRACE_DAYS — the daily cadence has to
+  //    fit inside the terms' 7-day deletion ceiling, not start at it.
   const disconnectedCutoff = daysAgo(now, DISCONNECTED_GRACE_DAYS);
   await sweepUsers('disconnected-users',
     { disconnectedAt: { lt: disconnectedCutoff } }, results);

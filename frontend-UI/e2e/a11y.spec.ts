@@ -29,6 +29,7 @@ const PAGES: PageCase[] = [
   },
   { path: "/playlist-modifier/", needsMock: true },
   { path: "/growth/", needsMock: true },
+  { path: "/link-resolver/", needsMock: true },
   { path: "/feedback/", needsMock: true },
 ];
 
@@ -52,6 +53,16 @@ for (const { path, needsMock, fixme, expectedStatus } of PAGES) {
 
     if (expectedStatus !== undefined) {
       expect(response?.status()).toBe(expectedStatus);
+    }
+
+    // `AppLayout` renders a hydration/auth spinner before the route's own
+    // content exists. Analyzing straight after `goto` can therefore scan the
+    // spinner and pass while the page under test was never audited at all —
+    // a green run that proves nothing. Every protected page owns an `h1`
+    // (PageHeader), so waiting for it is the cheap, route-agnostic signal
+    // that the real content is mounted.
+    if (needsMock) {
+      await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
     }
 
     const results = await new AxeBuilder({ page })

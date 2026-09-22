@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { mockApi } from "./fixtures/api";
+import { LONG_TRACK_TITLE, mockApi } from "./fixtures/api";
 import { READY, type ReadyLocator } from "./fixtures/ready";
 
 const MOBILE_PROJECTS = ["m360", "m390", "m430"];
@@ -196,8 +196,15 @@ test("growth tabs: arrow keys move between panels and none of them overflow: /gr
   await page.keyboard.press("ArrowRight");
   await expect(discover).toHaveAttribute("aria-selected", "true");
 
-  for (const tab of [history, analytics]) {
+  for (const { tab, settled } of [
+    { tab: history, settled: "No sessions logged" },
+    { tab: analytics, settled: "Not enough data yet" },
+  ]) {
     await tab.click();
+    // Each panel loads its own query, so measuring on the click measures the
+    // panel before it has any content — the same pre-settle mistake the page
+    // list above no longer makes.
+    await expect(page.getByText(settled)).toBeVisible();
     const { scrollWidth, clientWidth } = await page.evaluate(() => ({
       scrollWidth: document.documentElement.scrollWidth,
       clientWidth: document.documentElement.clientWidth,
@@ -207,6 +214,42 @@ test("growth tabs: arrow keys move between panels and none of them overflow: /gr
       `${await tab.textContent()}: scrollWidth=${scrollWidth} clientWidth=${clientWidth}`,
     ).toBeLessThanOrEqual(clientWidth);
   }
+});
+
+/**
+ * A control clipped out of a `overflow: hidden` ancestor is invisible and
+ * untappable while staying in the Tab order — and it never changes
+ * `document.scrollWidth`, precisely because the overflow is hidden. So
+ * neither the overflow check above nor axe can see it, and only a
+ * per-element measurement catches it.
+ *
+ * This is what a long title used to do to the download chip: `truncate` on
+ * the flex row made the bare title text `nowrap` with `min-width: auto`, so
+ * it never shrank and pushed the `shrink-0` chip past the row's edge.
+ */
+test("playlist-modifier download control survives a long title: /playlist-modifier/", async ({
+  page,
+}, testInfo) => {
+  test.skip(!MOBILE_PROJECTS.includes(testInfo.project.name), "mobile projects only");
+
+  await mockApi(page);
+  await page.goto("/playlist-modifier/");
+  await page.getByRole("button", { name: "Sample Playlist 1" }).click();
+
+  const download = page.getByRole("button", { name: `Download ${LONG_TRACK_TITLE}` });
+  await expect(download).toBeVisible();
+
+  const clientWidth = await page.evaluate(() => document.documentElement.clientWidth);
+  const box = await download.boundingBox();
+  expect(box, "the download control has no layout box at all").not.toBeNull();
+  expect(
+    Math.round(box!.x + box!.width),
+    `download chip right edge ${Math.round(box!.x + box!.width)} > viewport ${clientWidth}`,
+  ).toBeLessThanOrEqual(clientWidth);
+  expect(box!.x, `download chip starts off-screen at x=${box!.x}`).toBeGreaterThanOrEqual(0);
+
+  // The title gives up the width instead — it is the thing that truncates.
+  await expect(page.getByText(LONG_TRACK_TITLE)).toBeVisible();
 });
 
 /**

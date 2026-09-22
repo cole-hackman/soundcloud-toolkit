@@ -50,27 +50,40 @@ const FAKE_PLAYLISTS = {
 };
 
 /**
+ * A title long enough that it cannot fit a 360px row alongside the artwork
+ * and the download chip. Real playlists are full of titles this long
+ * ("Artist - Track (Extended Mix) [Label]"), and a short fixture title hid a
+ * clipping bug that only shows up once the title has to compete for width.
+ */
+const LONG_TRACK_TITLE = "Sample Playlist Track 4 With A Deliberately Very Long Title";
+
+/**
  * `GET /api/playlists/:id` — the track-editor state of /playlist-modifier/,
- * which is where the row action cluster lives. Three rows is enough to cover
- * first/middle/last (move-up and move-down disabled states).
+ * which is where the row action cluster lives. Three short rows cover
+ * first/middle/last (move-up and move-down disabled states); the fourth is
+ * the long-title case, and is the downloadable one.
  */
 const FAKE_PLAYLIST_DETAIL = {
   id: 1,
   title: "Sample Playlist 1",
-  track_count: 3,
+  track_count: 4,
   artwork_url: null as string | null,
-  tracks: Array.from({ length: 3 }, (_, i) => ({
+  tracks: Array.from({ length: 4 }, (_, i) => ({
     id: 300 + i,
-    title: `Sample Playlist Track ${i + 1}`,
+    title: i === 3 ? LONG_TRACK_TITLE : `Sample Playlist Track ${i + 1}`,
     user: { username: "testartist" },
     artwork_url: null as string | null,
     duration: 210000,
-    downloadable: i === 0,
+    downloadable: i === 0 || i === 3,
     download_url:
-      i === 0 ? "https://api.soundcloud.com/tracks/300/download" : undefined,
+      i === 0 || i === 3
+        ? `https://api.soundcloud.com/tracks/${300 + i}/download`
+        : undefined,
     permalink_url: `https://soundcloud.com/testartist/sample-playlist-track-${i + 1}`,
   })),
 };
+
+export { LONG_TRACK_TITLE };
 
 const FAKE_LIKES_PAGED = {
   collection: Array.from({ length: 5 }, (_, i) => ({

@@ -765,8 +765,10 @@ export default function PlaylistModifierPage() {
                         className="w-12 h-12 shrink-0 rounded-lg object-cover"
                       />
                       <div className="flex-1 min-w-0">
-                        <div className="font-semibold text-foreground truncate flex items-center gap-2">
-                          {track.title}
+                        {/* `truncate` belongs on the title, not on this flex
+                            row — see the note on the editor row below. */}
+                        <div className="flex min-w-0 items-center gap-2 font-semibold text-foreground">
+                          <span className="min-w-0 truncate">{track.title}</span>
                           <DownloadChip
                             track={track}
                             busy={downloadingTrackId === track.id}
@@ -923,8 +925,19 @@ export default function PlaylistModifierPage() {
                         className="w-12 h-12 shrink-0 rounded-lg object-cover"
                       />
                       <div className="flex-1 min-w-0">
-                        <div className="font-semibold text-foreground truncate flex items-center gap-2">
-                          {track.title}
+                        {/* `truncate` used to sit on this flex row, which put
+                            `white-space: nowrap` on the anonymous flex item
+                            holding the bare title text. That item's
+                            `min-width: auto` then resolved to its full
+                            nowrap min-content width, so the title never
+                            shrank — and the `shrink-0` chips after it were
+                            pushed past the row's edge and clipped by the same
+                            `overflow: hidden`. Invisible, untappable, still
+                            in the Tab order, and invisible to a scrollWidth
+                            check precisely because the overflow is hidden.
+                            Truncating the title itself is what makes room. */}
+                        <div className="flex min-w-0 items-center gap-2 font-semibold text-foreground">
+                          <span className="min-w-0 truncate">{track.title}</span>
                           <DownloadChip
                             track={track}
                             busy={downloadingTrackId === track.id}

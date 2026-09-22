@@ -10,6 +10,8 @@ interface User {
   display_name: string;
   soundcloudId?: number;
   canDownload?: boolean;
+  /** On the ADMIN_IDS list — unlocks the /admin console link and page. */
+  isAdmin?: boolean;
 }
 
 interface AuthContextType {
@@ -66,6 +68,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           display_name: userData.displayName || userData.username,
           soundcloudId: userData.soundcloudId,
           canDownload: !!userData.canDownload,
+          isAdmin: !!userData.isAdmin,
         });
         setIsAuthenticated(true);
       } else {

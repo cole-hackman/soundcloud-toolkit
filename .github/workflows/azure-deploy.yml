@@ -1,13 +1,22 @@
 name: Deploy to Azure App Service
 
-# Manual only while the Azure stack runs in parallel with production. Once the
-# cutover in docs/internal/MIGRATION.md is done, add `push: branches: [main]` here and this
-# replaces DigitalOcean's deploy_on_push.
 #
 # Auth is OIDC (no long-lived secret): the `azure` GitHub environment is the
 # federated-credential subject, so any branch can deploy through it. The three
 # AZURE_* values are repository variables, not secrets — they are identifiers.
+# Every merge to main deploys (the cutover in docs/internal/MIGRATION.md is
+# done; this replaced DigitalOcean's deploy_on_push on 2026-09-22). Pushes that
+# only touch documentation, the infra templates or the license skip the run;
+# infra changes go through infra/deploy.sh. Manual dispatch stays for redeploys.
 on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'infra/**'
+      - '.gitignore'
+      - 'LICENSE'
   workflow_dispatch:
     inputs:
       ref:

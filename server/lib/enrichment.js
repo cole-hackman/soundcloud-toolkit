@@ -26,7 +26,7 @@ const inFlight = new Set();
  * - absent + never resolved → resolveAttempts+1, 'not_found' at 3 strikes
  * Returns { candidates, fetched, missing }.
  */
-export async function enrichTrackIds(trackIds, accessToken, refreshToken, { maxBatches = Infinity } = {}) {
+export async function enrichTrackIds(trackIds, accessToken, refreshToken, { maxBatches = Infinity, force = false } = {}) {
   const unique = [...new Set((trackIds || []).map(Number).filter(n => Number.isInteger(n) && n > 0))]
     .filter(id => !inFlight.has(id));
   if (unique.length === 0) return { candidates: 0, fetched: 0, missing: 0 };
@@ -36,7 +36,11 @@ export async function enrichTrackIds(trackIds, accessToken, refreshToken, { maxB
     select: { id: true, resolveStatus: true, resolveAttempts: true },
   });
   const knownById = new Map(known.map(t => [Number(t.id), t]));
+  // `force` (the admin re-resolve action) re-fetches every id regardless of
+  // its current state, so a blocked/preview/gone/not_found row gets a fresh
+  // answer from SoundCloud. The piggyback path never forces.
   const candidates = unique.filter(id => {
+    if (force) return true;
     const row = knownById.get(id);
     if (!row) return true;
     return row.resolveStatus === 'pending' && row.resolveAttempts < MAX_RESOLVE_ATTEMPTS;

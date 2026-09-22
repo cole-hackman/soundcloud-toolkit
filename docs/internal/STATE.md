@@ -10,6 +10,21 @@ Search Console change of address (Cole, two clicks), soak, decommission.
 Read `docs/internal/MIGRATION.md` ("CUTOVER DONE") first.
 
 ## Just done
+- Embedded SoundCloud player in the catalog (expanded track row + Health
+  rows), with `frame-src https://w.soundcloud.com` applied to the `/admin`
+  document only — `securityHeaders` now dispatches on `isAdminPagePath`;
+  every other page keeps `frame-src 'none'` (test pins it).
+- Catalog view extended: playlists and artists roll-up listings, per-day
+  touch series, CSV export of any filtered list, optional duration/seen
+  columns, distinct-tracks counter, and Health with the console's first
+  write — `POST /api/admin/catalog/re-resolve` (forced enrichment, ≤200 ids,
+  heavy limiter, logged). `enrichTrackIds` gained a `force` option.
+- Admin console rebuilt (`frontend-UI/src/components/admin/`): five tabbed
+  views instead of one 1,600-line scroll, react-query polling that keeps
+  stale data visible, the previously unrendered `readLatency` p95 table, an
+  accessible inspector drawer, app tokens + ThemeContext instead of a private
+  theme, `isAdmin` on AuthContext and a sidebar link for admins. Rendered and
+  checked in Chromium against mocked admin responses (dark, light, mobile).
 - 2026-09-21 branch cleanup: PR #46 + #47 merged (`llms.txt`, then rewritten
   for Track Toolkit / tracktoolkit.com), PR #27 closed, nine remote branches
   deleted (all seven merged feature branches plus the dead `initialized` and

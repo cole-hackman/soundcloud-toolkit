@@ -9,6 +9,7 @@ import {
   ChevronLeft,
   ChevronRight,
   FileText,
+  Gauge,
   HelpCircle,
   LogOut,
   Menu,
@@ -45,6 +46,17 @@ const FOOTER_ITEMS: NavLink[] = [
   { href: "/terms", label: "Terms", icon: ScrollText },
   { href: "/accessibility", label: "Accessibility", icon: Accessibility },
 ];
+
+/**
+ * The admin console link. Only rendered for accounts on ADMIN_IDS (the server
+ * reports `isAdmin` on /api/auth/me). The page itself gates again and
+ * `adminAuth` is the real boundary, so this is a shortcut, not a guard.
+ *
+ * It is a `NavLink` like every other row, so it renders through `NavRow` and
+ * inherits the rail: keyboard reachable, `aria-current="page"` when active,
+ * 44px in the drawer.
+ */
+const ADMIN_ITEM: NavLink = { href: "/admin", label: "Admin console", icon: Gauge };
 
 /**
  * `/dashboard/` is how the static export addresses the route and `/dashboard`
@@ -275,7 +287,7 @@ function SidebarNav({
         </span>
       </div>
       <div className="space-y-0.5 px-2 mb-6">
-        {FOOTER_ITEMS.map((item) => (
+        {[...FOOTER_ITEMS, ...(user?.isAdmin ? [ADMIN_ITEM] : [])].map((item) => (
           <NavRow
             key={item.href}
             item={item}

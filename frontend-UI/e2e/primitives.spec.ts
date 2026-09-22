@@ -15,6 +15,14 @@ import { mockApi } from "./fixtures/api";
 
 const MOBILE_PROJECTS = ["m360", "m390", "m430"];
 
+/** A username with no spaces, so nothing can wrap it to make room. */
+const LONG_USERNAME =
+  "a-following-whose-username-is-far-too-long-to-fit-on-any-phone-screen-2026";
+
+function json(body: unknown) {
+  return { status: 200, contentType: "application/json", body: JSON.stringify(body) };
+}
+
 test.describe("PageHeader", () => {
   test("the back link is a real target, not 20px of text", async ({ page }, testInfo) => {
     test.skip(!MOBILE_PROJECTS.includes(testInfo.project.name), "the link is `lg:hidden`");
@@ -148,5 +156,74 @@ test.describe("useDialog focus trap", () => {
     const after = await focusState(page, GHOST_ID);
     expect(after.insidePanel).toBe(true);
     expect(after.isGhost).toBe(false);
+  });
+});
+
+/**
+ * `SelectableRow`'s root is a grid item in every consumer, and a grid item's
+ * automatic minimum size is its min-content width. Without `min-w-0` one
+ * unbreakable username sizes the column to itself and carries the row's own
+ * right-hand control off the side of the phone — where it is untappable and
+ * invisible to both the axe audit and a `scrollWidth` check, because the
+ * scroller clips it.
+ */
+test.describe("SelectableRow", () => {
+  test("a username too long for the screen does not push the row off it", async ({
+    page,
+  }, testInfo) => {
+    test.skip(!MOBILE_PROJECTS.includes(testInfo.project.name), "a phone-width failure");
+
+    await mockApi(page);
+    await page.route("**/api/**", async (route) => {
+      const { pathname } = new URL(route.request().url());
+      if (pathname === "/api/followings" || pathname === "/api/followings/paged") {
+        return route.fulfill(
+          json({
+            collection: [
+              {
+                id: 9001,
+                username: LONG_USERNAME,
+                avatar_url: null,
+                followers_count: 1234,
+                track_count: 56,
+                permalink_url: "https://soundcloud.com/x",
+                last_modified: "2026-01-01T00:00:00.000Z",
+              },
+            ],
+            next_href: null,
+            total: 1,
+          }),
+        );
+      }
+      return route.fallback();
+    });
+
+    await page.goto("/following-manager/");
+
+    const row = page.getByRole("checkbox", { name: LONG_USERNAME });
+    await expect(row).toBeVisible();
+
+    // The long text really is rendered, so shortening it cannot pass this.
+    await expect(page.locator("main")).toContainText(LONG_USERNAME.slice(0, 40));
+
+    const offscreen = await page
+      .locator("main a, main button, main input")
+      .evaluateAll((elements) => {
+        const viewport = document.documentElement.clientWidth;
+        return elements
+          .map((el) => {
+            const r = el.getBoundingClientRect();
+            return {
+              label: (el.getAttribute("aria-label") || el.textContent || "").trim().slice(0, 50),
+              left: Math.round(r.left),
+              right: Math.round(r.right),
+              viewport,
+              area: r.width * r.height,
+            };
+          })
+          .filter((box) => box.area > 0 && (box.right > box.viewport + 0.5 || box.left < -0.5));
+      });
+
+    expect(offscreen, JSON.stringify(offscreen, null, 2)).toEqual([]);
   });
 });

@@ -27,8 +27,12 @@ interface SelectableRowProps {
  * One selectable row with a real `<input type="checkbox">`.
  *
  * The checkbox is the state — selection is never communicated by colour
- * alone, and Space/Enter work because the control is native rather than a
- * `div` wearing `role="button"`.
+ * alone, and the keyboard contract is the platform's rather than a hand-
+ * written one: Space toggles the box, and Enter does not, because that is
+ * what a native `<input type="checkbox">` does. The hand-rolled rows this
+ * replaced were `div`s wearing `role="button"` and did handle Enter; losing
+ * it is the point of using a real control, and it is not a 2.1.1 failure —
+ * the row is still fully operable from the keyboard.
  *
  * The 24px box sits inside a `<label>` that also wraps the row content, so
  * the whole ≥64px row is one target on a phone without inflating the box
@@ -64,6 +68,14 @@ export function SelectableRow({
   return (
     <Tag
       className={cn(
+        // `min-w-0` on the root, not only on the content inside it: every
+        // consumer stacks these in a grid (`SelectableList`, and the
+        // hand-rolled grids in following-manager and growth), and a grid
+        // item's automatic minimum size is its min-content width. Without it
+        // one `whitespace-nowrap` subtitle sizes the whole column to itself
+        // and pushes the page wider than the viewport — which is a phone-only
+        // failure that clips the row's own right-hand controls off-screen.
+        "min-w-0",
         "flex min-h-16 items-center gap-3 rounded-xl border px-3 transition-colors",
         selected
           ? "border-primary bg-primary/10"

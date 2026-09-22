@@ -37,6 +37,13 @@ export function GlareHover({
   const handleMouseLeave = () => setPos(null);
 
   return (
+    // The handlers position a purely decorative `aria-hidden` gloss and carry
+    // no behaviour: there is nothing here for a keyboard or a screen reader to
+    // do, so giving this wrapper a role and a tabstop would add a stop that
+    // announces nothing. `jsx-a11y/no-static-element-interactions` cannot tell
+    // a decorative pointer effect from a control, so the exemption is stated
+    // here rather than by leaving the whole rule at "warn".
+    // eslint-disable-next-line jsx-a11y/no-static-element-interactions
     <div
       ref={ref}
       onMouseMove={handleMouseMove}

@@ -19,9 +19,15 @@ function frameSrc(res) {
 
 describe('CSP frame-src is opened for the admin console only', () => {
   test('/admin and /admin/ may frame the SoundCloud player', async () => {
+    // The expectation is the literal origin, not `ADMIN_FRAME_SRC`. Comparing
+    // the header to the constant that produced it is a tautology: point the
+    // constant at a tracker and this test still goes green. The constant is
+    // still asserted — against its own value — in tests/security-headers.js,
+    // beside the FORBIDDEN_HOSTS sweep that now covers frame-src too.
+    expect(ADMIN_FRAME_SRC).toBe('https://w.soundcloud.com');
     for (const path of ['/admin', '/admin/', '/admin/index.html']) {
       const res = await request(app).get(path);
-      expect(frameSrc(res)).toBe(ADMIN_FRAME_SRC);
+      expect(frameSrc(res)).toBe('https://w.soundcloud.com');
     }
   });
 

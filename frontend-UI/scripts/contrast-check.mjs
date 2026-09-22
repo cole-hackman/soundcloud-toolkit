@@ -69,9 +69,17 @@ const PAIRS = [
  * because past 20% nothing here says whether it still passes. The comment on
  * `--primary-text` in globals.css quotes the same 20%; keep them in step.
  *
- * Bases are a floor, not the whole truth: a tint over a *toned* panel — say
- * `ResultPanel tone="success"` — composites over a colour this gate has no
- * token for. Staying inside the gated bound is necessary, not sufficient.
+ * Bases are a floor, not the whole truth: a tint composited over a surface
+ * whose fill is not a token lands on a colour this gate cannot name. The live
+ * example is `SelectableRow`, whose unselected light-mode fill is a raw
+ * `bg-gray-50` (its dark fill, `bg-secondary/20`, *is* gated) — so every row
+ * in the app stacks its text on something no pair below describes. Staying
+ * inside the gated bound is necessary, not sufficient.
+ *
+ * A *toned* panel is not automatically such a case, and assuming so was wrong
+ * once already: `ResultPanel tone="success"` only tints its **border**
+ * (`border-green-200`), and its fill is `Card`'s `bg-card`, which is gated.
+ * Check which property the tone actually sets before trusting either answer.
  */
 const TINTED_PAIRS = [
   ["destructive-foreground", "destructive", 0.9, "background", 4.5, "destructive button hover"],

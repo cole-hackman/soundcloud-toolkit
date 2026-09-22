@@ -242,6 +242,61 @@ const FAKE_FOLLOWED_PLAYLISTS_PAGED = {
   next_href: null as string | null,
 };
 
+/**
+ * `POST /api/resolve/batch?v=2` — one of each row shape (track, playlist and a
+ * failure), so the batch resolver's filters, row actions and the error styling
+ * are all on the page when it is audited.
+ */
+const FAKE_RESOLVE_BATCH = {
+  results: [
+    {
+      index: 0,
+      url: "https://soundcloud.com/testartist/sample-track-1",
+      status: "ok",
+      data: {
+        type: "track",
+        id: 100,
+        title: "Sample Track 1",
+        user: { username: "testartist" },
+        duration_ms: 200000,
+        permalink_url: "https://soundcloud.com/testartist/sample-track-1",
+      },
+    },
+    {
+      index: 1,
+      url: "https://soundcloud.com/testuser/sets/sample-playlist-1",
+      status: "ok",
+      data: {
+        type: "playlist",
+        id: 1,
+        title: "Sample Playlist 1",
+        user: { username: "testuser" },
+        track_count: 12,
+        permalink_url: "https://soundcloud.com/testuser/sets/sample-playlist-1",
+      },
+    },
+    {
+      index: 2,
+      url: "https://soundcloud.com/testartist/does-not-exist",
+      status: "error",
+      error: "Not found",
+    },
+  ],
+  summary: { total: 3, ok: 2, error: 1 },
+  meta: { version: "2", resolved_at: "2026-09-22T12:00:00.000Z" },
+};
+
+/** `POST /api/resolve?v=2` — the single-URL shape the cloner resolves with. */
+const FAKE_RESOLVE_SINGLE = {
+  type: "playlist",
+  id: 1,
+  title: "Sample Playlist 1",
+  user: { username: "testuser" },
+  track_count: 12,
+  permalink_url: "https://soundcloud.com/testuser/sets/sample-playlist-1",
+  artwork_url: null as string | null,
+};
+
 /** What `POST /api/feedback` answers with on a 201 — id and timestamp only. */
 const FAKE_FEEDBACK_CREATED = {
   id: "fb_1",
@@ -329,6 +384,12 @@ export async function mockApi(page: Page): Promise<void> {
     }
     if (method === "GET" && path === "/api/dashboard/summary") {
       return route.fulfill(json(FAKE_DASHBOARD_SUMMARY));
+    }
+    if (method === "POST" && path === "/api/resolve/batch") {
+      return route.fulfill(json(FAKE_RESOLVE_BATCH));
+    }
+    if (method === "POST" && path === "/api/resolve") {
+      return route.fulfill(json(FAKE_RESOLVE_SINGLE));
     }
     if (method === "GET" && path === "/api/library/audit") {
       return route.fulfill(json(FAKE_LIBRARY_AUDIT));

@@ -64,6 +64,19 @@ const PAGES: PageCase[] = [
     },
   },
   {
+    path: "/batch-link-resolver/",
+    needsMock: true,
+    // Resolve something: the filters, the row actions and the error styling
+    // only exist once there are results.
+    ready: async (page) => {
+      await page
+        .getByLabel("SoundCloud URLs (one per line)")
+        .fill("https://soundcloud.com/testartist/sample-track-1");
+      await page.getByRole("button", { name: "Resolve All" }).click();
+      return page.getByRole("heading", { name: "Results" });
+    },
+  },
+  {
     path: "/following-library/",
     needsMock: true,
     // Switch to the Playlists tab: it exercises the tab strip, the tabpanel

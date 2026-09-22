@@ -81,6 +81,17 @@ describe('POST /api/feedback writes what the session says, not what the body say
     expect(create.mock.calls[0][0].data.email).toBeNull();
   });
 
+  test('an empty page is stored as null rather than rejected', async () => {
+    // The form posts '' when it has no route to report. Before checkFalsy this
+    // failed the route regex and 400'd an otherwise valid submission.
+    const res = await request(app)
+      .post('/api/feedback')
+      .send({ ...validBody, page: '' });
+
+    expect(res.status).toBe(201);
+    expect(create.mock.calls[0][0].data.page).toBeNull();
+  });
+
   test('a client-supplied userId and soundcloudId are ignored', async () => {
     const res = await request(app)
       .post('/api/feedback')
@@ -196,6 +207,35 @@ describe('POST /api/feedback fails closed', () => {
     const res = await request(app)
       .post('/api/feedback')
       .send({ ...validBody, type: 'complaint' });
+
+    expect(res.status).toBe(400);
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  test('a message of only control characters is rejected, not stored blank', async () => {
+    const res = await request(app)
+      .post('/api/feedback')
+      .send({ ...validBody, message: String.fromCharCode(1, 2, 3, 4, 5, 6, 7, 8, 11, 12) });
+
+    expect(res.status).toBe(400);
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  test('an array type never reaches Prisma', async () => {
+    // express-validator 7 checks arrays element-wise, so ['bug'] satisfied
+    // isIn() and used to reach create() as an array, 500-ing on a type error.
+    const res = await request(app)
+      .post('/api/feedback')
+      .send({ ...validBody, type: ['bug'] });
+
+    expect(res.status).toBe(400);
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  test('an array email never reaches Prisma', async () => {
+    const res = await request(app)
+      .post('/api/feedback')
+      .send({ ...validBody, email: ['someone@example.com'] });
 
     expect(res.status).toBe(400);
     expect(create).not.toHaveBeenCalled();

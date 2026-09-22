@@ -5,7 +5,7 @@ import logger from '../lib/logger.js';
 import { safeError } from '../lib/safe-error.js';
 import { extractClientInfo } from '../lib/analytics.js';
 import { authenticateUser } from '../middleware/auth.js';
-import { validateFeedback, validateRebrandVote } from '../middleware/validation.js';
+import { stripControlChars, validateFeedback, validateRebrandVote } from '../middleware/validation.js';
 import { feedbackDailyLimiter, feedbackHourlyLimiter } from '../middleware/rateLimiter.js';
 
 const router = express.Router();
@@ -155,14 +155,6 @@ const FEEDBACK_DEDUPE_WINDOW_MS = 24 * 60 * 60 * 1000;
 const FEEDBACK_MINE_LIMIT = 20;
 
 /**
- * C0 control characters, except the two that are legitimate in a multi-line
- * message: \n (0x0A) and \t (0x09). \r is deliberately in the strip set, so a
- * CRLF body normalizes to LF rather than keeping a stray carriage return that
- * would make an otherwise identical re-submission hash differently.
- */
-const C0_CONTROL_CHARS = /[\u0000-\u0008\u000B-\u001F]/g;
-
-/**
  * The dedupe key: whitespace-collapsed, lowercased, trimmed, then sha256'd.
  * Hashing rather than comparing the text keeps the index narrow and means the
  * lookup never has to put the message itself in a query.
@@ -201,10 +193,14 @@ router.post(
         return res.status(202).json({ accepted: true });
       }
 
-      // express-validator has already trimmed `message`; this strips the
-      // control characters that survive a trim and would otherwise sit in the
-      // admin inbox as invisible junk.
-      const cleanMessage = message.replace(C0_CONTROL_CHARS, '');
+      // `validateFeedback` already stripped and trimmed this — deliberately
+      // before its length check, so ten control characters cannot pass
+      // `min: 10` and then collapse to nothing. Repeated here as
+      // belt-and-braces: this line is the last thing between user text and
+      // the database, and it must not depend on a particular validator
+      // staying mounted in front of it. Idempotent, so the second pass is
+      // free.
+      const cleanMessage = stripControlChars(message);
       const messageHash = hashMessage(cleanMessage);
 
       // Same person, same message, inside a day → almost always a double

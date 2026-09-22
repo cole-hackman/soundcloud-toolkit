@@ -411,6 +411,75 @@ describe('feedback validator', () => {
     expect(result.statusCode).toBeNull();
   });
 
+  test('accepts an empty-string page as "no page given"', async () => {
+    // Same reason as email: the form posts '' when it has no route to report,
+    // and an empty route is "absent", not "malformed". Without checkFalsy this
+    // failed the route regex and rejected an otherwise valid submission.
+    const result = await runValidation(validateFeedback, {
+      body: { ...validBody, page: '' },
+    });
+
+    expect(result.statusCode).toBeNull();
+  });
+
+  test('rejects a 10-character message made entirely of control characters', async () => {
+    // The strip runs BEFORE the length check. Were it the other way round,
+    // this would satisfy min:10 and then be stored as an empty message.
+    const result = await runValidation(validateFeedback, {
+      body: { ...validBody, message: String.fromCharCode(1, 2, 3, 4, 5, 6, 7, 8, 11, 12) },
+    });
+
+    expect(result.statusCode).toBe(400);
+  });
+
+  test('a message padded to length with control characters is measured clean', async () => {
+    const result = await runValidation(validateFeedback, {
+      body: { ...validBody, message: 'short' + String.fromCharCode(1, 2, 3, 4, 5, 6, 7) },
+    });
+
+    expect(result.statusCode).toBe(400);
+  });
+
+  test('strips control characters from a message that is long enough without them', async () => {
+    const result = await runValidation(validateFeedback, {
+      body: {
+        ...validBody,
+        message: 'Playback' + String.fromCharCode(0, 7) + ' stops after ten tracks.',
+      },
+    });
+
+    expect(result.statusCode).toBeNull();
+    expect(result.req.body.message).toBe('Playback stops after ten tracks.');
+  });
+
+  test('rejects an array type instead of letting it through element-wise', async () => {
+    // express-validator 7 applies isIn() to each element, so ['bug'] passed
+    // and reached Prisma as an array. The leading isString() is what stops it.
+    const result = await runValidation(validateFeedback, {
+      body: { ...validBody, type: ['bug'] },
+    });
+
+    expect(result.statusCode).toBe(400);
+  });
+
+  test('rejects an array email instead of letting it through element-wise', async () => {
+    const result = await runValidation(validateFeedback, {
+      body: { ...validBody, email: ['someone@example.com'] },
+    });
+
+    expect(result.statusCode).toBe(400);
+  });
+
+  test('rejects an array website, message and page', async () => {
+    for (const field of ['website', 'message', 'page']) {
+      const result = await runValidation(validateFeedback, {
+        body: { ...validBody, [field]: ['/combine'] },
+      });
+
+      expect(result.statusCode).toBe(400);
+    }
+  });
+
   test('a filled honeypot still passes validation', async () => {
     // The route, not the validator, decides what a filled `website` means. A
     // 400 here would tell a bot exactly which field to leave alone next time.

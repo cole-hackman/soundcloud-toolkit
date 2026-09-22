@@ -468,6 +468,24 @@ gave it away, and its counter is `logger.debug` (a no-op outside development)
 so spam cannot fill the log in place of the table. The `message` and `email`
 never appear in any log line.
 
+Three details in `validateFeedback` that look incidental and are not:
+
+- `page` and `email` use `optional({ nullable: true, checkFalsy: true })`, so
+  an empty string means **absent**, not malformed. The form posts `''` for an
+  input the user never touched; without `checkFalsy` that rejected an
+  otherwise valid submission, and the route stores `null`.
+- `message` runs `stripControlChars` as a `customSanitizer` **before**
+  `.isLength({ min: 10 })`. Measuring first would let ten control characters
+  satisfy the minimum and then collapse to an empty stored message. The route
+  strips again as belt-and-braces; the function is idempotent and exported
+  from `validation.js` so there is one definition, not two that drift.
+- Every field leads with `.isString()`, including `type` and `email` where it
+  looks redundant. express-validator 7 applies a validator **element-wise to
+  an array**, so `{ type: ['bug'] }` satisfies `.isIn()` and
+  `{ email: ['a@b.co'] }` satisfies `.isEmail()`; both then reach Prisma as
+  arrays and 500. `.isString()` checks the value as a whole and is the only
+  thing that closes that door.
+
 ### Admin (`routes/admin.js`)
 
 Every admin route runs `authenticateUser` **then** `adminAuth`. `adminAuth`
@@ -497,6 +515,15 @@ is registered without the pair.
 is the retired SongSwipe beta survey (`BetaSignup`); `/feedback-items*` is the
 live in-app feedback form (`Feedback`). The path spelling is the only thing
 keeping them apart, so do not "tidy" one into the other.
+
+**`/feedback-items.csv` guards against formula injection.** `message` and
+`adminNote` are free text, and Excel / Sheets / LibreOffice execute a cell that
+opens with `=`, `+`, `-`, `@`, tab or CR — so a report reading
+`=HYPERLINK("http://evil...")` would fire when an admin opens the export. Cells
+starting with any of those get a leading apostrophe, and `\r` is in the
+quote-trigger class so a lone carriage return cannot split one report into two
+rows. The older `feedback/beta-emails` export does **not** have this guard yet
+(its fields are far less free-form) — that is a known follow-up.
 
 The `PATCH` writes `status` and `adminNote` and nothing else — no admin action
 can rewrite what a user said. An empty patch is refused rather than issued as a

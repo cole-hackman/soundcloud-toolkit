@@ -911,6 +911,28 @@ export const FEEDBACK_TYPES = ['bug', 'feature', 'other'];
 export const FEEDBACK_STATUSES = ['new', 'seen', 'done', 'spam'];
 
 /**
+ * Every C0 control character except the two that are legitimate in a
+ * multi-line message: \n (0x0A) and \t (0x09). \r (0x0D) IS stripped, so a
+ * CRLF body normalizes to LF — otherwise the identical report pasted from a
+ * Windows client would hash differently and slip past the duplicate check.
+ */
+const C0_CONTROL_CHARS = /[\u0000-\u0008\u000B-\u001F]/g;
+
+/**
+ * Remove control characters from a submitted string.
+ *
+ * Used as an express-validator sanitizer so it runs BEFORE the length check:
+ * otherwise a message of ten control characters satisfies `min: 10`, then
+ * strips down to the empty string and is stored as a blank row. The route
+ * applies it again as belt-and-braces, since it is the last thing standing
+ * between user text and the database.
+ */
+export function stripControlChars(value) {
+  if (typeof value !== 'string') return value;
+  return value.replace(C0_CONTROL_CHARS, '');
+}
+
+/**
  * Validation rules for POST /api/feedback.
  *
  * This runs BEFORE the per-user rate limiters on the route, for the same
@@ -924,19 +946,33 @@ export const FEEDBACK_STATUSES = ['new', 'seen', 'done', 'spam'];
  * validator, decides what a filled-in one means, so a bot gets the same
  * shaped answer as a human rather than a 400 that tells it which field to
  * leave alone next time.
+ *
+ * Every field leads with `.isString()`, including the two that look like they
+ * do not need it. express-validator 7 applies a validator element-wise to an
+ * array, so `{ type: ['bug'] }` satisfies `.isIn(FEEDBACK_TYPES)` and
+ * `{ email: ['a@b.co'] }` satisfies `.isEmail()` — both would then reach
+ * Prisma as arrays and 500 on a type error. `.isString()` checks the value as
+ * a whole and is the only thing that closes that door.
  */
 export const validateFeedback = [
   body('type')
+    .isString()
+    .withMessage('type must be a string')
     .isIn(FEEDBACK_TYPES)
     .withMessage(`type must be one of: ${FEEDBACK_TYPES.join(', ')}`),
   body('message')
     .isString()
     .withMessage('message must be a string')
+    // Strip BEFORE measuring, or ten control characters pass `min: 10` and
+    // then collapse to an empty stored message.
+    .customSanitizer(stripControlChars)
     .trim()
     .isLength({ min: 10, max: 2000 })
     .withMessage('message must be between 10 and 2000 characters'),
   body('page')
-    .optional({ nullable: true })
+    // checkFalsy: an untouched optional input posts '' rather than being
+    // absent, and an empty route is "no route", not a malformed one.
+    .optional({ nullable: true, checkFalsy: true })
     .isString()
     .withMessage('page must be a string')
     .trim()
@@ -944,6 +980,8 @@ export const validateFeedback = [
     .withMessage('page must be an app route path'),
   body('email')
     .optional({ nullable: true, checkFalsy: true })
+    .isString()
+    .withMessage('email must be a string')
     .isEmail()
     .withMessage('email must be a valid email address')
     .normalizeEmail()

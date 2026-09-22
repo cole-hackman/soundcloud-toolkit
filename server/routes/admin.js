@@ -1102,9 +1102,17 @@ router.get('/feedback-items.csv', authenticateUser, adminAuth, async (req, res) 
       },
     });
 
+    // Same shape as the beta-emails export, plus a formula guard: `message`
+    // and `adminNote` are free text, and Excel / Sheets / LibreOffice execute
+    // a cell that opens with =, +, -, @, tab or CR. Prefixing an apostrophe
+    // makes the cell literal text; the apostrophe is not shown by the
+    // spreadsheet and the raw CSV still reads plainly.
     const escape = (v) => {
-      const s = v === null || v === undefined ? '' : String(v);
-      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+      let s = v === null || v === undefined ? '' : String(v);
+      if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
+      // \r joins the class: a lone CR is a row break to some parsers, so a
+      // message containing one must stay inside its quoted field.
+      return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
     };
     const header = [
       'id', 'createdAt', 'type', 'status', 'username', 'soundcloudId',

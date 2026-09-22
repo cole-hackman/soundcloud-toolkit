@@ -304,6 +304,114 @@ describe('GET /api/admin/feedback-items.csv', () => {
     expect(findMany.mock.calls[0][0].where).toEqual({ status: 'new' });
   });
 
+  test('neutralises a formula so a spreadsheet does not execute the export', async () => {
+    findMany.mockResolvedValue([{
+      id: 'fb-3',
+      createdAt: new Date('2026-09-22T00:00:00Z'),
+      type: 'bug',
+      status: 'new',
+      soundcloudId: 111,
+      page: null,
+      email: null,
+      message: '=HYPERLINK("http://evil.example.com","click")',
+      adminNote: null,
+      user: { username: 'cole' },
+    }]);
+
+    const res = await request(app).get('/api/admin/feedback-items.csv');
+
+    // Leading apostrophe makes the cell literal text in Excel / Sheets /
+    // LibreOffice. The field also contains quotes, so it must be quoted with
+    // the inner quotes doubled.
+    expect(res.text).toContain('"\'=HYPERLINK(""http://evil.example.com"",""click"")"');
+    // The bare formula must not survive anywhere as the start of a field.
+    expect(res.text).not.toContain(',=HYPERLINK');
+  });
+
+  test.each([
+    ['=cmd', '=cmd'],
+    ['+1+1', '+1+1'],
+    ['-1+1', '-1+1'],
+    ['@SUM(A1)', '@SUM(A1)'],
+  ])('prefixes a cell starting with %s', async (_label, message) => {
+    findMany.mockResolvedValue([{
+      id: 'fb-4',
+      createdAt: new Date('2026-09-22T00:00:00Z'),
+      type: 'other',
+      status: 'new',
+      soundcloudId: 111,
+      page: null,
+      email: null,
+      message,
+      adminNote: null,
+      user: { username: 'cole' },
+    }]);
+
+    const res = await request(app).get('/api/admin/feedback-items.csv');
+
+    expect(res.text).toContain(`'${message}`);
+  });
+
+  test('an adminNote is guarded too, not just the user message', async () => {
+    findMany.mockResolvedValue([{
+      id: 'fb-5',
+      createdAt: new Date('2026-09-22T00:00:00Z'),
+      type: 'other',
+      status: 'done',
+      soundcloudId: 111,
+      page: null,
+      email: null,
+      message: 'fine',
+      adminNote: '@triage',
+      user: { username: 'cole' },
+    }]);
+
+    const res = await request(app).get('/api/admin/feedback-items.csv');
+
+    expect(res.text).toContain("'@triage");
+  });
+
+  test('a message containing a lone carriage return stays inside its field', async () => {
+    findMany.mockResolvedValue([{
+      id: 'fb-6',
+      createdAt: new Date('2026-09-22T00:00:00Z'),
+      type: 'bug',
+      status: 'new',
+      soundcloudId: 111,
+      page: null,
+      email: null,
+      message: 'first\rsecond',
+      adminNote: null,
+      user: { username: 'cole' },
+    }]);
+
+    const res = await request(app).get('/api/admin/feedback-items.csv');
+
+    // A lone CR is a row break to some parsers — one report must not become
+    // two rows.
+    expect(res.text).toContain('"first\rsecond"');
+  });
+
+  test('ordinary values are left untouched by the formula guard', async () => {
+    findMany.mockResolvedValue([{
+      id: 'fb-7',
+      createdAt: new Date('2026-09-22T00:00:00Z'),
+      type: 'bug',
+      status: 'new',
+      soundcloudId: 111,
+      page: '/combine',
+      email: null,
+      message: 'Playback stops after ten tracks.',
+      adminNote: null,
+      user: { username: 'cole' },
+    }]);
+
+    const res = await request(app).get('/api/admin/feedback-items.csv');
+
+    expect(res.text).not.toContain("'");
+    expect(res.text).toContain('Playback stops after ten tracks.');
+  });
+
   test('quotes a message containing commas, quotes and newlines', async () => {
     findMany.mockResolvedValue([{
       id: 'fb-2',

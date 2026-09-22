@@ -285,7 +285,7 @@ export default function LikeManagerPage() {
   );
 
   return (
-    <PageContainer maxWidth="wide" className={selected.size > 0 ? "pb-28" : ""}>
+    <PageContainer maxWidth="wide" className="pb-28">
         <PageHeader
           title="Like Manager"
           description="Browse, search, and manage your liked tracks. Unlike in bulk."

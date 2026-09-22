@@ -19,6 +19,10 @@ interface PageContainerProps {
  *
  * Background & min-height are handled by AppShell — this component
  * only provides horizontal centering, max-width, and consistent padding.
+ *
+ * The bottom padding clears the home indicator on a notched phone. Pages
+ * with a selection banner override it with `pb-28`; `cn` is tailwind-merge,
+ * so the later class wins.
  */
 export function PageContainer({
   children,
@@ -26,7 +30,13 @@ export function PageContainer({
   className,
 }: PageContainerProps) {
   return (
-    <div className={cn("mx-auto px-4 sm:px-6 py-6", WIDTH_MAP[maxWidth], className)}>
+    <div
+      className={cn(
+        "mx-auto px-4 sm:px-6 pt-6 pb-[max(1.5rem,env(safe-area-inset-bottom))]",
+        WIDTH_MAP[maxWidth],
+        className,
+      )}
+    >
       {children}
     </div>
   );

@@ -198,7 +198,7 @@ export default function GenreSearchPage() {
   };
 
   return (
-    <PageContainer maxWidth="default" className={selectedTracks.size > 0 ? "pb-28" : ""}>
+    <PageContainer maxWidth="default" className="pb-28">
         <PageHeader
           title="Genre Search"
           description="Discover tracks by genre or tag and add them to your playlists."

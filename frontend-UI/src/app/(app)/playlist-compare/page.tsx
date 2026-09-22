@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { ArrowRightLeft, Download, ListPlus } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { downloadCsv } from "@/lib/csv";
-import { Button, EmptyState, InlineAlert, LoadingSpinner, PageHeader } from "@/components/ui";
+import { Button, EmptyState, InlineAlert, LoadingSpinner, PageContainer, PageHeader } from "@/components/ui";
 import { usePlaylistsQuery } from "@/lib/queries";
 
 interface Playlist {
@@ -82,71 +82,69 @@ export default function PlaylistComparePage() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="container mx-auto max-w-6xl px-6 py-6">
-        <PageHeader
-          title="Playlist Compare"
-          description="Compare two playlists to find overlap and tracks missing from either side."
-        />
+    <PageContainer maxWidth="wide">
+      <PageHeader
+        title="Playlist Compare"
+        description="Compare two playlists to find overlap and tracks missing from either side."
+      />
 
-        {notice && (
-          <InlineAlert variant={notice.type} className="mb-6" onDismiss={() => setNotice(null)}>
-            {notice.text}
-          </InlineAlert>
-        )}
+      {notice && (
+        <InlineAlert variant={notice.type} className="mb-6" onDismiss={() => setNotice(null)}>
+          {notice.text}
+        </InlineAlert>
+      )}
 
-        <div className="mb-6 rounded-xl border border-border bg-card p-4">
-          {loading ? (
-            <LoadingSpinner />
-          ) : (
-            <div className="grid gap-3 md:grid-cols-[1fr_1fr_auto]">
-              <PlaylistSelect label="Playlist A" value={playlistAId} playlists={playlists} onChange={setPlaylistAId} />
-              <PlaylistSelect label="Playlist B" value={playlistBId} playlists={playlists} onChange={setPlaylistBId} />
-              <div className="flex items-end">
-                <Button onClick={compare} disabled={comparing || !playlistAId || !playlistBId || playlistAId === playlistBId}>
-                  {comparing ? <LoadingSpinner size="sm" className="border-white" /> : <ArrowRightLeft className="h-4 w-4" />}
-                  Compare
-                </Button>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {!result ? (
-          <div className="rounded-xl border border-border bg-card p-8">
-            <EmptyState
-              icon={<ArrowRightLeft className="h-12 w-12" />}
-              title="Choose two playlists"
-              description="The comparison will show shared tracks and tracks unique to each playlist."
-            />
-          </div>
+      <div className="mb-6 rounded-xl border border-border bg-card p-4">
+        {loading ? (
+          <LoadingSpinner />
         ) : (
-          <div className="space-y-6">
-            <div className="flex justify-end">
-              <Button nowrap variant="outline" onClick={exportCsv}>
-                <Download className="h-4 w-4" />
-                Export CSV
+          <div className="grid gap-3 md:grid-cols-[1fr_1fr_auto]">
+            <PlaylistSelect label="Playlist A" value={playlistAId} playlists={playlists} onChange={setPlaylistAId} />
+            <PlaylistSelect label="Playlist B" value={playlistBId} playlists={playlists} onChange={setPlaylistBId} />
+            <div className="flex items-end">
+              <Button onClick={compare} disabled={comparing || !playlistAId || !playlistBId || playlistAId === playlistBId}>
+                {comparing ? <LoadingSpinner size="sm" className="border-white" /> : <ArrowRightLeft className="h-4 w-4" />}
+                Compare
               </Button>
-            </div>
-
-            <div className="grid gap-3 md:grid-cols-3">
-              <Metric label="Overlap" value={`${result.summary.overlapCount}`} detail={`${result.summary.overlapPercent}% of combined tracks`} />
-              <Metric label="Only in A" value={`${result.summary.uniqueToACount}`} detail={result.summary.playlistA.title} />
-              <Metric label="Only in B" value={`${result.summary.uniqueToBCount}`} detail={result.summary.playlistB.title} />
-            </div>
-
-            <TrackSection title={`Only in ${result.summary.playlistA.title}`} tracks={result.uniqueToA} />
-            <TrackSection title={`Only in ${result.summary.playlistB.title}`} tracks={result.uniqueToB} />
-            <TrackSection title="In both playlists" tracks={result.overlap} />
-
-            <div className="rounded-xl border border-border bg-card p-4 text-sm text-muted-foreground">
-              <ListPlus className="mr-2 inline h-4 w-4 text-primary" />
-              Next step: use Combine Playlists or Playlist Modifier to add missing tracks after reviewing the export.
             </div>
           </div>
         )}
       </div>
-    </div>
+
+      {!result ? (
+        <div className="rounded-xl border border-border bg-card p-8">
+          <EmptyState
+            icon={<ArrowRightLeft className="h-12 w-12" />}
+            title="Choose two playlists"
+            description="The comparison will show shared tracks and tracks unique to each playlist."
+          />
+        </div>
+      ) : (
+        <div className="space-y-6">
+          <div className="flex justify-end">
+            <Button nowrap variant="outline" onClick={exportCsv}>
+              <Download className="h-4 w-4" />
+              Export CSV
+            </Button>
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-3">
+            <Metric label="Overlap" value={`${result.summary.overlapCount}`} detail={`${result.summary.overlapPercent}% of combined tracks`} />
+            <Metric label="Only in A" value={`${result.summary.uniqueToACount}`} detail={result.summary.playlistA.title} />
+            <Metric label="Only in B" value={`${result.summary.uniqueToBCount}`} detail={result.summary.playlistB.title} />
+          </div>
+
+          <TrackSection title={`Only in ${result.summary.playlistA.title}`} tracks={result.uniqueToA} />
+          <TrackSection title={`Only in ${result.summary.playlistB.title}`} tracks={result.uniqueToB} />
+          <TrackSection title="In both playlists" tracks={result.overlap} />
+
+          <div className="rounded-xl border border-border bg-card p-4 text-sm text-muted-foreground">
+            <ListPlus className="mr-2 inline h-4 w-4 text-primary" />
+            Next step: use Combine Playlists or Playlist Modifier to add missing tracks after reviewing the export.
+          </div>
+        </div>
+      )}
+    </PageContainer>
   );
 }
 

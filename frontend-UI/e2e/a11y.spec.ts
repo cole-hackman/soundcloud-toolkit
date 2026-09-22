@@ -117,3 +117,58 @@ test("Dialog: labelled by its heading, traps Tab, Escape closes and restores foc
   await expect(dialog).toBeHidden();
   await expect(trigger).toBeFocused();
 });
+
+/**
+ * Selection is a real checkbox, and the banner that appears is a status
+ * region rather than a silent strip of pixels. Both are the point of
+ * SelectableRow / SelectionBanner, and neither is visible to axe.
+ */
+test("selection: the checkbox drives the count, and the banner is a status region", async ({
+  page,
+}) => {
+  await mockApi(page);
+  await page.goto("/like-manager/");
+
+  const firstRow = page.getByRole("checkbox", { name: "Sample Track 1" });
+  await expect(firstRow).toBeVisible();
+  await expect(firstRow).not.toBeChecked();
+
+  // Keyboard-native: no Enter/Space handler of our own is involved.
+  await firstRow.focus();
+  await page.keyboard.press("Space");
+  await expect(firstRow).toBeChecked();
+
+  const status = page.locator("[role=status]");
+  await expect(status).toContainText("1");
+
+  // The banner's action is reachable from the row by Tab alone — it is a
+  // button in the document, not something only a pointer can get to.
+  const action = page.getByRole("button", { name: /Unlike Selected/ });
+  await expect(action).toBeVisible();
+
+  let reached = false;
+  for (let i = 0; i < 25 && !reached; i += 1) {
+    await page.keyboard.press("Tab");
+    reached = await action.evaluate((element) => element === document.activeElement);
+  }
+  expect(reached, "Tab never reached the selection banner's action button").toBe(true);
+});
+
+/**
+ * Regression guard for the row body. Clicking the row toggles it through a
+ * `<label>`, and Chromium skips forwarding a label click to its control when
+ * the click extended a text selection — which a shift-click does unless the
+ * label is `select-none`. Without that class this passes on the checkbox and
+ * silently fails on the row, which is where people actually click.
+ */
+test("selection: shift-clicking the row body selects a range", async ({ page }) => {
+  await mockApi(page);
+  await page.goto("/like-manager/");
+
+  await page.getByText("Sample Track 1", { exact: true }).click();
+  await page.getByText("Sample Track 3", { exact: true }).click({ modifiers: ["Shift"] });
+
+  await expect(page.getByRole("checkbox", { name: "Sample Track 2" })).toBeChecked();
+  await expect(page.getByRole("checkbox", { name: "Sample Track 3" })).toBeChecked();
+  await expect(page.getByRole("checkbox", { name: "Sample Track 4" })).not.toBeChecked();
+});

@@ -567,7 +567,7 @@ export default function GrowthPage() {
   const sessionActions = historyData?.actions.filter(a => a.sessionId === selectedSessionId) || [];
 
   return (
-    <PageContainer maxWidth="wide" className={selectedSuggestions.size > 0 || (activeTab === "history" && selectedHistoryActions.size > 0) ? "pb-28" : ""}>
+    <PageContainer maxWidth="wide" className="pb-28">
       <PageHeader
         title="Grow Your Network"
         description="Discover active SoundCloud users likely to follow you back, engage with their tracks, and reverse campaigns anytime."

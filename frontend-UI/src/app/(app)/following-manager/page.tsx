@@ -306,7 +306,7 @@ export default function FollowingManagerPage() {
   );
 
   return (
-    <PageContainer maxWidth="wide" className={selected.size > 0 ? "pb-28" : ""}>
+    <PageContainer maxWidth="wide" className="pb-28">
         <PageHeader
           title="Following Manager"
           description="Browse and manage who you follow. Unfollow accounts in bulk."

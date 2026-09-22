@@ -12,6 +12,7 @@ import {
   Card,
   ConfirmDialog,
   EmptyState,
+  Field,
   IconButton,
   InlineAlert,
   Input,
@@ -455,20 +456,24 @@ export default function DownloadsPage() {
               <>
                 {/* Search filter */}
                 {playlists.length > 5 && (
-                  <div className="relative mb-4">
-                    <Search
-                      aria-hidden="true"
-                      className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground-subtle"
-                    />
-                    <Input
-                      type="search"
-                      aria-label="Search playlists"
-                      value={sourceSearch}
-                      onChange={(e) => setSourceSearch(e.target.value)}
-                      placeholder="Search playlists…"
-                      className="h-11 pl-9 bg-transparent dark:text-foreground dark:border-border"
-                    />
-                  </div>
+                  <Field label="Search playlists" labelHidden className="mb-4">
+                    {(field) => (
+                      <div className="relative">
+                        <Search
+                          aria-hidden="true"
+                          className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground-subtle"
+                        />
+                        <Input
+                          {...field}
+                          type="search"
+                          value={sourceSearch}
+                          onChange={(e) => setSourceSearch(e.target.value)}
+                          placeholder="Search playlists…"
+                          className="h-11 pl-9 bg-transparent dark:text-foreground dark:border-border"
+                        />
+                      </div>
+                    )}
+                  </Field>
                 )}
 
                 <div className="grid md:grid-cols-2 gap-4">

@@ -513,7 +513,6 @@ export default function FollowingManagerPage() {
                             // `document.scrollWidth` stays at 360; axe does
                             // not flag an off-screen control either. Hence the
                             // long-username case in e2e/long-titles.spec.ts.
-                            className="min-w-0"
                             id={user.id}
                             selected={isSelected}
                             label={user.username}

@@ -258,7 +258,7 @@ test("has no serious/critical violations: /playlist-modifier/ editor rows", asyn
  * scroll it, so any track past the fourth is unreachable.
  *
  * `BulkReviewDetails` lives in `src/components/ui/`, which Task 16a owns, and
- * it is rendered by the confirm dialog of seven pages (combine,
+ * it is rendered by the confirm dialog of eight pages (combine,
  * following-manager, repost-manager, playlist-modifier, playlist-health-check,
  * growth, like-manager, downloads) — so this is one fix in one shared file,
  * not a playlist-modifier bug. Fixing it here would collide with that task.
@@ -275,7 +275,7 @@ test("has no serious/critical violations: /playlist-modifier/ row-action and con
     true,
     "BulkReviewDetails (src/components/ui/, owned by Task 16a) renders an " +
       "overflow-y-auto track list with no tabindex: axe scrollable-region-focusable, " +
-      "serious. Shared by seven pages' confirm dialogs.",
+      "serious. Shared by eight pages' confirm dialogs.",
   );
 
   await openPlaylistModifierEditor(page);

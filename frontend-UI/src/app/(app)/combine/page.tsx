@@ -315,14 +315,24 @@ export default function CombinePlaylistsPage() {
           description="Select playlists to merge. Duplicates will be automatically removed."
         />
 
-        {/* `min-w-0` on both columns, and it is doing real work rather than
-            being defensive. A grid item's `min-width` is `auto`, which
-            resolves to its min-content width, so one playlist whose title is
-            long enough stretched this column to ~1,150px inside a 360px
-            viewport and the whole page scrolled sideways. Capping the item at
-            the track width is what lets the titles inside wrap and truncate
-            as they were already written to. Covered by the long-title case
-            for this route in e2e/long-titles.spec.ts. */}
+        {/* `min-w-0` on both columns, and it is still doing real work — but
+            not the work an earlier version of this comment claimed.
+
+            A grid item's `min-width` is `auto`, which resolves to its
+            min-content width. `SelectableRow` now caps itself (`min-w-0` on
+            its root), so the playlist ROWS in the left column no longer size
+            this grid. The selected-playlist chips in the right column are not
+            `SelectableRow`s — each is a plain flex row with a `truncate`
+            title and a `shrink-0` Remove button — and `truncate` sets
+            `white-space: nowrap`, which makes a chip's min-content the full
+            title width whether or not the title has spaces. Without these two
+            `min-w-0`s that pushed the merge panel to ~980px inside a 360px
+            viewport and the Remove button to `left: 928`, off the screen.
+
+            So: this caps the column, and the ellipsis on the titles inside
+            comes from their own `truncate` once the column stops growing.
+            Removing it is not safe — verified by deleting it and watching the
+            long-title case for this route go red on the selected state. */}
         <div className="grid lg:grid-cols-3 gap-6 lg:gap-8">
           {/* Playlist Selection */}
           <div className="min-w-0 lg:col-span-2">

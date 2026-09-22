@@ -77,7 +77,24 @@ async function resolveFile(requestUrl) {
   return { file: join(ROOT, "404.html"), status: 404 };
 }
 
+/**
+ * Identity endpoint, for `e2e/global-setup.mjs`.
+ *
+ * `reuseExistingServer` adopts *anything* listening on the port. An orphan
+ * from an earlier run — or from another worktree — answers `/` with a healthy
+ * 200 while serving a different checkout's `out/`, so the whole suite runs
+ * against stale HTML and fails in ways that describe someone else's code. A
+ * plain health check cannot tell those apart; the `root` this returns can.
+ */
+const IDENTITY_PATH = "/__e2e/identity";
+
 const server = createServer(async (req, res) => {
+  if ((req.url || "").split("?")[0] === IDENTITY_PATH) {
+    res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+    res.end(JSON.stringify({ harness: "track-toolkit-e2e", root: ROOT, pid: process.pid }));
+    return;
+  }
+
   const { file, status } = await resolveFile(req.url || "/");
   try {
     const body = await readFile(file);

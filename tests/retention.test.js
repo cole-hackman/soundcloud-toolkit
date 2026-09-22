@@ -44,13 +44,14 @@ prismaMock.$queryRaw = queryRaw;
 
 jest.unstable_mockModule('../server/lib/prisma.js', () => ({ default: prismaMock }));
 
-const { runRetentionOnce, startRetentionScheduler, LIFETIME_METRIC_KEY } =
+const { runRetentionOnce, startRetentionScheduler, resolveIntervalMs, LIFETIME_METRIC_KEY } =
   await import('../server/lib/retention.js');
 
 const infoSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
 const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
 
-afterAll(() => { infoSpy.mockRestore(); errorSpy.mockRestore(); });
+afterAll(() => { infoSpy.mockRestore(); errorSpy.mockRestore(); warnSpy.mockRestore(); });
 
 beforeEach(() => {
   // mockReset, not mockClear: implementations have to go too, or the
@@ -114,11 +115,17 @@ describe('cutoff dates', () => {
     }
   });
 
-  test('disconnected accounts are removed after a 7-day grace period', async () => {
+  // SIX days, not seven, and this expectation is a compliance assertion rather
+  // than a description of the code. The SoundCloud terms cap deletion at 7 days
+  // after a disconnect; this job sweeps once a day, so the real worst case is
+  // the grace period PLUS up to one interval. Seven would put that worst case
+  // past the ceiling. If this test is ever "fixed" by moving it back to 7,
+  // read docs/internal/TERMS-CHECK.md finding B before changing the constant.
+  test('disconnected accounts are removed after a 6-day grace period, keeping the daily sweep inside the terms\' 7-day ceiling', async () => {
     await runRetentionOnce(NOW);
 
     expect(userDeleteMany).toHaveBeenNthCalledWith(1, {
-      where: { disconnectedAt: { lt: daysBefore(7) } },
+      where: { disconnectedAt: { lt: daysBefore(6) } },
     });
   });
 
@@ -429,6 +436,82 @@ describe('scheduler', () => {
       clearInterval(interval);
     } finally {
       delete process.env.RETENTION_INTERVAL_MS;
+    }
+  });
+});
+
+/**
+ * The interval is a compliance input, not a tuning knob.
+ *
+ * DISCONNECTED_GRACE_DAYS is 6 against a 7-day ceiling, so the single day
+ * between them is the whole margin — and it is spent waiting for the next
+ * sweep after a row becomes eligible. A 48-hour period puts the worst case at
+ * 8 days, outside the terms, from an environment variable and with nothing in
+ * the code to notice. These assert that it cannot.
+ */
+describe('RETENTION_INTERVAL_MS is clamped to the deletion deadline', () => {
+  const DAY = 24 * 60 * 60 * 1000;
+
+  // Same setup as the `scheduler` block above, and for the same reason: the
+  // last test here starts the real scheduler, which arms a 10-minute timeout
+  // and a multi-day interval. Without fake timers that does not fail, it
+  // hangs the run.
+  beforeEach(() => { jest.useFakeTimers({ now: NOW }); });
+  afterEach(() => {
+    jest.clearAllTimers();
+    jest.useRealTimers();
+    delete process.env.RETENTION_INTERVAL_MS;
+  });
+
+  test('an over-long interval is clamped to 24h', () => {
+    process.env.RETENTION_INTERVAL_MS = String(7 * DAY);
+    expect(resolveIntervalMs()).toBe(DAY);
+  });
+
+  test('the clamp is announced, naming the value that was refused', () => {
+    warnSpy.mockClear();
+    process.env.RETENTION_INTERVAL_MS = String(48 * 60 * 60 * 1000);
+
+    resolveIntervalMs();
+
+    const warned = warnSpy.mock.calls.map((args) => args.join(' ')).join('\n');
+    expect(warned).toContain('172800000');
+    expect(warned).toContain('clamped to 24h');
+    // An operator who set it must be able to find out why from the log alone.
+    expect(warned).toContain('TERMS-CHECK.md');
+  });
+
+  test('a shorter interval is honoured — more frequent sweeps only help', () => {
+    process.env.RETENTION_INTERVAL_MS = String(60 * 60 * 1000);
+    expect(resolveIntervalMs()).toBe(60 * 60 * 1000);
+  });
+
+  test('exactly 24h is not clamped, and says nothing', () => {
+    warnSpy.mockClear();
+    process.env.RETENTION_INTERVAL_MS = String(DAY);
+    expect(resolveIntervalMs()).toBe(DAY);
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+
+  test('unset falls back to the 24h default', () => {
+    expect(resolveIntervalMs()).toBe(DAY);
+  });
+
+  test('the scheduler uses the clamped value, not the configured one', async () => {
+    process.env.RETENTION_INTERVAL_MS = String(7 * DAY);
+    const interval = startRetentionScheduler();
+    try {
+      jest.advanceTimersByTime(10 * 60 * 1000);   // the initial run
+      await flush();
+      const afterFirst = libraryCachePageDeleteMany.mock.calls.length;
+
+      // One day later the sweep must have run again. If the raw 7-day value
+      // had reached setInterval, it would not have.
+      jest.advanceTimersByTime(DAY);
+      await flush();
+      expect(libraryCachePageDeleteMany.mock.calls.length).toBeGreaterThan(afterFirst);
+    } finally {
+      clearInterval(interval);
     }
   });
 });

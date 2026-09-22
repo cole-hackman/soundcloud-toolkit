@@ -272,7 +272,7 @@ The two models this app touches on every request are detailed below.
 | `displayName` | `String?` | Display name (may differ from username) |
 | `avatarUrl` | `String?` | Profile picture URL |
 | `lastLoginAt` | `DateTime?` | Stamped by the OAuth callback on every login. Drives the dormant-account purge; null on rows predating the column, which fall back to `updatedAt` |
-| `disconnectedAt` | `DateTime?` | Set by `POST /api/auth/disconnect` or by revocation detection; cleared on the next successful login. Rows still stamped after 7 days are deleted by the retention job |
+| `disconnectedAt` | `DateTime?` | Set by `POST /api/auth/disconnect` or by revocation detection; cleared on the next successful login. Rows still stamped after 6 days are deleted by the retention job |
 | `createdAt` | `DateTime` | Auto |
 | `updatedAt` | `DateTime` | Auto |
 | `tokens` | `Token[]` | One-to-many relation (effectively one per user) |
@@ -572,7 +572,7 @@ up. **Delete** (`DELETE /api/auth/account`) is irreversible. **Disconnect**
 [`lib/account-lifecycle.js`](server/lib/account-lifecycle.js) hands the grant
 back via `signOut`, deletes the `Token` row, stamps `User.disconnectedAt`, and
 drops every cache derived from that grant. The account survives — logging back
-in clears the stamp — but the retention job deletes the row after 7 days.
+in clears the stamp — but the retention job deletes the row after 6 days.
 
 **It must call `invalidateCachedAuth`.** `lib/auth-cache.js` memoizes the
 *decrypted* token pair for 30 seconds; without that call a request inside the
@@ -603,7 +603,7 @@ REPL.
 |---|------|--------|
 | 0 | Lifetime-user snapshot → `Metric.lifetime_distinct_users` | every run, **first** |
 | 1 | `LibraryCachePage` (by `createdAt`) + `LibraryCacheState` (by `updatedAt`) | `CACHE_TTL_DAYS` (7) |
-| 2 | Users still stamped `disconnectedAt` | 7 days (constant, see below) |
+| 2 | Users still stamped `disconnectedAt` | 6 days (constant, see below) |
 | 3 | Dormant users (`lastLoginAt`, or `updatedAt` when null) | `INACTIVE_MONTHS` (24) |
 | 4 | `OperationLog` purge | `OPLOG_RETENTION_DAYS` (365) |
 | 5 | `GrowthAction` | 365 days |
@@ -623,10 +623,15 @@ Three things that look arbitrary but are not:
   Every user delete also logs `[retention] <step> will remove N users` *before*
   it runs, so the first production sweep is reviewable from the logs rather
   than only from its aftermath.
-- **The 7-day disconnect window is a constant, not an env var.** It is the
-  SoundCloud terms' deletion deadline; it should not be possible to push past
-  it from a deployment dashboard. `RETENTION_INTERVAL_MS` eats into its margin,
-  so treat that as compliance-relevant too. See `docs/internal/TERMS-CHECK.md`.
+- **The disconnect window is 6 days, and a constant, not an env var.** The
+  SoundCloud terms' deletion deadline is *7* days; the window is one day short
+  of it on purpose, because the sweep is daily and the real worst case is the
+  grace period plus up to one `RETENTION_INTERVAL_MS`. At 7 that worst case was
+  up to 8 days — past the ceiling. At 6 it is ≈7 and inside it. It is a
+  constant so it cannot be pushed past the deadline from a deployment
+  dashboard, and `RETENTION_INTERVAL_MS` is clamped to 24h in code for the same
+  reason — it would otherwise spend the margin the sixth day buys, from an env
+  var and with no signal. See `docs/internal/TERMS-CHECK.md` finding B.
 - **`INACTIVE_MONTHS` is calendar months in UTC.** Local-time `setMonth` shifts
   the cutoff by an hour across a DST boundary, making the same input produce
   different cutoffs depending on host timezone and time of year.
@@ -901,7 +906,7 @@ clone, and every bulk write.
 | `SESSION_COOKIE_SAMESITE` | No | `lax`, `none` or `strict` for the session cookie. Unset keeps the historical default (`none` in production). Same-origin hosting sets `lax` |
 | `LEGACY_REDIRECT_HOSTS` | No | Comma-separated hostnames Express redirects to `APP_URL` (301 GET/HEAD, 308 otherwise). Unset disables the middleware |
 | `RETENTION_ENABLED` | No | Set to `false` to disable the daily retention purge. **Defaults to on** — a retention policy that is off by default is not a policy |
-| `RETENTION_INTERVAL_MS` | No | Sweep period (default 24h). First run is always 10 min after boot. Compliance-relevant, not a tuning knob: raising it eats the margin on the 7-day deletion deadline |
+| `RETENTION_INTERVAL_MS` | No | Sweep period (default 24h), **clamped to a 24h maximum in code** (`resolveIntervalMs`) and logged when a larger value is refused. First run is always 10 min after boot. Compliance-relevant, not a tuning knob: a longer period would eat the day of margin the 6-day disconnect window buys against the terms' 7-day deletion deadline, so it is enforced rather than documented. Lowering it is always allowed |
 | `CACHE_TTL_DAYS` | No | Library-cache page/state lifetime in days (default `7`) |
 | `INACTIVE_MONTHS` | No | Dormant-account window in **calendar months** (default `24`) |
 | `OPLOG_RETENTION_DAYS` | No | `OperationLog` lifetime in days (default `365`) |
@@ -943,8 +948,29 @@ npx prisma studio         # Open GUI at localhost:5555
 cd frontend-UI
 npm run dev          # Next.js dev server with turbopack
 npm run build        # Static export → frontend-UI/out/
-npm run lint         # ESLint
+npm run lint         # ESLint (npx tsc --noEmit && next lint)
+npm run test:e2e     # Playwright against out/ — run `npm run build` first
 ```
+
+**E2E port, and the orphan that eats an afternoon.** The harness serves
+`frontend-UI/out/` on `E2E_PORT` (default 4173), and `webServer` is configured
+with `reuseExistingServer: true` so a hand-started server survives a run. That
+flag adopts *anything* already listening — an aborted run's leftover, or
+another worktree's harness serving a different checkout's `out/`. Such a server
+answers `/` with a healthy 200, so Playwright is satisfied, and the whole suite
+then runs against someone else's HTML and fails in ways that describe code you
+are not editing.
+
+`e2e/global-setup.mjs` refuses to start in that case: the static server exposes
+`/__e2e/identity` carrying the absolute `out/` path it is serving, and the run
+aborts unless that matches this checkout. The message names the command:
+
+```bash
+lsof -nP -iTCP:$E2E_PORT -sTCP:LISTEN   # find the process holding the port
+E2E_PORT=4211 npm run test:e2e          # or just use another port
+```
+
+Two checkouts running the suite at once need different `E2E_PORT` values.
 
 ---
 

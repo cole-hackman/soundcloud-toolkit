@@ -24,6 +24,7 @@ import {
   useAnnounce,
 } from "@/components/ui";
 import { invalidatePlaylistCaches, useLikesQuery, usePlaylistsQuery } from "@/lib/queries";
+import { asArray } from "@/lib/api-shape";
 
 interface Track {
   id: number;
@@ -77,11 +78,11 @@ export default function LikesToPlaylistPage() {
   const likesQuery = useLikesQuery();
   const playlistsQuery = usePlaylistsQuery({ enabled: addMode === "existing" });
   const likes = useMemo(
-    () => (likesQuery.data?.collection || []) as unknown as Track[],
+    () => asArray<Track>(likesQuery.data?.collection),
     [likesQuery.data?.collection],
   );
   const userPlaylists = useMemo(
-    () => (playlistsQuery.data?.collection || []) as unknown as Playlist[],
+    () => asArray<Playlist>(playlistsQuery.data?.collection),
     [playlistsQuery.data?.collection],
   );
   const loading = likesQuery.isLoading;

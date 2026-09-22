@@ -23,6 +23,14 @@ import { mockApi } from "./fixtures/api";
 const LONG =
   "Absolutely Enormous Extended Bootleg Rework Of A Track Whose Name Will Never Fit On A Phone Screen At Any Width 2026";
 const LONG_USER = "testfollowing-with-an-extremely-long-display-name-that-never-fits";
+/**
+ * No spaces, so there is no break opportunity at all. `truncate` sets
+ * `white-space: nowrap`, which already makes a spaced title's min-content its
+ * full width — but an unbreakable one fails even without `truncate`, so it is
+ * the stricter fixture and the one that catches a row that only *looks*
+ * capped because its longest word happened to fit.
+ */
+const LONG_UNBREAKABLE = "Absolutely-Enormous-Extended-Bootleg-Rework-Whose-Name-Will-Never-Fit-2026";
 
 function json(body: unknown) {
   return { status: 200, contentType: "application/json", body: JSON.stringify(body) };
@@ -132,12 +140,68 @@ const LONG_COMPARE = {
   uniqueToB: [{ id: 102, title: `${LONG} C`, user: { username: LONG_USER } }],
 };
 
+const LONG_LIKES = {
+  collection: [0, 1].map((i) => ({
+    id: 100 + i,
+    title: `${LONG} ${i}`,
+    user: { username: LONG_USER },
+    artwork_url: null,
+    duration: 200000,
+    permalink_url: "https://soundcloud.com/x/y",
+  })),
+  next_href: null as string | null,
+};
+
+const LONG_RECENTLY_PLAYED = {
+  collection: [0, 1].map((i) => ({
+    id: 500 + i,
+    // The unbreakable fixture lives here so at least one route exercises it.
+    title: `${LONG_UNBREAKABLE} ${i}`,
+    user: { username: LONG_USER },
+    artwork_url: null,
+    duration: 200000,
+    permalink_url: "https://soundcloud.com/x/y",
+  })),
+  next_href: null as string | null,
+};
+
+const LONG_REPOSTS = {
+  collection: [0, 1].map((i) => ({
+    id: 300 + i,
+    urn: `soundcloud:tracks:${300 + i}`,
+    // One of each, because the row renders a type badge as a `shrink-0`
+    // sibling of the title and that badge is the control most likely to be
+    // pushed off the edge.
+    resourceType: i === 1 ? "playlist" : "track",
+    title: `${LONG} ${i}`,
+    user: { username: LONG_USER },
+    artwork_url: null,
+    permalink_url: "https://soundcloud.com/x/y",
+    created_at: "2026-09-01T12:00:00.000Z",
+  })),
+  has_more: false,
+  total: 2,
+};
+
+/** The session payload the `/account` profile card renders. */
+const LONG_SESSION = {
+  userId: "u1",
+  soundcloudId: 1000001,
+  username: LONG_USER,
+  displayName: LONG,
+  avatarUrl: null as string | null,
+};
+
 /** Registered after `mockApi`, so it runs first and falls through for the rest. */
 async function withLongTitles(page: Page): Promise<void> {
   await page.route("**/api/**", async (route) => {
     const { pathname } = new URL(route.request().url());
     const method = route.request().method();
 
+    if (method === "GET" && pathname === "/api/auth/me") return route.fulfill(json(LONG_SESSION));
+    if (method === "GET" && pathname === "/api/likes/paged") return route.fulfill(json(LONG_LIKES));
+    if (method === "GET" && pathname === "/api/reposts/paged") return route.fulfill(json(LONG_REPOSTS));
+    if (method === "GET" && pathname === "/api/recently-played") return route.fulfill(json(LONG_RECENTLY_PLAYED));
     if (method === "GET" && pathname === "/api/playlists") return route.fulfill(json(LONG_PLAYLISTS));
     if (method === "GET" && /^\/api\/playlists\/\d+$/.test(pathname)) return route.fulfill(json(LONG_PLAYLIST_DETAIL));
     if (method === "GET" && pathname === "/api/playlists/search-tracks") return route.fulfill(json(LONG_SEARCH));
@@ -177,6 +241,51 @@ async function assertNothingClipped(page: Page): Promise<void> {
     });
 
   expect(offscreen, JSON.stringify(offscreen, null, 2)).toEqual([]);
+
+  await assertNoSidewaysScroller(page);
+}
+
+/**
+ * No box inside `<main>` scrolls sideways.
+ *
+ * The check above only looks at interactive elements, so a row with no
+ * right-side control slips past it completely — and that is not hypothetical.
+ * A list written as `max-h-[60dvh] overflow-y-auto` is *also* horizontally
+ * scrollable, because CSS computes a `visible` axis to `auto` as soon as the
+ * other axis is not visible. An over-wide row inside such a list therefore
+ * scrolls within it: `document.scrollWidth` stays at the viewport width, axe
+ * sees nothing, and every control is technically on screen because the row
+ * simply extends past the list's right edge instead of the page's.
+ *
+ * That is how a row measured at 1103px inside a 276px list passed all three
+ * of this suite's other checks. The measurement that catches it is the
+ * container's own `scrollWidth` against its `clientWidth`.
+ *
+ * Only `auto`/`scroll` boxes count. `overflow: hidden` is how `truncate`
+ * itself works — an ellipsised title always has `scrollWidth > clientWidth`,
+ * by design — so including hidden boxes would flag every correctly truncated
+ * row on the page and make this assertion meaningless.
+ */
+async function assertNoSidewaysScroller(page: Page): Promise<void> {
+  const scrollers = await page.locator("main *").evaluateAll((elements) =>
+    elements
+      .map((el) => {
+        const overflowX = getComputedStyle(el).overflowX;
+        return {
+          cls: (el as HTMLElement).className?.toString().slice(0, 70) ?? "",
+          overflowX,
+          scrollWidth: el.scrollWidth,
+          clientWidth: el.clientWidth,
+          overflowBy: el.scrollWidth - el.clientWidth,
+        };
+      })
+      .filter(
+        (box) =>
+          (box.overflowX === "auto" || box.overflowX === "scroll") && box.overflowBy > 1,
+      ),
+  );
+
+  expect(scrollers, JSON.stringify(scrollers, null, 2)).toEqual([]);
 }
 
 interface Case {
@@ -255,6 +364,73 @@ const CASES: Case[] = [
       await page.getByRole("button", { name: new RegExp(LONG.slice(0, 30)) }).first().click();
       await page.getByRole("button", { name: "Load playlist tracks" }).click();
       await page.getByText(/^[\d,]+ tracks? ready$/).waitFor();
+    },
+    proof: async (page) => expect(page.locator("main")).toContainText(LONG),
+  },
+
+  // ── The pages whose batches merged before this check existed ────────────
+  // Their rows put a `shrink-0` control beside a title — a type badge, an
+  // "Active:" pill, a per-row action — which is the arrangement that clips.
+  // They were swept and are correct today; these keep them that way, because
+  // the regression is silent in both of the other checks.
+  {
+    path: "/like-manager/",
+    drive: async (page) => {
+      await page.getByRole("checkbox", { name: new RegExp(LONG.slice(0, 30)) }).first().waitFor();
+    },
+    proof: async (page) => expect(page.locator("main")).toContainText(LONG),
+  },
+  {
+    path: "/following-manager/",
+    drive: async (page) => {
+      await page.getByRole("checkbox", { name: new RegExp(LONG_USER.slice(0, 30)) }).first().waitFor();
+    },
+    proof: async (page) => expect(page.locator("main")).toContainText(LONG_USER),
+  },
+  {
+    path: "/repost-manager/",
+    drive: async (page) => {
+      await page.getByRole("checkbox", { name: new RegExp(LONG.slice(0, 30)) }).first().waitFor();
+    },
+    proof: async (page) => expect(page.locator("main")).toContainText(LONG),
+  },
+  {
+    path: "/combine/",
+    drive: async (page) => {
+      // Selected, so the selection banner and its actions are measured too —
+      // the row is only half of what has to fit.
+      await page.getByRole("checkbox", { name: new RegExp(LONG.slice(0, 30)) }).first().check();
+    },
+    proof: async (page) => expect(page.locator("main")).toContainText(LONG),
+  },
+  // ── Routes the review measured as over-wide on the pre-merge tree ──────
+  // (`/following-library/` already had a case further up, so only these two
+  //  are new.)
+  // They are NOT over-wide on this one: Task 16a put `min-w-0` on
+  // `SelectableRow`'s root, which is where the fix belongs, and that capped
+  // every row these three render. Kept as coverage rather than as a fix —
+  // they are cheap, and the primitive they depend on lives in another task's
+  // file, so a regression there should surface here rather than in review.
+  {
+    path: "/recently-played/",
+    drive: async (page) => {
+      await page.getByRole("checkbox", { name: new RegExp(LONG_UNBREAKABLE.slice(0, 30)) }).first().waitFor();
+    },
+    proof: async (page) => expect(page.locator("main")).toContainText(LONG_UNBREAKABLE),
+  },
+  {
+    path: "/growth/",
+    drive: async (page) => {
+      await page.getByRole("checkbox", { name: new RegExp(LONG_USER.slice(0, 30)) }).first().waitFor();
+    },
+    proof: async (page) => expect(page.locator("main")).toContainText(LONG_USER),
+  },
+  {
+    path: "/account/",
+    drive: async (page) => {
+      // The profile card is the row at risk: a display name beside a
+      // `shrink-0` avatar.
+      await page.getByText("SoundCloud id 1000001").waitFor();
     },
     proof: async (page) => expect(page.locator("main")).toContainText(LONG),
   },

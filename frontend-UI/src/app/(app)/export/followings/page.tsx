@@ -8,12 +8,13 @@ import { ListExportCard } from "@/components/export/ListExportCard";
 import { FOLLOWING_FORMATS } from "@/lib/export-config";
 import type { ExportFollowing } from "@/lib/export";
 import { followingsQueryOptions } from "@/lib/queries";
+import { asArray } from "@/lib/api-shape";
 
 export default function ExportFollowingsPage() {
   const queryClient = useQueryClient();
   const loadFollowings = async (): Promise<ExportFollowing[]> => {
     const data = await queryClient.ensureQueryData(followingsQueryOptions());
-    return (data.collection || []) as unknown as ExportFollowing[];
+    return asArray<ExportFollowing>(data.collection);
   };
 
   return (

@@ -44,6 +44,7 @@ import {
   usePlaylistsQuery,
   useLikesQuery,
 } from "@/lib/queries";
+import { asArray } from "@/lib/api-shape";
 
 interface Playlist {
   id: number;
@@ -196,7 +197,7 @@ export default function PlaylistModifierPage() {
 
   const playlistsQuery = usePlaylistsQuery();
   const playlists = useMemo(
-    () => (playlistsQuery.data?.collection || []) as unknown as Playlist[],
+    () => asArray<Playlist>(playlistsQuery.data?.collection),
     [playlistsQuery.data?.collection],
   );
   const selectedPlaylistQuery = usePlaylistDetailQuery(selectedPlaylist?.id ?? 0, {
@@ -210,7 +211,7 @@ export default function PlaylistModifierPage() {
   // Parse liked tracks into Track[] shape
   const likedTracks: Track[] = useMemo(() => {
     if (!isLikedTracksView || !likesQuery.data?.collection) return [];
-    return (likesQuery.data.collection as unknown as Array<{ track?: Track } & Track>).map(
+    return asArray<{ track?: Track } & Track>(likesQuery.data.collection).map(
       (item) => {
         const t = item.track || item;
         return {
@@ -282,7 +283,7 @@ export default function PlaylistModifierPage() {
     }
 
     if (selectedPlaylistQuery.data) {
-      setTracks((selectedPlaylistQuery.data.tracks || []) as unknown as Track[]);
+      setTracks(asArray<Track>(selectedPlaylistQuery.data.tracks));
       setTracksError(false);
     }
   }, [selectedPlaylistQuery.data, selectedPlaylistQuery.isError]);

@@ -50,6 +50,7 @@ import {
   useGrowthLimitsQuery,
   useGrowthStatsQuery,
 } from "@/lib/queries";
+import { asArray } from "@/lib/api-shape";
 
 const RISK_ACK_KEY = "sc-toolkit-growth-risk-ack";
 
@@ -265,7 +266,7 @@ export default function GrowthPage() {
 
   // Fetch followings for Step 1
   const { data: followingsData } = useSuspenseQuery(followingsQueryOptions());
-  const followings = (followingsData?.collection || []) as unknown as Following[];
+  const followings = asArray<Following>(followingsData?.collection);
 
   // Fetch History & Stats
   const historyQuery = useGrowthHistoryQuery({ enabled: activeTab === 'history' });

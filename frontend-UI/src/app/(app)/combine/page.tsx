@@ -24,6 +24,7 @@ import {
   useAnnounce,
 } from "@/components/ui";
 import { invalidatePlaylistCaches, playlistsQueryOptions } from "@/lib/queries";
+import { asArray } from "@/lib/api-shape";
 
 interface Playlist {
   id: number;
@@ -41,7 +42,7 @@ export default function CombinePlaylistsPage() {
 
   const { data: playlistsData } = useSuspenseQuery(playlistsQueryOptions());
   const userPlaylists = useMemo(
-    () => (playlistsData?.collection || []) as unknown as Playlist[],
+    () => asArray<Playlist>(playlistsData?.collection),
     [playlistsData?.collection],
   );
 
@@ -314,9 +315,27 @@ export default function CombinePlaylistsPage() {
           description="Select playlists to merge. Duplicates will be automatically removed."
         />
 
+        {/* `min-w-0` on both columns, and it is still doing real work — but
+            not the work an earlier version of this comment claimed.
+
+            A grid item's `min-width` is `auto`, which resolves to its
+            min-content width. `SelectableRow` now caps itself (`min-w-0` on
+            its root), so the playlist ROWS in the left column no longer size
+            this grid. The selected-playlist chips in the right column are not
+            `SelectableRow`s — each is a plain flex row with a `truncate`
+            title and a `shrink-0` Remove button — and `truncate` sets
+            `white-space: nowrap`, which makes a chip's min-content the full
+            title width whether or not the title has spaces. Without these two
+            `min-w-0`s that pushed the merge panel to ~980px inside a 360px
+            viewport and the Remove button to `left: 928`, off the screen.
+
+            So: this caps the column, and the ellipsis on the titles inside
+            comes from their own `truncate` once the column stops growing.
+            Removing it is not safe — verified by deleting it and watching the
+            long-title case for this route go red on the selected state. */}
         <div className="grid lg:grid-cols-3 gap-6 lg:gap-8">
           {/* Playlist Selection */}
-          <div className="lg:col-span-2">
+          <div className="min-w-0 lg:col-span-2">
             <Card className="rounded-2xl p-6 border-2 border-border">
               <h2 className="text-xl font-bold mb-4 text-foreground">
                 Your Playlists
@@ -378,7 +397,7 @@ export default function CombinePlaylistsPage() {
           </div>
 
           {/* Merge Panel */}
-          <div className="lg:col-span-1">
+          <div className="min-w-0 lg:col-span-1">
             <Card className="rounded-2xl p-6 border-2 border-border lg:sticky lg:top-24 space-y-5">
               <h2 className="text-xl font-bold text-foreground">
                 Merge Settings

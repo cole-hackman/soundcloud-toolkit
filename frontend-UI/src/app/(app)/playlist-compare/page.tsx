@@ -17,6 +17,7 @@ import {
   useAnnounce,
 } from "@/components/ui";
 import { usePlaylistsQuery } from "@/lib/queries";
+import { asArray } from "@/lib/api-shape";
 
 interface Playlist {
   id: number;
@@ -52,7 +53,7 @@ export default function PlaylistComparePage() {
   const [result, setResult] = useState<CompareResult | null>(null);
   const [notice, setNotice] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const playlistsQuery = usePlaylistsQuery();
-  const playlists = (playlistsQuery.data?.collection || []) as unknown as Playlist[];
+  const playlists = asArray<Playlist>(playlistsQuery.data?.collection);
   const loading = playlistsQuery.isLoading;
 
   useEffect(() => {

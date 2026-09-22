@@ -15,19 +15,20 @@ import {
   playlistDetailQueryOptions,
   usePlaylistsQuery,
 } from "@/lib/queries";
+import { asArray } from "@/lib/api-shape";
 
 export default function ExportPlaylistsPage() {
   const queryClient = useQueryClient();
   const [selectedPlaylist, setSelectedPlaylist] = useState<PlaylistSummary | null>(null);
   const playlistsQuery = usePlaylistsQuery();
-  const playlists = (playlistsQuery.data?.collection || []) as unknown as PlaylistSummary[];
+  const playlists = asArray<PlaylistSummary>(playlistsQuery.data?.collection);
   const loading = playlistsQuery.isLoading;
   const loadError = playlistsQuery.isError;
 
   const loadPlaylistTracks = async (): Promise<ExportTrack[]> => {
     if (!selectedPlaylist) throw new Error("Select a playlist first");
     const data = await queryClient.ensureQueryData(playlistDetailQueryOptions(selectedPlaylist.id));
-    return (data.tracks || []) as unknown as ExportTrack[];
+    return asArray<ExportTrack>(data.tracks);
   };
 
   return (

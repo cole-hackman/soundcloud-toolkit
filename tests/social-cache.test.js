@@ -88,3 +88,53 @@ describe('getCachedUserPayload', () => {
     requestCache.invalidateUser('u2');
   });
 });
+
+/**
+ * The reset has to leave the caches empty, not merely attempt to.
+ *
+ * This is the invariant every suite's `beforeEach` depends on, and it is the
+ * one that broke: a load still in flight when the reset runs resolves a moment
+ * later and writes its collection into `requestCache`. If the reset clears the
+ * payload cache before draining that work — or if a suite clears it itself
+ * beforehand — the write lands *after* the wipe and the next test is served a
+ * collection it never stubbed. Nothing fails at that point; the failure
+ * surfaces later, in a different file, as an assertion about the wrong
+ * fixture, roughly one full run in thirty.
+ *
+ * So the assertion is deliberately made under the conditions that broke it:
+ * work genuinely in flight, released only after the reset has returned.
+ */
+describe('__resetCacheCoordinationForTests', () => {
+  test('a load still in flight cannot repopulate the cache after the reset', async () => {
+    const gate = deferred();
+    const load = jest.fn(() => gate.promise);
+
+    // In flight, and deliberately not awaited: this is the leftover a previous
+    // test hands to the next one.
+    const inflight = getCachedUserPayload('likes', 'u1', 'default', load, 60_000);
+    expect(load).toHaveBeenCalledTimes(1);
+
+    // Release it only once the reset has already drained and wiped, so the
+    // continuation that writes to the cache runs strictly afterwards — the
+    // worst case, not the convenient one.
+    const reset = __resetCacheCoordinationForTests({ settleMs: 5 });
+    gate.resolve({ collection: ['stale'] });
+    await reset;
+    await inflight.catch(() => {});
+    // One more turn, so any continuation scheduled behind the resolve has run.
+    await new Promise((r) => setImmediate(r));
+
+    expect(requestCache.get('likes', 'u1', 'default')).toBeUndefined();
+  });
+
+  test('it wipes entries any earlier test left behind, for every user', async () => {
+    requestCache.set('likes', 'u1', 'default', { collection: [1] }, 60_000);
+    requestCache.set('playlists', 'u2', 'default', { collection: [2] }, 60_000);
+
+    await __resetCacheCoordinationForTests();
+
+    expect(requestCache.get('likes', 'u1', 'default')).toBeUndefined();
+    expect(requestCache.get('playlists', 'u2', 'default')).toBeUndefined();
+    expect(requestCache.size()).toBe(0);
+  });
+});

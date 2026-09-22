@@ -138,6 +138,96 @@ test.describe("account page", () => {
     expect(request.postDataJSON()).toEqual({ confirm: "DELETE" });
   });
 
+  /**
+   * The shared `Dialog` contract, on the dialog that drove it.
+   *
+   * `a11y.spec.ts` used to own this test. It drove the delete-account dialog,
+   * which moved to `/account` in Task 7, and the test was deleted with the
+   * route rather than moved — so the four guarantees below went unasserted
+   * anywhere while still looking covered, because `/account` had tests about
+   * dialogs. Escape and focus-return are asserted in the next test; the two
+   * here are the ones that were genuinely lost.
+   *
+   * `toHaveAccessibleName` is not a substitute for the first of them. It
+   * passes just as happily when the name comes from an `aria-label` that has
+   * drifted away from the heading people can actually see — which is the
+   * failure worth catching, since a screen reader would then announce one
+   * thing and the screen show another. Resolving the `aria-labelledby` id to
+   * an element and comparing its text is what proves they are the same string.
+   */
+  test("Delete account: the dialog is labelled by its visible heading", async ({
+    page,
+  }, testInfo) => {
+    test.skip(
+      !["desktop", "m360"].includes(testInfo.project.name),
+      "runs at desktop and the narrowest phone",
+    );
+
+    await page.goto("/account/");
+
+    const trigger = page.getByRole("main").getByRole("button", { name: "Delete account" });
+    await trigger.focus();
+    await trigger.press("Enter");
+
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible();
+
+    const labelledBy = await dialog.getAttribute("aria-labelledby");
+    expect(labelledBy, "dialog has no aria-labelledby").toBeTruthy();
+
+    // The id must resolve, the element must be the heading, and that heading
+    // must be on screen — an `aria-labelledby` pointing at a visually-hidden
+    // or detached node is the same drift in a different costume.
+    const label = page.locator(`#${labelledBy}`);
+    await expect(label).toBeVisible();
+    await expect(label).toHaveText("Delete your account?");
+    expect(await label.evaluate((el) => el.tagName)).toBe("H2");
+    await expect(dialog).toHaveAttribute("aria-modal", "true");
+  });
+
+  test("Delete account: Tab cycles inside the dialog", async ({ page }, testInfo) => {
+    test.skip(
+      !["desktop", "m360"].includes(testInfo.project.name),
+      "runs at desktop and the narrowest phone",
+    );
+
+    await page.goto("/account/");
+
+    const trigger = page.getByRole("main").getByRole("button", { name: "Delete account" });
+    await trigger.focus();
+    await trigger.press("Enter");
+
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible();
+
+    // `aria-modal` is a promise to assistive tech, not a behaviour: the
+    // browser still tabs into the page behind the overlay unless something
+    // wraps focus. Tabbing more times than there are stops and finding focus
+    // still inside is the assertion that the trap exists; counting exact
+    // stops would just re-describe this dialog's current markup.
+    const stops = await dialog.locator(
+      'a[href], button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    ).count();
+    expect(stops, "dialog has no focusable controls").toBeGreaterThan(1);
+
+    for (let i = 0; i < stops + 2; i++) {
+      await page.keyboard.press("Tab");
+      await expect(
+        dialog.locator(":focus"),
+        `focus escaped the dialog after ${i + 1} Tab press(es)`,
+      ).toHaveCount(1);
+    }
+
+    // And backwards, which is a separate branch in the trap.
+    for (let i = 0; i < stops + 2; i++) {
+      await page.keyboard.press("Shift+Tab");
+      await expect(
+        dialog.locator(":focus"),
+        `focus escaped the dialog after ${i + 1} Shift+Tab press(es)`,
+      ).toHaveCount(1);
+    }
+  });
+
   test("Delete account: Escape closes the dialog and returns focus", async ({
     page,
   }, testInfo) => {

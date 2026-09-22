@@ -1,6 +1,7 @@
 import { test, expect } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 import { mockApi } from "./fixtures/api";
+import { READY, type ReadyLocator } from "./fixtures/ready";
 
 interface PageCase {
   path: string;
@@ -10,6 +11,12 @@ interface PageCase {
   fixme?: string;
   /** Expected HTTP status of the navigation response; defaults to 200. */
   expectedStatus?: number;
+  /**
+   * Something only the route's *real* content renders. Defaults to the
+   * shared `READY` map, which the overflow spec uses too — see
+   * `fixtures/ready.ts` for why the `h1` alone is not enough.
+   */
+  ready?: ReadyLocator;
 }
 
 const PAGES: PageCase[] = [
@@ -28,11 +35,12 @@ const PAGES: PageCase[] = [
   { path: "/combine/", needsMock: true },
   { path: "/playlist-modifier/", needsMock: true },
   { path: "/growth/", needsMock: true },
+  { path: "/link-resolver/", needsMock: true },
   { path: "/feedback/", needsMock: true },
   { path: "/account/", needsMock: true },
 ];
 
-for (const { path, needsMock, fixme, expectedStatus } of PAGES) {
+for (const { path, needsMock, fixme, expectedStatus, ready = READY[path] } of PAGES) {
   test(`has no serious/critical WCAG 2.2 AA violations: ${path}`, async ({ page }) => {
     test.fixme(!!fixme, fixme);
 
@@ -65,6 +73,9 @@ for (const { path, needsMock, fixme, expectedStatus } of PAGES) {
       await expect(page.locator("main#main-content")).toBeVisible();
       await expect(page.getByRole("heading", { level: 1 }).first()).toBeVisible();
     }
+    if (ready) {
+      await expect(ready(page)).toBeVisible();
+    }
 
     const results = await new AxeBuilder({ page })
       .withTags(["wcag2a", "wcag2aa", "wcag22aa"])
@@ -77,6 +88,67 @@ for (const { path, needsMock, fixme, expectedStatus } of PAGES) {
     expect(blocking, JSON.stringify(blocking, null, 2)).toEqual([]);
   });
 }
+
+/**
+ * /link-resolver/ only shows its form until something is resolved — the
+ * layout, the stat grid, the embed and the copy buttons all live in the
+ * result, which the page-list audit above never reaches.
+ */
+test("has no serious/critical WCAG 2.2 AA violations: /link-resolver/ result", async ({
+  page,
+}) => {
+  await mockApi(page);
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto("/link-resolver/");
+
+  await page
+    .getByLabel("SoundCloud URL")
+    .fill("https://soundcloud.com/testartist/sample-resolved-track");
+  await page.getByRole("button", { name: "Resolve" }).click();
+  await expect(
+    page.getByRole("heading", { level: 2, name: "Sample Resolved Track" }),
+  ).toBeVisible();
+
+  const results = await new AxeBuilder({ page })
+    .withTags(["wcag2a", "wcag2aa", "wcag22aa"])
+    .analyze();
+
+  const blocking = results.violations.filter(
+    (violation) => violation.impact === "serious" || violation.impact === "critical",
+  );
+
+  expect(blocking, JSON.stringify(blocking, null, 2)).toEqual([]);
+});
+
+/**
+ * The copy buttons are the page's only silent action: the clipboard write
+ * leaves nothing on screen of its own, so the label swap and the
+ * announcement are the whole of the feedback.
+ */
+test("link-resolver: copying swaps the label and announces it", async ({ page, context }) => {
+  // Chromium denies `navigator.clipboard.writeText` without this, which
+  // would exercise the failure branch instead of the success one.
+  await context.grantPermissions(["clipboard-write"]);
+  await mockApi(page);
+  await page.goto("/link-resolver/");
+
+  await page
+    .getByLabel("SoundCloud URL")
+    .fill("https://soundcloud.com/testartist/sample-resolved-track");
+  await page.getByRole("button", { name: "Resolve" }).click();
+
+  const copyUrl = page.getByRole("button", { name: "Copy URL" });
+  await expect(copyUrl).toBeVisible();
+  await copyUrl.click();
+
+  await expect(page.getByRole("button", { name: "Copied" })).toBeVisible();
+  // `LiveRegion` is `aria-live="polite"` and `sr-only`, so assert its text
+  // rather than its visibility.
+  await expect(page.locator("#app-live-region")).toHaveText("Copied");
+
+  // Reverts on its own, so the next copy is unambiguous.
+  await expect(copyUrl).toBeVisible({ timeout: 4000 });
+});
 
 /**
  * The shared `Dialog` primitive, exercised through a confirm that is reachable

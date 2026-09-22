@@ -4,7 +4,19 @@ import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import NextLink from "next/link";
 import { Link as LinkIcon, Search, ExternalLink, Copy, Download, ShoppingBag, Users } from "lucide-react";
-import { Button, InlineAlert, Input, LoadingSpinner, PageContainer, PageHeader, ResultPanel, Card } from "@/components/ui";
+import {
+  Button,
+  Card,
+  Field,
+  InlineAlert,
+  Input,
+  LoadingSpinner,
+  PageContainer,
+  PageHeader,
+  ResultPanel,
+  SectionHeading,
+  useAnnounce,
+} from "@/components/ui";
 import type { ResolverResource } from "@/lib/resolver";
 import { formatCompactNumber, formatDate, formatDuration, parseTagList, useSingleResolver } from "@/lib/resolver";
 import { apiFetchJson } from "@/lib/api";
@@ -51,13 +63,19 @@ function RelatedArtists({ userUrn }: { userUrn: string }) {
       </summary>
       
       <div className="p-4 border-t border-border">
-        {loading && <div className="py-4 text-center text-sm text-muted-foreground">Loading artists...</div>}
-        {error && <div className="py-4 text-center text-sm text-destructive">{error}</div>}
-        
-        {!loading && !error && artists.length === 0 && (
-          <div className="py-4 text-center text-sm text-muted-foreground">No related artists found.</div>
+        {loading && (
+          <div role="status" className="py-4 text-center text-sm text-muted-foreground">
+            Loading artists…
+          </div>
         )}
-        
+        {error && <InlineAlert variant="error">{error}</InlineAlert>}
+
+        {!loading && !error && artists.length === 0 && (
+          <div role="status" className="py-4 text-center text-sm text-muted-foreground">
+            No related artists found.
+          </div>
+        )}
+
         {!loading && !error && artists.length > 0 && (
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
             {artists.map((artist) => (
@@ -66,12 +84,12 @@ function RelatedArtists({ userUrn }: { userUrn: string }) {
                 href={artist.permalink_url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex flex-col items-center gap-2 p-3 rounded-lg hover:bg-secondary/50 transition text-center"
+                className="flex min-h-11 flex-col items-center gap-2 p-3 rounded-lg hover:bg-secondary/50 transition text-center"
               >
                 {artist.avatar_url ? (
                   <img
                     src={artist.avatar_url}
-                    alt={artist.username}
+                    alt=""
                     width={64}
                     height={64}
                     loading="lazy"
@@ -79,7 +97,10 @@ function RelatedArtists({ userUrn }: { userUrn: string }) {
                     className="w-16 h-16 rounded-full object-cover"
                   />
                 ) : (
-                  <div className="w-16 h-16 rounded-full bg-secondary flex items-center justify-center text-muted-foreground">
+                  <div
+                    className="w-16 h-16 rounded-full bg-secondary flex items-center justify-center text-muted-foreground"
+                    aria-hidden="true"
+                  >
                     <Users className="w-6 h-6" />
                   </div>
                 )}
@@ -96,7 +117,10 @@ function RelatedArtists({ userUrn }: { userUrn: string }) {
 
 function LinkResolverContent() {
   const searchParams = useSearchParams();
+  const announce = useAnnounce();
   const [url, setUrl] = useState("");
+  const [copied, setCopied] = useState<"url" | "id" | null>(null);
+  const [copyError, setCopyError] = useState("");
   const { loading, error, result, setResult, setError, resolve } = useSingleResolver();
 
   useEffect(() => {
@@ -104,17 +128,33 @@ function LinkResolverContent() {
     if (urlParam) setUrl(urlParam);
   }, [searchParams]);
 
+  // The label reverts on its own; a copy that silently did nothing was the
+  // old behaviour and there was no way to tell the two apart.
+  useEffect(() => {
+    if (!copied) return;
+    const timer = window.setTimeout(() => setCopied(null), 1500);
+    return () => clearTimeout(timer);
+  }, [copied]);
+
   const resolveLink = async () => {
     setResult(null);
     setError("");
+    setCopied(null);
+    setCopyError("");
     await resolve(url);
   };
 
-  const copyText = async (value?: string | number | null) => {
+  const copyText = async (kind: "url" | "id", value?: string | number | null) => {
     if (value == null) return;
     try {
       await navigator.clipboard.writeText(String(value));
-    } catch {}
+      setCopyError("");
+      setCopied(kind);
+      announce("Copied");
+    } catch {
+      setCopied(null);
+      setCopyError("Couldn't reach the clipboard. Select the value and copy it manually.");
+    }
   };
 
   const resource = result?.data;
@@ -171,19 +211,29 @@ function LinkResolverContent() {
         />
 
         {/* Input */}
-        <Card className="p-6 mb-8">
-          <div className="flex flex-col gap-3 sm:flex-row">
-            <div className="flex-1 relative">
-              <LinkIcon className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-              <Input
-                type="text"
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && resolveLink()}
-                placeholder="Paste a SoundCloud URL..."
-                className="h-12 pl-12 text-base"
-              />
-            </div>
+        <Card className="p-4 sm:p-6 mb-8">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+            <Field label="SoundCloud URL" className="flex-1">
+              {(field) => (
+                <div className="relative">
+                  <LinkIcon
+                    className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground"
+                    aria-hidden="true"
+                  />
+                  <Input
+                    {...field}
+                    type="url"
+                    inputMode="url"
+                    autoComplete="url"
+                    value={url}
+                    onChange={(e) => setUrl(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && resolveLink()}
+                    placeholder="https://soundcloud.com/…"
+                    className="h-12 pl-12 text-base"
+                  />
+                </div>
+              )}
+            </Field>
             <Button
               onClick={resolveLink}
               disabled={!url.trim() || loading}
@@ -192,7 +242,7 @@ function LinkResolverContent() {
               {loading ? (
                 <LoadingSpinner size="sm" className="border-white" />
               ) : (
-                <Search className="w-5 h-5" />
+                <Search className="w-5 h-5" aria-hidden="true" />
               )}
               Resolve
             </Button>
@@ -207,19 +257,19 @@ function LinkResolverContent() {
         {/* Result */}
         {result && resource && (
           <ResultPanel>
-            <div className="flex items-start gap-6">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:gap-6">
               <img
                 src={imageUrl || "/brand/icon-192.png"}
-                alt={title}
+                alt=""
                 width={128}
                 height={128}
                 loading="lazy"
                 decoding="async"
-                className="w-32 h-32 rounded-xl object-cover"
+                className="w-24 h-24 sm:w-32 sm:h-32 shrink-0 rounded-xl object-cover"
               />
-              <div className="flex-1">
+              <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-3 mb-2">
-                  <span className="px-3 py-1 bg-primary/10 text-primary-text rounded-full text-sm font-medium capitalize">
+                  <span className="px-3 py-1 border border-primary/40 text-primary-text rounded-full text-sm font-medium capitalize">
                     {resource.kind}
                   </span>
                   {meta?.cached && (
@@ -243,14 +293,16 @@ function LinkResolverContent() {
                 )}
 
                 {/* Stats */}
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4">
+                {/* Tailwind has no `xs` breakpoint by default, so the second
+                    column starts at `sm` — one column is what fits 360px. */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 mb-4">
                   {renderStats(resource)}
                 </div>
 
                 {tags.length > 0 && (
                   <div className="flex flex-wrap gap-2 mb-4">
                     {tags.slice(0, 8).map((tag) => (
-                      <span key={tag} className="text-xs px-2 py-1 rounded-full bg-primary/10 text-primary-text">
+                      <span key={tag} className="text-xs px-2 py-1 rounded-full border border-primary/40 text-primary-text">
                         #{tag}
                       </span>
                     ))}
@@ -260,7 +312,7 @@ function LinkResolverContent() {
                 {resource.permalink_url && (resource.type === "track" || resource.type === "playlist") && (
                   <div className="mb-6 rounded-xl overflow-hidden border border-border shadow-sm">
                     <iframe
-                      title={`SoundCloud player: ${title}`}
+                      title={`SoundCloud player for ${title}`}
                       width="100%"
                       height={resource.type === "playlist" ? "350" : "166"}
                       scrolling="no"
@@ -271,54 +323,67 @@ function LinkResolverContent() {
                   </div>
                 )}
 
-                <div className="flex flex-wrap gap-3">
+                <div className="flex flex-wrap items-center gap-2">
                   {resource.permalink_url && (
                     <a
                       href={resource.permalink_url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center gap-2 text-primary-text hover:underline"
+                      className="inline-flex min-h-11 items-center gap-2 rounded-lg px-2 text-sm font-semibold text-primary-text hover:underline"
                     >
                       Open on SoundCloud
-                      <ExternalLink className="w-4 h-4" />
+                      <ExternalLink className="w-4 h-4" aria-hidden="true" />
                     </a>
                   )}
-                  <button
-                    onClick={() => copyText(resource.permalink_url || meta?.source_url || url)}
-                    className="inline-flex items-center gap-2 text-muted-foreground hover:text-primary-text"
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => copyText("url", resource.permalink_url || meta?.source_url || url)}
                   >
-                    <Copy className="w-4 h-4" />
-                    Copy URL
-                  </button>
-                  <button
-                    onClick={() => copyText(resource.id)}
-                    className="inline-flex items-center gap-2 text-muted-foreground hover:text-primary-text"
-                  >
-                    <Copy className="w-4 h-4" />
-                    Copy ID
-                  </button>
+                    <Copy className="w-4 h-4" aria-hidden="true" />
+                    {copied === "url" ? "Copied" : "Copy URL"}
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={() => copyText("id", resource.id)}>
+                    <Copy className="w-4 h-4" aria-hidden="true" />
+                    {copied === "id" ? "Copied" : "Copy ID"}
+                  </Button>
                   {resource.type === "track" && resource.download_url && (
-                    <a href={resource.download_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 text-muted-foreground hover:text-primary-text">
-                      <Download className="w-4 h-4" />
+                    <a
+                      href={resource.download_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex min-h-11 items-center gap-2 rounded-lg px-2 text-sm font-semibold text-muted-foreground hover:text-primary-text"
+                    >
+                      <Download className="w-4 h-4" aria-hidden="true" />
                       Download
                     </a>
                   )}
                   {resource.type === "track" && resource.purchase_url && (
-                    <a href={resource.purchase_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 text-muted-foreground hover:text-primary-text">
-                      <ShoppingBag className="w-4 h-4" />
+                    <a
+                      href={resource.purchase_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex min-h-11 items-center gap-2 rounded-lg px-2 text-sm font-semibold text-muted-foreground hover:text-primary-text"
+                    >
+                      <ShoppingBag className="w-4 h-4" aria-hidden="true" />
                       {resource.purchase_title || "Purchase"}
                     </a>
                   )}
                 </div>
+                {copyError && (
+                  <InlineAlert variant="error" className="mt-3" onDismiss={() => setCopyError("")}>
+                    {copyError}
+                  </InlineAlert>
+                )}
                 <div className="mt-4 border-t border-border pt-4">
-                  <div className="mb-2 text-sm font-semibold text-foreground">
+                  <SectionHeading as="h3" className="mb-2">
                     Next actions
-                  </div>
+                  </SectionHeading>
                   <div className="flex flex-wrap gap-2">
                     {resource.type === "track" && resource.permalink_url && (
                       <NextLink
                         href="/downloads"
-                        className="rounded-lg border border-border px-3 py-2 text-sm text-foreground hover:border-primary hover:text-primary-text"
+                        className="inline-flex min-h-11 items-center rounded-lg border border-border px-3 py-2 text-sm text-foreground hover:border-primary hover:text-primary-text"
                       >
                         Open downloads tool
                       </NextLink>
@@ -326,7 +391,7 @@ function LinkResolverContent() {
                     {resource.type === "track" && resource.id && (
                       <NextLink
                         href={`/likes-to-playlist?id=${encodeURIComponent(String(resource.id))}`}
-                        className="rounded-lg border border-border px-3 py-2 text-sm text-foreground hover:border-primary hover:text-primary-text"
+                        className="inline-flex min-h-11 items-center rounded-lg border border-border px-3 py-2 text-sm text-foreground hover:border-primary hover:text-primary-text"
                       >
                         Add this liked track
                       </NextLink>
@@ -334,7 +399,7 @@ function LinkResolverContent() {
                     {resource.type === "playlist" && resource.permalink_url && (
                       <NextLink
                         href={`/playlist-cloner?url=${encodeURIComponent(resource.permalink_url)}`}
-                        className="rounded-lg border border-border px-3 py-2 text-sm text-foreground hover:border-primary hover:text-primary-text"
+                        className="inline-flex min-h-11 items-center rounded-lg border border-border px-3 py-2 text-sm text-foreground hover:border-primary hover:text-primary-text"
                       >
                         Clone playlist
                       </NextLink>
@@ -342,7 +407,7 @@ function LinkResolverContent() {
                     {resource.type === "playlist" && (
                       <NextLink
                         href="/playlist-health-check"
-                        className="rounded-lg border border-border px-3 py-2 text-sm text-foreground hover:border-primary hover:text-primary-text"
+                        className="inline-flex min-h-11 items-center rounded-lg border border-border px-3 py-2 text-sm text-foreground hover:border-primary hover:text-primary-text"
                       >
                         Check playlist health
                       </NextLink>
@@ -352,7 +417,7 @@ function LinkResolverContent() {
                         href={resource.permalink_url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="rounded-lg border border-border px-3 py-2 text-sm text-foreground hover:border-primary hover:text-primary-text"
+                        className="inline-flex min-h-11 items-center rounded-lg border border-border px-3 py-2 text-sm text-foreground hover:border-primary hover:text-primary-text"
                       >
                         Open profile
                       </a>

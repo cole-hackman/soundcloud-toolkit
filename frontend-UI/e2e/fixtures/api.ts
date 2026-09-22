@@ -52,6 +52,42 @@ const FAKE_PLAYLISTS = {
   total: 3,
 };
 
+/**
+ * A title long enough that it cannot fit a 360px row alongside the artwork
+ * and the download chip. Real playlists are full of titles this long
+ * ("Artist - Track (Extended Mix) [Label]"), and a short fixture title hid a
+ * clipping bug that only shows up once the title has to compete for width.
+ */
+const LONG_TRACK_TITLE = "Sample Playlist Track 4 With A Deliberately Very Long Title";
+
+/**
+ * `GET /api/playlists/:id` — the track-editor state of /playlist-modifier/,
+ * which is where the row action cluster lives. Three short rows cover
+ * first/middle/last (move-up and move-down disabled states); the fourth is
+ * the long-title case, and is the downloadable one.
+ */
+const FAKE_PLAYLIST_DETAIL = {
+  id: 1,
+  title: "Sample Playlist 1",
+  track_count: 4,
+  artwork_url: null as string | null,
+  tracks: Array.from({ length: 4 }, (_, i) => ({
+    id: 300 + i,
+    title: i === 3 ? LONG_TRACK_TITLE : `Sample Playlist Track ${i + 1}`,
+    user: { username: "testartist" },
+    artwork_url: null as string | null,
+    duration: 210000,
+    downloadable: i === 0 || i === 3,
+    download_url:
+      i === 0 || i === 3
+        ? `https://api.soundcloud.com/tracks/${300 + i}/download`
+        : undefined,
+    permalink_url: `https://soundcloud.com/testartist/sample-playlist-track-${i + 1}`,
+  })),
+};
+
+export { LONG_TRACK_TITLE };
+
 const FAKE_LIKES_PAGED = {
   collection: Array.from({ length: 5 }, (_, i) => ({
     id: 100 + i,
@@ -172,6 +208,54 @@ const FAKE_GROWTH_STATS = {
 };
 
 /**
+ * `POST /api/resolve?v=2` — the result state of /link-resolver/, which is the
+ * half of that page with the layout, the copy buttons and the embed in it.
+ * Without this the page only ever shows its empty form.
+ */
+const FAKE_RESOLVE = {
+  data: {
+    type: "track",
+    kind: "track",
+    id: 400,
+    title: "Sample Resolved Track",
+    username: "testartist",
+    user: { id: 1000002, username: "testartist" },
+    permalink_url: "https://soundcloud.com/testartist/sample-resolved-track",
+    artwork_url: null as string | null,
+    duration_ms: 214000,
+    description: "An obviously fake track used by the e2e harness.",
+    tag_list: "house techno",
+    created_at: "2026-01-02T03:04:05Z",
+    playback_count: 1234,
+    likes_count: 56,
+    reposts_count: 7,
+    comment_count: 8,
+  },
+  meta: {
+    version: "2",
+    source_url: "https://soundcloud.com/testartist/sample-resolved-track",
+    resolved_at: "2026-09-22T12:00:00.000Z",
+    cached: false,
+  },
+};
+
+/** `GET /api/growth/history` — the empty state of the Campaign History tab. */
+const FAKE_GROWTH_HISTORY = {
+  actions: [] as unknown[],
+  sessions: [] as unknown[],
+};
+
+/** `GET /api/growth/analytics` — the empty state of the Analytics tab. */
+const FAKE_GROWTH_ANALYTICS = {
+  perSeed: [] as unknown[],
+  followBackCurve: [
+    { bucket: "0-24h", followedBack: 0, notFollowedBack: 0 },
+    { bucket: "1-3d", followedBack: 0, notFollowedBack: 0 },
+  ],
+  totalFollows: 0,
+};
+
+/**
  * Rebrand announcement gate — matches the keys/value `src/lib/rebrand.ts`
  * checks, so the one-time modal and the site-wide banner both treat the
  * current announcement as already acknowledged and stay out of the way of
@@ -218,6 +302,19 @@ export async function mockApi(page: Page): Promise<void> {
     },
   );
 
+  // The SoundCloud embed widget. Stubbed so a test never depends on a
+  // third-party origin being up, and so an axe run over the page is not
+  // scoring SoundCloud's own player markup (which has its own violations
+  // and is not ours to fix). The `<iframe>` element, and therefore its
+  // `title`, is still exactly what the page rendered.
+  await page.route("**/w.soundcloud.com/**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "text/html",
+      body: "<!doctype html><html lang=\"en\"><head><title>Player stub</title></head><body></body></html>",
+    }),
+  );
+
   await page.route("**/api/**", async (route) => {
     const request = route.request();
     const method = request.method();
@@ -236,6 +333,11 @@ export async function mockApi(page: Page): Promise<void> {
     if (method === "GET" && path === "/api/playlists") {
       return route.fulfill(json(FAKE_PLAYLISTS));
     }
+    if (method === "GET" && /^\/api\/playlists\/\d+$/.test(path)) {
+      return route.fulfill(
+        json({ ...FAKE_PLAYLIST_DETAIL, id: Number(path.split("/").pop()) }),
+      );
+    }
     if (method === "GET" && path === "/api/likes/paged") {
       return route.fulfill(json(FAKE_LIKES_PAGED));
     }
@@ -253,6 +355,15 @@ export async function mockApi(page: Page): Promise<void> {
     }
     if (method === "GET" && path === "/api/growth/stats") {
       return route.fulfill(json(FAKE_GROWTH_STATS));
+    }
+    if (method === "GET" && path === "/api/growth/history") {
+      return route.fulfill(json(FAKE_GROWTH_HISTORY));
+    }
+    if (method === "GET" && path === "/api/growth/analytics") {
+      return route.fulfill(json(FAKE_GROWTH_ANALYTICS));
+    }
+    if (method === "POST" && path === "/api/resolve") {
+      return route.fulfill(json(FAKE_RESOLVE));
     }
     if (method === "POST" && path === "/api/events") {
       return route.fulfill({ status: 204, body: "" });

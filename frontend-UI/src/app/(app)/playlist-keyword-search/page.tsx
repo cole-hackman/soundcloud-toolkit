@@ -168,8 +168,10 @@ export default function PlaylistKeywordSearchPage() {
       const summary = `${data.stats.matchCount} match${data.stats.matchCount === 1 ? "" : "es"} across ${data.stats.playlistsSearched} playlist${data.stats.playlistsSearched === 1 ? "" : "s"} (${data.stats.tracksScanned} tracks scanned).${unreadable > 0 ? ` ${unreadable} playlist${unreadable === 1 ? "" : "s"} could not be read.` : ""}`;
       setNotice({ type: unreadable > 0 ? "error" : "success", text: summary });
       // The result list appears after an async load with no focus change, so
-      // the count is otherwise a purely visual event.
-      announce(summary);
+      // the count is otherwise a purely visual event — except when the notice
+      // is the error variant, which is `role="alert"` and speaks the same
+      // string on insertion. Announcing then would say it twice.
+      if (unreadable === 0) announce(summary);
     } catch (error) {
       console.error("Keyword search failed:", error);
       setNotice({ type: "error", text: "Search failed. Try again." });

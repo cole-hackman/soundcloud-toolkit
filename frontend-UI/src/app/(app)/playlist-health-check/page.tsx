@@ -156,13 +156,13 @@ export default function PlaylistHealthCheckPage() {
         setNotice({ type: "success", text: done });
         announce(done);
       } else {
+        // The error notice renders as `InlineAlert variant="error"`, which is
+        // `role="alert"` — announcing as well would say it twice.
         setNotice({ type: "error", text: "Failed to update playlist." });
-        announce("Failed to update playlist.", { assertive: true });
       }
     } catch (error) {
       console.error("Error updating playlist:", error);
       setNotice({ type: "error", text: "An error occurred while updating the playlist." });
-      announce("An error occurred while updating the playlist.", { assertive: true });
     } finally {
       setSaving(false);
     }

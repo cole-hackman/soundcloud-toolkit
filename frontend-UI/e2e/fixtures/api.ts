@@ -468,7 +468,10 @@ export async function mockApi(page: Page): Promise<void> {
     if (method === "GET" && (path === "/api/likes/paged" || path === "/api/likes")) {
       return route.fulfill(json(FAKE_LIKES_PAGED));
     }
-    if (method === "GET" && (path === "/api/reposts" || path === "/api/reposts/paged")) {
+    // `/api/reposts` only — the non-paged crawl the reposts *export* asks for.
+    // `/api/reposts/paged` is offset-paged with a different shape and belongs
+    // to the repost-manager fixture; answering it here would shadow that.
+    if (method === "GET" && path === "/api/reposts") {
       return route.fulfill(json(FAKE_REPOSTS));
     }
     if (method === "GET" && (path === "/api/followings/paged" || path === "/api/followings")) {

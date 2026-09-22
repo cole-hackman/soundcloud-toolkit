@@ -47,12 +47,45 @@ test("a fresh load keeps the route's own title and does not steal focus", async 
 
 test("navigating from the dashboard retitles the page and focuses its h1", async ({ page }, testInfo) => {
   await page.goto("/dashboard/");
-  await expect(page).toHaveTitle(/Track Toolkit/);
+  await expect(page).toHaveTitle("Dashboard · Track Toolkit");
 
   await navigateTo(page, testInfo.project.name, "Like Manager");
 
   await expect(page).toHaveTitle("Like Manager · Track Toolkit");
   await expect(page.getByRole("heading", { level: 1, name: "Like Manager" })).toBeFocused();
+});
+
+/**
+ * `/dashboard/` is the route this machinery used to skip. It rendered no
+ * `PageHeader`, so it had no title of its own and no focusable `<h1>` — the
+ * one page in the group you could land on and be told nothing about. Both
+ * halves are asserted here: the exact title on a fresh load, and the focus
+ * move on the way back to it.
+ */
+test("the dashboard has its own title and its h1 takes focus on arrival", async ({
+  page,
+}, testInfo) => {
+  await page.goto("/dashboard/");
+
+  const heading = page.getByRole("heading", { level: 1, name: "Dashboard" });
+  await expect(heading).toBeVisible();
+  await expect(page).toHaveTitle("Dashboard · Track Toolkit");
+
+  // Next streams the route's inherited metadata in a chunk that commits after
+  // hydration has run the effect; give it room to overwrite the title.
+  await page.waitForTimeout(750);
+  await expect(page).toHaveTitle("Dashboard · Track Toolkit");
+
+  // A fresh load keeps the focus the browser gave it, here as everywhere.
+  await expect(heading).not.toBeFocused();
+
+  // ... but arriving from a tool is a navigation, and lands on the heading.
+  await navigateTo(page, testInfo.project.name, "Like Manager");
+  await expect(page.getByRole("heading", { level: 1, name: "Like Manager" })).toBeFocused();
+
+  await navigateTo(page, testInfo.project.name, "Dashboard");
+  await expect(page).toHaveTitle("Dashboard · Track Toolkit");
+  await expect(heading).toBeFocused();
 });
 
 test("navigating between two tools retitles the page and focuses its h1", async ({ page }, testInfo) => {
@@ -66,11 +99,11 @@ test("navigating between two tools retitles the page and focuses its h1", async 
 });
 
 /**
- * The round trip. `/dashboard/` renders no PageHeader, so when this is the
- * only thing tracking navigation the pathname is back to the one the document
- * loaded at and the return trip looks like a fresh load — the heading never
- * takes focus. The latch lives in the app-group layout, which the dashboard
- * does mount, so the flag is set while you are there.
+ * The round trip. A `PageHeader`-local latch would be unset here: it unmounts
+ * with the page you left, and on the way back the pathname is once again the
+ * one the document loaded at — so the return trip looks like a fresh load and
+ * the heading never takes focus. The latch lives in the app-group layout,
+ * which stays mounted across every navigation in the group.
  */
 test("returning to the loaded route via the dashboard still focuses its h1", async ({
   page,

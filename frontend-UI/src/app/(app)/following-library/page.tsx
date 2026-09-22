@@ -191,12 +191,27 @@ export default function FollowingLibraryPage() {
         throw new Error(data.error || "Failed to load public library");
       }
 
+      const incoming = (data.collection || []) as unknown[];
+      // Announced from here rather than from an effect on the array length.
+      // The fetch starts in the same commit as the tab or user change, so on
+      // that render `loadingContent` is still false and the array is still the
+      // previous tab's — an effect would speak "0 playlists loaded" (or the
+      // last user's count) before the real one. Here the number is the number
+      // that just arrived.
+      const total =
+        (reset ? 0 : tab === "likes" ? tracks.length : playlists.length) + incoming.length;
+
       if (tab === "likes") {
-        setTracks((prev) => (reset ? data.collection || [] : [...prev, ...(data.collection || [])]));
+        setTracks((prev) => (reset ? (incoming as Track[]) : [...prev, ...(incoming as Track[])]));
       } else {
-        setPlaylists((prev) => (reset ? data.collection || [] : [...prev, ...(data.collection || [])]));
+        setPlaylists((prev) =>
+          reset ? (incoming as Playlist[]) : [...prev, ...(incoming as Playlist[])],
+        );
       }
       setNextHref(data.next_href || null);
+      announce(
+        `${total} ${tab === "likes" ? "track" : "playlist"}${total === 1 ? "" : "s"} loaded.`,
+      );
     } catch (error) {
       console.error("Failed to fetch followed library:", error);
       setNotice({
@@ -344,16 +359,6 @@ export default function FollowingLibraryPage() {
     },
     [focusTab],
   );
-
-  // A page of someone else's library arrives with no focus change, so the
-  // count is otherwise a silent repaint.
-  const loadedCount = activeTab === "likes" ? tracks.length : playlists.length;
-  useEffect(() => {
-    if (loadingContent || loadingMore || !selectedUser) return;
-    announce(
-      `${loadedCount} ${activeTab === "likes" ? "track" : "playlist"}${loadedCount === 1 ? "" : "s"} loaded.`,
-    );
-  }, [loadedCount, loadingContent, loadingMore, selectedUser, activeTab, announce]);
 
   const activeSelectionCount = activeTab === "likes" ? selectedTracks.size : selectedPlaylists.size;
   const activeSelectionAction = activeTab === "likes" ? () => createFromLikes("selected") : cloneSelectedPlaylists;

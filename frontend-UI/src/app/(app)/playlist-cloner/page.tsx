@@ -86,9 +86,9 @@ export default function PlaylistClonerPage() {
         `Cloned ${data.stats?.totalTracks ?? 0} tracks into ${created.length} playlist${created.length === 1 ? "" : "s"}.`,
       );
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "An unexpected error occurred";
-      setError(message);
-      announce(message, { assertive: true });
+      // `InlineAlert variant="error"` is `role="alert"` and is spoken on
+      // insertion, so an `announce` alongside it would say this twice.
+      setError(err instanceof Error ? err.message : "An unexpected error occurred");
     } finally {
       setIsCloning(false);
     }

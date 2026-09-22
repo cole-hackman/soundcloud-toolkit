@@ -90,8 +90,10 @@ export function TrackExportCard({
     } catch (err) {
       console.error(`${title} export fetch failed:`, err);
       setPhase("error");
+      // No `announce` here: the message renders in `InlineAlert variant="error"`,
+      // which is `role="alert"` and is spoken on insertion. Announcing as well
+      // says it twice.
       setErrorMessage("Couldn't load data. Check your connection and try again.");
-      announce("Couldn't load data. Check your connection and try again.", { assertive: true });
     }
   };
 
@@ -160,8 +162,11 @@ export function TrackExportCard({
       )}
 
       {phase === "ready" && (
-        <div role="status" className="mt-4">
-          <p className="text-sm font-medium text-foreground">
+        <div className="mt-4">
+          {/* `role="status"` is on the count alone. Wrapping the block put the
+              caption and the ten-line `<pre>` inside an implicitly atomic live
+              region, so changing Format re-read the whole preview. */}
+          <p role="status" className="text-sm font-medium text-foreground">
             {tracks.length.toLocaleString()} track{tracks.length === 1 ? "" : "s"} ready
           </p>
           {tracks.length > 5000 && (

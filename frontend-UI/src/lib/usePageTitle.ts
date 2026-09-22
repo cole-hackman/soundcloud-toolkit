@@ -12,9 +12,9 @@ import { PRODUCT_NAME } from "@/lib/rebrand";
  * announces the same name for every navigation.
  *
  * The previous title is restored on unmount so a page that renders this
- * conditionally cannot leave a stale name behind — and so `/dashboard/`,
- * which has no `PageHeader`, falls back to the root layout's title instead of
- * keeping the name of the tool you came from.
+ * conditionally cannot leave a stale name behind, rather than keeping the name
+ * of the tool you came from. (`/dashboard/` used to be the case that needed
+ * this; it renders a `PageHeader` of its own now and is titled like the rest.)
  *
  * The observer is the load-order fix. On a *fresh* load Next resolves the
  * route's metadata in a streamed chunk that commits AFTER hydration has run

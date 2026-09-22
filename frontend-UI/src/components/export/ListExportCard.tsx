@@ -85,8 +85,8 @@ export function ListExportCard({
     } catch (err) {
       console.error(`${title} export fetch failed:`, err);
       setPhase("error");
+      // No `announce` here — see the note in `TrackExportCard`.
       setErrorMessage("Couldn't load data. Check your connection and try again.");
-      announce("Couldn't load data. Check your connection and try again.", { assertive: true });
     }
   };
 
@@ -152,8 +152,11 @@ export function ListExportCard({
       )}
 
       {phase === "ready" && (
-        <div role="status" className="mt-4">
-          <p className="text-sm font-medium text-foreground">
+        <div className="mt-4">
+          {/* `role="status"` is on the count alone. Wrapping the block put the
+              caption and the ten-line `<pre>` inside an implicitly atomic live
+              region, so changing Format re-read the whole preview. */}
+          <p role="status" className="text-sm font-medium text-foreground">
             {items.length.toLocaleString()} item{items.length === 1 ? "" : "s"} ready
           </p>
           <div className="mt-3 max-h-48 overflow-y-auto rounded-xl border border-border bg-muted/30 p-3">

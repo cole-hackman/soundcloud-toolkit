@@ -367,3 +367,41 @@ test("following-library: the tab strip is one tab stop and the arrow keys move b
   // has landed in.
   await expect(page.getByRole("tabpanel")).toHaveAccessibleName("Liked Playlists");
 });
+
+/**
+ * Switching tab must speak the count that arrived, not the one that left.
+ *
+ * Announcing from an effect on the array length got this wrong: the fetch
+ * starts in the same commit as the tab change, so on that render nothing is
+ * "loading" yet and the array is still the previous tab's — the region said
+ * "0 playlists loaded", then the real number a moment later. Every value the
+ * region takes is recorded, so a transient wrong one fails rather than being
+ * polled past.
+ */
+test("following-library: switching tab announces the count that arrived, never a stale one", async ({
+  page,
+}) => {
+  await mockApi(page);
+  await page.goto("/following-library/");
+
+  const live = page.locator("#app-live-region");
+  // The mocked user has 3 public likes and 2 public playlists.
+  await expect(live).toHaveText("3 tracks loaded.");
+
+  await page.evaluate(() => {
+    const region = document.querySelector("#app-live-region");
+    const seen: string[] = [];
+    (window as unknown as { __live: string[] }).__live = seen;
+    if (!region) return;
+    new MutationObserver(() => {
+      const text = (region.textContent || "").trim();
+      if (text) seen.push(text);
+    }).observe(region, { childList: true, characterData: true, subtree: true });
+  });
+
+  await page.getByRole("tab", { name: "Playlists", exact: true }).click();
+  await expect(live).toHaveText("2 playlists loaded.");
+
+  const spoken = await page.evaluate(() => (window as unknown as { __live: string[] }).__live);
+  expect(spoken, `live region said: ${JSON.stringify(spoken)}`).toEqual(["2 playlists loaded."]);
+});

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { BrandMark, BrandWordmark } from "@/components/brand/Logo";
 import { usePathname } from "next/navigation";
@@ -21,6 +21,7 @@ import { useTheme } from "@/contexts/ThemeContext";
 import { cn } from "@/lib/utils";
 import { NAV, isGroup, type NavGroup } from "@/lib/nav";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { LiveRegion } from "@/components/ui/LiveRegion";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "";
 
@@ -162,6 +163,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const [deleteAccountOpen, setDeleteAccountOpen] = useState(false);
+  // `SidebarNav` is declared inside this component, so every AppShell render
+  // remounts the sidebar and the trigger button below is a new DOM node by
+  // the time the dialog closes. A ref tracks the live node, so focus still
+  // comes back to it. (The remount itself is Task 7's to remove.)
+  const deleteAccountTriggerRef = useRef<HTMLButtonElement>(null);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [deletingAccount, setDeletingAccount] = useState(false);
 
@@ -338,6 +344,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 <span>Support Me</span>
               </a>
               <button
+                type="button"
+                ref={deleteAccountTriggerRef}
                 onClick={() => {
                   setDeleteConfirmText("");
                   setDeleteAccountOpen(true);
@@ -481,6 +489,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       {/* Main content */}
       <main id="main-content" tabIndex={-1} className="flex-1 min-w-0 min-h-0 pt-12 lg:pt-0 focus:outline-none">
+        {/* The app's only live region — everything `useAnnounce` says lands here. */}
+        <LiveRegion />
         {children}
       </main>
 
@@ -492,6 +502,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         variant="destructive"
         onConfirm={handleDeleteAccount}
         onCancel={() => setDeleteAccountOpen(false)}
+        returnFocusRef={deleteAccountTriggerRef}
       >
         <label className="block text-xs text-muted-foreground" htmlFor="delete-account-confirm">
           Type <span className="font-mono font-semibold">DELETE</span> to confirm

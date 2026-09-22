@@ -13,6 +13,7 @@ import {
   PageContainer,
   PageHeader,
   ResultPanel,
+  SelectableList,
   Skeleton,
   TrackRow,
 } from "@/components/ui";
@@ -269,9 +270,10 @@ export default function PlaylistToLikesPage() {
               ) : tracks.length === 0 ? (
                 <EmptyState icon={<Music className="w-12 h-12" />} title="This playlist has no tracks" />
               ) : (
-                <div className="space-y-2 max-h-[600px] overflow-y-auto">
+                <SelectableList className="max-h-[600px] overflow-y-auto">
                   {tracks.map((track) => (
                     <TrackRow
+                      as="li"
                       key={track.id}
                       track={{ ...track, title: track.title ?? "Untitled", subtitle: track.user?.username }}
                       isSelected={selectedTracks.has(track.id)}
@@ -283,7 +285,7 @@ export default function PlaylistToLikesPage() {
                       }
                     />
                   ))}
-                </div>
+                </SelectableList>
               )}
             </div>
           </div>

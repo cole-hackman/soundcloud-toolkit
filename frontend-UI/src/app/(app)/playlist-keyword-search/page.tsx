@@ -20,6 +20,7 @@ import {
   InlineAlert,
   Input,
   LoadingSpinner,
+  PageContainer,
   PageHeader,
 } from "@/components/ui";
 import { invalidatePlaylistCaches, usePlaylistsQuery } from "@/lib/queries";
@@ -390,234 +391,232 @@ export default function PlaylistKeywordSearchPage() {
   ) : null;
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="container mx-auto max-w-6xl px-6 py-6">
-        <PageHeader
-          title="Keyword Search"
-          description="Find tracks by keyword across your playlists, then remove them in bulk or copy them into another playlist. Separate terms with commas to match any of them."
-        />
+    <PageContainer maxWidth="wide">
+      <PageHeader
+        title="Keyword Search"
+        description="Find tracks by keyword across your playlists, then remove them in bulk or copy them into another playlist. Separate terms with commas to match any of them."
+      />
 
-        {notice && (
-          <InlineAlert variant={notice.type} className="mb-6" onDismiss={() => setNotice(null)}>
-            {notice.text}
-          </InlineAlert>
-        )}
+      {notice && (
+        <InlineAlert variant={notice.type} className="mb-6" onDismiss={() => setNotice(null)}>
+          {notice.text}
+        </InlineAlert>
+      )}
 
-        <div className="mb-6 space-y-3 rounded-xl border border-border bg-card p-4">
-          <div className="flex flex-col gap-3 md:flex-row">
-            <Input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !loading) runSearch(0);
-              }}
-              placeholder="e.g. bootleg, remix, live"
-              className="flex-1"
-              aria-label="Keywords"
-            />
-            <select
-              value={scope === "all" ? "all" : String(scope)}
-              onChange={(e) => setScope(e.target.value === "all" ? "all" : Number(e.target.value))}
-              className="rounded-lg border-2 border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
-              aria-label="Where to search"
-            >
-              <option value="all">All playlists</option>
-              {playlists.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.title}
-                </option>
-              ))}
-            </select>
-            <Button onClick={() => runSearch(0)} disabled={loading}>
-              {loading ? <LoadingSpinner size="sm" className="border-white" /> : <Search className="h-4 w-4" />}
-              Search
-            </Button>
-          </div>
-          <p className="text-sm text-muted-foreground">
-            Matches track titles and artist names. Searching all playlists works {PAGE_SIZE} at a
-            time to stay friendly to SoundCloud&apos;s rate limits.
-          </p>
+      <div className="mb-6 space-y-3 rounded-xl border border-border bg-card p-4">
+        <div className="flex flex-col gap-3 md:flex-row">
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !loading) runSearch(0);
+            }}
+            placeholder="e.g. bootleg, remix, live"
+            className="flex-1"
+            aria-label="Keywords"
+          />
+          <select
+            value={scope === "all" ? "all" : String(scope)}
+            onChange={(e) => setScope(e.target.value === "all" ? "all" : Number(e.target.value))}
+            className="rounded-lg border-2 border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
+            aria-label="Where to search"
+          >
+            <option value="all">All playlists</option>
+            {playlists.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.title}
+              </option>
+            ))}
+          </select>
+          <Button onClick={() => runSearch(0)} disabled={loading}>
+            {loading ? <LoadingSpinner size="sm" className="border-white" /> : <Search className="h-4 w-4" />}
+            Search
+          </Button>
         </div>
-
-        {!loading && result?.page?.stale && (
-          <InlineAlert variant="info" className="mb-4">
-            This list may be up to 15 minutes old — it is refreshing in the background.
-          </InlineAlert>
-        )}
-        {!loading && result?.page?.truncated && (
-          <InlineAlert variant="warning" className="mb-4">
-            Not all playlists were indexed, so this search may not cover your whole library.
-          </InlineAlert>
-        )}
-        {!loading && result && result.failed.length > 0 && (
-          <InlineAlert variant="warning" className="mb-4">
-            {result.failed.length} playlist{result.failed.length === 1 ? "" : "s"} could not be read
-            — these results are incomplete.
-          </InlineAlert>
-        )}
-
-        {loading ? (
-          <div className="rounded-xl border border-border bg-card p-12 text-center">
-            <LoadingSpinner />
-          </div>
-        ) : !result ? (
-          <div className="rounded-xl border border-border bg-card p-8">
-            <EmptyState
-              icon={<Search className="h-12 w-12" />}
-              title="No search yet"
-              description="Enter a keyword to find matching tracks across your playlists."
-            />
-          </div>
-        ) : result.matches.length === 0 ? (
-          <div className="space-y-4">
-            <div className="rounded-xl border border-border bg-card p-8">
-              {/* Nothing was searched is not the same answer as nothing matched. */}
-              {result.stats.playlistsSearched === 0 && result.failed.length > 0 ? (
-                <EmptyState
-                  icon={<Search className="h-12 w-12" />}
-                  title="Nothing could be searched"
-                  description={`None of the ${result.failed.length} playlist${result.failed.length === 1 ? "" : "s"} in this range could be read, so this is not a "no matches" result. Try again in a moment.`}
-                />
-              ) : (
-                <EmptyState
-                  icon={<Search className="h-12 w-12" />}
-                  title="No matches"
-                  description={
-                    result.page?.hasMore
-                      ? "Nothing in this batch of playlists. Use Next to search the following ones."
-                      : "Nothing matched those keywords."
-                  }
-                />
-              )}
-            </div>
-            {pager}
-          </div>
-        ) : (
-          <div className="space-y-4">
-            <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-card p-4">
-              <span className="text-sm font-medium text-foreground">
-                {selected.size} of {result.matches.length} selected
-              </span>
-              <Button nowrap variant="outline" onClick={selectAll} disabled={working}>
-                Select all
-              </Button>
-              <Button variant="outline" onClick={() => setSelected(new Set())} disabled={working || selected.size === 0}>
-                Clear
-              </Button>
-              <Button nowrap variant="outline" onClick={exportCsv}>
-                <Download className="h-4 w-4" />
-                Export CSV
-              </Button>
-
-              <div className="ml-auto flex flex-wrap items-center gap-2">
-                <select
-                  value={copyTarget === "" ? "" : String(copyTarget)}
-                  onChange={(e) => setCopyTarget(e.target.value === "" ? "" : Number(e.target.value))}
-                  className="rounded-lg border-2 border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
-                  aria-label="Copy selected tracks to"
-                >
-                  <option value="">Copy to…</option>
-                  {playlists.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.title}
-                    </option>
-                  ))}
-                </select>
-                <Button nowrap
-                  variant="outline"
-                  onClick={copySelected}
-                  disabled={working || copyTarget === "" || selectedTrackIds.length === 0 || copyBlocked}
-                >
-                  <Copy className="h-4 w-4" />
-                  Copy {selectedTrackIds.length || ""}
-                </Button>
-                <Button nowrap
-                  variant="destructive"
-                  onClick={() => setConfirmRemove(true)}
-                  disabled={working || selected.size === 0 || removeBlocked}
-                >
-                  <Trash2 className="h-4 w-4" />
-                  Remove {selected.size || ""}
-                </Button>
-              </div>
-            </div>
-
-            {removeBlocked && (
-              <InlineAlert variant="error">
-                Too many to remove at once — up to {MAX_REMOVE_TRACKS} tracks across{" "}
-                {MAX_REMOVE_PLAYLISTS} playlists per batch. Deselect some and repeat.
-              </InlineAlert>
-            )}
-            {copyBlocked && (
-              <InlineAlert variant="error">
-                Too many to copy at once — up to {MAX_ADD_TRACKS} unique tracks per batch.
-                Deselect some and repeat.
-              </InlineAlert>
-            )}
-            {result.capped && (
-              <InlineAlert variant="warning">
-                Showing the first {MAX_SEARCH_MATCHES.toLocaleString()} matches of{" "}
-                {result.stats.matchCount.toLocaleString()} — narrow the search.
-              </InlineAlert>
-            )}
-
-            <div className="rounded-xl border border-border bg-card">
-              <div className="border-b border-border px-4 py-3 text-sm font-semibold text-foreground">
-                Matches
-              </div>
-              <div ref={listScrollRef} className="max-h-[600px] overflow-y-auto">
-                <div style={{ height: rowVirtualizer.getTotalSize(), position: "relative" }}>
-                  {rowVirtualizer.getVirtualItems().map((virtualRow) => {
-                    const m = result.matches[virtualRow.index];
-                    const key = matchKey(m);
-                    const copies = siblingsOf(m).length;
-                    return (
-                      <div
-                        key={key}
-                        data-index={virtualRow.index}
-                        ref={rowVirtualizer.measureElement}
-                        style={{
-                          position: "absolute",
-                          top: 0,
-                          left: 0,
-                          width: "100%",
-                          transform: `translateY(${virtualRow.start}px)`,
-                        }}
-                      >
-                        <label className="flex cursor-pointer items-center gap-3 border-b border-border px-4 py-3 hover:bg-secondary/20">
-                          <input
-                            type="checkbox"
-                            checked={selected.has(key)}
-                            onChange={() => toggle(m)}
-                            disabled={working}
-                            className="h-4 w-4 accent-primary"
-                          />
-                          <div className="min-w-0 flex-1">
-                            <div className="truncate font-medium text-foreground">{m.title}</div>
-                            <div className="truncate text-sm text-muted-foreground">
-                              {m.artist} • in {m.playlistTitle}
-                            </div>
-                          </div>
-                          {copies > 1 && (
-                            <span className="shrink-0 rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-xs text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-100">
-                              ×{copies} in this playlist — removing removes every copy
-                            </span>
-                          )}
-                          <span className="shrink-0 rounded-md border border-border bg-secondary/20 px-2 py-1 text-xs text-muted-foreground">
-                            {m.keyword} in {m.matchedIn}
-                          </span>
-                        </label>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-
-            {pager}
-          </div>
-        )}
+        <p className="text-sm text-muted-foreground">
+          Matches track titles and artist names. Searching all playlists works {PAGE_SIZE} at a
+          time to stay friendly to SoundCloud&apos;s rate limits.
+        </p>
       </div>
+
+      {!loading && result?.page?.stale && (
+        <InlineAlert variant="info" className="mb-4">
+          This list may be up to 15 minutes old — it is refreshing in the background.
+        </InlineAlert>
+      )}
+      {!loading && result?.page?.truncated && (
+        <InlineAlert variant="warning" className="mb-4">
+          Not all playlists were indexed, so this search may not cover your whole library.
+        </InlineAlert>
+      )}
+      {!loading && result && result.failed.length > 0 && (
+        <InlineAlert variant="warning" className="mb-4">
+          {result.failed.length} playlist{result.failed.length === 1 ? "" : "s"} could not be read
+          — these results are incomplete.
+        </InlineAlert>
+      )}
+
+      {loading ? (
+        <div className="rounded-xl border border-border bg-card p-12 text-center">
+          <LoadingSpinner />
+        </div>
+      ) : !result ? (
+        <div className="rounded-xl border border-border bg-card p-8">
+          <EmptyState
+            icon={<Search className="h-12 w-12" />}
+            title="No search yet"
+            description="Enter a keyword to find matching tracks across your playlists."
+          />
+        </div>
+      ) : result.matches.length === 0 ? (
+        <div className="space-y-4">
+          <div className="rounded-xl border border-border bg-card p-8">
+            {/* Nothing was searched is not the same answer as nothing matched. */}
+            {result.stats.playlistsSearched === 0 && result.failed.length > 0 ? (
+              <EmptyState
+                icon={<Search className="h-12 w-12" />}
+                title="Nothing could be searched"
+                description={`None of the ${result.failed.length} playlist${result.failed.length === 1 ? "" : "s"} in this range could be read, so this is not a "no matches" result. Try again in a moment.`}
+              />
+            ) : (
+              <EmptyState
+                icon={<Search className="h-12 w-12" />}
+                title="No matches"
+                description={
+                  result.page?.hasMore
+                    ? "Nothing in this batch of playlists. Use Next to search the following ones."
+                    : "Nothing matched those keywords."
+                }
+              />
+            )}
+          </div>
+          {pager}
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-card p-4">
+            <span className="text-sm font-medium text-foreground">
+              {selected.size} of {result.matches.length} selected
+            </span>
+            <Button nowrap variant="outline" onClick={selectAll} disabled={working}>
+              Select all
+            </Button>
+            <Button variant="outline" onClick={() => setSelected(new Set())} disabled={working || selected.size === 0}>
+              Clear
+            </Button>
+            <Button nowrap variant="outline" onClick={exportCsv}>
+              <Download className="h-4 w-4" />
+              Export CSV
+            </Button>
+
+            <div className="ml-auto flex flex-wrap items-center gap-2">
+              <select
+                value={copyTarget === "" ? "" : String(copyTarget)}
+                onChange={(e) => setCopyTarget(e.target.value === "" ? "" : Number(e.target.value))}
+                className="rounded-lg border-2 border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
+                aria-label="Copy selected tracks to"
+              >
+                <option value="">Copy to…</option>
+                {playlists.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.title}
+                  </option>
+                ))}
+              </select>
+              <Button nowrap
+                variant="outline"
+                onClick={copySelected}
+                disabled={working || copyTarget === "" || selectedTrackIds.length === 0 || copyBlocked}
+              >
+                <Copy className="h-4 w-4" />
+                Copy {selectedTrackIds.length || ""}
+              </Button>
+              <Button nowrap
+                variant="destructive"
+                onClick={() => setConfirmRemove(true)}
+                disabled={working || selected.size === 0 || removeBlocked}
+              >
+                <Trash2 className="h-4 w-4" />
+                Remove {selected.size || ""}
+              </Button>
+            </div>
+          </div>
+
+          {removeBlocked && (
+            <InlineAlert variant="error">
+              Too many to remove at once — up to {MAX_REMOVE_TRACKS} tracks across{" "}
+              {MAX_REMOVE_PLAYLISTS} playlists per batch. Deselect some and repeat.
+            </InlineAlert>
+          )}
+          {copyBlocked && (
+            <InlineAlert variant="error">
+              Too many to copy at once — up to {MAX_ADD_TRACKS} unique tracks per batch.
+              Deselect some and repeat.
+            </InlineAlert>
+          )}
+          {result.capped && (
+            <InlineAlert variant="warning">
+              Showing the first {MAX_SEARCH_MATCHES.toLocaleString()} matches of{" "}
+              {result.stats.matchCount.toLocaleString()} — narrow the search.
+            </InlineAlert>
+          )}
+
+          <div className="rounded-xl border border-border bg-card">
+            <div className="border-b border-border px-4 py-3 text-sm font-semibold text-foreground">
+              Matches
+            </div>
+            <div ref={listScrollRef} className="max-h-[600px] overflow-y-auto">
+              <div style={{ height: rowVirtualizer.getTotalSize(), position: "relative" }}>
+                {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+                  const m = result.matches[virtualRow.index];
+                  const key = matchKey(m);
+                  const copies = siblingsOf(m).length;
+                  return (
+                    <div
+                      key={key}
+                      data-index={virtualRow.index}
+                      ref={rowVirtualizer.measureElement}
+                      style={{
+                        position: "absolute",
+                        top: 0,
+                        left: 0,
+                        width: "100%",
+                        transform: `translateY(${virtualRow.start}px)`,
+                      }}
+                    >
+                      <label className="flex cursor-pointer items-center gap-3 border-b border-border px-4 py-3 hover:bg-secondary/20">
+                        <input
+                          type="checkbox"
+                          checked={selected.has(key)}
+                          onChange={() => toggle(m)}
+                          disabled={working}
+                          className="h-4 w-4 accent-primary"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate font-medium text-foreground">{m.title}</div>
+                          <div className="truncate text-sm text-muted-foreground">
+                            {m.artist} • in {m.playlistTitle}
+                          </div>
+                        </div>
+                        {copies > 1 && (
+                          <span className="shrink-0 rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-xs text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-100">
+                            ×{copies} in this playlist — removing removes every copy
+                          </span>
+                        )}
+                        <span className="shrink-0 rounded-md border border-border bg-secondary/20 px-2 py-1 text-xs text-muted-foreground">
+                          {m.keyword} in {m.matchedIn}
+                        </span>
+                      </label>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          {pager}
+        </div>
+      )}
 
       <ConfirmDialog
         open={confirmRemove}
@@ -627,6 +626,6 @@ export default function PlaylistKeywordSearchPage() {
         onConfirm={removeSelected}
         onCancel={() => setConfirmRemove(false)}
       />
-    </div>
+    </PageContainer>
   );
 }

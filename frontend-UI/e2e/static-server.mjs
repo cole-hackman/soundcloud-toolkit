@@ -15,7 +15,18 @@ import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = fileURLToPath(new URL("../out/", import.meta.url));
-const PORT = process.env.PORT ? Number(process.env.PORT) : 4173;
+
+// `--port=` (what playwright.config.ts passes), then E2E_PORT / PORT for a
+// hand-started server. Parallel checkouts each need their own port — see the
+// note in playwright.config.ts.
+function resolvePort() {
+  const flag = process.argv.slice(2).find((arg) => arg.startsWith("--port="));
+  const candidate = flag ? flag.slice("--port=".length) : process.env.E2E_PORT || process.env.PORT;
+  const parsed = Number(candidate);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : 4173;
+}
+
+const PORT = resolvePort();
 
 const CONTENT_TYPES = {
   ".html": "text/html; charset=utf-8",

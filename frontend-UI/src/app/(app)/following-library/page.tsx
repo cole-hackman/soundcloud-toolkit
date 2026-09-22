@@ -27,6 +27,7 @@ import {
   PageContainer,
   PageHeader,
   ResultPanel,
+  SelectableList,
   SelectionBanner,
   Skeleton,
   TrackRow,
@@ -316,7 +317,7 @@ export default function FollowingLibraryPage() {
   const actionDisabled = working || (activeTab === "likes" ? !canCreateFromTracks : selectedPlaylists.size === 0);
 
   return (
-    <PageContainer maxWidth="wide" className={activeSelectionCount > 0 ? "pb-28" : ""}>
+    <PageContainer maxWidth="wide" className="pb-28">
       <PageHeader
         title="Following Library"
         description="Copy public tracks and playlists from people you follow into your library."
@@ -509,9 +510,10 @@ export default function FollowingLibraryPage() {
                       emptyTitle="No public liked tracks"
                       emptyDescription="This user may keep likes private, or the API may not expose them."
                     >
-                      <div className="space-y-2">
+                      <SelectableList>
                         {tracks.map((track) => (
                           <TrackRow
+                            as="li"
                             key={track.id}
                             track={{
                               id: track.id,
@@ -529,7 +531,7 @@ export default function FollowingLibraryPage() {
                             onToggle={() => toggleTrack(track.id)}
                           />
                         ))}
-                      </div>
+                      </SelectableList>
                     </ContentListState>
                   </>
                 ) : (

@@ -11,6 +11,7 @@ import {
   LoadingSpinner,
   PageContainer,
   PageHeader,
+  SelectableList,
   SelectionBanner,
   TrackRow,
 } from "@/components/ui";
@@ -197,7 +198,7 @@ export default function GenreSearchPage() {
   };
 
   return (
-    <PageContainer maxWidth="default" className={selectedTracks.size > 0 ? "pb-28" : ""}>
+    <PageContainer maxWidth="default" className="pb-28">
         <PageHeader
           title="Genre Search"
           description="Discover tracks by genre or tag and add them to your playlists."
@@ -340,11 +341,12 @@ export default function GenreSearchPage() {
               />
             ) : (
               <>
-                <div className="space-y-2">
+                <SelectableList>
                   {results.map((track) => {
                     const isSelected = selectedTracks.has(track.id);
                     return (
                       <TrackRow
+                        as="li"
                         key={track.id}
                         track={{
                           ...track,
@@ -363,7 +365,7 @@ export default function GenreSearchPage() {
                       />
                     );
                   })}
-                </div>
+                </SelectableList>
 
                 {nextHref && (
                   <div className="mt-6 text-center">

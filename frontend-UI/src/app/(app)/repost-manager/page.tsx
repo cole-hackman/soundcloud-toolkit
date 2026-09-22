@@ -279,7 +279,7 @@ export default function RepostManagerPage() {
   );
 
   return (
-    <PageContainer maxWidth="wide" className={selected.size > 0 ? "pb-28" : ""}>
+    <PageContainer maxWidth="wide" className="pb-28">
         <PageHeader
           title="Repost Manager"
           description="Browse, search, and manage your reposted tracks and playlists. Remove in bulk."

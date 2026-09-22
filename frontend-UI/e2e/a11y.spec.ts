@@ -65,3 +65,111 @@ for (const { path, needsMock, fixme, expectedStatus } of PAGES) {
     expect(blocking, JSON.stringify(blocking, null, 2)).toEqual([]);
   });
 }
+
+/**
+ * The shared `Dialog` primitive, exercised through the one dialog that is
+ * reachable from a mocked page without a write: the delete-account confirm in
+ * the desktop sidebar. Covers the four things a modal has to get right —
+ * it is labelled by its visible heading, Tab cannot leave it, Escape closes
+ * it, and focus goes back where it came from.
+ */
+test("Dialog: labelled by its heading, traps Tab, Escape closes and restores focus", async ({
+  page,
+}, testInfo) => {
+  test.skip(
+    testInfo.project.name !== "desktop",
+    "the sidebar 'Delete account' control is only rendered at lg and up",
+  );
+
+  await mockApi(page);
+  await page.goto("/dashboard/");
+
+  // Opened from the keyboard on purpose: Chromium on macOS does not focus a
+  // <button> on mouse click, so a click would leave `document.body` as the
+  // element to restore to and the last assertion would prove nothing.
+  const trigger = page.getByRole("button", { name: "Delete account", exact: true });
+  await trigger.focus();
+  await trigger.press("Enter");
+
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toBeVisible();
+
+  // aria-labelledby must resolve to the visible h2, not to a hidden string.
+  await expect(dialog).toHaveAccessibleName("Delete your account?");
+  await expect(
+    dialog.getByRole("heading", { level: 2, name: "Delete your account?" }),
+  ).toBeVisible();
+
+  // Opens on Cancel, so a stray Enter never confirms a destructive action.
+  await expect(dialog.getByRole("button", { name: "Cancel" })).toBeFocused();
+
+  // More presses than the dialog has focusable elements, so the trap has to
+  // wrap at least once for this to hold.
+  for (let i = 0; i < 8; i += 1) {
+    await page.keyboard.press("Tab");
+    const focusStayedInside = await page.evaluate(() => {
+      const panel = document.querySelector('[role="dialog"]');
+      return !!panel && !!document.activeElement && panel.contains(document.activeElement);
+    });
+    expect(focusStayedInside, `focus escaped the dialog after ${i + 1} Tab(s)`).toBe(true);
+  }
+
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+  await expect(trigger).toBeFocused();
+});
+
+/**
+ * Selection is a real checkbox, and the banner that appears is a status
+ * region rather than a silent strip of pixels. Both are the point of
+ * SelectableRow / SelectionBanner, and neither is visible to axe.
+ */
+test("selection: the checkbox drives the count, and the banner is a status region", async ({
+  page,
+}) => {
+  await mockApi(page);
+  await page.goto("/like-manager/");
+
+  const firstRow = page.getByRole("checkbox", { name: "Sample Track 1" });
+  await expect(firstRow).toBeVisible();
+  await expect(firstRow).not.toBeChecked();
+
+  // Keyboard-native: no Enter/Space handler of our own is involved.
+  await firstRow.focus();
+  await page.keyboard.press("Space");
+  await expect(firstRow).toBeChecked();
+
+  const status = page.locator("[role=status]");
+  await expect(status).toContainText("1");
+
+  // The banner's action is reachable from the row by Tab alone — it is a
+  // button in the document, not something only a pointer can get to.
+  const action = page.getByRole("button", { name: /Unlike Selected/ });
+  await expect(action).toBeVisible();
+
+  let reached = false;
+  for (let i = 0; i < 25 && !reached; i += 1) {
+    await page.keyboard.press("Tab");
+    reached = await action.evaluate((element) => element === document.activeElement);
+  }
+  expect(reached, "Tab never reached the selection banner's action button").toBe(true);
+});
+
+/**
+ * Regression guard for the row body. Clicking the row toggles it through a
+ * `<label>`, and Chromium skips forwarding a label click to its control when
+ * the click extended a text selection — which a shift-click does unless the
+ * label is `select-none`. Without that class this passes on the checkbox and
+ * silently fails on the row, which is where people actually click.
+ */
+test("selection: shift-clicking the row body selects a range", async ({ page }) => {
+  await mockApi(page);
+  await page.goto("/like-manager/");
+
+  await page.getByText("Sample Track 1", { exact: true }).click();
+  await page.getByText("Sample Track 3", { exact: true }).click({ modifiers: ["Shift"] });
+
+  await expect(page.getByRole("checkbox", { name: "Sample Track 2" })).toBeChecked();
+  await expect(page.getByRole("checkbox", { name: "Sample Track 3" })).toBeChecked();
+  await expect(page.getByRole("checkbox", { name: "Sample Track 4" })).not.toBeChecked();
+});

@@ -567,7 +567,7 @@ export default function GrowthPage() {
   const sessionActions = historyData?.actions.filter(a => a.sessionId === selectedSessionId) || [];
 
   return (
-    <PageContainer maxWidth="wide" className={selectedSuggestions.size > 0 || (activeTab === "history" && selectedHistoryActions.size > 0) ? "pb-28" : ""}>
+    <PageContainer maxWidth="wide" className="pb-28">
       <PageHeader
         title="Grow Your Network"
         description="Discover active SoundCloud users likely to follow you back, engage with their tracks, and reverse campaigns anytime."
@@ -685,8 +685,14 @@ export default function GrowthPage() {
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-semibold text-muted-foreground uppercase">Strategy:</span>
+                  <label
+                    htmlFor="growth-seed-strategy"
+                    className="text-xs font-semibold text-muted-foreground uppercase"
+                  >
+                    Strategy:
+                  </label>
                   <select
+                    id="growth-seed-strategy"
                     value={strategy}
                     onChange={(e) => setStrategy(e.target.value as 'followers' | 'followings' | 'both')}
                     className="h-10 px-3 border-2 border-border rounded-lg text-sm text-foreground bg-secondary/20 focus:border-primary focus:outline-none"

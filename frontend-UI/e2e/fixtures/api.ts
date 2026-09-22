@@ -73,6 +73,70 @@ const FAKE_FOLLOWINGS_PAGED = {
   next_href: null as string | null,
 };
 
+/**
+ * `GET /api/playlists/search-tracks`. Two of the three rows are the same track
+ * in the same playlist, which is what makes the "x2 in this playlist" badge —
+ * the widest thing on a match row — part of what gets audited and measured.
+ */
+const FAKE_SEARCH_TRACKS = {
+  keywords: ["sample"],
+  matches: [
+    {
+      trackId: 100,
+      title: "Sample Track 1",
+      artist: "testartist",
+      permalink_url: "https://soundcloud.com/testartist/sample-track-1",
+      position: 0,
+      playlistId: 1,
+      playlistTitle: "Sample Playlist 1",
+      keyword: "sample",
+      matchedIn: "title",
+    },
+    {
+      trackId: 101,
+      title: "Sample Track 2",
+      artist: "testartist",
+      permalink_url: null,
+      position: 1,
+      playlistId: 1,
+      playlistTitle: "Sample Playlist 1",
+      keyword: "sample",
+      matchedIn: "title",
+    },
+    {
+      trackId: 101,
+      title: "Sample Track 2",
+      artist: "testartist",
+      permalink_url: null,
+      position: 4,
+      playlistId: 1,
+      playlistTitle: "Sample Playlist 1",
+      keyword: "sample",
+      matchedIn: "title",
+    },
+  ],
+  stats: {
+    playlistsSearched: 3,
+    tracksScanned: 59,
+    matchCount: 3,
+    uniqueTrackCount: 2,
+    playlistsFailed: 0,
+  },
+  failed: [] as unknown[],
+  capped: false,
+  page: {
+    limit: 20,
+    offset: 0,
+    returned: 3,
+    total: 3,
+    hasMore: false,
+    from: 1,
+    to: 3,
+    stale: false,
+    truncated: false,
+  },
+};
+
 /** What `POST /api/feedback` answers with on a 201 — id and timestamp only. */
 const FAKE_FEEDBACK_CREATED = {
   id: "fb_1",
@@ -160,6 +224,9 @@ export async function mockApi(page: Page): Promise<void> {
     }
     if (method === "GET" && path === "/api/dashboard/summary") {
       return route.fulfill(json(FAKE_DASHBOARD_SUMMARY));
+    }
+    if (method === "GET" && path === "/api/playlists/search-tracks") {
+      return route.fulfill(json(FAKE_SEARCH_TRACKS));
     }
     if (method === "GET" && path === "/api/playlists") {
       return route.fulfill(json(FAKE_PLAYLISTS));

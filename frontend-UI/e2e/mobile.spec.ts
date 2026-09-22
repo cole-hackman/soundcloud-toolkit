@@ -1,4 +1,4 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type Locator, type Page } from "@playwright/test";
 import { mockApi } from "./fixtures/api";
 
 const MOBILE_PROJECTS = ["m360", "m390", "m430"];
@@ -8,7 +8,19 @@ interface PageCase {
   needsMock?: boolean;
   /** Set when the page is known to overflow today; names the phase that fixes it. */
   fixme?: string;
+  /**
+   * Drive the page into the state worth measuring and return something that
+   * only exists once the route's own content is on screen. Without it a page
+   * can be measured while it is still the shell's spinner or an empty state,
+   * and the widest thing on it — a toolbar, a table, a row of badges — is
+   * never in the document when `scrollWidth` is read. Mirrors the same hook
+   * in `a11y.spec.ts`.
+   */
+  ready?: (page: Page) => Promise<Locator>;
 }
+
+/** The page's own `<h1>`, which every `(app)` route renders via `PageHeader`. */
+const h1 = async (page: Page) => page.getByRole("heading", { level: 1 });
 
 const PAGES: PageCase[] = [
   { path: "/" },
@@ -23,6 +35,17 @@ const PAGES: PageCase[] = [
   { path: "/like-manager/", needsMock: true },
   { path: "/playlist-modifier/", needsMock: true },
   { path: "/feedback/", needsMock: true },
+  {
+    path: "/playlist-keyword-search/",
+    needsMock: true,
+    // The "no search yet" empty state is not what this page is: the toolbar,
+    // the match rows and their badges only exist after a search, so run one.
+    ready: async (page) => {
+      await page.getByLabel("Keywords").fill("sample");
+      await page.getByRole("button", { name: "Search", exact: true }).click();
+      return page.getByRole("heading", { name: "Matches" });
+    },
+  },
   {
     path: "/growth/",
     needsMock: true,
@@ -60,7 +83,7 @@ export async function assertTapTargets(page: Page, selector: string, min: number
   expect(undersized, JSON.stringify(undersized, null, 2)).toEqual([]);
 }
 
-for (const { path, needsMock, fixme } of PAGES) {
+for (const { path, needsMock, fixme, ready } of PAGES) {
   test(`no horizontal overflow: ${path}`, async ({ page }, testInfo) => {
     test.skip(!MOBILE_PROJECTS.includes(testInfo.project.name), "mobile projects only");
     test.fixme(!!fixme, fixme);
@@ -70,6 +93,10 @@ for (const { path, needsMock, fixme } of PAGES) {
     }
 
     await page.goto(path);
+
+    if (needsMock) {
+      await expect(await (ready ?? h1)(page)).toBeVisible();
+    }
 
     // Compare against `clientWidth`, not `window.innerWidth`: on content
     // wider than the device, Chromium's mobile emulation can expand the

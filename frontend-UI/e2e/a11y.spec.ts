@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Locator, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 import { mockApi } from "./fixtures/api";
 
@@ -10,7 +10,22 @@ interface PageCase {
   fixme?: string;
   /** Expected HTTP status of the navigation response; defaults to 200. */
   expectedStatus?: number;
+  /**
+   * Drive the page into the state worth auditing and return something that
+   * only exists once the route's *own* content is on screen.
+   *
+   * Two ways an audit lies without this. `AppLayout` renders a hydration/auth
+   * spinner first, so a fast run can scan that and pass on a page it never
+   * saw. And a page whose fixture is missing renders its `EmptyState` — which
+   * has a heading of its own, so merely waiting for a heading settles on an
+   * empty page and audits nothing that was fixed. Naming a real row, tab or
+   * control closes both.
+   */
+  ready?: (page: Page) => Promise<Locator>;
 }
+
+/** The page's own `<h1>`, which every `(app)` route renders via `PageHeader`. */
+const h1 = async (page: Page) => page.getByRole("heading", { level: 1 });
 
 const PAGES: PageCase[] = [
   { path: "/" },
@@ -30,9 +45,20 @@ const PAGES: PageCase[] = [
   { path: "/playlist-modifier/", needsMock: true },
   { path: "/growth/", needsMock: true },
   { path: "/feedback/", needsMock: true },
+  {
+    path: "/playlist-keyword-search/",
+    needsMock: true,
+    // The "no search yet" empty state is not what this page is: the toolbar,
+    // the match rows and their badges only exist after a search, so run one.
+    ready: async (page) => {
+      await page.getByLabel("Keywords").fill("sample");
+      await page.getByRole("button", { name: "Search", exact: true }).click();
+      return page.getByRole("heading", { name: "Matches" });
+    },
+  },
 ];
 
-for (const { path, needsMock, fixme, expectedStatus } of PAGES) {
+for (const { path, needsMock, fixme, expectedStatus, ready } of PAGES) {
   test(`has no serious/critical WCAG 2.2 AA violations: ${path}`, async ({ page }) => {
     test.fixme(!!fixme, fixme);
 
@@ -52,6 +78,12 @@ for (const { path, needsMock, fixme, expectedStatus } of PAGES) {
 
     if (expectedStatus !== undefined) {
       expect(response?.status()).toBe(expectedStatus);
+    }
+
+    // Audit the route, not the shell's spinner and not an empty state. See
+    // `PageCase.ready`.
+    if (needsMock) {
+      await expect(await (ready ?? h1)(page)).toBeVisible();
     }
 
     const results = await new AxeBuilder({ page })

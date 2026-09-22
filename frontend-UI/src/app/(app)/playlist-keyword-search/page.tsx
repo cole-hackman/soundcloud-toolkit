@@ -15,13 +15,18 @@ import { apiFetch } from "@/lib/api";
 import { downloadCsv } from "@/lib/csv";
 import {
   Button,
+  Card,
   ConfirmDialog,
   EmptyState,
+  Field,
   InlineAlert,
   Input,
   LoadingSpinner,
   PageContainer,
   PageHeader,
+  SectionHeading,
+  Select,
+  useAnnounce,
 } from "@/components/ui";
 import { invalidatePlaylistCaches, usePlaylistsQuery } from "@/lib/queries";
 
@@ -96,6 +101,7 @@ const trackKey = (m: Match) => `${m.playlistId}:${m.trackId}`;
 
 export default function PlaylistKeywordSearchPage() {
   const queryClient = useQueryClient();
+  const announce = useAnnounce();
   const [query, setQuery] = useState("");
   const [scope, setScope] = useState<number | "all">("all");
   const [offset, setOffset] = useState(0);
@@ -159,10 +165,11 @@ export default function PlaylistKeywordSearchPage() {
       // A new result set makes old selections meaningless.
       setSelected(new Set());
       const unreadable = data.stats.playlistsFailed ?? 0;
-      setNotice({
-        type: unreadable > 0 ? "error" : "success",
-        text: `${data.stats.matchCount} match${data.stats.matchCount === 1 ? "" : "es"} across ${data.stats.playlistsSearched} playlist${data.stats.playlistsSearched === 1 ? "" : "s"} (${data.stats.tracksScanned} tracks scanned).${unreadable > 0 ? ` ${unreadable} playlist${unreadable === 1 ? "" : "s"} could not be read.` : ""}`,
-      });
+      const summary = `${data.stats.matchCount} match${data.stats.matchCount === 1 ? "" : "es"} across ${data.stats.playlistsSearched} playlist${data.stats.playlistsSearched === 1 ? "" : "s"} (${data.stats.tracksScanned} tracks scanned).${unreadable > 0 ? ` ${unreadable} playlist${unreadable === 1 ? "" : "s"} could not be read.` : ""}`;
+      setNotice({ type: unreadable > 0 ? "error" : "success", text: summary });
+      // The result list appears after an async load with no focus change, so
+      // the count is otherwise a purely visual event.
+      announce(summary);
     } catch (error) {
       console.error("Keyword search failed:", error);
       setNotice({ type: "error", text: "Search failed. Try again." });
@@ -358,7 +365,7 @@ export default function PlaylistKeywordSearchPage() {
   // Rendered on every result — including a page with no matches, where the
   // user still needs Next to reach the playlists further down their library.
   const pager = result?.page ? (
-    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-3">
+    <Card className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
       <p className="text-sm text-muted-foreground">
         {/* from is 0 when the offset is past the end of the library, where
             "Searched playlists 0–20" is simply false. */}
@@ -367,13 +374,13 @@ export default function PlaylistKeywordSearchPage() {
           : `Searched playlists ${result.page.from}–${result.page.to}`}
         {result.page.hasMore ? " — more to search" : " — end of your library"}
       </p>
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         <Button nowrap
           variant="outline"
           onClick={() => runSearch(Math.max(0, offset - PAGE_SIZE))}
           disabled={loading || working || offset === 0}
         >
-          <ChevronLeft className="h-4 w-4" />
+          <ChevronLeft aria-hidden="true" className="h-4 w-4" />
           Previous {PAGE_SIZE}
         </Button>
         <Button nowrap
@@ -384,10 +391,10 @@ export default function PlaylistKeywordSearchPage() {
           disabled={loading || working || !result.page.hasMore || offset + PAGE_SIZE > MAX_OFFSET}
         >
           Next {PAGE_SIZE}
-          <ChevronRight className="h-4 w-4" />
+          <ChevronRight aria-hidden="true" className="h-4 w-4" />
         </Button>
       </div>
-    </div>
+    </Card>
   ) : null;
 
   return (
@@ -403,33 +410,44 @@ export default function PlaylistKeywordSearchPage() {
         </InlineAlert>
       )}
 
-      <div className="mb-6 space-y-3 rounded-xl border border-border bg-card p-4">
-        <div className="flex flex-col gap-3 md:flex-row">
-          <Input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !loading) runSearch(0);
-            }}
-            placeholder="e.g. bootleg, remix, live"
-            className="flex-1"
-            aria-label="Keywords"
-          />
-          <select
-            value={scope === "all" ? "all" : String(scope)}
-            onChange={(e) => setScope(e.target.value === "all" ? "all" : Number(e.target.value))}
-            className="rounded-lg border-2 border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
-            aria-label="Where to search"
-          >
-            <option value="all">All playlists</option>
-            {playlists.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.title}
-              </option>
-            ))}
-          </select>
+      <Card className="mb-6 space-y-3 p-4">
+        <div className="flex flex-col gap-3 md:flex-row md:items-end">
+          <Field label="Keywords" className="flex-1">
+            {(field) => (
+              <Input
+                {...field}
+                type="search"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !loading) runSearch(0);
+                }}
+                placeholder="e.g. bootleg, remix, live"
+              />
+            )}
+          </Field>
+          {/* `Select` puts its own class on the <select>; the width belongs to
+              the label+control group, so it goes on a wrapper. */}
+          <div className="md:w-56">
+            <Select
+              label="Where to search"
+              value={scope === "all" ? "all" : String(scope)}
+              onChange={(e) => setScope(e.target.value === "all" ? "all" : Number(e.target.value))}
+            >
+              <option value="all">All playlists</option>
+              {playlists.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.title}
+                </option>
+              ))}
+            </Select>
+          </div>
           <Button onClick={() => runSearch(0)} disabled={loading}>
-            {loading ? <LoadingSpinner size="sm" className="border-white" /> : <Search className="h-4 w-4" />}
+            {loading ? (
+              <LoadingSpinner size="sm" className="border-white" />
+            ) : (
+              <Search aria-hidden="true" className="h-4 w-4" />
+            )}
             Search
           </Button>
         </div>
@@ -437,7 +455,7 @@ export default function PlaylistKeywordSearchPage() {
           Matches track titles and artist names. Searching all playlists works {PAGE_SIZE} at a
           time to stay friendly to SoundCloud&apos;s rate limits.
         </p>
-      </div>
+      </Card>
 
       {!loading && result?.page?.stale && (
         <InlineAlert variant="info" className="mb-4">
@@ -457,20 +475,21 @@ export default function PlaylistKeywordSearchPage() {
       )}
 
       {loading ? (
-        <div className="rounded-xl border border-border bg-card p-12 text-center">
+        <Card role="status" className="p-12 text-center">
           <LoadingSpinner />
-        </div>
+          <p className="mt-3 text-sm text-muted-foreground">Searching…</p>
+        </Card>
       ) : !result ? (
-        <div className="rounded-xl border border-border bg-card p-8">
+        <Card className="p-8">
           <EmptyState
             icon={<Search className="h-12 w-12" />}
             title="No search yet"
             description="Enter a keyword to find matching tracks across your playlists."
           />
-        </div>
+        </Card>
       ) : result.matches.length === 0 ? (
         <div className="space-y-4">
-          <div className="rounded-xl border border-border bg-card p-8">
+          <Card className="p-8">
             {/* Nothing was searched is not the same answer as nothing matched. */}
             {result.stats.playlistsSearched === 0 && result.failed.length > 0 ? (
               <EmptyState
@@ -489,13 +508,16 @@ export default function PlaylistKeywordSearchPage() {
                 }
               />
             )}
-          </div>
+          </Card>
           {pager}
         </div>
       ) : (
         <div className="space-y-4">
-          <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-card p-4">
-            <span className="text-sm font-medium text-foreground">
+          {/* One row of controls on a phone, two columns from `sm`, and the
+              original single flex row (with the copy/remove group pushed
+              right) from `lg`. */}
+          <Card className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2 lg:flex lg:flex-wrap lg:items-end">
+            <span className="text-sm font-medium text-foreground sm:col-span-2 lg:self-center">
               {selected.size} of {result.matches.length} selected
             </span>
             <Button nowrap variant="outline" onClick={selectAll} disabled={working}>
@@ -504,31 +526,32 @@ export default function PlaylistKeywordSearchPage() {
             <Button variant="outline" onClick={() => setSelected(new Set())} disabled={working || selected.size === 0}>
               Clear
             </Button>
-            <Button nowrap variant="outline" onClick={exportCsv}>
-              <Download className="h-4 w-4" />
+            <Button nowrap variant="outline" onClick={exportCsv} className="sm:col-span-2 lg:col-auto">
+              <Download aria-hidden="true" className="h-4 w-4" />
               Export CSV
             </Button>
 
-            <div className="ml-auto flex flex-wrap items-center gap-2">
-              <select
-                value={copyTarget === "" ? "" : String(copyTarget)}
-                onChange={(e) => setCopyTarget(e.target.value === "" ? "" : Number(e.target.value))}
-                className="rounded-lg border-2 border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
-                aria-label="Copy selected tracks to"
-              >
-                <option value="">Copy to…</option>
-                {playlists.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.title}
-                  </option>
-                ))}
-              </select>
+            <div className="grid grid-cols-1 gap-2 sm:col-span-2 sm:grid-cols-2 lg:ml-auto lg:flex lg:flex-wrap lg:items-end">
+              <div className="sm:col-span-2 lg:w-52">
+                <Select
+                  label="Copy selected tracks to"
+                  value={copyTarget === "" ? "" : String(copyTarget)}
+                  onChange={(e) => setCopyTarget(e.target.value === "" ? "" : Number(e.target.value))}
+                >
+                  <option value="">Copy to…</option>
+                  {playlists.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.title}
+                    </option>
+                  ))}
+                </Select>
+              </div>
               <Button nowrap
                 variant="outline"
                 onClick={copySelected}
                 disabled={working || copyTarget === "" || selectedTrackIds.length === 0 || copyBlocked}
               >
-                <Copy className="h-4 w-4" />
+                <Copy aria-hidden="true" className="h-4 w-4" />
                 Copy {selectedTrackIds.length || ""}
               </Button>
               <Button nowrap
@@ -536,11 +559,11 @@ export default function PlaylistKeywordSearchPage() {
                 onClick={() => setConfirmRemove(true)}
                 disabled={working || selected.size === 0 || removeBlocked}
               >
-                <Trash2 className="h-4 w-4" />
+                <Trash2 aria-hidden="true" className="h-4 w-4" />
                 Remove {selected.size || ""}
               </Button>
             </div>
-          </div>
+          </Card>
 
           {removeBlocked && (
             <InlineAlert variant="error">
@@ -561,11 +584,9 @@ export default function PlaylistKeywordSearchPage() {
             </InlineAlert>
           )}
 
-          <div className="rounded-xl border border-border bg-card">
-            <div className="border-b border-border px-4 py-3 text-sm font-semibold text-foreground">
-              Matches
-            </div>
-            <div ref={listScrollRef} className="max-h-[600px] overflow-y-auto">
+          <Card>
+            <SectionHeading className="border-b border-border px-4 py-3">Matches</SectionHeading>
+            <div ref={listScrollRef} className="max-h-[60dvh] overflow-y-auto">
               <div style={{ height: rowVirtualizer.getTotalSize(), position: "relative" }}>
                 {rowVirtualizer.getVirtualItems().map((virtualRow) => {
                   const m = result.matches[virtualRow.index];
@@ -584,26 +605,29 @@ export default function PlaylistKeywordSearchPage() {
                         transform: `translateY(${virtualRow.start}px)`,
                       }}
                     >
-                      <label className="flex cursor-pointer items-center gap-3 border-b border-border px-4 py-3 hover:bg-secondary/20">
+                      {/* Wraps below `sm`: the badges are sentences, not
+                          chips, and `shrink-0` on them squeezed the title to
+                          nothing on a phone. */}
+                      <label className="flex cursor-pointer flex-wrap items-center gap-x-3 gap-y-2 border-b border-border px-4 py-3 hover:bg-secondary/20 sm:flex-nowrap">
                         <input
                           type="checkbox"
                           checked={selected.has(key)}
                           onChange={() => toggle(m)}
                           disabled={working}
-                          className="h-4 w-4 accent-primary"
+                          className="touch-44 h-6 w-6 shrink-0 accent-primary"
                         />
-                        <div className="min-w-0 flex-1">
+                        <div className="min-w-0 flex-1 basis-40">
                           <div className="truncate font-medium text-foreground">{m.title}</div>
                           <div className="truncate text-sm text-muted-foreground">
                             {m.artist} • in {m.playlistTitle}
                           </div>
                         </div>
                         {copies > 1 && (
-                          <span className="shrink-0 rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-xs text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-100">
+                          <span className="shrink rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-xs text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-100">
                             ×{copies} in this playlist — removing removes every copy
                           </span>
                         )}
-                        <span className="shrink-0 rounded-md border border-border bg-secondary/20 px-2 py-1 text-xs text-muted-foreground">
+                        <span className="shrink rounded-md border border-border bg-secondary/20 px-2 py-1 text-xs text-muted-foreground">
                           {m.keyword} in {m.matchedIn}
                         </span>
                       </label>
@@ -612,7 +636,7 @@ export default function PlaylistKeywordSearchPage() {
                 })}
               </div>
             </div>
-          </div>
+          </Card>
 
           {pager}
         </div>

@@ -535,7 +535,7 @@ is registered without the pair.
 | `GET` | `/api/admin/feedback-items` | Live feedback inbox — `?status=&type=&page=1&pageSize=50` (capped at 200); `{ items, total, page, pageSize }`, newest first, sender attached |
 | `GET` | `/api/admin/feedback-items/summary` | `{ total, unread, byStatus, byType }` — every bucket seeded at zero |
 | `PATCH` | `/api/admin/feedback-items/:id` | Triage: `{ status?, adminNote? }`. 400 on an empty patch, 404 when the row is gone |
-| `GET` | `/api/admin/feedback-items.csv` | CSV attachment of the filtered set (`?status=`) |
+| `GET` | `/api/admin/feedback-items.csv` | CSV attachment of the filtered set (`?status=&type=`) |
 
 `/catalog/tracks` also accepts `access=not_playable` (blocked ∪ preview ∪ gone),
 sorts on `duration`, `firstSeen` and `lastSeen`, and `format=csv` (the
@@ -574,9 +574,10 @@ the response list is reachable by URL only.
 `/admin` is a tabbed console, not one scrolling page: **Overview** (alert
 strip, KPI tiles, activity trend, outcome bar, feature usage/reach, errors),
 **Operations** (the searchable log with an inspector drawer), **Performance**
-(the `readLatency` p95 ranking and write health), **Catalog** and **Archive**
-(closed rebrand vote, retired beta survey). The active view is the URL hash
-(`/admin#operations`); keys 1–5 switch views. Catalog has its own sub-views
+(the `readLatency` p95 ranking and write health), **Catalog**, **Feedback**
+(the live in-app inbox) and **Archive** (closed rebrand vote, retired beta
+survey). The active view is the URL hash
+(`/admin#operations`); keys 1–6 switch views. Catalog has its own sub-views
 in the hash (`#catalog/tracks|playlists|artists|health`): the touches
 time-series, genre/access bars that filter, Tracks with optional
 duration/first-seen/last-seen columns and CSV export, Playlists, the Artists
@@ -593,6 +594,15 @@ pins that. Each view fetches only what it
 needs through the hooks in `queries.ts` (react-query; live views re-poll every
 30 s while the tab is visible and keep stale data on screen while refetching —
 never a skeleton flash). Archive queries are all-time and never poll.
+
+**Feedback is a view, not a panel in Archive.** `views/FeedbackView.tsx` reads
+the four `/api/admin/feedback-items*` routes: status tabs (with counts from
+`/summary`), a type filter, 25-per-page paging with the total, a clamped
+message body that expands in place, the three triage buttons, an admin-note
+field that saves on blur and skips a no-op write, the unread badge and the CSV
+link. It takes **no period** — it is a queue, not a time series, and an
+untriaged report from six weeks ago is still untriaged. Archive is closed,
+read-only history; this is the console's one working queue.
 
 The console uses the app's HSL tokens and `ThemeContext` (no private theme),
 plus JetBrains Mono via `next/font` from `app/admin/layout.tsx` for readouts.

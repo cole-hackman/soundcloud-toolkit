@@ -322,12 +322,75 @@ export interface BetaSurveySummary {
   platform: Record<string, number>;
 }
 
-export type View = "overview" | "operations" | "performance" | "catalog" | "archive";
+/* ── Feedback inbox ───────────────────────────────────────────────────────
+   The live in-app feedback form (the `Feedback` model), served by
+   /api/admin/feedback-items*. NOT the retired SongSwipe beta survey, which
+   lives at /api/admin/feedback/* and is read in the Archive view. Two tables,
+   two eras; the path spelling is all that keeps them apart. */
+
+/** Mirrors FEEDBACK_TYPES in server/middleware/validation.js. */
+export type FeedbackType = "bug" | "feature" | "other";
+export const FEEDBACK_TYPES: ReadonlyArray<FeedbackType> = ["bug", "feature", "other"];
+
+/** Mirrors FEEDBACK_STATUSES in server/middleware/validation.js. */
+export type FeedbackStatus = "new" | "seen" | "done" | "spam";
+export const FEEDBACK_STATUSES: ReadonlyArray<FeedbackStatus> = ["new", "seen", "done", "spam"];
+
+/**
+ * Statuses a row can be moved *to*. `new` is where every row starts and is
+ * deliberately not offered as a destination — triage only ever moves forward.
+ */
+export const FEEDBACK_ACTION_STATUSES: ReadonlyArray<FeedbackStatus> = ["seen", "done", "spam"];
+
+export interface FeedbackItem {
+  id: string;
+  type: FeedbackType | string;
+  message: string;
+  page: string | null;
+  email: string | null;
+  status: FeedbackStatus | string;
+  adminNote: string | null;
+  clientInfo: ClientInfo | null;
+  createdAt: string;
+  user: { username: string | null; displayName: string | null; avatarUrl: string | null };
+  soundcloudId: number | null;
+}
+
+export interface FeedbackItemsResponse {
+  items: FeedbackItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+export interface FeedbackSummary {
+  total: number;
+  unread: number;
+  byStatus: Record<string, number>;
+  byType: Record<string, number>;
+}
+
+export interface FeedbackFilter {
+  /** "" means every status. */
+  status: FeedbackStatus | "";
+  /** "" means every type. */
+  type: FeedbackType | "";
+  page: number;
+}
+
+/**
+ * The inbox opens on the untriaged rows. That is the one thing an admin comes
+ * here to do, and it is what the old console's default tab was too.
+ */
+export const DEFAULT_FEEDBACK_FILTER: FeedbackFilter = { status: "new", type: "", page: 1 };
+
+export type View = "overview" | "operations" | "performance" | "catalog" | "feedback" | "archive";
 
 export const VIEWS: ReadonlyArray<{ id: View; label: string; hint: string }> = [
   { id: "overview", label: "Overview", hint: "Health, growth and what people use" },
   { id: "operations", label: "Operations", hint: "Every logged operation, searchable" },
   { id: "performance", label: "Performance", hint: "Latency by action, p95 first" },
   { id: "catalog", label: "Catalog", hint: "The harvested track catalog" },
+  { id: "feedback", label: "Feedback", hint: "The live in-app feedback inbox" },
   { id: "archive", label: "Archive", hint: "Closed votes and retired surveys" },
 ];

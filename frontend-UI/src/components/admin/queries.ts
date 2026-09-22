@@ -12,6 +12,10 @@ import type {
   CatalogPlaylistsResponse,
   CatalogSummary,
   CatalogTracksResponse,
+  FeedbackFilter,
+  FeedbackItem,
+  FeedbackItemsResponse,
+  FeedbackSummary,
   PlaylistFilter,
   ReResolveResult,
   DailyPoint,
@@ -74,6 +78,11 @@ export const adminKeys = {
   rebrandSummary: () => ["admin", "rebrand", "summary"] as const,
   rebrandVotes: () => ["admin", "rebrand", "votes"] as const,
   betaSurvey: () => ["admin", "feedback", "summary"] as const,
+  // "feedback-items", not "feedback": `betaSurvey` above already owns the
+  // ["admin","feedback",…] prefix, and invalidating one must not sweep the
+  // other — they are different tables.
+  feedbackItems: (filter: FeedbackFilter) => ["admin", "feedback-items", "list", filter] as const,
+  feedbackSummary: () => ["admin", "feedback-items", "summary"] as const,
 };
 
 export function useAdminStats(period: Period, enabled: boolean) {
@@ -293,5 +302,84 @@ export function useBetaSurveySummary(enabled: boolean) {
     queryFn: () => adminGet<BetaSurveySummary>("/api/admin/feedback/summary?period=all"),
     enabled,
     staleTime: Infinity,
+  });
+}
+
+/* ── Feedback inbox ───────────────────────────────────────────────────────
+   The live in-app form. It is an inbox, not a time series, so nothing here
+   takes a `period`: an untriaged report from six weeks ago is still
+   untriaged, and a window filter would hide exactly the rows that matter. */
+
+export const FEEDBACK_PAGE_SIZE = 25;
+
+/** Query string shared by the list and its CSV link, so both filter alike. */
+export function feedbackParams(filter: Pick<FeedbackFilter, "status" | "type">): URLSearchParams {
+  const params = new URLSearchParams();
+  if (filter.status) params.set("status", filter.status);
+  if (filter.type) params.set("type", filter.type);
+  return params;
+}
+
+export function feedbackCsvUrl(filter: Pick<FeedbackFilter, "status" | "type">): string {
+  const params = feedbackParams(filter);
+  const qs = params.toString();
+  return `${API_BASE}/api/admin/feedback-items.csv${qs ? `?${qs}` : ""}`;
+}
+
+export function useFeedbackItems(filter: FeedbackFilter, enabled: boolean) {
+  return useQuery({
+    queryKey: adminKeys.feedbackItems(filter),
+    queryFn: () => {
+      const params = feedbackParams(filter);
+      params.set("page", String(filter.page));
+      params.set("pageSize", String(FEEDBACK_PAGE_SIZE));
+      return adminGet<FeedbackItemsResponse>(`/api/admin/feedback-items?${params.toString()}`);
+    },
+    enabled,
+    ...live,
+  });
+}
+
+export function useFeedbackSummary(enabled: boolean) {
+  return useQuery({
+    queryKey: adminKeys.feedbackSummary(),
+    queryFn: () => adminGet<FeedbackSummary>("/api/admin/feedback-items/summary"),
+    enabled,
+    ...live,
+  });
+}
+
+/**
+ * Triage one row. `status` and `adminNote` are the only writable columns —
+ * nothing a user wrote can be edited from the console.
+ *
+ * On success both the list and the header counts are invalidated: a status
+ * change moves the row between tabs, so the tallies are stale the moment the
+ * write lands.
+ */
+export function useFeedbackPatch() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, ...body }: { id: string; status?: string; adminNote?: string | null }) => {
+      const res = await apiFetch(`/api/admin/feedback-items/${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        let message: string | undefined;
+        try {
+          const payload = await res.json();
+          if (typeof payload?.error === "string") message = payload.error;
+        } catch {
+          /* not JSON */
+        }
+        throw new AdminHttpError(res.status, message ?? (res.status === 404 ? "That report is no longer there." : undefined));
+      }
+      return (await res.json()) as Pick<FeedbackItem, "id" | "status" | "adminNote">;
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["admin", "feedback-items"] });
+    },
   });
 }

@@ -15,6 +15,7 @@ import { POLL_MS } from "./queries";
 import { DEFAULT_OPS_FILTER, PERIODS, VIEWS, type OperationsFilter, type Period, type View } from "./types";
 import { ArchiveView } from "./views/ArchiveView";
 import { CatalogView } from "./views/catalog/CatalogView";
+import { FeedbackView } from "./views/FeedbackView";
 import { OperationsView } from "./views/OperationsView";
 import { OverviewView } from "./views/OverviewView";
 import { PerformanceView } from "./views/PerformanceView";
@@ -267,12 +268,14 @@ export function AdminConsole() {
           {view === "operations" && <OperationsView period={period} enabled={enabled} filter={opsFilter} onFilterChange={setOpsFilter} />}
           {view === "performance" && <PerformanceView period={period} enabled={enabled} onInspectAction={inspectAction} />}
           {view === "catalog" && <CatalogView period={period} enabled={enabled} />}
+          {/* The inbox takes no period: it is a queue, not a time series. */}
+          {view === "feedback" && <FeedbackView enabled={enabled} />}
           {view === "archive" && <ArchiveView enabled={enabled} />}
         </div>
 
         <footer className="mt-8 flex flex-wrap items-center justify-between gap-2 border-t border-border/60 py-4 font-mono text-[11px] text-muted-foreground">
           <span>Track Toolkit admin console · signed in as @{user?.username}</span>
-          <span>Press 1–5 to switch sections · live views re-poll every {POLL_MS / 1000}s while visible</span>
+          <span>Press 1–{VIEWS.length} to switch sections · live views re-poll every {POLL_MS / 1000}s while visible</span>
         </footer>
       </main>
     </div>

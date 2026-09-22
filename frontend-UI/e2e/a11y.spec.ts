@@ -459,10 +459,12 @@ test("What's new: the primary action is a link, and dismissal still persists", a
  * Tab wraps rather than escaping, Escape closes it, and focus goes back where
  * it came from.
  *
- * The panel's focusables in DOM order are: "Export selection"
- * (BulkReviewDetails), Cancel, then the confirm button. Cancel is in the
- * middle, which is the point — it is focused first only because
- * `ConfirmDialog` passes it as `initialFocusRef`.
+ * The panel's focusables in DOM order are: `BulkReviewDetails`' scrollable
+ * item list (`role="group"`, `tabIndex={0}` — it has to take focus or the
+ * list cannot be scrolled from the keyboard), "Export selection", Cancel,
+ * then the confirm button. Cancel is in the middle, which is the point — it
+ * is focused first only because `ConfirmDialog` passes it as
+ * `initialFocusRef`.
  */
 test("Dialog: labelled by its heading, honours initialFocusRef, wraps Tab, Escape restores focus", async ({
   page,
@@ -493,6 +495,7 @@ test("Dialog: labelled by its heading, honours initialFocusRef, wraps Tab, Escap
     dialog.getByRole("heading", { level: 2, name: "Unlike selected tracks?" }),
   ).toBeVisible();
 
+  const review = dialog.getByRole("group", { name: /^Items to / });
   const exportButton = dialog.getByRole("button", { name: "Export selection" });
   const cancel = dialog.getByRole("button", { name: "Cancel" });
   const confirm = dialog.getByRole("button", { name: "Unlike", exact: true });
@@ -502,15 +505,20 @@ test("Dialog: labelled by its heading, honours initialFocusRef, wraps Tab, Escap
   // `initialFocusRef`.
   await expect(cancel).toBeFocused();
 
-  // Shift+Tab off the first element wraps to the last, and Tab off the last
-  // wraps back to the first. Both assertions fail the moment focus is allowed
-  // to reach the page behind the dialog.
+  // Walked all the way to the first focusable, not stopped one short: the
+  // review list is only reachable because it carries a tabindex, so a
+  // shortened walk would pass while the thing this dialog exists to show was
+  // unreachable. Shift+Tab off the first element then wraps to the last, and
+  // Tab off the last wraps back to the first. Both wrap assertions fail the
+  // moment focus is allowed to reach the page behind the dialog.
   await page.keyboard.press("Shift+Tab");
   await expect(exportButton).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(review).toBeFocused();
   await page.keyboard.press("Shift+Tab");
   await expect(confirm).toBeFocused();
   await page.keyboard.press("Tab");
-  await expect(exportButton).toBeFocused();
+  await expect(review).toBeFocused();
 
   await page.keyboard.press("Escape");
   await expect(dialog).toBeHidden();

@@ -335,7 +335,7 @@ export default function RepostManagerPage() {
               <button
                 onClick={selectAll}
                 disabled={loading}
-                className="text-sm text-primary-text hover:text-primary-text font-medium whitespace-nowrap disabled:opacity-50"
+                className="text-sm text-primary-text font-medium whitespace-nowrap disabled:opacity-50"
               >
                 {selected.size === filteredReposts.length
                   ? "Deselect All"

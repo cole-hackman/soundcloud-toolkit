@@ -129,7 +129,7 @@ export function ListExportCard({
             description={emptyDescription}
             action={
               emptyLinkHref && emptyLinkLabel ? (
-                <Link href={emptyLinkHref} className="text-sm font-medium text-primary hover:underline">
+                <Link href={emptyLinkHref} className="text-sm font-medium text-primary-text hover:underline">
                   {emptyLinkLabel}
                 </Link>
               ) : undefined

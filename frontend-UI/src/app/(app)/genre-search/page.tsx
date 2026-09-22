@@ -232,7 +232,7 @@ export default function GenreSearchPage() {
                     className={`px-2.5 py-1 rounded-full text-xs font-medium transition ${
                       genre === g
                         ? "bg-primary text-primary-foreground"
-                        : "bg-gray-100 dark:bg-secondary/40 text-muted-foreground hover:bg-primary/10 hover:text-primary"
+                        : "bg-gray-100 dark:bg-secondary/40 text-muted-foreground hover:bg-primary/10 hover:text-primary-text"
                     }`}
                   >
                     {g}
@@ -260,7 +260,7 @@ export default function GenreSearchPage() {
           {/* Advanced filters toggle */}
           <button
             onClick={() => setShowAdvanced((v) => !v)}
-            className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-primary transition mb-3"
+            className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-primary-text transition mb-3"
           >
             <ChevronDown className={`w-4 h-4 transition-transform ${showAdvanced ? "rotate-180" : ""}`} />
             Advanced filters

@@ -449,7 +449,7 @@ export default function FollowingLibraryPage() {
                       className={cn(
                         "flex min-h-[44px] items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-sm font-semibold transition",
                         activeTab === tab
-                          ? "bg-surface text-primary shadow-sm ring-1 ring-primary/25 dark:bg-secondary/40"
+                          ? "bg-surface text-primary-text shadow-sm ring-1 ring-primary/25 dark:bg-secondary/40"
                           : "text-muted-foreground hover:bg-surface/80 hover:text-foreground",
                       )}
                     >
@@ -670,7 +670,7 @@ function CreatePanel({
             className={cn(
               "rounded-lg border px-3 py-2 text-sm font-semibold transition",
               addMode === "new"
-                ? "border-primary/50 bg-orange-50 text-primary dark:bg-orange-950/20"
+                ? "border-primary/50 bg-orange-50 text-primary-text dark:bg-orange-950/20"
                 : "border-border bg-background/60 hover:bg-surface-hover",
             )}
           >
@@ -682,7 +682,7 @@ function CreatePanel({
             className={cn(
               "rounded-lg border px-3 py-2 text-sm font-semibold transition",
               addMode === "existing"
-                ? "border-primary/50 bg-orange-50 text-primary dark:bg-orange-950/20"
+                ? "border-primary/50 bg-orange-50 text-primary-text dark:bg-orange-950/20"
                 : "border-border bg-background/60 hover:bg-surface-hover",
             )}
           >
@@ -821,7 +821,7 @@ function ResultSummary({ result }: { result: { playlist?: CreatedPlaylist; playl
                   {playlist.trackCount != null && <div className="text-xs text-muted-foreground">{playlist.trackCount} tracks</div>}
                 </div>
                 {playlist.permalink_url && (
-                  <a href={playlist.permalink_url} target="_blank" rel="noreferrer" className="text-sm font-semibold text-primary">
+                  <a href={playlist.permalink_url} target="_blank" rel="noreferrer" className="text-sm font-semibold text-primary-text">
                     Open
                   </a>
                 )}

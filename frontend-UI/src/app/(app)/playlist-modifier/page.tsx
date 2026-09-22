@@ -603,7 +603,7 @@ export default function PlaylistModifierPage() {
               <div className="flex items-center gap-4">
                 <button
                   onClick={goBackToList}
-                  className="inline-flex items-center gap-2 text-muted-foreground transition hover:text-primary"
+                  className="inline-flex items-center gap-2 text-muted-foreground transition hover:text-primary-text"
                 >
                   <ArrowLeft className="h-4 w-4" />
                   Back to playlists
@@ -785,7 +785,7 @@ export default function PlaylistModifierPage() {
               <div className="flex items-center gap-4">
                 <button
                   onClick={goBackToList}
-                  className="inline-flex items-center gap-2 text-muted-foreground transition hover:text-primary"
+                  className="inline-flex items-center gap-2 text-muted-foreground transition hover:text-primary-text"
                 >
                   <ArrowLeft className="h-4 w-4" />
                   Back to playlists

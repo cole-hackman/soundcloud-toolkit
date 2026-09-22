@@ -491,7 +491,7 @@ export default function DownloadsPage() {
                 setHypedditMode(false);
                 setSelectionMode(false);
               }}
-              className="text-muted-foreground hover:text-primary transition mb-4 flex items-center gap-2"
+              className="text-muted-foreground hover:text-primary-text transition mb-4 flex items-center gap-2"
             >
               <ArrowLeft className="w-4 h-4" />
               Back to sources

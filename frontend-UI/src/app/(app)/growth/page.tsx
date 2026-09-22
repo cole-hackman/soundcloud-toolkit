@@ -969,7 +969,7 @@ export default function GrowthPage() {
                                   e.stopPropagation();
                                   previewTrack(sug.suggestedTrack!);
                                 }}
-                                className="text-primary hover:opacity-80 shrink-0 p-1"
+                                className="text-primary hover:bg-primary/10 rounded shrink-0 p-1"
                               >
                                 <Play className="w-4 h-4 fill-primary text-primary" />
                               </button>
@@ -1232,7 +1232,7 @@ export default function GrowthPage() {
                             setSelectedHistoryActions(new Set(targets));
                             setShowReverseConfirm(true);
                           }}
-                          className="text-destructive-text hover:opacity-80 border-red-200 hover:border-red-300 gap-1.5 bg-red-50/50 dark:bg-red-950/20"
+                          className="text-destructive-text hover:bg-destructive/10 border-red-200 hover:border-red-300 gap-1.5 bg-red-50/50 dark:bg-red-950/20"
                         >
                           Unfollow Non-Followbacks
                         </Button>

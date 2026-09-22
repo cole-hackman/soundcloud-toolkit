@@ -227,7 +227,7 @@ export default function LikesToPlaylistPage() {
                   href={result.playlist.permalink_url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-block px-6 py-3 rounded-lg font-semibold bg-primary/10 text-primary hover:bg-primary/20 transition"
+                  className="inline-block px-6 py-3 rounded-lg font-semibold bg-primary/10 text-primary-text hover:bg-primary/20 transition"
                 >
                   Open in SoundCloud
                 </a>
@@ -285,7 +285,7 @@ export default function LikesToPlaylistPage() {
                 <h2 className="text-xl font-bold text-foreground">
                   Your Liked Tracks ({likes.length})
                 </h2>
-                <button onClick={selectAll} className="text-sm text-primary hover:underline">
+                <button onClick={selectAll} className="text-sm text-primary-text hover:underline">
                   {selectedTracks.size === likes.length ? "Deselect All" : "Select All"}
                 </button>
               </div>
@@ -336,7 +336,7 @@ export default function LikesToPlaylistPage() {
               </div>
 
               {selectedTracks.size > 500 && addMode === "new" && (
-                <p className="text-sm text-primary">
+                <p className="text-sm text-primary-text">
                   Selection exceeds 500 tracks; multiple playlists will be created.
                 </p>
               )}
@@ -423,12 +423,12 @@ export default function LikesToPlaylistPage() {
                           {targetPlaylist.track_count} tracks
                         </div>
                       </div>
-                      <span className="text-xs text-primary font-medium shrink-0">Change</span>
+                      <span className="text-xs text-primary-text font-medium shrink-0">Change</span>
                     </button>
                   ) : (
                     <button
                       onClick={() => setShowPlaylistPicker(true)}
-                      className="w-full px-4 py-3 rounded-lg border-2 border-dashed border-gray-300 dark:border-border text-sm text-muted-foreground-subtle hover:border-primary hover:text-primary transition-all text-center"
+                      className="w-full px-4 py-3 rounded-lg border-2 border-dashed border-gray-300 dark:border-border text-sm text-muted-foreground-subtle hover:border-primary hover:text-primary-text transition-all text-center"
                     >
                       Choose a playlist…
                     </button>

@@ -388,7 +388,7 @@ export default function FollowingManagerPage() {
                   disabled={!followersReady}
                   title={!followersReady ? "Still loading followers — who follows you back isn't known yet." : undefined}
                   className={`px-3 py-1 rounded-md text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
-                    filterMode === "not-following-back" ? "bg-card text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"
+                    filterMode === "not-following-back" ? "bg-card text-primary-text shadow-sm" : "text-muted-foreground hover:text-foreground"
                   }`}
                 >
                   Not Following Back
@@ -499,7 +499,7 @@ export default function FollowingManagerPage() {
                               href={user.permalink_url}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="text-primary hover:opacity-80 flex-shrink-0"
+                              className="text-primary hover:bg-primary/10 rounded flex-shrink-0"
                               onClick={(e) => e.stopPropagation()}
                             >
                               <ExternalLink className="w-4 h-4" />

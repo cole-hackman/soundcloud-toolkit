@@ -29,7 +29,7 @@ export function PageHeader({
         <Link
           href={backHref}
           className={cn(
-            "mb-4 inline-flex items-center gap-2 text-sm font-medium text-muted-foreground transition hover:text-primary",
+            "mb-4 inline-flex items-center gap-2 text-sm font-medium text-muted-foreground transition hover:text-primary-text",
             "lg:hidden",
             backClassName,
           )}

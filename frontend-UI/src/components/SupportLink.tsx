@@ -19,7 +19,7 @@ export function SupportLink({ subject, body, children, className }: SupportLinkP
       href={supportMailto(subject ?? "Track Toolkit support", body)}
       className={
         className ??
-        "underline underline-offset-2 transition hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/80 focus-visible:ring-offset-2 focus-visible:ring-offset-background rounded-sm"
+        "underline underline-offset-2 transition hover:text-primary-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/80 focus-visible:ring-offset-2 focus-visible:ring-offset-background rounded-sm"
       }
     >
       {children ?? SUPPORT_EMAIL}

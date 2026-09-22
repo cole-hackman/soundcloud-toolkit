@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 import { mockApi } from "./fixtures/api";
 
@@ -38,6 +38,19 @@ const PAGES: PageCase[] = [
   { path: "/downloads/", needsMock: true },
 ];
 
+/** Audit whatever is on screen right now and fail on serious/critical. */
+async function expectNoBlockingViolations(page: Page) {
+  const results = await new AxeBuilder({ page })
+    .withTags(["wcag2a", "wcag2aa", "wcag22aa"])
+    .analyze();
+
+  const blocking = results.violations.filter(
+    (violation) => violation.impact === "serious" || violation.impact === "critical",
+  );
+
+  expect(blocking, JSON.stringify(blocking, null, 2)).toEqual([]);
+}
+
 for (const { path, needsMock, fixme, expectedStatus } of PAGES) {
   test(`has no serious/critical WCAG 2.2 AA violations: ${path}`, async ({ page }) => {
     test.fixme(!!fixme, fixme);
@@ -69,17 +82,28 @@ for (const { path, needsMock, fixme, expectedStatus } of PAGES) {
       await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
     }
 
-    const results = await new AxeBuilder({ page })
-      .withTags(["wcag2a", "wcag2aa", "wcag22aa"])
-      .analyze();
-
-    const blocking = results.violations.filter(
-      (violation) => violation.impact === "serious" || violation.impact === "critical",
-    );
-
-    expect(blocking, JSON.stringify(blocking, null, 2)).toEqual([]);
+    await expectNoBlockingViolations(page);
   });
 }
+
+/**
+ * Three batch-C routes show a chooser first and keep the markup this sweep
+ * actually changed one interaction away. `goto` + axe would audit the
+ * chooser and report nothing about the track rows, the toolbar or the
+ * add-to-playlist dialog, so each of these walks in one step further.
+ */
+test("has no serious/critical violations: /playlist-to-likes/ with a playlist chosen", async ({
+  page,
+}) => {
+  await mockApi(page);
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto("/playlist-to-likes/");
+
+  await page.getByRole("button", { name: /Sample Playlist 1/ }).click();
+  await expect(page.getByRole("checkbox", { name: "Sample Track 1" })).toBeVisible();
+
+  await expectNoBlockingViolations(page);
+});
 
 /**
  * The shared `Dialog` primitive, exercised through the one dialog that is

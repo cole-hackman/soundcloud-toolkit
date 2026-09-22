@@ -101,6 +101,35 @@ for (const { path, needsMock, fixme } of PAGES) {
   });
 }
 
+/** `document.documentElement` must not be wider than the device. */
+async function expectNoOverflow(page: Page) {
+  const { scrollWidth, clientWidth } = await page.evaluate(() => ({
+    scrollWidth: document.documentElement.scrollWidth,
+    clientWidth: document.documentElement.clientWidth,
+  }));
+  expect(scrollWidth, `scrollWidth=${scrollWidth} clientWidth=${clientWidth}`).toBeLessThanOrEqual(
+    clientWidth,
+  );
+}
+
+/**
+ * The routes that open on a chooser: the list this sweep widened, wrapped and
+ * un-stickied is one interaction past the landing state, so measuring the
+ * chooser alone would not see it.
+ */
+test("no horizontal overflow: /playlist-to-likes/ with a playlist chosen", async ({
+  page,
+}, testInfo) => {
+  test.skip(!MOBILE_PROJECTS.includes(testInfo.project.name), "mobile projects only");
+
+  await mockApi(page);
+  await page.goto("/playlist-to-likes/");
+  await page.getByRole("button", { name: /Sample Playlist 1/ }).click();
+  await expect(page.getByRole("checkbox", { name: "Sample Track 1" })).toBeVisible();
+
+  await expectNoOverflow(page);
+});
+
 test("dashboard tap targets are at least 24x24: /dashboard/", async ({ page }, testInfo) => {
   test.skip(!MOBILE_PROJECTS.includes(testInfo.project.name), "mobile projects only");
 

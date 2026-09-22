@@ -1,4 +1,4 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type Locator, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 import { mockApi } from "./fixtures/api";
 
@@ -10,6 +10,14 @@ interface PageCase {
   fixme?: string;
   /** Expected HTTP status of the navigation response; defaults to 200. */
   expectedStatus?: number;
+  /**
+   * Something only the *loaded* page renders — a row, a specific control.
+   * The `h1` gate below is not enough on its own: a route's `loading.tsx`,
+   * and every in-page skeleton branch, renders the same `PageHeader`, so
+   * waiting for the heading can still leave axe auditing a page of
+   * `Skeleton`s. Never point this at a heading the skeleton also has.
+   */
+  ready?: (page: Page) => Locator;
 }
 
 const PAGES: PageCase[] = [
@@ -30,12 +38,36 @@ const PAGES: PageCase[] = [
   { path: "/playlist-modifier/", needsMock: true },
   { path: "/growth/", needsMock: true },
   { path: "/feedback/", needsMock: true },
-  { path: "/likes-to-playlist/", needsMock: true },
-  { path: "/playlist-to-likes/", needsMock: true },
-  { path: "/recently-played/", needsMock: true },
-  { path: "/activity-to-playlist/", needsMock: true },
-  { path: "/genre-search/", needsMock: true },
-  { path: "/downloads/", needsMock: true },
+  {
+    path: "/likes-to-playlist/",
+    needsMock: true,
+    ready: (page) => page.getByRole("checkbox", { name: "Sample Track 1" }),
+  },
+  {
+    path: "/playlist-to-likes/",
+    needsMock: true,
+    ready: (page) => page.getByRole("button", { name: /Sample Playlist 1/ }),
+  },
+  {
+    path: "/recently-played/",
+    needsMock: true,
+    ready: (page) => page.getByRole("checkbox", { name: "Sample Track 1" }),
+  },
+  {
+    path: "/activity-to-playlist/",
+    needsMock: true,
+    ready: (page) => page.getByRole("checkbox", { name: "Sample Track 1" }),
+  },
+  {
+    path: "/genre-search/",
+    needsMock: true,
+    ready: (page) => page.getByRole("button", { name: "Search", exact: true }),
+  },
+  {
+    path: "/downloads/",
+    needsMock: true,
+    ready: (page) => page.getByRole("button", { name: /Sample Playlist 1/ }),
+  },
 ];
 
 /** Audit whatever is on screen right now and fail on serious/critical. */
@@ -51,7 +83,7 @@ async function expectNoBlockingViolations(page: Page) {
   expect(blocking, JSON.stringify(blocking, null, 2)).toEqual([]);
 }
 
-for (const { path, needsMock, fixme, expectedStatus } of PAGES) {
+for (const { path, needsMock, fixme, expectedStatus, ready } of PAGES) {
   test(`has no serious/critical WCAG 2.2 AA violations: ${path}`, async ({ page }) => {
     test.fixme(!!fixme, fixme);
 
@@ -81,6 +113,9 @@ for (const { path, needsMock, fixme, expectedStatus } of PAGES) {
     if (needsMock) {
       await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
     }
+    if (ready) {
+      await expect(ready(page).first()).toBeVisible();
+    }
 
     await expectNoBlockingViolations(page);
   });
@@ -103,6 +138,31 @@ test("has no serious/critical violations: /playlist-to-likes/ with a playlist ch
   await expect(page.getByRole("checkbox", { name: "Sample Track 1" })).toBeVisible();
 
   await expectNoBlockingViolations(page);
+});
+
+test("has no serious/critical violations: /genre-search/ results and add-to-playlist dialog", async ({
+  page,
+}) => {
+  await mockApi(page);
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto("/genre-search/");
+
+  await page.getByRole("button", { name: "house", exact: true }).click();
+  await page.getByRole("button", { name: "Search", exact: true }).click();
+  await page.getByRole("checkbox", { name: "Sample Track 1" }).check();
+
+  await page.getByRole("button", { name: /Add to Playlist/i }).click();
+
+  // The panel used to be a bare `fixed inset-0` div; it has to be a dialog
+  // named by its own heading before the audit means anything.
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toHaveAccessibleName("Add to playlist");
+
+  await expectNoBlockingViolations(page);
+
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
 });
 
 /**

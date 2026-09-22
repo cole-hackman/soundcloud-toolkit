@@ -1,4 +1,4 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type Locator, type Page } from "@playwright/test";
 import { mockApi } from "./fixtures/api";
 
 const MOBILE_PROJECTS = ["m360", "m390", "m430"];
@@ -8,6 +8,13 @@ interface PageCase {
   needsMock?: boolean;
   /** Set when the page is known to overflow today; names the phase that fixes it. */
   fixme?: string;
+  /**
+   * Something only the *loaded* page renders. Same reason as in
+   * `a11y.spec.ts`: skeletons render the same `PageHeader`, and a column of
+   * `Skeleton`s never overflows — so without this the numbers describe the
+   * app shell rather than the page.
+   */
+  ready?: (page: Page) => Locator;
 }
 
 const PAGES: PageCase[] = [
@@ -33,12 +40,36 @@ const PAGES: PageCase[] = [
     // one. See task-1-report.md fix round 1 for how this was found.
     fixme: "Phase 6 — scrollWidth ~468-469px overflows clientWidth (360/390/430px) on all three mobile widths",
   },
-  { path: "/likes-to-playlist/", needsMock: true },
-  { path: "/playlist-to-likes/", needsMock: true },
-  { path: "/recently-played/", needsMock: true },
-  { path: "/activity-to-playlist/", needsMock: true },
-  { path: "/genre-search/", needsMock: true },
-  { path: "/downloads/", needsMock: true },
+  {
+    path: "/likes-to-playlist/",
+    needsMock: true,
+    ready: (page) => page.getByRole("checkbox", { name: "Sample Track 1" }),
+  },
+  {
+    path: "/playlist-to-likes/",
+    needsMock: true,
+    ready: (page) => page.getByRole("button", { name: /Sample Playlist 1/ }),
+  },
+  {
+    path: "/recently-played/",
+    needsMock: true,
+    ready: (page) => page.getByRole("checkbox", { name: "Sample Track 1" }),
+  },
+  {
+    path: "/activity-to-playlist/",
+    needsMock: true,
+    ready: (page) => page.getByRole("checkbox", { name: "Sample Track 1" }),
+  },
+  {
+    path: "/genre-search/",
+    needsMock: true,
+    ready: (page) => page.getByRole("button", { name: "Search", exact: true }),
+  },
+  {
+    path: "/downloads/",
+    needsMock: true,
+    ready: (page) => page.getByRole("button", { name: /Sample Playlist 1/ }),
+  },
 ];
 
 /**
@@ -66,7 +97,7 @@ export async function assertTapTargets(page: Page, selector: string, min: number
   expect(undersized, JSON.stringify(undersized, null, 2)).toEqual([]);
 }
 
-for (const { path, needsMock, fixme } of PAGES) {
+for (const { path, needsMock, fixme, ready } of PAGES) {
   test(`no horizontal overflow: ${path}`, async ({ page }, testInfo) => {
     test.skip(!MOBILE_PROJECTS.includes(testInfo.project.name), "mobile projects only");
     test.fixme(!!fixme, fixme);
@@ -82,6 +113,9 @@ for (const { path, needsMock, fixme } of PAGES) {
     // once the route's own content is mounted or the check proves nothing.
     if (needsMock) {
       await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+    }
+    if (ready) {
+      await expect(ready(page).first()).toBeVisible();
     }
 
     // Compare against `clientWidth`, not `window.innerWidth`: on content
@@ -126,6 +160,25 @@ test("no horizontal overflow: /playlist-to-likes/ with a playlist chosen", async
   await page.goto("/playlist-to-likes/");
   await page.getByRole("button", { name: /Sample Playlist 1/ }).click();
   await expect(page.getByRole("checkbox", { name: "Sample Track 1" })).toBeVisible();
+
+  await expectNoOverflow(page);
+});
+
+test("no horizontal overflow: /genre-search/ results and add-to-playlist dialog", async ({
+  page,
+}, testInfo) => {
+  test.skip(!MOBILE_PROJECTS.includes(testInfo.project.name), "mobile projects only");
+
+  await mockApi(page);
+  await page.goto("/genre-search/");
+  await page.getByRole("button", { name: "house", exact: true }).click();
+  await page.getByRole("button", { name: "Search", exact: true }).click();
+  await page.getByRole("checkbox", { name: "Sample Track 1" }).check();
+
+  await expectNoOverflow(page);
+
+  await page.getByRole("button", { name: /Add to Playlist/i }).click();
+  await expect(page.getByRole("dialog")).toBeVisible();
 
   await expectNoOverflow(page);
 });

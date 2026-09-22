@@ -1,19 +1,26 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Search, Plus, Music, ChevronDown, X } from "lucide-react";
+import { Search, Plus, Music, ChevronDown } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import {
   Button,
+  Card,
+  Dialog,
   EmptyState,
+  Field,
   InlineAlert,
+  Input,
   LoadingSpinner,
   PageContainer,
   PageHeader,
+  SectionHeading,
+  Select,
   SelectableList,
   SelectionBanner,
   TrackRow,
+  useAnnounce,
 } from "@/components/ui";
 import { invalidatePlaylistCaches, usePlaylistsQuery } from "@/lib/queries";
 
@@ -49,6 +56,9 @@ function formatDuration(ms: number) {
 
 export default function GenreSearchPage() {
   const queryClient = useQueryClient();
+  const announce = useAnnounce();
+  const advancedPanelId = useId();
+  const addModeLabelId = useId();
   // Search form state
   const [genre, setGenre] = useState("");
   const [tags, setTags] = useState("");
@@ -105,8 +115,10 @@ export default function GenreSearchPage() {
       const res = await apiFetch(`/api/tracks/search?${params}`);
       if (res.ok) {
         const data = await res.json();
-        setResults(data.collection || []);
+        const collection = data.collection || [];
+        setResults(collection);
         setNextHref(data.next_href || null);
+        announce(`${collection.length} track${collection.length === 1 ? "" : "s"} found`);
       } else {
         const err = await res.json().catch(() => ({}));
         setSearchError(typeof err?.error === "string" ? err.error : "Search failed. Try different filters.");
@@ -130,8 +142,10 @@ export default function GenreSearchPage() {
       const res = await apiFetch(`/api/tracks/search?${params}`);
       if (res.ok) {
         const data = await res.json();
-        setResults((prev) => [...prev, ...(data.collection || [])]);
+        const collection = data.collection || [];
+        setResults((prev) => [...prev, ...collection]);
         setNextHref(data.next_href || null);
+        announce(`${collection.length} more track${collection.length === 1 ? "" : "s"} loaded`);
       } else {
         setSearchError("Couldn’t load more tracks. Please try again.");
       }
@@ -185,6 +199,8 @@ export default function GenreSearchPage() {
         const count = data.addedCount ?? data.totalTracks ?? selectedTracks.size;
         const name = addMode === "existing" ? targetPlaylist?.title : (data.playlist?.title || playlistName);
         setAddSuccess(`${count} track${count !== 1 ? "s" : ""} added to "${name}".`);
+        announce(`${count} track${count !== 1 ? "s" : ""} added to ${name}`, { assertive: true });
+        setShowAddPanel(false);
         setSelectedTracks(new Set());
         setPlaylistName("");
       } else {
@@ -205,32 +221,38 @@ export default function GenreSearchPage() {
         />
 
         {/* Search Form */}
-        <div className="bg-white dark:bg-card rounded-2xl p-6 border-2 border-gray-200 dark:border-border mb-8">
-          <div className="grid sm:grid-cols-2 gap-4 mb-4">
+        <Card className="mb-8 space-y-4 p-4 sm:p-6">
+          <SectionHeading>Filters</SectionHeading>
+
+          <div className="grid gap-4 sm:grid-cols-2">
             {/* Genre input with suggestions */}
-            <div>
-              <label className="block text-sm font-medium mb-1.5 text-muted-foreground">
-                Genre
-              </label>
-              <input
-                type="text"
-                value={genre}
-                onChange={(e) => setGenre(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-                placeholder="e.g. house, techno, ambient…"
-                list="genre-suggestions"
-                className="w-full px-4 py-2.5 rounded-lg border-2 border-gray-200 dark:border-border focus:border-primary focus:outline-none transition dark:bg-secondary/20 dark:text-foreground text-sm"
-              />
+            <div className="min-w-0">
+              <Field label="Genre" hint="Start typing for suggestions">
+                {(field) => (
+                  <Input
+                    {...field}
+                    type="text"
+                    value={genre}
+                    onChange={(e) => setGenre(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                    placeholder="e.g. house, techno, ambient…"
+                    list="genre-suggestions"
+                    className="h-11"
+                  />
+                )}
+              </Field>
               <datalist id="genre-suggestions">
                 {COMMON_GENRES.map((g) => <option key={g} value={g} />)}
               </datalist>
               {/* Quick genre chips */}
-              <div className="flex flex-wrap gap-1.5 mt-2">
+              <div role="group" aria-label="Common genres" className="mt-2 flex flex-wrap gap-1.5">
                 {COMMON_GENRES.slice(0, 8).map((g) => (
                   <button
+                    type="button"
                     key={g}
+                    aria-pressed={genre === g}
                     onClick={() => setGenre(g)}
-                    className={`px-2.5 py-1 rounded-full text-xs font-medium transition ${
+                    className={`min-h-9 rounded-full px-2.5 py-1 text-xs font-medium transition ${
                       genre === g
                         ? "bg-primary text-primary-foreground"
                         : "bg-gray-100 dark:bg-secondary/40 text-muted-foreground dark:hover:bg-primary/10 hover:text-primary-text"
@@ -243,72 +265,80 @@ export default function GenreSearchPage() {
             </div>
 
             {/* Tags input */}
-            <div>
-              <label className="block text-sm font-medium mb-1.5 text-muted-foreground">
-                Tags <span className="font-normal text-muted-foreground-subtle">(comma-separated)</span>
-              </label>
-              <input
-                type="text"
-                value={tags}
-                onChange={(e) => setTags(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-                placeholder="e.g. deep, melodic, chill…"
-                className="w-full px-4 py-2.5 rounded-lg border-2 border-gray-200 dark:border-border focus:border-primary focus:outline-none transition dark:bg-secondary/20 dark:text-foreground text-sm"
-              />
+            <div className="min-w-0">
+              <Field label="Tags" hint="Comma-separated">
+                {(field) => (
+                  <Input
+                    {...field}
+                    type="text"
+                    value={tags}
+                    onChange={(e) => setTags(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                    placeholder="e.g. deep, melodic, chill…"
+                    className="h-11"
+                  />
+                )}
+              </Field>
             </div>
           </div>
 
           {/* Advanced filters toggle */}
           <button
+            type="button"
             onClick={() => setShowAdvanced((v) => !v)}
-            className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-primary-text transition mb-3"
+            aria-expanded={showAdvanced}
+            aria-controls={advancedPanelId}
+            className="flex min-h-11 items-center gap-1.5 text-sm text-muted-foreground transition hover:text-primary-text"
           >
-            <ChevronDown className={`w-4 h-4 transition-transform ${showAdvanced ? "rotate-180" : ""}`} />
+            <ChevronDown
+              aria-hidden="true"
+              className={`w-4 h-4 transition-transform ${showAdvanced ? "rotate-180" : ""}`}
+            />
             Advanced filters
           </button>
 
-          {showAdvanced && (
-            <div className="grid sm:grid-cols-2 gap-4 mb-4 pt-2 border-t border-gray-100 dark:border-border">
-              <div>
-                <label className="block text-sm font-medium mb-1.5 text-muted-foreground">
-                  BPM range
-                </label>
-                <div className="flex items-center gap-2">
-                  <input
+          <div id={advancedPanelId} hidden={!showAdvanced}>
+            <div className="grid grid-cols-2 gap-4 border-t border-gray-100 pt-4 dark:border-border">
+              <Field label="Min BPM">
+                {(field) => (
+                  <Input
+                    {...field}
                     type="number"
+                    inputMode="numeric"
                     value={bpmMin}
                     onChange={(e) => setBpmMin(e.target.value)}
-                    placeholder="Min"
+                    placeholder="e.g. 120"
                     min={1}
                     max={300}
-                    className="w-full px-3 py-2 rounded-lg border-2 border-gray-200 dark:border-border focus:border-primary focus:outline-none transition dark:bg-secondary/20 dark:text-foreground text-sm"
+                    className="h-11"
                   />
-                  <span className="text-muted-foreground-subtle">–</span>
-                  <input
+                )}
+              </Field>
+              <Field label="Max BPM">
+                {(field) => (
+                  <Input
+                    {...field}
                     type="number"
+                    inputMode="numeric"
                     value={bpmMax}
                     onChange={(e) => setBpmMax(e.target.value)}
-                    placeholder="Max"
+                    placeholder="e.g. 128"
                     min={1}
                     max={300}
-                    className="w-full px-3 py-2 rounded-lg border-2 border-gray-200 dark:border-border focus:border-primary focus:outline-none transition dark:bg-secondary/20 dark:text-foreground text-sm"
+                    className="h-11"
                   />
-                </div>
-              </div>
+                )}
+              </Field>
             </div>
-          )}
+          </div>
 
           {searchError && (
-            <InlineAlert variant="error" className="mb-3" onDismiss={() => setSearchError("")}>
+            <InlineAlert variant="error" onDismiss={() => setSearchError("")}>
               {searchError}
             </InlineAlert>
           )}
 
-          <Button
-            onClick={handleSearch}
-            disabled={searching}
-            className="h-10 px-4"
-          >
+          <Button onClick={handleSearch} disabled={searching}>
             {searching ? (
               <>
                 <LoadingSpinner size="sm" className="border-white" />
@@ -321,11 +351,13 @@ export default function GenreSearchPage() {
               </>
             )}
           </Button>
-        </div>
+        </Card>
 
         {/* Results */}
         {hasSearched && (
           <>
+            <SectionHeading className="mb-3">Results</SectionHeading>
+
             {/* Add success banner */}
             {addSuccess && (
               <InlineAlert variant="success" className="mb-4" onDismiss={() => setAddSuccess("")}>
@@ -373,7 +405,7 @@ export default function GenreSearchPage() {
                       onClick={handleLoadMore}
                       disabled={loadingMore}
                       variant="outline"
-                      className="mx-auto h-10 px-4"
+                      className="mx-auto"
                     >
                       {loadingMore ? (
                         <>
@@ -391,101 +423,115 @@ export default function GenreSearchPage() {
           </>
         )}
 
-        {/* Add to Playlist Panel (modal-style overlay) */}
-        {showAddPanel && (
-          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 px-4 pb-4 sm:pb-0">
-            <div className="w-full max-w-md bg-white dark:bg-card rounded-2xl p-6 border-2 border-gray-200 dark:border-border shadow-2xl space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg font-bold text-foreground">
-                  Add {selectedTracks.size} track{selectedTracks.size !== 1 ? "s" : ""} to playlist
-                </h3>
-                <button
-                  onClick={() => setShowAddPanel(false)}
-                  className="rounded-lg p-1.5 text-muted-foreground transition hover:bg-surface-hover hover:text-foreground"
-                  aria-label="Close"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
+        {/* Add to Playlist — a real dialog: labelled, focus-trapped, Escape
+            closes it, and focus returns to the banner button that opened it. */}
+        <Dialog
+          open={showAddPanel}
+          onClose={() => setShowAddPanel(false)}
+          title="Add to playlist"
+          subtitle={`${selectedTracks.size} track${selectedTracks.size !== 1 ? "s" : ""} selected`}
+          variant="sheet"
+          size="sm"
+          footer={
+            <div className="flex gap-3">
+              <Button
+                variant="outline"
+                onClick={() => setShowAddPanel(false)}
+                className="flex-1"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleAddToPlaylist}
+                disabled={adding || (addMode === "new" ? !playlistName.trim() : !targetPlaylist)}
+                className="flex-1"
+              >
+                {adding ? <><LoadingSpinner size="sm" className="border-white" /> Adding…</> : "Add tracks"}
+              </Button>
+            </div>
+          }
+        >
+          {addError && (
+            <InlineAlert variant="error" onDismiss={() => setAddError("")}>
+              {addError}
+            </InlineAlert>
+          )}
 
-              {addError && (
-                <InlineAlert variant="error" onDismiss={() => setAddError("")}>
-                  {addError}
-                </InlineAlert>
-              )}
+          {/* Mode toggle */}
+          <div>
+            <span
+              id={addModeLabelId}
+              className="mb-2 block text-sm font-semibold text-foreground"
+            >
+              Add to
+            </span>
+            <div
+              role="group"
+              aria-labelledby={addModeLabelId}
+              className="flex overflow-hidden rounded-lg border-2 border-gray-200 dark:border-border"
+            >
+              <button
+                type="button"
+                aria-pressed={addMode === "new"}
+                onClick={() => setAddMode("new")}
+                className={`min-h-11 flex-1 px-2 py-2 text-sm font-medium transition ${
+                  addMode === "new"
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:bg-gray-50 dark:hover:bg-secondary/20"
+                }`}
+              >
+                New playlist
+              </button>
+              <button
+                type="button"
+                aria-pressed={addMode === "existing"}
+                onClick={() => { setAddMode("existing"); }}
+                className={`min-h-11 flex-1 px-2 py-2 text-sm font-medium transition ${
+                  addMode === "existing"
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:bg-gray-50 dark:hover:bg-secondary/20"
+                }`}
+              >
+                Existing playlist
+              </button>
+            </div>
+          </div>
 
-              {/* Mode toggle */}
-              <div className="flex rounded-lg border-2 border-gray-200 dark:border-border overflow-hidden">
-                <button
-                  onClick={() => setAddMode("new")}
-                  className={`flex-1 py-2 text-sm font-medium transition ${
-                    addMode === "new"
-                      ? "bg-primary text-primary-foreground"
-                      : "text-muted-foreground hover:bg-gray-50 dark:hover:bg-secondary/20"
-                  }`}
-                >
-                  New playlist
-                </button>
-                <button
-                  onClick={() => { setAddMode("existing"); }}
-                  className={`flex-1 py-2 text-sm font-medium transition ${
-                    addMode === "existing"
-                      ? "bg-primary text-primary-foreground"
-                      : "text-muted-foreground hover:bg-gray-50 dark:hover:bg-secondary/20"
-                  }`}
-                >
-                  Existing playlist
-                </button>
-              </div>
-
-              {addMode === "new" ? (
-                <input
+          {addMode === "new" ? (
+            <Field label="Playlist name">
+              {(field) => (
+                <Input
+                  {...field}
                   type="text"
                   value={playlistName}
                   onChange={(e) => setPlaylistName(e.target.value)}
                   placeholder="Playlist name…"
-                  className="w-full px-4 py-2.5 rounded-lg border-2 border-gray-200 dark:border-border focus:border-primary focus:outline-none transition dark:bg-secondary/20 dark:text-foreground text-sm"
+                  className="h-11"
                 />
-              ) : loadingPlaylists ? (
-                <div className="flex items-center gap-2 py-2 text-sm text-muted-foreground-subtle">
-                  <LoadingSpinner size="sm" /> Loading playlists…
-                </div>
-              ) : (
-                <select
-                  value={targetPlaylist?.id ?? ""}
-                  onChange={(e) => {
-                    const id = Number(e.target.value);
-                    setTargetPlaylist(userPlaylists.find((p) => Number(p.id) === id) || null);
-                  }}
-                  className="w-full px-3 py-2.5 rounded-lg border-2 border-gray-200 dark:border-border focus:border-primary focus:outline-none transition dark:bg-secondary/20 dark:text-foreground text-sm"
-                >
-                  <option value="">Select a playlist…</option>
-                  {userPlaylists.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.title} ({p.track_count} tracks)
-                    </option>
-                  ))}
-                </select>
               )}
-
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setShowAddPanel(false)}
-                  className="flex-1 py-2.5 rounded-lg font-semibold border-2 border-gray-200 dark:border-border text-foreground hover:border-primary transition text-sm"
-                >
-                  Cancel
-                </button>
-                <Button
-                  onClick={handleAddToPlaylist}
-                  disabled={adding || (addMode === "new" ? !playlistName.trim() : !targetPlaylist)}
-                  className="flex-1 h-10 px-4"
-                >
-                  {adding ? <><LoadingSpinner size="sm" className="border-white" /> Adding…</> : "Add tracks"}
-                </Button>
-              </div>
+            </Field>
+          ) : loadingPlaylists ? (
+            <div className="flex items-center gap-2 py-2 text-sm text-muted-foreground-subtle">
+              <LoadingSpinner size="sm" /> Loading playlists…
             </div>
-          </div>
-        )}
+          ) : (
+            <Select
+              label="Playlist"
+              value={targetPlaylist?.id ?? ""}
+              onChange={(e) => {
+                const id = Number(e.target.value);
+                setTargetPlaylist(userPlaylists.find((p) => Number(p.id) === id) || null);
+              }}
+            >
+              <option value="">Select a playlist…</option>
+              {userPlaylists.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.title} ({p.track_count} tracks)
+                </option>
+              ))}
+            </Select>
+          )}
+        </Dialog>
       <SelectionBanner
         count={selectedTracks.size}
         entityName="track"

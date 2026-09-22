@@ -183,6 +183,26 @@ test("no horizontal overflow: /genre-search/ results and add-to-playlist dialog"
   await expectNoOverflow(page);
 });
 
+test("no horizontal overflow: /downloads/ track list and selection mode", async ({
+  page,
+}, testInfo) => {
+  test.skip(!MOBILE_PROJECTS.includes(testInfo.project.name), "mobile projects only");
+
+  await mockApi(page);
+  await page.goto("/downloads/");
+  await page.getByRole("button", { name: /Sample Playlist 1/ }).click();
+  await expect(
+    page.getByRole("button", { name: "Download Sample Track 1 (free download)" }),
+  ).toBeVisible();
+
+  await expectNoOverflow(page);
+
+  await page.getByRole("button", { name: "Select to Remove" }).click();
+  await expect(page.getByRole("checkbox", { name: "Sample Track 1" })).toBeVisible();
+
+  await expectNoOverflow(page);
+});
+
 test("dashboard tap targets are at least 24x24: /dashboard/", async ({ page }, testInfo) => {
   test.skip(!MOBILE_PROJECTS.includes(testInfo.project.name), "mobile projects only");
 

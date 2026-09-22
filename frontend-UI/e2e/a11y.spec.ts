@@ -165,6 +165,34 @@ test("has no serious/critical violations: /genre-search/ results and add-to-play
   await expect(dialog).toBeHidden();
 });
 
+test("has no serious/critical violations: /downloads/ track list and selection mode", async ({
+  page,
+}) => {
+  await mockApi(page);
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto("/downloads/");
+
+  await page.getByRole("button", { name: /Sample Playlist 1/ }).click();
+
+  // Each download control names its track and its route, so a column of them
+  // is not four buttons all called "Download".
+  await expect(
+    page.getByRole("button", { name: "Download Sample Track 1 (free download)" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Download Sample Track 2 via Hypeddit" }),
+  ).toBeVisible();
+
+  await expectNoBlockingViolations(page);
+
+  // Selection mode puts the same control in `rightSlot`, outside the row's
+  // toggle label — the nested-interactive case this sweep was fixing.
+  await page.getByRole("button", { name: "Select to Remove" }).click();
+  await expect(page.getByRole("checkbox", { name: "Sample Track 1" })).toBeVisible();
+
+  await expectNoBlockingViolations(page);
+});
+
 /**
  * The shared `Dialog` primitive, exercised through the one dialog that is
  * reachable from a mocked page without a write: the delete-account confirm in

@@ -13,7 +13,8 @@ Track Toolkit (formerly SoundCloud Toolkit — SoundCloud's API Terms of Use for
 - **Prisma ORM** with **PostgreSQL** — data persistence. Production is **Azure
   Database for PostgreSQL Flexible Server** (`tracktoolkit-pg`, PG 17), since
   the 2026-09-20 cutover in `docs/internal/MIGRATION.md`. Neon is the legacy
-  database, kept read-only until decommission — nothing reads it
+  database, left intact as the rollback until decommission — nothing reads or
+  writes it (it is unused, not set read-only)
 - **`express-validator`** — input validation middleware
 - **`helmet`** — security headers (CSP, HSTS, etc.)
 - **`express-rate-limit`** — per-IP rate limiting
@@ -29,8 +30,9 @@ Track Toolkit (formerly SoundCloud Toolkit — SoundCloud's API Terms of Use for
 - **TypeScript**
 - **Tailwind CSS 3.4** with `frontend-UI/tailwind.config.ts` — **not v4**. Colors
   are `hsl(var(--token))` against the tokens in `src/app/globals.css`; every
-  pair the app relies on is checked by `npm run contrast`, which fails the
-  build below its threshold
+  pair the app relies on is checked by `npm run contrast`, which exits 1 below
+  its threshold. Nothing runs it automatically — it is a manual pre-merge step,
+  not part of `next build` and not in the deploy workflow
 - **shadcn/ui** (custom components in `src/components/ui/`) — Button, Card,
   Input, LoadingSpinner, EmptyState, Skeleton, plus the accessibility
   primitives added on `feat/trust-and-mobile`: `Field`, `Select`, `Dialog`
@@ -174,7 +176,10 @@ soundcloud-tool/
 │   │   └── lib/
 │   │       ├── support.ts        # SUPPORT_EMAIL — the one definition; never hardcode the address
 │   │       ├── nav.ts            # The tool list behind the sidebar, the dashboard and the FAQ
-│   │       ├── usePageTitle.ts   # Per-route <title> (only the root layout may export `metadata`)
+│   │       ├── usePageTitle.ts   # Per-route <title> for the (app) tools. A "use client" page
+│   │       │                     #   cannot export `metadata`; a sibling server layout.tsx can,
+│   │       │                     #   and that is where a new PUBLIC route's title/description/
+│   │       │                     #   canonical go (see the app/layout.tsx note above)
 │   │       ├── rebrand.ts        # REBRAND_ANNOUNCEMENT_VERSION + the localStorage gates
 │   │       ├── api.ts / api-shape.ts  # fetch wrapper + the `asArray` degraded-payload guards
 │   │       └── utils.ts          # cn()
@@ -750,9 +755,17 @@ Three things that look arbitrary but are not:
   via `$queryRaw` (one row out of Postgres, matching the admin aggregates),
   monotonic — a run only ever raises it — and admin `/stats` surfaces it as
   `lifetimeUsers` (null before the first run).
-  Every user delete also logs `[retention] <step> will remove N users` *before*
-  it runs, so the first production sweep is reviewable from the logs rather
-  than only from its aftermath.
+  Every user delete also logs `[retention] <step> will remove N users` before
+  it runs. That is useful while a sweep is happening, but it is **not a
+  preview** — the line lands microseconds before the delete it describes, in
+  the same pass. To see the numbers before anything is destroyed, set
+  `RETENTION_DRY_RUN=true`: the job runs on its normal schedule, performs
+  every count, logs the same `will remove N users` lines plus a
+  `would remove N` per step, and issues no `deleteMany`, `updateMany` or
+  `upsert` at all. `RETENTION_ENABLED=false` is **not** the way to do this —
+  it schedules nothing, so it produces silence, which reads exactly like
+  "there was nothing to delete". `tests/retention-dry-run.test.js` fails if
+  any mutating client method is reached while the flag is set.
 - **The disconnect window is 6 days, and a constant, not an env var.** The
   SoundCloud terms' deletion deadline is *7* days; the window is one day short
   of it on purpose, because the sweep is daily and the real worst case is the
@@ -1037,7 +1050,8 @@ clone, and every bulk write.
 | `CHROME_EXTENSION_IDS` | No | Comma-separated extension IDs allowed as credentialed origins (CORS + `rejectUntrustedOrigin`) |
 | `SESSION_COOKIE_SAMESITE` | No | `lax`, `none` or `strict` for the session cookie. Unset keeps the historical default (`none` in production). Same-origin hosting sets `lax` |
 | `LEGACY_REDIRECT_HOSTS` | No | Comma-separated hostnames Express redirects to `APP_URL` (301 GET/HEAD, 308 otherwise). Unset disables the middleware |
-| `RETENTION_ENABLED` | No | Set to `false` to disable the daily retention purge. **Defaults to on** — a retention policy that is off by default is not a policy |
+| `RETENTION_ENABLED` | No | Set to `false` to disable the daily retention purge. **Defaults to on** — a retention policy that is off by default is not a policy. Do not use this to preview a sweep: it schedules nothing, so it logs nothing, and the silence is indistinguishable from "nothing to delete". Use `RETENTION_DRY_RUN` |
+| `RETENTION_DRY_RUN` | No | Exactly `true` (case-insensitive, trimmed; `1` and `yes` are deliberately **not** accepted) makes each scheduled run count everything and write nothing — every step logs `would remove N`, the user sweeps still log `will remove N users`, and no delete, update or upsert is issued. Intended for the first deploy after a retention change: read the counts, satisfy yourself, then remove the variable |
 | `RETENTION_INTERVAL_MS` | No | Sweep period (default 24h), **clamped to a 24h maximum in code** (`resolveIntervalMs`) and logged when a larger value is refused. First run is always 10 min after boot. Compliance-relevant, not a tuning knob: a longer period would eat the day of margin the 6-day disconnect window buys against the terms' 7-day deletion deadline, so it is enforced rather than documented. Lowering it is always allowed |
 | `CACHE_TTL_DAYS` | No | Library-cache page/state lifetime in days (default `7`) |
 | `INACTIVE_MONTHS` | No | Dormant-account window in **calendar months** (default `24`) |
@@ -1270,7 +1284,7 @@ One app, one origin. The Vercel + DigitalOcean + Neon split was retired at the
 
 | Component | Platform | Notes |
 |-----------|----------|-------|
-| Frontend + backend | **Azure App Service** (`tracktoolkit`, Linux B1, Node 22) | One Express process serves `/api` and `frontend-UI/out/`. **`instance_count` is pinned at 1** — the library cache's invalidation marks are per-process (see `server/lib/social-cache.js`) |
+| Frontend + backend | **Azure App Service** (`tracktoolkit`, Linux B1, Node 22) | One Express process serves `/api` and `frontend-UI/out/`. **One worker, pinned** — `capacity: 1` on the plan and `numberOfWorkers: 1` on the site (`infra/main.bicep`), because the library cache's invalidation marks are per-process (see `server/lib/social-cache.js`) |
 | Database | **Azure Database for PostgreSQL Flexible Server** (`tracktoolkit-pg`, PG 17, Burstable B1ms) | `DATABASE_URL` comes from Key Vault `tracktoolkit-kv` |
 | Secrets | **Azure Key Vault** (`tracktoolkit-kv`) | RBAC; the app reads by reference, so no secret is in the App Service config |
 | Infrastructure | **Bicep** (`infra/main.bicep`, `infra/deploy.sh`) | `infra/main.cutover.bicepparam` is the live parameter set |

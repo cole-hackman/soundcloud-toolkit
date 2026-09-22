@@ -110,9 +110,12 @@ All database operations use Prisma methods:
   snapshot), `server/lib/catalog.js` and `server/lib/enrichment.js` (upserts
   Prisma cannot express), `server/routes/admin.js` (aggregate reports) and
   `server/scripts/backfill-track-catalog.js`
-- User input is validated before database operations; the admin aggregates
-  additionally accept only enumerated filter values, dropping anything else
-  rather than passing it through
+- User input is validated before database operations. The admin list filters
+  that *are* enumerable — `status`, `type`, `period` — accept only their
+  enumerated values and drop anything else rather than passing it to Prisma.
+  The catalog's `genre` and `artist` filters are necessarily free text; they
+  reach an `ILIKE` through a tagged template, so they are parameterised, not
+  enumerated
 
 ## 5. Additional Security Measures
 

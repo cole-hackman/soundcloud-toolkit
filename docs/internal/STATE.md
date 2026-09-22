@@ -2,13 +2,14 @@
 
 ## Now
 **`feat/trust-and-mobile` is complete and waiting on Cole's review and merge.**
-Seventeen tasks: the trust surfaces (privacy, terms, FAQ, accessibility
-statement, feedback, account), the accessibility and mobile sweep of every
-page, the account-lifecycle and retention work, and a test suite that went
-from nothing to a Playwright + axe end-to-end suite. `main` is merged in, so
-the branch also carries the Azure deploy CI and the rebuilt admin console.
+Briefs 1 through 16, with 16 split into 16a, 16b and 16c: the trust surfaces
+(privacy, terms, FAQ, accessibility statement, feedback, account), the
+accessibility and mobile sweep of every page, the account-lifecycle and
+retention work, and a test suite that went from nothing to a Playwright + axe
+end-to-end suite. `main` is merged in, so the branch also carries the Azure
+deploy CI and the rebuilt admin console.
 
-At the close, all green: `npm test` 57 suites / 602 tests; `npx tsc --noEmit`
+At the close, all green: `npm test` 58 suites / 622 tests; `npx tsc --noEmit`
 and `next lint` clean with the four jsx-a11y rules back at `error`;
 `npm run contrast` 115 pairs (1 documented near miss); `npm run test:e2e` 528
 passed / 112 skipped, with no `fixme` left anywhere in the suite.
@@ -90,6 +91,11 @@ Read `docs/internal/MIGRATION.md` ("CUTOVER DONE") for that story.
 - **Close-out (16c)** — the bulk-review panel made keyboard-reachable,
   `frame-src` added to the CSP sweep, the admin console's tone colours brought
   to AA with the console added to the contrast gate, and this documentation.
+  Then a review round: `RETENTION_DRY_RUN` built (the "deploy inert and read
+  the counts" procedure this file described had no implementation behind it),
+  the contrast gate changed from holding a *copy* of `TONE_SOFT` to parsing
+  the real map out of `primitives.tsx`, and three public or load-bearing
+  claims rewritten to what the branch can evidence.
 - **Merged from `main` along the way**: the Azure deploy workflow (PR #52) and
   the rebuilt admin console, with the Feedback inbox re-implemented as a view
   inside it.
@@ -102,11 +108,31 @@ Read `docs/internal/MIGRATION.md` ("CUTOVER DONE") for that story.
    `users."disconnectedAt"`, the `metrics` table). Both are re-runnable. Both
    files now name the database and the command. **Not Neon** — Neon is the
    legacy database and nothing reads it.
-2. **First deploy with `RETENTION_ENABLED=false`.** The retention job logs
-   `[retention] <step> will remove N users` *before* each user sweep. Read
-   those counts on a run that cannot delete anything, satisfy yourself the
-   numbers are what you expect, then set it back to `true` (its default). The
-   job's first run is 10 minutes after boot.
+2. **First deploy with `RETENTION_DRY_RUN=true`.** Not
+   `RETENTION_ENABLED=false` — that schedules nothing, so it logs nothing, and
+   the silence reads exactly like "there was nothing to delete". (An earlier
+   draft of this list said to do that. It would have produced no counts, and
+   the first real sweep would then have deleted as it logged.)
+
+   With `RETENTION_DRY_RUN=true` the job runs on its normal schedule — first
+   run 10 minutes after boot — performs every count, and writes nothing at
+   all. In the App Service log stream, look for:
+
+   ```
+   [retention] DRY RUN (RETENTION_DRY_RUN=true) — counting only, nothing is written
+   [retention] disconnected-users will remove N users
+   [retention] inactive-users will remove N users
+   [retention] operation-logs would remove N
+   ...
+   [retention] DRY RUN complete — no rows were deleted or updated
+   ```
+
+   The `will remove N users` lines are word-for-word what a real sweep prints,
+   so the numbers need no translation. Satisfy yourself they are what you
+   expect — the user sweeps cascade across every per-user table and are
+   irreversible — then delete the variable and let the next run do it for
+   real. `tests/retention-dry-run.test.js` is what asserts the flag issues no
+   write; it fails if any mutating Prisma method is reached.
 3. **Fill `GOVERNING_LAW_STATE` in `frontend-UI/src/app/terms/page.tsx`.** It
    ships as the literal string `[STATE]` and is visible on the page. Only Cole
    can decide it.
@@ -260,6 +286,13 @@ Read `docs/internal/MIGRATION.md` ("CUTOVER DONE") for that story.
   a suspension, a "needs re-auth" flag or anything else.** Writing
   `disconnectedAt` to mean "paused" would delete those accounts in under a
   week, silently, with no user-facing signal.
+- **`RETENTION_ENABLED=false` is not a preview.** It schedules nothing, so it
+  logs nothing, and "no counts appeared" is indistinguishable from "there was
+  nothing to delete" — follow that as a dry run and you will enable the job
+  believing it is inert. `RETENTION_DRY_RUN=true` is the preview: it runs,
+  counts everything, logs every line a real sweep would, and issues no write.
+  It accepts exactly `true`; `1` and `yes` are refused on purpose, because a
+  dry run that silently became real is the failure that matters here.
 - **The 6-day disconnect window is a constant on purpose, and
   `RETENTION_INTERVAL_MS` is clamped to 24h in code.** SoundCloud's terms give
   7 days; the sweep is daily, so the real worst case is the window plus up to

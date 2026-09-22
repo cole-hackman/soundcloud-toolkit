@@ -190,10 +190,11 @@ Next.js 15 · React 18 · TypeScript · Tailwind CSS 3.4 · Express · Prisma ·
 PostgreSQL (Azure Flexible Server) · Azure App Service
 
 The frontend has a Playwright suite with `@axe-core/playwright`
-(`frontend-UI/e2e/`): every page is audited for serious and critical
-accessibility violations and for horizontal overflow at 1280, 430, 390 and
-360 px, alongside a colour-contrast gate over the design tokens
-(`npm run contrast`).
+(`frontend-UI/e2e/`): every user-facing page is audited for serious and
+critical accessibility violations and for horizontal overflow at 1280, 430,
+390 and 360 px. The admin console is not in it. Alongside that, a
+colour-contrast gate over the design tokens (`npm run contrast`) — neither is
+wired into CI yet, so both are run by hand before a merge.
 
 ## License
 

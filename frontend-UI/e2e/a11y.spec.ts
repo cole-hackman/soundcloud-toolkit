@@ -248,36 +248,26 @@ test("has no serious/critical violations: /playlist-modifier/ editor rows", asyn
 });
 
 /**
- * KNOWN FAILURE, deliberately left failing rather than scoped around.
- *
- * The three dialogs this page opens — remove-track, save-changes, and the
- * mobile row-actions sheet — all render `BulkReviewDetails`, whose track list
- * is `<div class="max-h-44 space-y-1 overflow-y-auto">`: a scrollable region
- * with no focusable content and no tabindex, which axe reports as
- * `scrollable-region-focusable` (serious). Someone using the keyboard cannot
- * scroll it, so any track past the fourth is unreachable.
- *
- * `BulkReviewDetails` lives in `src/components/ui/`, which Task 16a owns, and
- * it is rendered by the confirm dialog of eight pages (combine,
+ * This test was `fixme`'d when it was written, because it found a real defect
+ * in a file its task did not own: the three dialogs this page opens —
+ * remove-track, save-changes, and the mobile row-actions sheet — all render
+ * `BulkReviewDetails`, whose item list was
+ * `<div class="max-h-44 space-y-1 overflow-y-auto">`: a scrollable region with
+ * no focusable content and no tabindex, which axe reports as
+ * `scrollable-region-focusable` (serious). Anyone using the keyboard could not
+ * scroll it, so any item past the fourth was unreachable — in the confirm step
+ * before a destructive bulk action, on eight pages (combine,
  * following-manager, repost-manager, playlist-modifier, playlist-health-check,
- * growth, like-manager, downloads) — so this is one fix in one shared file,
- * not a playlist-modifier bug. Fixing it here would collide with that task.
+ * growth, like-manager, downloads).
  *
- * The audit is left in place and failing-by-`fixme` on purpose: excluding the
- * selector or asserting a subset would turn the first test that ever looked at
- * these dialogs into one that cannot report what it found. Remove the `fixme`
- * once the shared component is focusable.
+ * The component is fixed (`tabIndex={0}` + `role="group"` + a name + a focus
+ * ring) and the `fixme` is gone. Reverting that fix in a scratch copy and
+ * running this test at m360 reproduces the violation, so this is a live guard
+ * rather than a test that would pass either way.
  */
 test("has no serious/critical violations: /playlist-modifier/ row-action and confirm dialogs", async ({
   page,
 }) => {
-  test.fixme(
-    true,
-    "BulkReviewDetails (src/components/ui/, owned by Task 16a) renders an " +
-      "overflow-y-auto track list with no tabindex: axe scrollable-region-focusable, " +
-      "serious. Shared by eight pages' confirm dialogs.",
-  );
-
   await openPlaylistModifierEditor(page);
   const main = page.getByRole("main");
 
@@ -298,6 +288,14 @@ test("has no serious/critical violations: /playlist-modifier/ row-action and con
   await expect(dialog).toBeVisible();
   await expect(dialog).toHaveAccessibleName("Remove track?");
   await expectNoBlockingViolations(page);
+
+  // Named directly, not only through axe: the rule that caught this is a
+  // heuristic (it stops firing if the box ever gains a focusable child), and
+  // the property that actually matters is that the scroller can take focus.
+  const review = dialog.getByRole("group", { name: /^Items to / });
+  await expect(review).toBeVisible();
+  await review.focus();
+  await expect(review).toBeFocused();
 
   await page.keyboard.press("Escape");
   await expect(dialog).toBeHidden();

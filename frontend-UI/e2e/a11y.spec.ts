@@ -54,6 +54,14 @@ for (const { path, needsMock, fixme, expectedStatus } of PAGES) {
       expect(response?.status()).toBe(expectedStatus);
     }
 
+    if (needsMock) {
+      // `AppLayout` renders a hydration/auth spinner before the shell exists.
+      // Without this wait axe can scan the spinner, pass, and never audit the
+      // page at all — which would make every acceptance below vacuous.
+      await expect(page.locator("main#main-content")).toBeVisible();
+      await expect(page.getByRole("heading", { level: 1 }).first()).toBeVisible();
+    }
+
     const results = await new AxeBuilder({ page })
       .withTags(["wcag2a", "wcag2aa", "wcag22aa"])
       .analyze();

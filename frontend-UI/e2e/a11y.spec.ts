@@ -74,6 +74,17 @@ const PAGES: PageCase[] = [
     },
   },
   {
+    path: "/following-library/",
+    needsMock: true,
+    // Switch to the Playlists tab: it exercises the tab strip, the tabpanel
+    // and the selectable playlist rows in one go, and none of that exists
+    // while the page is still the "select a followed user" empty state.
+    ready: async (page) => {
+      await page.getByRole("tab", { name: "Playlists", exact: true }).click();
+      return page.getByRole("checkbox", { name: "Sample Public Playlist 1" });
+    },
+  },
+  {
     path: "/library-audit/",
     needsMock: true,
     // Nothing is fetched until the audit is run, so run it: the metric cards,
@@ -239,4 +250,48 @@ test("selection: shift-clicking the row body selects a range", async ({ page }) 
   await expect(page.getByRole("checkbox", { name: "Sample Track 2" })).toBeChecked();
   await expect(page.getByRole("checkbox", { name: "Sample Track 3" })).toBeChecked();
   await expect(page.getByRole("checkbox", { name: "Sample Track 4" })).not.toBeChecked();
+});
+
+/**
+ * The app's one real `role="tablist"`. ARIA's tab pattern is a keyboard
+ * contract, not a set of attributes: the strip is a single stop in the tab
+ * order and the arrow keys move between the tabs inside it. None of that is
+ * visible to axe, which is happy with three buttons that say they are tabs.
+ */
+test("following-library: the tab strip is one tab stop and the arrow keys move between tabs", async ({
+  page,
+}) => {
+  await mockApi(page);
+  await page.goto("/following-library/");
+
+  const likes = page.getByRole("tab", { name: "Liked Tracks" });
+  const playlists = page.getByRole("tab", { name: "Playlists", exact: true });
+  const liked = page.getByRole("tab", { name: "Liked Playlists" });
+
+  await expect(likes).toBeVisible();
+  await expect(likes).toHaveAttribute("aria-selected", "true");
+
+  // Roving tabIndex: only the selected tab is reachable with Tab.
+  await expect(likes).toHaveAttribute("tabindex", "0");
+  await expect(playlists).toHaveAttribute("tabindex", "-1");
+  await expect(liked).toHaveAttribute("tabindex", "-1");
+
+  await likes.focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(playlists).toBeFocused();
+  await expect(playlists).toHaveAttribute("aria-selected", "true");
+
+  await page.keyboard.press("End");
+  await expect(liked).toBeFocused();
+
+  await page.keyboard.press("Home");
+  await expect(likes).toBeFocused();
+
+  // ArrowLeft from the first tab wraps to the last.
+  await page.keyboard.press("ArrowLeft");
+  await expect(liked).toBeFocused();
+
+  // The panel is named by its tab, so a screen reader can tell which list it
+  // has landed in.
+  await expect(page.getByRole("tabpanel")).toHaveAccessibleName("Liked Playlists");
 });

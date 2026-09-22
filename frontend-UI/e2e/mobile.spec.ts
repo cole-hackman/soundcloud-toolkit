@@ -64,6 +64,17 @@ const PAGES: PageCase[] = [
     },
   },
   {
+    path: "/following-library/",
+    needsMock: true,
+    // Switch to the Playlists tab: it exercises the tab strip, the tabpanel
+    // and the selectable playlist rows in one go, and none of that exists
+    // while the page is still the "select a followed user" empty state.
+    ready: async (page) => {
+      await page.getByRole("tab", { name: "Playlists", exact: true }).click();
+      return page.getByRole("checkbox", { name: "Sample Public Playlist 1" });
+    },
+  },
+  {
     path: "/library-audit/",
     needsMock: true,
     // Nothing is fetched until the audit is run, so run it: the metric cards,

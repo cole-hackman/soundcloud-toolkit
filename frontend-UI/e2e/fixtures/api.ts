@@ -213,6 +213,35 @@ const FAKE_LIBRARY_AUDIT = {
   ],
 };
 
+/**
+ * `GET /api/followings/:id/likes|playlists|liked-playlists/paged` — one page of
+ * a followed user's public library, so Following Library renders real rows in
+ * every tab instead of the "no public liked tracks" empty state.
+ */
+const FAKE_FOLLOWED_LIKES_PAGED = {
+  collection: Array.from({ length: 3 }, (_, i) => ({
+    id: 300 + i,
+    title: `Sample Public Track ${i + 1}`,
+    user: { username: "testfollowing1" },
+    artwork_url: null as string | null,
+    duration: 195000,
+    permalink_url: `https://soundcloud.com/testfollowing1/sample-public-track-${i + 1}`,
+  })),
+  next_href: null as string | null,
+};
+
+const FAKE_FOLLOWED_PLAYLISTS_PAGED = {
+  collection: Array.from({ length: 2 }, (_, i) => ({
+    id: 400 + i,
+    title: `Sample Public Playlist ${i + 1}`,
+    user: { username: "testfollowing1" },
+    artwork_url: null as string | null,
+    track_count: 9 + i,
+    permalink_url: `https://soundcloud.com/testfollowing1/sets/sample-public-playlist-${i + 1}`,
+  })),
+  next_href: null as string | null,
+};
+
 /** What `POST /api/feedback` answers with on a 201 — id and timestamp only. */
 const FAKE_FEEDBACK_CREATED = {
   id: "fb_1",
@@ -320,6 +349,12 @@ export async function mockApi(page: Page): Promise<void> {
     }
     if (method === "GET" && (path === "/api/followings/paged" || path === "/api/followings")) {
       return route.fulfill(json(FAKE_FOLLOWINGS_PAGED));
+    }
+    if (method === "GET" && /^\/api\/followings\/\d+\/likes\/paged$/.test(path)) {
+      return route.fulfill(json(FAKE_FOLLOWED_LIKES_PAGED));
+    }
+    if (method === "GET" && /^\/api\/followings\/\d+\/(liked-)?playlists\/paged$/.test(path)) {
+      return route.fulfill(json(FAKE_FOLLOWED_PLAYLISTS_PAGED));
     }
     if (method === "GET" && path === "/api/growth/limits") {
       return route.fulfill(json(FAKE_GROWTH_LIMITS));

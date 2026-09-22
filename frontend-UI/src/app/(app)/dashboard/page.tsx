@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, Suspense } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { ErrorBoundary } from "react-error-boundary";
 import {
@@ -324,6 +324,12 @@ function StatsSkeleton() {
 }
 
 function StatsErrorFallback({ resetErrorBoundary }: { resetErrorBoundary: () => void }) {
+  // Its own pathname rather than a prop: the fallback replaces the subtree
+  // that threw but stays mounted inside this route, so the router context is
+  // intact and `from=` always names the page the error happened on.
+  const pathname = usePathname();
+  const feedbackHref = `/feedback/?type=bug&from=${encodeURIComponent(pathname ?? "")}`;
+
   return (
     <Card className="p-6 mb-6">
       <EmptyState
@@ -335,6 +341,12 @@ function StatsErrorFallback({ resetErrorBoundary }: { resetErrorBoundary: () => 
               Retry
             </Button>
             <span className="text-xs text-muted-foreground">
+              <Link
+                href={feedbackHref}
+                className="underline underline-offset-2 transition hover:text-primary-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/80 focus-visible:ring-offset-2 focus-visible:ring-offset-background rounded-sm"
+              >
+                Report a problem
+              </Link>{" "}
               or <SupportLink subject="Track Toolkit support">email us</SupportLink>
             </span>
           </div>
@@ -533,6 +545,28 @@ export default function DashboardPage() {
           );
         })
       )}
+
+      {/* Feedback — the one entry point every tool page can fall back to. */}
+      <Card className="mb-6 p-4 sm:p-5">
+        <Link
+          href="/feedback/?from=%2Fdashboard"
+          className="group flex flex-wrap items-center justify-between gap-2 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/80 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+        >
+          <span className="min-w-0">
+            <span className="block text-sm font-bold text-foreground group-hover:text-primary-text transition">
+              Something broken or missing?
+            </span>
+            <span className="block text-sm text-muted-foreground">
+              Bug reports and feature requests go straight to the person who builds
+              Track Toolkit.
+            </span>
+          </span>
+          <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-primary-text">
+            Send feedback
+            <ArrowRight className="h-4 w-4" />
+          </span>
+        </Link>
+      </Card>
 
       {/* Coming Soon */}
       {COMING_SOON.length > 0 && (

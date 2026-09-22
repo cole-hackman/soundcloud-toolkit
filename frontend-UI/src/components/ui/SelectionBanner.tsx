@@ -32,7 +32,7 @@ export function SelectionBanner({
   return (
     <div className="fixed inset-x-0 bottom-0 z-40 border-t border-border/60 bg-white/95 backdrop-blur dark:bg-background/95">
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
-        <span className="text-sm font-semibold text-primary">
+        <span className="text-sm font-semibold text-primary-text">
           {selectedLabel}
         </span>
         {actionVariant === "destructive" ? (
@@ -46,7 +46,7 @@ export function SelectionBanner({
             {actionLabel}
           </PulsatingButton>
         ) : (
-          <Button
+          <Button nowrap
             variant={actionVariant}
             className="h-10 px-4"
             onClick={onAction}

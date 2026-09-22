@@ -388,14 +388,14 @@ export default function FollowingManagerPage() {
                   disabled={!followersReady}
                   title={!followersReady ? "Still loading followers — who follows you back isn't known yet." : undefined}
                   className={`px-3 py-1 rounded-md text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
-                    filterMode === "not-following-back" ? "bg-card text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"
+                    filterMode === "not-following-back" ? "bg-card text-primary-text shadow-sm" : "text-muted-foreground hover:text-foreground"
                   }`}
                 >
                   Not Following Back
                 </button>
               </div>
               {!followersReady && (
-                <span className="text-xs text-muted-foreground/70 flex items-center gap-1.5">
+                <span className="text-xs text-muted-foreground-subtle flex items-center gap-1.5">
                   <Loader2 className="h-3 w-3 animate-spin" />
                   Loading followers…
                 </span>
@@ -403,7 +403,7 @@ export default function FollowingManagerPage() {
 
               <button
                 onClick={selectAll}
-                className="text-sm text-primary hover:text-primary/80 font-medium whitespace-nowrap"
+                className="text-sm text-primary-text hover:underline font-medium whitespace-nowrap"
               >
                 {selected.size === filteredFollowings.length
                   ? "Deselect All"
@@ -482,7 +482,7 @@ export default function FollowingManagerPage() {
                                   {user.username}
                                 </div>
                                 {user.last_modified && (
-                                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-secondary/80 text-muted-foreground">
+                                  <span className="text-xs px-1.5 py-0.5 rounded-full bg-secondary/80 text-muted-foreground">
                                      Active: {formatDate(user.last_modified)}
                                   </span>
                                 )}
@@ -499,7 +499,7 @@ export default function FollowingManagerPage() {
                               href={user.permalink_url}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="text-primary hover:text-primary/80 flex-shrink-0"
+                              className="text-primary hover:text-primary-text dark:hover:bg-primary/10 rounded flex-shrink-0"
                               onClick={(e) => e.stopPropagation()}
                             >
                               <ExternalLink className="w-4 h-4" />

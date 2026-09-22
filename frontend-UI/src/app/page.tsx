@@ -178,7 +178,9 @@ const steps = [
 export default function Home() {
   const scrollToFeatures = () => {
     const el = document.getElementById("features");
-    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+    if (!el) return;
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    el.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "start" });
   };
 
   return (
@@ -257,10 +259,10 @@ export default function Home() {
             <div className="mt-4 flex animate-fade-in-up items-center justify-center gap-2 text-base font-semibold text-muted-foreground sm:text-lg md:text-xl [animation-delay:120ms]">
               <WordRotate
                 words={["Merge", "Split", "Clean", "Organize"]}
-                className="text-primary"
+                className="text-primary-text"
                 duration={2200}
               />
-              <span className="text-muted-foreground/80">your music library.</span>
+              <span className="text-muted-foreground-subtle">your music library.</span>
             </div>
 
             <p className="mt-5 max-w-2xl animate-fade-in-up text-balance text-sm leading-relaxed text-muted-foreground sm:text-base [animation-delay:160ms]">
@@ -380,7 +382,7 @@ export default function Home() {
                         <item.icon className="h-5 w-5" />
                       </div>
                       {item.badge && (
-                        <span className="inline-flex items-center rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-primary">
+                        <span className="inline-flex items-center rounded-full border border-primary/20 bg-primary/5 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-primary-text">
                           {item.badge}
                         </span>
                       )}
@@ -391,7 +393,7 @@ export default function Home() {
                     <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
                       {item.description}
                     </p>
-                    <span className="mt-3 inline-block text-[11px] font-medium text-primary">
+                    <span className="mt-3 inline-block text-[11px] font-medium text-primary-text">
                       Open →
                     </span>
                   </Card>
@@ -455,7 +457,7 @@ export default function Home() {
                           unoptimized
                         />
                       ) : (
-                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary-text">
                           {t.name.charAt(0)}
                         </div>
                       )}
@@ -493,7 +495,7 @@ export default function Home() {
                       <IconComponent className="h-7 w-7" />
                     </div>
                     {i < steps.length - 1 && (
-                      <div className="hidden sm:block absolute top-4 -right-[2.5rem] text-muted-foreground/30">
+                      <div className="hidden sm:block absolute top-4 -right-[2.5rem] text-muted-foreground-subtle">
                         <ArrowRight className="h-6 w-6" />
                       </div>
                     )}

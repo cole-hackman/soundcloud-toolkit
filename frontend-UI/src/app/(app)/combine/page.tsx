@@ -347,7 +347,7 @@ export default function CombinePlaylistsPage() {
                           </div>
                           <div className="text-sm text-muted-foreground">
                             {playlist.track_count} tracks
-                            {isTarget && <span className="ml-2 text-primary">(target)</span>}
+                            {isTarget && <span className="ml-2 text-primary-text">(target)</span>}
                           </div>
                         </div>
                         {isSelected && (
@@ -417,7 +417,7 @@ export default function CombinePlaylistsPage() {
                 <div className="text-sm text-muted-foreground">Total Tracks</div>
                 <div className="text-2xl font-bold text-foreground">{totalTracks}</div>
                 {totalTracks > 500 && (
-                  <p className="text-xs text-primary mt-1">
+                  <p className="text-xs text-primary-text mt-1">
                     Will be split into multiple playlists (500 max each)
                   </p>
                 )}
@@ -500,12 +500,12 @@ export default function CombinePlaylistsPage() {
                           {targetPlaylist.track_count} tracks
                         </div>
                       </div>
-                      <span className="text-xs text-primary font-medium shrink-0">Change</span>
+                      <span className="text-xs text-primary-text font-medium shrink-0">Change</span>
                     </button>
                   ) : (
                     <button
                       onClick={openPlaylistPicker}
-                      className="w-full px-4 py-3 rounded-lg border-2 border-dashed border-border text-sm text-muted-foreground hover:border-primary hover:text-primary transition-all text-center"
+                      className="w-full px-4 py-3 rounded-lg border-2 border-dashed border-border text-sm text-muted-foreground hover:border-primary hover:text-primary-text transition-all text-center"
                     >
                       Choose a target playlist…
                     </button>

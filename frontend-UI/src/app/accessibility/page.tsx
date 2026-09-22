@@ -25,7 +25,7 @@ export default function AccessibilityPage() {
           <div className="mb-6">
             <Link
               href="/"
-              className="inline-flex items-center gap-2 text-sm font-medium text-muted-foreground transition hover:text-primary"
+              className="inline-flex items-center gap-2 text-sm font-medium text-muted-foreground transition hover:text-primary-text"
             >
               <ArrowLeft className="h-4 w-4" />
               Home

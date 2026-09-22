@@ -37,7 +37,7 @@ export function ShimmerButton({
   } as React.CSSProperties;
 
   const classes = cn(
-    "relative inline-flex cursor-pointer items-center justify-center gap-2 overflow-hidden whitespace-nowrap px-8 py-3 text-sm font-semibold text-white transition-all duration-300",
+    "relative inline-flex cursor-pointer items-center justify-center gap-2 overflow-hidden whitespace-nowrap px-8 py-3 text-sm font-semibold text-primary-foreground transition-all duration-300",
     "shimmer-button",
     className,
   );

@@ -55,7 +55,7 @@ export function TrackRow({
         className={cn(
           "flex h-6 w-6 shrink-0 items-center justify-center rounded-full border transition-colors",
           isSelected
-            ? "border-primary bg-primary text-white"
+            ? "border-primary bg-primary text-primary-foreground"
             : "border-gray-300 bg-white text-transparent dark:border-border dark:bg-secondary",
         )}
       >

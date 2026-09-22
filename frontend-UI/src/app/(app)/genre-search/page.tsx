@@ -231,8 +231,8 @@ export default function GenreSearchPage() {
                     onClick={() => setGenre(g)}
                     className={`px-2.5 py-1 rounded-full text-xs font-medium transition ${
                       genre === g
-                        ? "bg-primary text-white"
-                        : "bg-gray-100 dark:bg-secondary/40 text-muted-foreground hover:bg-primary/10 hover:text-primary"
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-gray-100 dark:bg-secondary/40 text-muted-foreground dark:hover:bg-primary/10 hover:text-primary-text"
                     }`}
                   >
                     {g}
@@ -244,7 +244,7 @@ export default function GenreSearchPage() {
             {/* Tags input */}
             <div>
               <label className="block text-sm font-medium mb-1.5 text-muted-foreground">
-                Tags <span className="font-normal text-muted-foreground/70">(comma-separated)</span>
+                Tags <span className="font-normal text-muted-foreground-subtle">(comma-separated)</span>
               </label>
               <input
                 type="text"
@@ -260,7 +260,7 @@ export default function GenreSearchPage() {
           {/* Advanced filters toggle */}
           <button
             onClick={() => setShowAdvanced((v) => !v)}
-            className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-primary transition mb-3"
+            className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-primary-text transition mb-3"
           >
             <ChevronDown className={`w-4 h-4 transition-transform ${showAdvanced ? "rotate-180" : ""}`} />
             Advanced filters
@@ -282,7 +282,7 @@ export default function GenreSearchPage() {
                     max={300}
                     className="w-full px-3 py-2 rounded-lg border-2 border-gray-200 dark:border-border focus:border-primary focus:outline-none transition dark:bg-secondary/20 dark:text-foreground text-sm"
                   />
-                  <span className="text-muted-foreground/70">–</span>
+                  <span className="text-muted-foreground-subtle">–</span>
                   <input
                     type="number"
                     value={bpmMax}
@@ -418,7 +418,7 @@ export default function GenreSearchPage() {
                   onClick={() => setAddMode("new")}
                   className={`flex-1 py-2 text-sm font-medium transition ${
                     addMode === "new"
-                      ? "bg-primary text-white"
+                      ? "bg-primary text-primary-foreground"
                       : "text-muted-foreground hover:bg-gray-50 dark:hover:bg-secondary/20"
                   }`}
                 >
@@ -428,7 +428,7 @@ export default function GenreSearchPage() {
                   onClick={() => { setAddMode("existing"); }}
                   className={`flex-1 py-2 text-sm font-medium transition ${
                     addMode === "existing"
-                      ? "bg-primary text-white"
+                      ? "bg-primary text-primary-foreground"
                       : "text-muted-foreground hover:bg-gray-50 dark:hover:bg-secondary/20"
                   }`}
                 >
@@ -445,7 +445,7 @@ export default function GenreSearchPage() {
                   className="w-full px-4 py-2.5 rounded-lg border-2 border-gray-200 dark:border-border focus:border-primary focus:outline-none transition dark:bg-secondary/20 dark:text-foreground text-sm"
                 />
               ) : loadingPlaylists ? (
-                <div className="flex items-center gap-2 py-2 text-sm text-muted-foreground/70">
+                <div className="flex items-center gap-2 py-2 text-sm text-muted-foreground-subtle">
                   <LoadingSpinner size="sm" /> Loading playlists…
                 </div>
               ) : (

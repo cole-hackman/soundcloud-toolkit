@@ -367,7 +367,7 @@ export default function PlaylistKeywordSearchPage() {
         {result.page.hasMore ? " — more to search" : " — end of your library"}
       </p>
       <div className="flex gap-2">
-        <Button
+        <Button nowrap
           variant="outline"
           onClick={() => runSearch(Math.max(0, offset - PAGE_SIZE))}
           disabled={loading || working || offset === 0}
@@ -375,7 +375,7 @@ export default function PlaylistKeywordSearchPage() {
           <ChevronLeft className="h-4 w-4" />
           Previous {PAGE_SIZE}
         </Button>
-        <Button
+        <Button nowrap
           variant="outline"
           onClick={() => runSearch(offset + PAGE_SIZE)}
           // The validator rejects offsets past MAX_OFFSET, so stop before
@@ -498,13 +498,13 @@ export default function PlaylistKeywordSearchPage() {
               <span className="text-sm font-medium text-foreground">
                 {selected.size} of {result.matches.length} selected
               </span>
-              <Button variant="outline" onClick={selectAll} disabled={working}>
+              <Button nowrap variant="outline" onClick={selectAll} disabled={working}>
                 Select all
               </Button>
               <Button variant="outline" onClick={() => setSelected(new Set())} disabled={working || selected.size === 0}>
                 Clear
               </Button>
-              <Button variant="outline" onClick={exportCsv}>
+              <Button nowrap variant="outline" onClick={exportCsv}>
                 <Download className="h-4 w-4" />
                 Export CSV
               </Button>
@@ -523,7 +523,7 @@ export default function PlaylistKeywordSearchPage() {
                     </option>
                   ))}
                 </select>
-                <Button
+                <Button nowrap
                   variant="outline"
                   onClick={copySelected}
                   disabled={working || copyTarget === "" || selectedTrackIds.length === 0 || copyBlocked}
@@ -531,7 +531,7 @@ export default function PlaylistKeywordSearchPage() {
                   <Copy className="h-4 w-4" />
                   Copy {selectedTrackIds.length || ""}
                 </Button>
-                <Button
+                <Button nowrap
                   variant="destructive"
                   onClick={() => setConfirmRemove(true)}
                   disabled={working || selected.size === 0 || removeBlocked}

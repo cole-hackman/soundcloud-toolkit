@@ -603,7 +603,7 @@ export default function PlaylistModifierPage() {
               <div className="flex items-center gap-4">
                 <button
                   onClick={goBackToList}
-                  className="inline-flex items-center gap-2 text-muted-foreground transition hover:text-primary"
+                  className="inline-flex items-center gap-2 text-muted-foreground transition hover:text-primary-text"
                 >
                   <ArrowLeft className="h-4 w-4" />
                   Back to playlists
@@ -785,7 +785,7 @@ export default function PlaylistModifierPage() {
               <div className="flex items-center gap-4">
                 <button
                   onClick={goBackToList}
-                  className="inline-flex items-center gap-2 text-muted-foreground transition hover:text-primary"
+                  className="inline-flex items-center gap-2 text-muted-foreground transition hover:text-primary-text"
                 >
                   <ArrowLeft className="h-4 w-4" />
                   Back to playlists
@@ -830,7 +830,7 @@ export default function PlaylistModifierPage() {
                       onClick={() => setTrackFilter(key)}
                       className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all ${
                         trackFilter === key
-                          ? "bg-primary text-white"
+                          ? "bg-primary text-primary-foreground"
                           : "bg-gray-100 dark:bg-secondary/20 text-muted-foreground hover:bg-gray-200 dark:hover:bg-secondary/40"
                       }`}
                     >
@@ -896,7 +896,7 @@ export default function PlaylistModifierPage() {
                     <div
                       className="flex items-center gap-4 p-3 rounded-xl bg-gray-50 dark:bg-secondary/20 group"
                     >
-                      <span className="w-8 text-center text-sm text-muted-foreground/70">
+                      <span className="w-8 text-center text-sm text-muted-foreground-subtle">
                         {globalIndex + 1}
                       </span>
                       <img
@@ -1046,7 +1046,7 @@ export default function PlaylistModifierPage() {
               {transfer.track.title}
             </p>
             {transferTargetOptions.length === 0 ? (
-              <p className="text-sm text-red-600 dark:text-red-400 mb-4">
+              <p className="text-sm text-destructive-text mb-4">
                 No target playlist available. Create another playlist on SoundCloud first.
               </p>
             ) : (

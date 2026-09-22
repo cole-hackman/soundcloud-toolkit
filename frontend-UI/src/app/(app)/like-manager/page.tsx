@@ -389,7 +389,7 @@ export default function LikeManagerPage() {
               </select>
               <button
                 onClick={selectAll}
-                className="text-sm text-primary hover:text-primary/80 font-medium whitespace-nowrap"
+                className="text-sm text-primary-text hover:underline font-medium whitespace-nowrap"
               >
                 {selected.size === filteredLikes.length
                   ? "Deselect All"

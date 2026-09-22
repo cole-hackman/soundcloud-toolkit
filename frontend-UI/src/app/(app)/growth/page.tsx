@@ -592,7 +592,7 @@ export default function GrowthPage() {
           }}
           className={`px-4 py-1.5 rounded-md text-sm font-semibold transition-all ${
             activeTab === "discover"
-              ? "bg-card text-primary shadow-sm"
+              ? "bg-card text-primary-text shadow-sm"
               : "text-muted-foreground hover:text-foreground"
           }`}
         >
@@ -610,7 +610,7 @@ export default function GrowthPage() {
           }}
           className={`px-4 py-1.5 rounded-md text-sm font-semibold transition-all ${
             activeTab === "history"
-              ? "bg-card text-primary shadow-sm"
+              ? "bg-card text-primary-text shadow-sm"
               : "text-muted-foreground hover:text-foreground"
           }`}
         >
@@ -626,7 +626,7 @@ export default function GrowthPage() {
           }}
           className={`px-4 py-1.5 rounded-md text-sm font-semibold transition-all ${
             activeTab === "analytics"
-              ? "bg-card text-primary shadow-sm"
+              ? "bg-card text-primary-text shadow-sm"
               : "text-muted-foreground hover:text-foreground"
           }`}
         >
@@ -648,11 +648,11 @@ export default function GrowthPage() {
             <span className="font-semibold text-foreground">{budget.remaining}</span> of {budget.dailyCap} left
           </span>
           {budget.cooldownRemainingMs > 0 && (
-            <span className="text-amber-600 dark:text-amber-400">
+            <span className="text-warning-text">
               Cooldown: {Math.ceil(budget.cooldownRemainingMs / 60000)} min until next batch
             </span>
           )}
-          <span className="ml-auto text-muted-foreground/80">
+          <span className="ml-auto text-muted-foreground-subtle">
             Caps protect your account from spam flags.
           </span>
         </div>
@@ -703,7 +703,7 @@ export default function GrowthPage() {
                 {selectedInspirations.size > 0 && (
                   <button 
                     onClick={() => setSelectedInspirations(new Set())}
-                    className="text-xs text-primary font-medium hover:underline"
+                    className="text-xs text-primary-text font-medium hover:underline"
                   >
                     Clear Selection
                   </button>
@@ -791,7 +791,7 @@ export default function GrowthPage() {
                   <> For large seeds we sample their ~{SEED_SAMPLE_CAP.toLocaleString()} most recent followers — recent followers are the most active.</>
                 )}
               </p>
-              <div className="mt-6 space-y-1 text-xs text-primary font-mono">
+              <div className="mt-6 space-y-1 text-xs text-primary-text font-mono">
                 {discoveryStartedAt != null && (
                   <DiscoveryElapsedTimer
                     startedAt={discoveryStartedAt}
@@ -823,15 +823,15 @@ export default function GrowthPage() {
                       </p>
                     )}
                     {discoveryStats?.partial && (
-                      <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                      <p className="text-xs text-warning-text mt-1">
                         The scan hit its time budget, so results come from a partial crawl. Everything shown is fully scored and ready to use.
                       </p>
                     )}
                     {discoveryStats?.seedGenres && discoveryStats.seedGenres.length > 0 && (
                       <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                        <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Scene:</span>
+                        <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Scene:</span>
                         {discoveryStats.seedGenres.slice(0, 6).map((g) => (
-                          <span key={g} className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
+                          <span key={g} className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary-text">
                             {g}
                           </span>
                         ))}
@@ -844,7 +844,7 @@ export default function GrowthPage() {
                     </Button>
                     <button
                       onClick={toggleAllSuggestions}
-                      className="text-sm text-primary font-medium hover:underline px-2"
+                      className="text-sm text-primary-text font-medium hover:underline px-2"
                     >
                       {selectedSuggestions.size === suggestions.length ? "Deselect All" : "Select All"}
                     </button>
@@ -906,7 +906,7 @@ export default function GrowthPage() {
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center gap-2">
                                 <span className="font-bold text-sm text-foreground truncate">{sug.user.username}</span>
-                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase select-none ${
+                                <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full uppercase select-none ${
                                   sug.scoreLabel === 'high' 
                                     ? 'bg-orange-500 text-white' 
                                     : sug.scoreLabel === 'medium'
@@ -969,9 +969,9 @@ export default function GrowthPage() {
                                   e.stopPropagation();
                                   previewTrack(sug.suggestedTrack!);
                                 }}
-                                className="text-primary hover:opacity-80 shrink-0 p-1"
+                                className="group text-primary hover:text-primary-text dark:hover:bg-primary/10 rounded shrink-0 p-1"
                               >
-                                <Play className="w-4 h-4 fill-primary text-primary" />
+                                <Play className="w-4 h-4 fill-primary text-primary group-hover:fill-primary-text group-hover:text-primary-text" />
                               </button>
                             </div>
                           ) : (
@@ -1056,7 +1056,7 @@ export default function GrowthPage() {
                   <History className="w-4 h-4" />
                   View Campaign History
                 </Button>
-                <Button 
+                <Button nowrap
                   onClick={() => {
                     setSelectedInspirations(new Set());
                     setDiscoveryStep(1);
@@ -1151,13 +1151,13 @@ export default function GrowthPage() {
                           }`}
                         >
                           <div className="font-bold text-xs text-foreground line-clamp-1">{sess.label}</div>
-                          <div className="text-[10px] text-muted-foreground mt-1">
+                          <div className="text-xs text-muted-foreground mt-1">
                             {new Date(sess.date).toLocaleDateString()}
                           </div>
                           
-                          <div className="flex justify-between items-center text-[10px] mt-2.5 pt-2 border-t border-border/40 text-muted-foreground">
+                          <div className="flex justify-between items-center text-xs mt-2.5 pt-2 border-t border-border/40 text-muted-foreground">
                             <span>{sess.totalActions} actions</span>
-                            <span className="font-semibold text-primary">
+                            <span className="font-semibold text-primary-text">
                               {followbackPercent}% followback
                             </span>
                           </div>
@@ -1232,7 +1232,7 @@ export default function GrowthPage() {
                             setSelectedHistoryActions(new Set(targets));
                             setShowReverseConfirm(true);
                           }}
-                          className="text-red-500 hover:text-red-600 border-red-200 hover:border-red-300 gap-1.5 bg-red-50/50 dark:bg-red-950/20"
+                          className="text-destructive-text hover:bg-destructive/10 border-red-200 hover:border-red-300 gap-1.5 bg-red-50/50 dark:bg-red-950/20"
                         >
                           Unfollow Non-Followbacks
                         </Button>
@@ -1242,7 +1242,7 @@ export default function GrowthPage() {
                     <div className="flex justify-between items-center mb-3">
                       <button 
                         onClick={() => selectAllHistoryActions(sessionActions)}
-                        className="text-xs text-primary font-medium hover:underline"
+                        className="text-xs text-primary-text font-medium hover:underline"
                       >
                         {selectedHistoryActions.size === sessionActions.length ? "Deselect All" : "Select All"}
                       </button>
@@ -1290,22 +1290,22 @@ export default function GrowthPage() {
 
                             <div className="min-w-0 flex-1">
                               <div className="font-semibold text-xs text-foreground truncate">{act.targetName}</div>
-                              <div className="text-[10px] text-muted-foreground flex gap-1.5 mt-0.5 flex-wrap items-center">
-                                <span className="font-semibold uppercase tracking-wider text-[8px] bg-secondary px-1.5 py-0.5 rounded text-muted-foreground">
+                              <div className="text-xs text-muted-foreground flex gap-1.5 mt-0.5 flex-wrap items-center">
+                                <span className="font-semibold uppercase tracking-wider text-xs bg-secondary px-1.5 py-0.5 rounded text-muted-foreground">
                                   {act.actionType}
                                 </span>
                                 
                                 {act.reversed ? (
-                                  <span className="text-amber-500 font-semibold flex items-center gap-0.5">
+                                  <span className="text-warning-text font-semibold flex items-center gap-0.5">
                                     <Undo2 className="w-3 h-3" /> Reversed
                                   </span>
                                 ) : act.actionType === 'follow' && (
                                   <>
                                     {act.followedBack === true && (
-                                      <span className="text-green-600 dark:text-green-400 font-bold">✓ Follows Back</span>
+                                      <span className="text-success-text font-bold">✓ Follows Back</span>
                                     )}
                                     {act.followedBack === false && (
-                                      <span className="text-red-500 font-semibold">✗ No Followback</span>
+                                      <span className="text-destructive-text font-semibold">✗ No Followback</span>
                                     )}
                                     {act.followedBack === null && (
                                       <span className="text-muted-foreground">⏳ Unchecked</span>

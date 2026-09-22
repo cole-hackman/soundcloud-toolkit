@@ -133,7 +133,7 @@ export default function LibraryAuditPage() {
             {result ? "Restart from the top" : "Run playlist audit"}
           </Button>
           {result && (
-            <Button variant="outline" onClick={exportCsv}>
+            <Button nowrap variant="outline" onClick={exportCsv}>
               <Download className="h-4 w-4" />
               Export CSV
             </Button>
@@ -217,7 +217,7 @@ export default function LibraryAuditPage() {
                         <Finding label={`${playlist.summary.duplicateTracks} duplicates`} active={playlist.summary.duplicateTracks > 0} />
                         <Finding label={`${playlist.summary.unavailableTracks} unavailable`} active={playlist.summary.unavailableTracks > 0} />
                         <Finding label={playlist.summary.nearCap ? "near cap" : "under cap"} active={playlist.summary.nearCap} />
-                        {hasIssues ? <AlertTriangle className="h-4 w-4 text-yellow-600" /> : <CheckCircle className="h-4 w-4 text-green-600" />}
+                        {hasIssues ? <AlertTriangle className="h-4 w-4 text-warning-text" /> : <CheckCircle className="h-4 w-4 text-success-text" />}
                       </div>
                     </div>
                   );
@@ -234,7 +234,7 @@ export default function LibraryAuditPage() {
                   {result.page.hasMore ? " — more to audit" : " — end of your library"}
                 </p>
                 <div className="flex gap-2">
-                  <Button
+                  <Button nowrap
                     variant="outline"
                     onClick={() => runAudit(Math.max(0, offset - PAGE_SIZE))}
                     disabled={loading || offset === 0}
@@ -242,7 +242,7 @@ export default function LibraryAuditPage() {
                     <ChevronLeft className="h-4 w-4" />
                     Previous {PAGE_SIZE}
                   </Button>
-                  <Button
+                  <Button nowrap
                     variant="outline"
                     onClick={() => runAudit(offset + PAGE_SIZE)}
                     disabled={loading || !result.page.hasMore || offset + PAGE_SIZE > MAX_OFFSET}

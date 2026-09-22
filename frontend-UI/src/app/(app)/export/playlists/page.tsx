@@ -64,7 +64,7 @@ export default function ExportPlaylistsPage() {
               <p className="font-semibold text-foreground truncate">{selectedPlaylist.title}</p>
               <p className="text-sm text-muted-foreground">{selectedPlaylist.track_count} tracks</p>
             </div>
-            <Button
+            <Button nowrap
               type="button"
               variant="secondary"
               className="gap-2 text-sm"

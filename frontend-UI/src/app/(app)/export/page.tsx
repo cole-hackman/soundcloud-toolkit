@@ -13,7 +13,7 @@ export default function ExportHubPage() {
         description="Download your SoundCloud data as text or CSV for DJ library matching, LLMs, and spreadsheets."
       />
 
-      <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground/70">
+      <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground-subtle">
         Choose what to export
       </h2>
 
@@ -27,7 +27,7 @@ export default function ExportHubPage() {
                 </div>
                 <ArrowRight className="h-4 w-4 text-primary opacity-0 transition-opacity group-hover:opacity-100" />
               </div>
-              <h3 className="mb-1 text-base font-bold text-foreground transition group-hover:text-primary dark:text-foreground">
+              <h3 className="mb-1 text-base font-bold text-foreground transition group-hover:text-primary-text dark:text-foreground">
                 {feature.title}
               </h3>
               <p className="text-sm leading-relaxed text-muted-foreground dark:text-muted-foreground">

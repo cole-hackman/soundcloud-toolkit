@@ -449,7 +449,7 @@ export default function FollowingLibraryPage() {
                       className={cn(
                         "flex min-h-[44px] items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-sm font-semibold transition",
                         activeTab === tab
-                          ? "bg-surface text-primary shadow-sm ring-1 ring-primary/25 dark:bg-secondary/40"
+                          ? "bg-surface text-primary-text shadow-sm ring-1 ring-primary/25 dark:bg-secondary/40"
                           : "text-muted-foreground hover:bg-surface/80 hover:text-foreground",
                       )}
                     >
@@ -473,7 +473,7 @@ export default function FollowingLibraryPage() {
                         </div>
                         <p className="text-sm text-muted-foreground">Tap tracks to select; use the bottom bar for bulk actions.</p>
                       </div>
-                      <Button variant="secondary" className="shrink-0" onClick={selectLoadedTracks} disabled={tracks.length === 0}>
+                      <Button nowrap variant="secondary" className="shrink-0" onClick={selectLoadedTracks} disabled={tracks.length === 0}>
                         {selectedTracks.size === tracks.length && tracks.length > 0 ? "Clear loaded" : "Select loaded"}
                       </Button>
                     </div>
@@ -542,7 +542,7 @@ export default function FollowingLibraryPage() {
                         </div>
                         <p className="text-sm text-muted-foreground">Select playlists, add an optional name prefix, then clone from the bar below.</p>
                       </div>
-                      <Button variant="secondary" className="shrink-0" onClick={selectLoadedPlaylists} disabled={playlists.length === 0}>
+                      <Button nowrap variant="secondary" className="shrink-0" onClick={selectLoadedPlaylists} disabled={playlists.length === 0}>
                         {selectedPlaylists.size === playlists.length && playlists.length > 0 ? "Clear loaded" : "Select loaded"}
                       </Button>
                     </div>
@@ -578,7 +578,7 @@ export default function FollowingLibraryPage() {
                             >
                               <div
                                 className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border ${
-                                  isSelected ? "border-primary bg-primary text-white" : "border-gray-300 text-transparent dark:border-muted-foreground/40"
+                                  isSelected ? "border-primary bg-primary text-primary-foreground" : "border-gray-300 text-transparent dark:border-input"
                                 }`}
                               >
                                 <Check className="h-3.5 w-3.5" />
@@ -609,7 +609,7 @@ export default function FollowingLibraryPage() {
 
               {nextHref && (
                 <CardFooter className="flex justify-center border-t border-border/60 bg-muted/10 py-4">
-                  <Button variant="secondary" onClick={() => fetchLibraryPage(activeTab, false)} disabled={loadingMore}>
+                  <Button nowrap variant="secondary" onClick={() => fetchLibraryPage(activeTab, false)} disabled={loadingMore}>
                     {loadingMore && <Loader2 className="h-4 w-4 animate-spin" />}
                     Load more
                   </Button>
@@ -670,7 +670,7 @@ function CreatePanel({
             className={cn(
               "rounded-lg border px-3 py-2 text-sm font-semibold transition",
               addMode === "new"
-                ? "border-primary/50 bg-orange-50 text-primary dark:bg-orange-950/20"
+                ? "border-primary/50 bg-orange-50 text-primary-text dark:bg-orange-950/20"
                 : "border-border bg-background/60 hover:bg-surface-hover",
             )}
           >
@@ -682,7 +682,7 @@ function CreatePanel({
             className={cn(
               "rounded-lg border px-3 py-2 text-sm font-semibold transition",
               addMode === "existing"
-                ? "border-primary/50 bg-orange-50 text-primary dark:bg-orange-950/20"
+                ? "border-primary/50 bg-orange-50 text-primary-text dark:bg-orange-950/20"
                 : "border-border bg-background/60 hover:bg-surface-hover",
             )}
           >
@@ -821,7 +821,7 @@ function ResultSummary({ result }: { result: { playlist?: CreatedPlaylist; playl
                   {playlist.trackCount != null && <div className="text-xs text-muted-foreground">{playlist.trackCount} tracks</div>}
                 </div>
                 {playlist.permalink_url && (
-                  <a href={playlist.permalink_url} target="_blank" rel="noreferrer" className="text-sm font-semibold text-primary">
+                  <a href={playlist.permalink_url} target="_blank" rel="noreferrer" className="text-sm font-semibold text-primary-text">
                     Open
                   </a>
                 )}

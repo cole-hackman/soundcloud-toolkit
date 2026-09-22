@@ -254,7 +254,7 @@ export default function PlaylistToLikesPage() {
                   {selectedPlaylist.title} ({tracks.length})
                 </h2>
                 {tracks.length > 0 && (
-                  <button onClick={toggleAll} className="text-sm text-primary hover:underline shrink-0">
+                  <button onClick={toggleAll} className="text-sm text-primary-text hover:underline shrink-0">
                     {selectedTracks.size === tracks.length ? "Deselect All" : "Select All"}
                   </button>
                 )}
@@ -303,7 +303,7 @@ export default function PlaylistToLikesPage() {
                   setSelectedPlaylist(null);
                   setSelectedTracks(new Set());
                 }}
-                className="text-sm text-primary hover:underline"
+                className="text-sm text-primary-text hover:underline"
               >
                 ← Change playlist
               </button>

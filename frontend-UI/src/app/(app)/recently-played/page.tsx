@@ -203,7 +203,7 @@ export default function RecentlyPlayedPage() {
             <div className="lg:col-span-2 bg-white dark:bg-card rounded-2xl p-6 border-2 border-gray-200 dark:border-border">
               <div className="flex items-center gap-3 mb-4">
                 <div className="relative flex-1">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/70" />
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground-subtle" />
                   <Input
                     type="text"
                     value={search}
@@ -214,7 +214,7 @@ export default function RecentlyPlayedPage() {
                 </div>
                 <button
                   onClick={selectAll}
-                  className="text-sm text-primary hover:text-primary/80 font-medium whitespace-nowrap"
+                  className="text-sm text-primary-text hover:underline font-medium whitespace-nowrap"
                 >
                   {selected.size === filteredTracks.length ? "Deselect All" : "Select All"}
                 </button>
@@ -253,7 +253,7 @@ export default function RecentlyPlayedPage() {
                 <button
                   onClick={() => setMode("new")}
                   className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition ${
-                    mode === "new" ? "bg-primary text-white" : "bg-gray-100 dark:bg-secondary/50 text-muted-foreground"
+                    mode === "new" ? "bg-primary text-primary-foreground" : "bg-gray-100 dark:bg-secondary/50 text-muted-foreground"
                   }`}
                 >
                   New Playlist
@@ -261,7 +261,7 @@ export default function RecentlyPlayedPage() {
                 <button
                   onClick={() => setMode("existing")}
                   className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition ${
-                    mode === "existing" ? "bg-primary text-white" : "bg-gray-100 dark:bg-secondary/50 text-muted-foreground"
+                    mode === "existing" ? "bg-primary text-primary-foreground" : "bg-gray-100 dark:bg-secondary/50 text-muted-foreground"
                   }`}
                 >
                   Existing
@@ -277,7 +277,7 @@ export default function RecentlyPlayedPage() {
                   className="w-full px-3 py-2 border-2 border-gray-200 dark:border-border rounded-lg text-sm text-foreground bg-gray-50 dark:bg-secondary/20 focus:border-primary focus:outline-none mb-4"
                 />
               ) : loadingPlaylists ? (
-                <div className="flex items-center gap-2 py-3 mb-4 text-sm text-muted-foreground/70">
+                <div className="flex items-center gap-2 py-3 mb-4 text-sm text-muted-foreground-subtle">
                   <LoadingSpinner size="sm" />
                   Loading playlists…
                 </div>

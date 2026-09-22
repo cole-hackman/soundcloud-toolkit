@@ -469,7 +469,7 @@ export default function DashboardPage() {
               <Link
                 key={slug}
                 href={RECENT_PATHS[slug] || "#"}
-                className="px-3 py-2 rounded-lg bg-card border border-border hover:border-primary/50 text-foreground hover:text-primary text-sm font-medium transition shadow-sm"
+                className="px-3 py-2 rounded-lg bg-card border border-border hover:border-primary/50 text-foreground hover:text-primary-text text-sm font-medium transition shadow-sm"
               >
                 {RECENT_LABELS[slug] || slug}
               </Link>
@@ -519,7 +519,7 @@ export default function DashboardPage() {
                         </div>
                         <ArrowRight className="w-4 h-4 text-primary opacity-0 group-hover:opacity-100 transition-opacity" />
                       </div>
-                      <h3 className="text-base font-bold mb-1 group-hover:text-primary transition text-foreground">
+                      <h3 className="text-base font-bold mb-1 group-hover:text-primary-text transition text-foreground">
                         {feature.title}
                       </h3>
                       <p className="leading-relaxed text-sm text-muted-foreground">
@@ -555,7 +555,7 @@ export default function DashboardPage() {
                   <p className="text-xs font-medium text-muted-foreground">
                     {item.title}
                   </p>
-                  <span className="text-[10px] text-muted-foreground/50">Coming soon</span>
+                  <span className="text-xs text-muted-foreground-subtle">Coming soon</span>
                 </Link>
               );
             })}

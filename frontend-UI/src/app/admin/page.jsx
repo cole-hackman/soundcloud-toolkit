@@ -744,6 +744,330 @@ function MusicCatalogSection({ period, palette: P }) {
   );
 }
 
+// --- Feedback Inbox Section ---
+// The live in-app feedback form (Feedback model), not the retired surveys.
+// Server calls it /feedback-items because /admin/feedback is still the old
+// SongSwipe beta survey; see server/routes/admin.js.
+
+const FEEDBACK_STATUS_TABS = [
+  { value: "new", label: "New" },
+  { value: "seen", label: "Seen" },
+  { value: "done", label: "Done" },
+  { value: "spam", label: "Spam" },
+  { value: "", label: "All" },
+];
+
+// Mirrors FEEDBACK_TYPES in server/middleware/validation.js.
+const FEEDBACK_TYPE_OPTIONS = [
+  { value: "bug", label: "Bug", color: RED },
+  { value: "feature", label: "Feature", color: CYAN },
+  { value: "other", label: "Other", color: YELLOW },
+];
+
+// Statuses an inbox row can be moved to. "new" is where a row starts, so it
+// is not offered as a destination.
+const FEEDBACK_ACTION_STATUSES = ["seen", "done", "spam"];
+
+/** Messages longer than this collapse behind a "Show more" toggle. */
+const FEEDBACK_CLAMP = 200;
+
+function FeedbackTypePill({ type }) {
+  const config = FEEDBACK_TYPE_OPTIONS.find(t => t.value === type);
+  const color = config ? config.color : "#94A3B8";
+  return (
+    <span
+      style={{
+        fontSize: 9,
+        fontFamily: "'JetBrains Mono', monospace",
+        fontWeight: 700,
+        color,
+        background: `${color}18`,
+        padding: "2px 7px",
+        borderRadius: 4,
+        letterSpacing: 0.8,
+        textTransform: "uppercase",
+      }}
+    >
+      {config ? config.label : String(type || "?")}
+    </span>
+  );
+}
+
+function FeedbackInboxSection({ palette: P }) {
+  const [summary, setSummary] = useState(null);
+  const [items, setItems] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [status, setStatus] = useState("new");
+  const [type, setType] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [expanded, setExpanded] = useState({});
+  const [notes, setNotes] = useState({});
+  const [busyId, setBusyId] = useState(null);
+  // Bumped after any PATCH so the list and the header counts both refetch.
+  const [reloadKey, setReloadKey] = useState(0);
+  const pageSize = 25;
+
+  useEffect(() => {
+    fetch(`${API_BASE}/api/admin/feedback-items/summary`, { credentials: "include" })
+      .then(r => (r.ok ? r.json() : null))
+      .then(setSummary)
+      .catch(() => setSummary(null));
+  }, [reloadKey]);
+
+  useEffect(() => {
+    setLoading(true);
+    const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
+    if (status) params.set("status", status);
+    if (type) params.set("type", type);
+    fetch(`${API_BASE}/api/admin/feedback-items?${params}`, { credentials: "include" })
+      .then(r => (r.ok ? r.json() : { items: [], total: 0 }))
+      .then(data => {
+        const rows = data.items || [];
+        setItems(rows);
+        setTotal(data.total || 0);
+        // Seed the note inputs from the server every load, so a refresh after
+        // a PATCH shows what was actually stored rather than local state.
+        setNotes(Object.fromEntries(rows.map(r => [r.id, r.adminNote ?? ""])));
+      })
+      .catch(() => {
+        setItems([]);
+        setTotal(0);
+      })
+      .finally(() => setLoading(false));
+  }, [status, type, page, reloadKey]);
+
+  const patchItem = async (id, body) => {
+    setBusyId(id);
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/feedback-items/${id}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (res.ok) setReloadKey(k => k + 1);
+    } catch {
+      // Leave the row as it was; the next refresh reconciles.
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const saveNote = (item) => {
+    const next = notes[item.id] ?? "";
+    // Don't issue a write that changes nothing — `updatedAt` is @updatedAt, so
+    // a no-op PATCH would still make the row look freshly triaged.
+    if (next === (item.adminNote ?? "")) return;
+    patchItem(item.id, { adminNote: next === "" ? null : next });
+  };
+
+  const totalPages = Math.max(Math.ceil(total / pageSize), 1);
+  const mono = { fontFamily: "'JetBrains Mono', monospace" };
+  const csvHref = `${API_BASE}/api/admin/feedback-items.csv${status ? `?status=${status}` : ""}`;
+
+  const tabStyle = (active) => ({
+    ...mono,
+    fontSize: 10,
+    padding: "5px 10px",
+    borderRadius: 6,
+    border: `1px solid ${active ? ORANGE : P.cardBorder}`,
+    background: active ? `${ORANGE}18` : P.card,
+    color: active ? ORANGE : P.textMid,
+    cursor: "pointer",
+  });
+
+  return (
+    <div style={{ marginTop: 20 }}>
+      <SectionCard
+        title="Feedback inbox"
+        delay={0.5}
+        palette={P}
+        action={
+          <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span
+              style={{
+                ...mono,
+                fontSize: 9,
+                fontWeight: 700,
+                color: summary?.unread ? ORANGE : P.textDim,
+                background: summary?.unread ? `${ORANGE}18` : "transparent",
+                border: `1px solid ${summary?.unread ? ORANGE : P.cardBorder}`,
+                padding: "2px 7px",
+                borderRadius: 4,
+                letterSpacing: 0.8,
+              }}
+            >
+              {summary ? `${summary.unread} NEW` : "— NEW"}
+            </span>
+            <a
+              href={csvHref}
+              style={{ ...mono, fontSize: 10, color: P.textMid, textDecoration: "underline" }}
+            >
+              Export CSV
+            </a>
+          </span>
+        }
+      >
+        {/* Filters: status tabs + type select */}
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>
+          {FEEDBACK_STATUS_TABS.map(tab => {
+            const active = status === tab.value;
+            const count = tab.value ? summary?.byStatus?.[tab.value] : summary?.total;
+            return (
+              <button
+                key={tab.value || "all"}
+                type="button"
+                onClick={() => { setStatus(tab.value); setPage(1); }}
+                aria-pressed={active}
+                style={tabStyle(active)}
+              >
+                {tab.label}{count == null ? "" : ` (${count})`}
+              </button>
+            );
+          })}
+          <select
+            value={type}
+            onChange={e => { setType(e.target.value); setPage(1); }}
+            aria-label="Filter by feedback type"
+            style={catalogSelectStyle(P)}
+          >
+            <option value="">All types</option>
+            {FEEDBACK_TYPE_OPTIONS.map(t => (
+              <option key={t.value} value={t.value}>{t.label}</option>
+            ))}
+          </select>
+        </div>
+
+        {loading ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {Array.from({ length: 4 }).map((_, i) => <SkeletonBlock key={i} height={56} palette={P} />)}
+          </div>
+        ) : items.length === 0 ? (
+          <div style={{ ...mono, textAlign: "center", padding: "28px 0", color: P.textDim, fontSize: 12 }}>
+            No feedback matches these filters.
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {items.map(item => {
+              const long = (item.message || "").length > FEEDBACK_CLAMP;
+              const open = !!expanded[item.id];
+              const shown = long && !open
+                ? `${item.message.slice(0, FEEDBACK_CLAMP)}…`
+                : item.message;
+              return (
+                <div
+                  key={item.id}
+                  style={{
+                    border: `1px solid ${P.cardBorder}`,
+                    borderRadius: 8,
+                    padding: "10px 12px",
+                    background: item.status === "new" ? `${ORANGE}08` : "transparent",
+                  }}
+                >
+                  {/* Row header */}
+                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginBottom: 6 }}>
+                    <span style={{ ...mono, fontSize: 10, color: P.textDim }}>
+                      {timeAgo(item.createdAt)}
+                    </span>
+                    <span style={{ ...mono, fontSize: 11, color: ORANGE }}>
+                      @{item.user?.username || item.soundcloudId || "unknown"}
+                    </span>
+                    <FeedbackTypePill type={item.type} />
+                    <span style={{ ...mono, fontSize: 10, color: P.textMid }}>
+                      {item.page || "(no page)"}
+                    </span>
+                    <StatusPill status={item.status} />
+                    {item.email ? (
+                      <a
+                        href={`mailto:${item.email}`}
+                        style={{ ...mono, fontSize: 10, color: CYAN, textDecoration: "underline" }}
+                      >
+                        {item.email}
+                      </a>
+                    ) : null}
+                  </div>
+
+                  {/* Message */}
+                  <div style={{ ...mono, fontSize: 11, color: P.text, lineHeight: 1.6, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+                    {shown}
+                  </div>
+                  {long ? (
+                    <button
+                      type="button"
+                      onClick={() => setExpanded(prev => ({ ...prev, [item.id]: !open }))}
+                      style={{ ...mono, fontSize: 10, color: P.textMid, background: "none", border: "none", padding: "4px 0", cursor: "pointer", textDecoration: "underline" }}
+                    >
+                      {open ? "Show less" : "Show more"}
+                    </button>
+                  ) : null}
+
+                  {/* Triage */}
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginTop: 8 }}>
+                    {FEEDBACK_ACTION_STATUSES.map(next => (
+                      <button
+                        key={next}
+                        type="button"
+                        disabled={busyId === item.id || item.status === next}
+                        onClick={() => patchItem(item.id, { status: next })}
+                        // The visible word is also a filter tab above; the
+                        // aria-label keeps the two apart while still
+                        // containing the visible text (WCAG 2.5.3).
+                        aria-label={`Mark as ${next}`}
+                        style={{
+                          ...catalogSelectStyle(P),
+                          cursor: busyId === item.id || item.status === next ? "default" : "pointer",
+                          opacity: item.status === next ? 0.4 : 1,
+                          textTransform: "capitalize",
+                        }}
+                      >
+                        {next === "seen" ? "Seen" : next === "done" ? "Done" : "Spam"}
+                      </button>
+                    ))}
+                    <input
+                      value={notes[item.id] ?? ""}
+                      onChange={e => setNotes(prev => ({ ...prev, [item.id]: e.target.value }))}
+                      onBlur={() => saveNote(item)}
+                      placeholder="Admin note…"
+                      aria-label={`Admin note for feedback ${item.id}`}
+                      style={{ ...catalogSelectStyle(P), flex: 1, minWidth: 180 }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+
+            {/* Pagination */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 6 }}>
+              <span style={{ ...mono, fontSize: 10, color: P.textDim }}>
+                {total.toLocaleString()} report{total === 1 ? "" : "s"} · page {page} of {totalPages}
+              </span>
+              <div style={{ display: "flex", gap: 6 }}>
+                <button
+                  type="button"
+                  onClick={() => setPage(p => Math.max(p - 1, 1))}
+                  disabled={page <= 1}
+                  style={{ ...catalogSelectStyle(P), cursor: page <= 1 ? "default" : "pointer", opacity: page <= 1 ? 0.4 : 1 }}
+                >
+                  ← Prev
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPage(p => Math.min(p + 1, totalPages))}
+                  disabled={page >= totalPages}
+                  style={{ ...catalogSelectStyle(P), cursor: page >= totalPages ? "default" : "pointer", opacity: page >= totalPages ? 0.4 : 1 }}
+                >
+                  Next →
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </SectionCard>
+    </div>
+  );
+}
+
 // --- Main Dashboard Component ---
 export default function AdminDashboard() {
   const router = useRouter();
@@ -1356,6 +1680,10 @@ export default function AdminDashboard() {
 
         {/* Music Catalog */}
         <MusicCatalogSection period={period} palette={P} />
+
+        {/* Feedback inbox — the live in-app form. Not period-scoped: an
+            untriaged report from six weeks ago is still untriaged. */}
+        <FeedbackInboxSection palette={P} />
 
         {/* Rebrand Name Vote — the live survey */}
         <div style={{ marginTop: 20 }}>

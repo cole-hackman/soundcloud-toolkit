@@ -73,6 +73,16 @@ const FAKE_FOLLOWINGS_PAGED = {
   next_href: null as string | null,
 };
 
+/** What `POST /api/feedback` answers with on a 201 — id and timestamp only. */
+const FAKE_FEEDBACK_CREATED = {
+  id: "fb_1",
+  createdAt: "2026-09-22T12:00:00.000Z",
+};
+
+/** `GET /api/feedback/mine` — empty, so the "Your recent reports" list stays
+ *  out of the way of the submit flow under test. */
+const FAKE_FEEDBACK_MINE = { items: [] as unknown[] };
+
 const FAKE_GROWTH_LIMITS = {
   dailyCap: 50,
   used24h: 0,
@@ -168,6 +178,12 @@ export async function mockApi(page: Page): Promise<void> {
     }
     if (method === "POST" && path === "/api/events") {
       return route.fulfill({ status: 204, body: "" });
+    }
+    if (method === "POST" && path === "/api/feedback") {
+      return route.fulfill(json(FAKE_FEEDBACK_CREATED, 201));
+    }
+    if (method === "GET" && path === "/api/feedback/mine") {
+      return route.fulfill(json(FAKE_FEEDBACK_MINE));
     }
 
     // eslint-disable-next-line no-console

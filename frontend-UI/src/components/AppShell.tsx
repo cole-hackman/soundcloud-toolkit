@@ -5,11 +5,6 @@ import Link from "next/link";
 import { BrandMark, BrandWordmark } from "@/components/brand/Logo";
 import { usePathname } from "next/navigation";
 import {
-  LayoutDashboard,
-  Combine,
-  Heart,
-  Shuffle,
-  Link as LinkIcon,
   Menu,
   X,
   ChevronLeft,
@@ -20,92 +15,19 @@ import {
   LogOut,
   Moon,
   Sun,
-  ThumbsUp,
-  Users,
-  Stethoscope,
-  Search,
-  ListChecks,
-  ClipboardCheck,
-  Download,
-  Copy,
-  Repeat,
-  Activity,
-  Music,
-  ListMusic,
-  ArrowRightLeft,
-  FileUp,
-  Sparkles,
-  ListPlus,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/contexts/ThemeContext";
 import { cn } from "@/lib/utils";
+import { NAV, isGroup, type NavGroup } from "@/lib/nav";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "";
 
-/* ── Navigation structure ── */
-
-interface NavLink {
-  href: string;
-  label: string;
-  icon: React.ComponentType<{ className?: string }>;
-}
-
-interface NavGroup {
-  label: string;
-  items: NavLink[];
-}
-
-type NavEntry = NavLink | NavGroup;
-
-function isGroup(entry: NavEntry): entry is NavGroup {
-  return "items" in entry;
-}
-
-const NAV: NavEntry[] = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/downloads", label: "Downloads", icon: Download },
-  { href: "/export", label: "Export", icon: FileUp },
-  { href: "/library-audit", label: "Library Audit", icon: ClipboardCheck },
-  {
-    label: "Playlists",
-    items: [
-      { href: "/combine", label: "Combine Playlists", icon: Combine },
-      { href: "/playlist-modifier", label: "Playlist Modifier", icon: Shuffle },
-      { href: "/playlist-cloner", label: "Playlist Cloner", icon: Copy },
-      { href: "/playlist-compare", label: "Playlist Compare", icon: ArrowRightLeft },
-      { href: "/playlist-health-check", label: "Health Check", icon: Stethoscope },
-      { href: "/playlist-keyword-search", label: "Keyword Search", icon: Search },
-    ],
-  },
-  {
-    label: "Social & Activity",
-    items: [
-      { href: "/likes-to-playlist", label: "Likes → Playlist", icon: Heart },
-      { href: "/playlist-to-likes", label: "Playlist → Likes", icon: ListPlus },
-      { href: "/like-manager", label: "Like Manager", icon: ThumbsUp },
-      { href: "/following-manager", label: "Following Manager", icon: Users },
-      { href: "/following-library", label: "Following Library", icon: ListMusic },
-      { href: "/repost-manager", label: "Repost Manager", icon: Repeat },
-      { href: "/activity-to-playlist", label: "Activity → Playlist", icon: Activity },
-      { href: "/growth", label: "Grow Your Network", icon: Sparkles },
-    ],
-  },
-  {
-    label: "Discovery",
-    items: [
-      { href: "/genre-search", label: "Genre Search", icon: Music },
-    ],
-  },
-  {
-    label: "Links",
-    items: [
-      { href: "/link-resolver", label: "Link Resolver", icon: LinkIcon },
-      { href: "/batch-link-resolver", label: "Batch Resolver", icon: ListChecks },
-    ],
-  },
-];
+/* ── Navigation structure ──
+   `NAV`, its types and `isGroup` live in `@/lib/nav` so pages that only need
+   the tool list (the feedback form resolving `?from=` to a tool name) can
+   read it without importing this component. */
 
 const FOOTER_ITEMS = [
   { href: "/about", label: "About", icon: FileText },

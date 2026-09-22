@@ -29,6 +29,7 @@ const PAGES: PageCase[] = [
   },
   { path: "/playlist-modifier/", needsMock: true },
   { path: "/growth/", needsMock: true },
+  { path: "/feedback/", needsMock: true },
 ];
 
 for (const { path, needsMock, fixme, expectedStatus } of PAGES) {

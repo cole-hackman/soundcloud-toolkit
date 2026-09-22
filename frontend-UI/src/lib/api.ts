@@ -68,6 +68,30 @@ export async function apiFetch(
   return response;
 }
 
+/** One entry of the backend's `{ error, details }` validation payload. */
+export interface ApiErrorDetail {
+  field: string;
+  message: string;
+}
+
+/**
+ * What `apiFetchJson` throws on a non-2xx response.
+ *
+ * Still a plain `Error` with the server's message, so every existing
+ * `catch (e) { e.message }` call site behaves exactly as before — `status`
+ * and `details` are additions for callers that need to tell 409 from 429
+ * from a field-level 400 rather than just showing the text.
+ */
+export interface ApiError extends Error {
+  status: number;
+  details?: ApiErrorDetail[];
+}
+
+/** Narrows an unknown `catch` binding to an {@link ApiError}. */
+export function isApiError(error: unknown): error is ApiError {
+  return error instanceof Error && typeof (error as ApiError).status === "number";
+}
+
 export async function apiFetchJson<T>(
   path: string,
   init?: RequestInit,
@@ -80,7 +104,15 @@ export async function apiFetchJson<T>(
       typeof data?.error === "string"
         ? data.error
         : `Request failed with status ${response.status}`;
-    throw new Error(message);
+    const error = new Error(message) as ApiError;
+    error.status = response.status;
+    if (Array.isArray(data?.details)) {
+      error.details = data.details.filter(
+        (d: unknown): d is ApiErrorDetail =>
+          !!d && typeof (d as ApiErrorDetail).field === "string",
+      );
+    }
+    throw error;
   }
 
   return data as T;

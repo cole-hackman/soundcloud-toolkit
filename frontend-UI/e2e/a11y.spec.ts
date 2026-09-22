@@ -42,11 +42,9 @@ const PAGES: PageCase[] = [
   { path: "/playlist-to-likes/", needsMock: true },
   { path: "/recently-played/", needsMock: true },
   { path: "/activity-to-playlist/", needsMock: true },
-  // No `ready` in the shared map on purpose: genre-search's landing state is a
-  // static filter form with no query behind it and no skeleton branch, so
-  // there is nothing for a second gate to wait for that the `h1` does not
-  // already prove. Its results and dialog are audited by the dedicated test
-  // further down.
+  // Its landing state is a static filter form, so the `h1` was nearly enough;
+  // the shared map now names one of its chips anyway. Its results and dialog
+  // are audited by the dedicated test further down.
   { path: "/genre-search/", needsMock: true },
   { path: "/downloads/", needsMock: true },
   { path: "/playlist-keyword-search/", needsMock: true },
@@ -200,6 +198,112 @@ test("has no serious/critical violations: /playlist-to-likes/ with a playlist ch
   await page.getByRole("button", { name: /Sample Playlist 1/ }).click();
   await expect(page.getByRole("checkbox", { name: "Sample Track 1" })).toBeVisible();
 
+  await expectNoBlockingViolations(page);
+});
+
+/**
+ * The playlist editor, and the dialog its row actions open.
+ *
+ * The route-level audit above now drives into the editor via the shared
+ * `READY` map, which covers the rows themselves. What it cannot reach is the
+ * state behind a row action: `ConfirmDialog` renders nothing until a track's
+ * Remove button is pressed, so "remove track?" — its heading, its focus, the
+ * track summary it lists — had never been scanned anywhere. Neither had the
+ * save confirmation, which is the same component with different content and a
+ * destructive default.
+ *
+ * Audited as three separate states rather than one pass, because axe only
+ * sees what is in the document when it runs.
+ */
+async function openPlaylistModifierEditor(page: Page) {
+  await mockApi(page);
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto("/playlist-modifier/");
+  await page.getByRole("button", { name: "Sample Playlist 1" }).click();
+  await expect(page.getByRole("group", { name: "Filter tracks" })).toBeVisible();
+}
+
+test("has no serious/critical violations: /playlist-modifier/ editor rows", async ({ page }) => {
+  await openPlaylistModifierEditor(page);
+
+  // The things the picker state never showed. The fixture gives the playlist
+  // detail downloadable tracks and a purchase link precisely so this state is
+  // not an empty list — an audit of an empty editor would pass for the wrong
+  // reason.
+  const main = page.getByRole("main");
+  await expect(main.getByRole("button", { name: /^Download / }).first()).toBeVisible();
+  await expect(main.getByRole("link", { name: /opens .* on an external site/ }).first()).toBeVisible();
+  // Row actions are inline above `sm` and behind a per-row sheet below it, so
+  // ask for whichever this viewport renders rather than assuming one of them.
+  await expect(
+    main
+      .getByRole("button", { name: "Remove from playlist" })
+      .or(main.getByRole("button", { name: /^More actions for / }))
+      .first(),
+  ).toBeVisible();
+
+  await expectNoBlockingViolations(page);
+});
+
+/**
+ * KNOWN FAILURE, deliberately left failing rather than scoped around.
+ *
+ * The three dialogs this page opens — remove-track, save-changes, and the
+ * mobile row-actions sheet — all render `BulkReviewDetails`, whose track list
+ * is `<div class="max-h-44 space-y-1 overflow-y-auto">`: a scrollable region
+ * with no focusable content and no tabindex, which axe reports as
+ * `scrollable-region-focusable` (serious). Someone using the keyboard cannot
+ * scroll it, so any track past the fourth is unreachable.
+ *
+ * `BulkReviewDetails` lives in `src/components/ui/`, which Task 16a owns, and
+ * it is rendered by the confirm dialog of seven pages (combine,
+ * following-manager, repost-manager, playlist-modifier, playlist-health-check,
+ * growth, like-manager, downloads) — so this is one fix in one shared file,
+ * not a playlist-modifier bug. Fixing it here would collide with that task.
+ *
+ * The audit is left in place and failing-by-`fixme` on purpose: excluding the
+ * selector or asserting a subset would turn the first test that ever looked at
+ * these dialogs into one that cannot report what it found. Remove the `fixme`
+ * once the shared component is focusable.
+ */
+test("has no serious/critical violations: /playlist-modifier/ row-action and confirm dialogs", async ({
+  page,
+}) => {
+  test.fixme(
+    true,
+    "BulkReviewDetails (src/components/ui/, owned by Task 16a) renders an " +
+      "overflow-y-auto track list with no tabindex: axe scrollable-region-focusable, " +
+      "serious. Shared by seven pages' confirm dialogs.",
+  );
+
+  await openPlaylistModifierEditor(page);
+  const main = page.getByRole("main");
+
+  // The remove confirmation, reached the way this viewport reaches it.
+  const inlineRemove = main.getByRole("button", { name: "Remove from playlist" }).first();
+  if (await inlineRemove.isVisible().catch(() => false)) {
+    await inlineRemove.click();
+  } else {
+    await main.getByRole("button", { name: /^More actions for / }).first().click();
+    const sheet = page.getByRole("dialog");
+    await expect(sheet).toBeVisible();
+    // The sheet is itself a state worth auditing before it is dismissed.
+    await expectNoBlockingViolations(page);
+    await sheet.getByRole("button", { name: "Remove from playlist" }).click();
+  }
+
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toHaveAccessibleName("Remove track?");
+  await expectNoBlockingViolations(page);
+
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+
+  // And the save confirmation, which is the same component with different
+  // content and a destructive default.
+  await main.getByRole("button", { name: /Save Changes/ }).click();
+  await expect(page.getByRole("dialog")).toBeVisible();
   await expectNoBlockingViolations(page);
 });
 

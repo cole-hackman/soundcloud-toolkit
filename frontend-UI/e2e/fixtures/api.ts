@@ -286,6 +286,30 @@ const FAKE_RESOLVE_BATCH = {
   meta: { version: "2", resolved_at: "2026-09-22T12:00:00.000Z" },
 };
 
+/** `POST /api/playlists/compare` — a shared track plus one unique to each side. */
+const FAKE_COMPARE = {
+  summary: {
+    playlistA: { id: 1, title: "Sample Playlist 1", trackCount: 2 },
+    playlistB: { id: 2, title: "Sample Playlist 2", trackCount: 2 },
+    overlapCount: 1,
+    uniqueToACount: 1,
+    uniqueToBCount: 1,
+    overlapPercent: 33,
+  },
+  overlap: [{ id: 100, title: "Sample Track 1", user: { username: "testartist" } }],
+  uniqueToA: [{ id: 101, title: "Sample Track 2", user: { username: "testartist" } }],
+  uniqueToB: [{ id: 102, title: "Sample Track 3", user: { username: "testartist" } }],
+};
+
+/** `POST /api/playlists/clone` — two parts, so the "Parts Created" card renders. */
+const FAKE_CLONE = {
+  playlists: [
+    { id: 11, title: "Clone of Sample Playlist 1 (1/2)", permalink_url: "https://soundcloud.com/testuser/sets/clone-1" },
+    { id: 12, title: "Clone of Sample Playlist 1 (2/2)", permalink_url: "https://soundcloud.com/testuser/sets/clone-2" },
+  ],
+  stats: { totalTracks: 12, numPlaylistsCreated: 2 },
+};
+
 /** `POST /api/resolve?v=2` — the single-URL shape the cloner resolves with. */
 const FAKE_RESOLVE_SINGLE = {
   type: "playlist",
@@ -384,6 +408,12 @@ export async function mockApi(page: Page): Promise<void> {
     }
     if (method === "GET" && path === "/api/dashboard/summary") {
       return route.fulfill(json(FAKE_DASHBOARD_SUMMARY));
+    }
+    if (method === "POST" && path === "/api/playlists/clone") {
+      return route.fulfill(json(FAKE_CLONE));
+    }
+    if (method === "POST" && path === "/api/playlists/compare") {
+      return route.fulfill(json(FAKE_COMPARE));
     }
     if (method === "POST" && path === "/api/resolve/batch") {
       return route.fulfill(json(FAKE_RESOLVE_BATCH));

@@ -74,6 +74,30 @@ const PAGES: PageCase[] = [
     },
   },
   {
+    path: "/playlist-cloner/",
+    needsMock: true,
+    // Clone something, so the result panel and its two stat cards are audited
+    // rather than just the form.
+    ready: async (page) => {
+      await page
+        .getByLabel("Original playlist URL")
+        .fill("https://soundcloud.com/testuser/sets/sample-playlist-1");
+      await page.getByRole("button", { name: "Clone Playlist" }).click();
+      return page.getByRole("heading", { name: "Cloning Complete" });
+    },
+  },
+  {
+    path: "/playlist-compare/",
+    needsMock: true,
+    // The metrics and the three track sections only exist after a comparison.
+    ready: async (page) => {
+      await page.getByLabel("Playlist A").selectOption({ index: 1 });
+      await page.getByLabel("Playlist B").selectOption({ index: 2 });
+      await page.getByRole("button", { name: "Compare" }).click();
+      return page.getByRole("heading", { name: /In both playlists/ });
+    },
+  },
+  {
     path: "/batch-link-resolver/",
     needsMock: true,
     // Resolve something: the filters, the row actions and the error styling

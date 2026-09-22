@@ -315,9 +315,17 @@ export default function CombinePlaylistsPage() {
           description="Select playlists to merge. Duplicates will be automatically removed."
         />
 
+        {/* `min-w-0` on both columns, and it is doing real work rather than
+            being defensive. A grid item's `min-width` is `auto`, which
+            resolves to its min-content width, so one playlist whose title is
+            long enough stretched this column to ~1,150px inside a 360px
+            viewport and the whole page scrolled sideways. Capping the item at
+            the track width is what lets the titles inside wrap and truncate
+            as they were already written to. Covered by the long-title case
+            for this route in e2e/long-titles.spec.ts. */}
         <div className="grid lg:grid-cols-3 gap-6 lg:gap-8">
           {/* Playlist Selection */}
-          <div className="lg:col-span-2">
+          <div className="min-w-0 lg:col-span-2">
             <Card className="rounded-2xl p-6 border-2 border-border">
               <h2 className="text-xl font-bold mb-4 text-foreground">
                 Your Playlists
@@ -379,7 +387,7 @@ export default function CombinePlaylistsPage() {
           </div>
 
           {/* Merge Panel */}
-          <div className="lg:col-span-1">
+          <div className="min-w-0 lg:col-span-1">
             <Card className="rounded-2xl p-6 border-2 border-border lg:sticky lg:top-24 space-y-5">
               <h2 className="text-xl font-bold text-foreground">
                 Merge Settings

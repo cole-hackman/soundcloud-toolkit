@@ -494,6 +494,26 @@ export default function FollowingManagerPage() {
                           <SelectableRow
                             key={user.id}
                             as="div"
+                            // The row is a GRID ITEM, so its `min-width` is
+                            // `auto` — which resolves to its min-content
+                            // width, and a SoundCloud username has no spaces
+                            // to break at. One 60-character name therefore
+                            // made every row ~650px wide inside a 360px
+                            // column, pushing the profile link off the right
+                            // edge where no finger can reach it. The
+                            // `truncate` on the name cannot help: the row
+                            // refuses to be narrower than its min-content in
+                            // the first place, so nothing ever overflows the
+                            // element that would have clipped it.
+                            //
+                            // Neither acceptance check sees this. The list is
+                            // `overflow-y-auto`, and a box with one axis
+                            // hidden computes the other to `auto`, so the row
+                            // scrolls horizontally *inside the list* and
+                            // `document.scrollWidth` stays at 360; axe does
+                            // not flag an off-screen control either. Hence the
+                            // long-username case in e2e/long-titles.spec.ts.
+                            className="min-w-0"
                             id={user.id}
                             selected={isSelected}
                             label={user.username}

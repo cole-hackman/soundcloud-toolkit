@@ -132,12 +132,54 @@ const LONG_COMPARE = {
   uniqueToB: [{ id: 102, title: `${LONG} C`, user: { username: LONG_USER } }],
 };
 
+const LONG_LIKES = {
+  collection: [0, 1].map((i) => ({
+    id: 100 + i,
+    title: `${LONG} ${i}`,
+    user: { username: LONG_USER },
+    artwork_url: null,
+    duration: 200000,
+    permalink_url: "https://soundcloud.com/x/y",
+  })),
+  next_href: null as string | null,
+};
+
+const LONG_REPOSTS = {
+  collection: [0, 1].map((i) => ({
+    id: 300 + i,
+    urn: `soundcloud:tracks:${300 + i}`,
+    // One of each, because the row renders a type badge as a `shrink-0`
+    // sibling of the title and that badge is the control most likely to be
+    // pushed off the edge.
+    resourceType: i === 1 ? "playlist" : "track",
+    title: `${LONG} ${i}`,
+    user: { username: LONG_USER },
+    artwork_url: null,
+    permalink_url: "https://soundcloud.com/x/y",
+    created_at: "2026-09-01T12:00:00.000Z",
+  })),
+  has_more: false,
+  total: 2,
+};
+
+/** The session payload the `/account` profile card renders. */
+const LONG_SESSION = {
+  userId: "u1",
+  soundcloudId: 1000001,
+  username: LONG_USER,
+  displayName: LONG,
+  avatarUrl: null as string | null,
+};
+
 /** Registered after `mockApi`, so it runs first and falls through for the rest. */
 async function withLongTitles(page: Page): Promise<void> {
   await page.route("**/api/**", async (route) => {
     const { pathname } = new URL(route.request().url());
     const method = route.request().method();
 
+    if (method === "GET" && pathname === "/api/auth/me") return route.fulfill(json(LONG_SESSION));
+    if (method === "GET" && pathname === "/api/likes/paged") return route.fulfill(json(LONG_LIKES));
+    if (method === "GET" && pathname === "/api/reposts/paged") return route.fulfill(json(LONG_REPOSTS));
     if (method === "GET" && pathname === "/api/playlists") return route.fulfill(json(LONG_PLAYLISTS));
     if (method === "GET" && /^\/api\/playlists\/\d+$/.test(pathname)) return route.fulfill(json(LONG_PLAYLIST_DETAIL));
     if (method === "GET" && pathname === "/api/playlists/search-tracks") return route.fulfill(json(LONG_SEARCH));
@@ -255,6 +297,51 @@ const CASES: Case[] = [
       await page.getByRole("button", { name: new RegExp(LONG.slice(0, 30)) }).first().click();
       await page.getByRole("button", { name: "Load playlist tracks" }).click();
       await page.getByText(/^[\d,]+ tracks? ready$/).waitFor();
+    },
+    proof: async (page) => expect(page.locator("main")).toContainText(LONG),
+  },
+
+  // ── The pages whose batches merged before this check existed ────────────
+  // Their rows put a `shrink-0` control beside a title — a type badge, an
+  // "Active:" pill, a per-row action — which is the arrangement that clips.
+  // They were swept and are correct today; these keep them that way, because
+  // the regression is silent in both of the other checks.
+  {
+    path: "/like-manager/",
+    drive: async (page) => {
+      await page.getByRole("checkbox", { name: new RegExp(LONG.slice(0, 30)) }).first().waitFor();
+    },
+    proof: async (page) => expect(page.locator("main")).toContainText(LONG),
+  },
+  {
+    path: "/following-manager/",
+    drive: async (page) => {
+      await page.getByRole("checkbox", { name: new RegExp(LONG_USER.slice(0, 30)) }).first().waitFor();
+    },
+    proof: async (page) => expect(page.locator("main")).toContainText(LONG_USER),
+  },
+  {
+    path: "/repost-manager/",
+    drive: async (page) => {
+      await page.getByRole("checkbox", { name: new RegExp(LONG.slice(0, 30)) }).first().waitFor();
+    },
+    proof: async (page) => expect(page.locator("main")).toContainText(LONG),
+  },
+  {
+    path: "/combine/",
+    drive: async (page) => {
+      // Selected, so the selection banner and its actions are measured too —
+      // the row is only half of what has to fit.
+      await page.getByRole("checkbox", { name: new RegExp(LONG.slice(0, 30)) }).first().check();
+    },
+    proof: async (page) => expect(page.locator("main")).toContainText(LONG),
+  },
+  {
+    path: "/account/",
+    drive: async (page) => {
+      // The profile card is the row at risk: a display name beside a
+      // `shrink-0` avatar.
+      await page.getByText("SoundCloud id 1000001").waitFor();
     },
     proof: async (page) => expect(page.locator("main")).toContainText(LONG),
   },

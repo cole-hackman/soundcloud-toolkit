@@ -145,7 +145,7 @@ export function OverviewView({ period, enabled, onInspectErrorCode, onInspectAct
           sub={
             stats ? (
               <>
-                <span className="text-chart-3">+{fmtInt(stats.newUsers)}</span> new · {periodLong(period)}
+                <span className="text-success-text">+{fmtInt(stats.newUsers)}</span> new · {periodLong(period)}
               </>
             ) : null
           }
@@ -239,7 +239,7 @@ export function OverviewView({ period, enabled, onInspectErrorCode, onInspectAct
                 key: f.key,
                 label: f.name,
                 value: f.count,
-                sub: f.errorCount > 0 ? <span className="text-destructive">{f.errorRate}% err</span> : f.avgDurationMs ? fmtMs(f.avgDurationMs) : undefined,
+                sub: f.errorCount > 0 ? <span className="text-destructive-text">{f.errorRate}% err</span> : f.avgDurationMs ? fmtMs(f.avgDurationMs) : undefined,
                 onClick: () => onInspectAction(f.key),
                 title: `Inspect ${f.name} operations`,
               }))}
@@ -273,7 +273,7 @@ export function OverviewView({ period, enabled, onInspectErrorCode, onInspectAct
           {loading ? (
             <RowSkeleton rows={6} height="h-5" />
           ) : !stats || (stats.errorBreakdown.length === 0 && stats.errorRateByAction.length === 0) ? (
-            <div className="flex items-center gap-2 rounded-lg border border-chart-3/30 bg-chart-3/[0.06] px-3 py-3 font-mono text-[12px] text-chart-3">
+            <div className="flex items-center gap-2 rounded-lg border border-chart-3/30 bg-chart-3/[0.06] px-3 py-3 font-mono text-[12px] text-success-text">
               <Activity className="h-4 w-4" aria-hidden="true" /> No errors logged in this window.
             </div>
           ) : (

@@ -204,7 +204,7 @@ export function AdminConsole() {
           <Link href="/dashboard" className="flex items-center gap-2.5 rounded-md pr-1 hover:opacity-90" title="Back to the app">
             <BrandMark className="h-6 w-6" title="" />
             <span className="font-display text-[15px] font-semibold tracking-tight">Track Toolkit</span>
-            <span className="rounded bg-primary/12 px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-primary">Admin</span>
+            <span className="rounded bg-primary/12 px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-primary-text">Admin</span>
           </Link>
 
           <div className="ml-auto flex flex-wrap items-center gap-2">

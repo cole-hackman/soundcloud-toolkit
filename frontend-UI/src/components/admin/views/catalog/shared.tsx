@@ -95,7 +95,7 @@ export function ColumnToggles<K extends string>({
             onClick={() => onToggle(c.key)}
             className={
               on
-                ? "h-6 rounded-md border border-primary/50 bg-primary/10 px-2 font-mono text-[11px] text-primary"
+                ? "h-6 rounded-md border border-primary/50 bg-primary/10 px-2 font-mono text-[11px] text-primary-text"
                 : "h-6 rounded-md border border-border/70 px-2 font-mono text-[11px] text-muted-foreground hover:text-foreground"
             }
           >

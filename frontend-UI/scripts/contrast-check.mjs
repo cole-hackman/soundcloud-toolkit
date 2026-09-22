@@ -6,6 +6,23 @@
 // foreground/background pairs in both themes, prints a table and exits 1 if
 // any pair is under its threshold. No dependencies on purpose: this runs in
 // CI and in `npm run contrast` without an install step.
+//
+// WHAT THIS GATE DOES NOT COVER — read this before quoting its score.
+// It compares *token pairs*. It cannot see a call site, so a green run is
+// evidence that the tokens can be combined safely, not that every component
+// combines them that way. Two consequences worth naming:
+//
+//  1. Until 2026-09-22 it held no admin-console pair at all, and reported
+//     "All 73 pass" the whole time the console's own `TONE_SOFT` map was
+//     rendering a 10px pill at 1.43:1. The ADMIN_* block near the bottom now
+//     covers that map — every tone, both halves, over the three surfaces a
+//     console pill lands on.
+//  2. It still cannot catch a component that reaches past the tone maps for a
+//     raw `--chart-*` or `--primary`. The console's views were swept onto the
+//     `*-text` tokens in the same change, and the only deliberate survivors
+//     are the three `<Sparkline className="text-chart-*">` call sites in
+//     OverviewView (see the note on `Sparkline` in components/admin/charts.tsx).
+//     Nothing here would notice a new one.
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
@@ -99,6 +116,55 @@ const TINTED_PAIRS = [
   ["muted-foreground-subtle", "secondary", 0.2, "card", 4.5, "subtle text on a tinted panel, on a card"],
   ["tone-foreground", "tone-download", 0.9, "background", 4.5, "free-download chip hover"],
   ["tone-foreground", "tone-purchase", 0.9, "background", 4.5, "purchase-link chip hover"],
+];
+
+/**
+ * The admin console's tone system (`src/components/admin/primitives.tsx`).
+ *
+ * `TONE_SOFT` is `bg-<tint>/<alpha> text-<ink>` and `TONE_TEXT` is the ink on
+ * its own; `TONE_BG` is bars and dots, which are graphical and not gated here.
+ * Entries: `[tone, ink, tint, alpha]`. An `alpha` of 1 means the tint is an
+ * opaque fill, so the surface under it does not matter and only one base is
+ * emitted.
+ *
+ * `danger` is the one tone whose tint is dark enough in light mode to matter:
+ * at `/12` the composite put `--destructive-text` at 4.51:1, so the map ships
+ * `/10` (4.94:1). Changing that alpha in `primitives.tsx` without changing it
+ * here is the mistake this comment exists to prevent.
+ */
+const ADMIN_TONES = [
+  ["primary", "primary-text", "primary", 0.12],
+  ["ok", "success-text", "chart-3", 0.12],
+  ["warn", "warning-text", "chart-4", 0.14],
+  ["danger", "destructive-text", "destructive", 0.10],
+  ["info", "info-text", "chart-2", 0.12],
+  ["muted", "muted-foreground", "muted", 1],
+];
+
+/**
+ * The surfaces a console pill lands on. `Panel` is `bg-card/85` over the page,
+ * so `card` and `background` bracket it in both themes — but the third base is
+ * not bracketed by anything: the unread row in the Feedback inbox adds a
+ * `bg-primary/[0.05]` brand wash on top (`views/FeedbackView.tsx`), and a tint
+ * over a tint lands on a colour neither of the other two names. It is modelled
+ * rather than assumed, because assuming was the failure mode.
+ */
+const ADMIN_BASES = [
+  ["background", null],
+  ["card", null],
+  ["card+unread", ["primary", 0.05, "card"]],
+];
+
+/**
+ * `TONE_TEXT` ink on a plain surface. Only the combinations the PAIRS list
+ * above does not already carry, so the table does not print the same row twice.
+ */
+const ADMIN_TEXT_PAIRS = [
+  ["info-text", "background", 4.5, "admin info tone as text"],
+  ["info-text", "card", 4.5, "admin info tone as text, on a card"],
+  ["success-text", "card", 4.5, "success text on a card"],
+  ["warning-text", "card", 4.5, "warning text on a card"],
+  ["destructive-text", "card", 4.5, "error text on a card"],
 ];
 
 /** Light-mode `.text-gradient` stops, large text only (3:1). */
@@ -208,6 +274,37 @@ for (const [theme, tokens] of Object.entries(themes)) {
       min,
       note,
     });
+  }
+  for (const [fg, bg, min, note] of ADMIN_TEXT_PAIRS) {
+    rows.push({
+      theme,
+      pair: `${fg} / ${bg}`,
+      value: ratio(token(theme, tokens, fg), token(theme, tokens, bg)),
+      min,
+      note,
+    });
+  }
+  for (const [tone, ink, tint, alpha] of ADMIN_TONES) {
+    // An opaque fill hides whatever is under it, so one base says everything.
+    const bases = alpha === 1 ? ADMIN_BASES.slice(1, 2) : ADMIN_BASES;
+    for (const [baseName, nested] of bases) {
+      const base = nested
+        ? composite(
+            token(theme, tokens, nested[0]),
+            token(theme, tokens, nested[2]),
+            nested[1],
+          )
+        : token(theme, tokens, baseName);
+      const surface =
+        alpha === 1 ? token(theme, tokens, tint) : composite(token(theme, tokens, tint), base, alpha);
+      rows.push({
+        theme,
+        pair: `admin ${tone}: ${ink} / ${tint}@${Math.round(alpha * 100)} on ${baseName}`,
+        value: ratio(token(theme, tokens, ink), surface),
+        min: 4.5,
+        note: "admin console TONE_SOFT pill",
+      });
+    }
   }
 }
 for (const stop of GRADIENT_STOPS) {

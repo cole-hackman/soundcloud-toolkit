@@ -11,12 +11,24 @@ import type { OpStatus } from "./types";
 
 export type Tone = "primary" | "ok" | "warn" | "danger" | "info" | "muted";
 
+/**
+ * The tone maps split into three because the three uses have three different
+ * contrast floors, and reusing one colour across them is what broke here.
+ *
+ * `TONE_BG` paints bars and dots — graphical objects, 3:1 under 1.4.11 — so
+ * it keeps the `--chart-*` data-viz colours. `TONE_TEXT` and `TONE_SOFT` are
+ * text, which needs 4.5:1, so both use the `*-text` tokens the app already
+ * declares for exactly that (`globals.css`: "Never use --primary for small
+ * text"). Before 2026-09-22 all three used `--chart-*`/`--primary`, which put
+ * a 10px `TONE_SOFT.warn` pill at **1.43:1** and `StatusPill` SPLIT at
+ * 1.42:1. Every pair below is now a row in `scripts/contrast-check.mjs`.
+ */
 export const TONE_TEXT: Record<Tone, string> = {
-  primary: "text-primary",
-  ok: "text-chart-3",
-  warn: "text-chart-4",
-  danger: "text-destructive",
-  info: "text-chart-2",
+  primary: "text-primary-text",
+  ok: "text-success-text",
+  warn: "text-warning-text",
+  danger: "text-destructive-text",
+  info: "text-info-text",
   muted: "text-muted-foreground",
 };
 
@@ -29,12 +41,19 @@ export const TONE_BG: Record<Tone, string> = {
   muted: "bg-muted-foreground",
 };
 
+/**
+ * The tint half is unchanged — the hue is what tells one pill from another,
+ * and every pill also carries a word, so colour is never the only signal.
+ * Only the ink moved. `danger` is `/10` rather than `/12` because
+ * `--destructive` is the one tint dark enough in light mode to pull the
+ * composite below AA at 12% (4.51:1 vs 4.94:1).
+ */
 export const TONE_SOFT: Record<Tone, string> = {
-  primary: "bg-primary/12 text-primary",
-  ok: "bg-chart-3/12 text-chart-3",
-  warn: "bg-chart-4/14 text-chart-4",
-  danger: "bg-destructive/12 text-destructive",
-  info: "bg-chart-2/12 text-chart-2",
+  primary: "bg-primary/12 text-primary-text",
+  ok: "bg-chart-3/12 text-success-text",
+  warn: "bg-chart-4/14 text-warning-text",
+  danger: "bg-destructive/10 text-destructive-text",
+  info: "bg-chart-2/12 text-info-text",
   muted: "bg-muted text-muted-foreground",
 };
 
@@ -245,8 +264,8 @@ export function SmallButton({
       className={cn(
         "inline-flex h-8 items-center gap-1.5 rounded-md border px-2.5 font-mono text-[12px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40",
         tone === "muted" && "border-border/80 bg-background text-foreground hover:bg-accent",
-        tone === "primary" && "border-primary/50 bg-primary/10 text-primary hover:bg-primary/15",
-        tone === "danger" && "border-destructive/40 bg-destructive/10 text-destructive hover:bg-destructive/15",
+        tone === "primary" && "border-primary/50 bg-primary/10 text-primary-text hover:bg-primary/15",
+        tone === "danger" && "border-destructive/40 bg-destructive/10 text-destructive-text hover:bg-destructive/15",
         className,
       )}
       {...props}
@@ -375,7 +394,7 @@ export function ErrorNotice({ message, onRetry, className }: { message: string; 
     <div
       role="alert"
       className={cn(
-        "flex flex-wrap items-center justify-between gap-3 rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-[12px] text-destructive",
+        "flex flex-wrap items-center justify-between gap-3 rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-[12px] text-destructive-text",
         className,
       )}
     >
@@ -456,7 +475,7 @@ export function SortTh({
           onClick={onClick}
           className={cn(
             "inline-flex items-center gap-1 rounded-sm uppercase tracking-[0.12em] hover:text-foreground",
-            active && "text-primary",
+            active && "text-primary-text",
           )}
         >
           {label}

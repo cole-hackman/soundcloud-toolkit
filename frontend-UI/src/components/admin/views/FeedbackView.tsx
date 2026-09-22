@@ -62,10 +62,13 @@ const TYPE_LABELS: Record<FeedbackType, string> = {
   other: "Other",
 };
 
+// `other` is the neutral bucket, not a warning — it was `warn` (amber), which
+// both read as "something is wrong with this report" and was the worst pill in
+// the console for contrast.
 const TYPE_TONES: Record<FeedbackType, Tone> = {
   bug: "danger",
   feature: "info",
-  other: "warn",
+  other: "muted",
 };
 
 /** Messages longer than this collapse behind a "Show more" toggle. */
@@ -132,7 +135,9 @@ function FeedbackRow({
         <span className="font-mono text-[11px] text-muted-foreground" title={fmtAbsolute(item.createdAt)}>
           {timeAgo(item.createdAt)}
         </span>
-        <span className="max-w-[180px] truncate font-mono text-[12px] font-medium text-primary" title={item.user.displayName ?? undefined}>
+        {/* `text-primary-text`, not `text-primary`: globals.css says never use
+            --primary for small text, and this is 12px. It measured 3.27:1. */}
+        <span className="max-w-[180px] truncate font-mono text-[12px] font-medium text-primary-text" title={item.user.displayName ?? undefined}>
           @{who}
         </span>
         <Pill tone={toneOf(TYPE_TONES, item.type)}>{labelOf(TYPE_LABELS, item.type)}</Pill>
@@ -143,7 +148,10 @@ function FeedbackRow({
         {item.email && (
           <a
             href={`mailto:${item.email}`}
-            className="inline-flex items-center gap-1 font-mono text-[11px] text-chart-2 underline decoration-dotted underline-offset-2 hover:text-foreground"
+            // `text-info-text`, not `text-chart-2`: 11px on a card measured
+            // 3.99:1. The dotted underline and the icon carry the link, so
+            // the colour is not the only signal either way.
+            className="inline-flex items-center gap-1 font-mono text-[11px] text-info-text underline decoration-dotted underline-offset-2 hover:text-foreground"
           >
             <Mail className="h-3 w-3" aria-hidden="true" />
             {item.email}

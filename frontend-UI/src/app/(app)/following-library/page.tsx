@@ -374,7 +374,13 @@ export default function FollowingLibraryPage() {
       )}
 
       <div className="grid gap-5 lg:grid-cols-[320px_minmax(0,1fr)]">
-        <Card className="self-start">
+        {/* `min-w-0`: a grid item's automatic minimum size is its min-content
+            width, so one unbreakable username (a SoundCloud permalink slug can
+            easily be 60 characters) sizes the whole single-column track to it.
+            Nothing scrolls sideways — the results card is `overflow-hidden` —
+            so the tabs and buttons in the other column are simply clipped off
+            the right edge, which neither the overflow test nor axe can see. */}
+        <Card className="min-w-0 self-start">
           <CardHeader>
             <SectionHeading className="text-base">
               <span className="flex items-center gap-2">

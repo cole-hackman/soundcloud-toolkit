@@ -685,8 +685,14 @@ export default function GrowthPage() {
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-semibold text-muted-foreground uppercase">Strategy:</span>
+                  <label
+                    htmlFor="growth-seed-strategy"
+                    className="text-xs font-semibold text-muted-foreground uppercase"
+                  >
+                    Strategy:
+                  </label>
                   <select
+                    id="growth-seed-strategy"
                     value={strategy}
                     onChange={(e) => setStrategy(e.target.value as 'followers' | 'followings' | 'both')}
                     className="h-10 px-3 border-2 border-border rounded-lg text-sm text-foreground bg-secondary/20 focus:border-primary focus:outline-none"

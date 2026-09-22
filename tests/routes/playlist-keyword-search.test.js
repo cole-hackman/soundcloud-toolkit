@@ -52,9 +52,8 @@ jest.unstable_mockModule('../../server/middleware/auth.js', () => ({
 const { default: apiRoutes } = await import('../../server/routes/api.js');
 const { SC_WRITE_PACING_MS } = await import('../../server/lib/pacing.js');
 // Real, not mocked: the playlist list is cached per user across the whole
-// module lifetime, so without an explicit reset the second test in this file
-// would be served the first test's playlists.
-const { requestCache } = await import('../../server/lib/request-cache.js');
+// module lifetime, so without the reset in beforeEach the second test in this
+// file would be served the first test's playlists.
 const { __resetCacheCoordinationForTests } = await import('../../server/lib/social-cache.js');
 
 const app = express();
@@ -63,29 +62,15 @@ app.use('/api', apiRoutes);
 
 afterAll(() => { process.env.NODE_ENV = ORIGINAL_NODE_ENV; });
 
-// Awaited, and BEFORE the cache wipe. Both halves of that matter, and getting
-// either wrong is invisible until the suite fails once in thirty runs:
-//
-//   - `__resetCacheCoordinationForTests` is async because it drains the
-//     background revalidations and in-flight loads the previous test left
-//     scheduled. Calling it without `await` runs only its synchronous half —
-//     clearing the coordination maps — and lets the pending work resolve
-//     inside the NEXT test. Worse, clearing `invalidatedAt` removes the mark
-//     that would have made `revalidateInBackground` discard its stale result,
-//     so the un-awaited call actively re-enables the write it was supposed to
-//     wait for.
-//   - Those writes land in `requestCache`. Wiping the cache first and settling
-//     afterwards therefore wipes it and then lets the previous test's
-//     playlists be written straight back in, which is exactly the bug: the
-//     route is then served a cached list it never asked SoundCloud for, and
-//     assertions about totals, ranges and "could not fully read" guards
-//     describe the wrong fixture.
-//
-// tests/social-cache.test.js and tests/social-cache-tiering.test.js already
-// do it in this order for the same reason; this suite was the one that drifted.
+// `__resetCacheCoordinationForTests` is awaited because it is async for a
+// reason: it drains the background revalidations and in-flight loads the
+// previous test left scheduled, then wipes every cache they may have written.
+// Its own docblock in server/lib/social-cache.js explains why that order is
+// the whole point — this suite used to call it un-awaited and wipe the cache
+// itself beforehand, which is how one test's playlists ended up serving the
+// next one.
 beforeEach(async () => {
   await __resetCacheCoordinationForTests();
-  requestCache.invalidateUser('user-a');
   getPlaylists.mockReset();
   getAllPlaylists.mockReset();
   getPlaylistWithTracks.mockReset();

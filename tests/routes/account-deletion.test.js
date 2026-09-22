@@ -54,6 +54,8 @@ const { rejectUntrustedOrigin } = await import('../../server/middleware/security
 const { invalidateUserCollections, invalidationMarkCount, __resetCacheCoordinationForTests } =
   await import('../../server/lib/social-cache.js');
 const { requestCache } = await import('../../server/lib/request-cache.js');
+const { setCachedAuth, getCachedAuth, clearAuthCache } =
+  await import('../../server/lib/auth-cache.js');
 
 // Mirrors server/index.js: express.json(), cookieParser(), then
 // rejectUntrustedOrigin on /api. The origin check is the only CSRF guard the
@@ -71,6 +73,7 @@ beforeEach(async () => {
   tokenDeleteMany.mockClear();
   dropSnapshots.mockClear();
   signOut.mockClear();
+  clearAuthCache();
 });
 
 describe('DELETE /api/auth/account', () => {
@@ -153,6 +156,26 @@ describe('POST /api/auth/disconnect', () => {
       expect(res.status).toBe(500);
       expect(userUpdate).not.toHaveBeenCalled();
       expect(quiet).toHaveBeenCalled();
+    } finally {
+      quiet.mockRestore();
+    }
+  });
+
+  test('the auth memo is dropped even when a later step fails', async () => {
+    // The landmine: the memo holds DECRYPTED tokens for 30s. If the user
+    // update throws after the tokens are already deleted, leaving the memo
+    // populated would keep serving credentials whose row no longer exists.
+    const quiet = jest.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      setCachedAuth('user-1', { user: { id: 'user-1' }, accessToken: 'at', refreshToken: 'rt' });
+      expect(getCachedAuth('user-1')).toBeDefined();
+
+      userUpdate.mockRejectedValueOnce(new Error('db down'));
+      const res = await request(app).post('/api/auth/disconnect');
+
+      expect(res.status).toBe(500);
+      expect(tokenDeleteMany).toHaveBeenCalled();
+      expect(getCachedAuth('user-1')).toBeUndefined();
     } finally {
       quiet.mockRestore();
     }

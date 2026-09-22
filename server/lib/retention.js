@@ -13,9 +13,12 @@
  *   - The user deletes rely on the same onDelete: Cascade that the account
  *     deletion route relies on (tests/account-deletion-cascade.test.js), so
  *     removing a user row removes its tokens, logs, votes and cache pages.
- *   - Step 4 snapshots the lifetime distinct-user count BEFORE purging the
- *     logs it is computed from. Without that, the all-time figure would
- *     silently shrink every time rows aged out.
+ *   - Step 0 snapshots the lifetime distinct-user count before ANY delete in
+ *     the run. Not just before the operation-log purge: the user sweeps
+ *     cascade into operation_logs too, so counting after them would drop the
+ *     departing users from the all-time figure that exists to remember them.
+ *   - Every user delete logs its size before it runs, so the first production
+ *     sweep is reviewable from the logs rather than only from its aftermath.
  *
  * Windows (env-overridable where the brief calls for it):
  *   library cache   CACHE_TTL_DAYS         7 days
@@ -25,6 +28,7 @@
  *   growth actions  (constant)             365 days
  *   feedback        (constant)             730 days
  */
+import { Prisma } from '@prisma/client';
 import prisma from './prisma.js';
 import logger from './logger.js';
 import { safeError } from './safe-error.js';
@@ -88,19 +92,28 @@ async function runStep(name, fn, results, verb = 'removed') {
 }
 
 /**
- * Snapshot the lifetime distinct-user count, then purge aged operation logs.
+ * Snapshot the lifetime distinct-user count.
+ *
+ * Runs as the FIRST step of every sweep — before the disconnected and dormant
+ * user deletes, not merely before the operation-log purge. Those deletes
+ * cascade to `operation_logs`, so counting after them would lose every user
+ * the same run is about to remove: precisely the people the all-time figure
+ * exists to remember.
  *
  * The metric is monotonic: a run raises it to the current distinct count and
- * never lowers it, so the number survives every later purge. Expressed through
- * the Prisma API (`distinct`) rather than raw SQL — one row per distinct user
- * is a handful of kilobytes at this scale, and it keeps the query portable.
+ * never lowers it, so the number survives every later purge.
+ *
+ * Raw SQL, matching the aggregates in routes/admin.js: `COUNT(DISTINCT ...)`
+ * is one row out of Postgres, where `findMany({ distinct })` would drag back
+ * one row per user to be counted in Node. `::int` because an uncast COUNT
+ * arrives as BigInt.
  */
 async function snapshotLifetimeUsers() {
-  const distinctRows = await prisma.operationLog.findMany({
-    distinct: ['userId'],
-    select: { userId: true },
-  });
-  const current = distinctRows.length;
+  const rows = await prisma.$queryRaw(Prisma.sql`
+    SELECT COUNT(DISTINCT "userId")::int AS count
+    FROM operation_logs
+  `);
+  const current = Number(rows?.[0]?.count ?? 0);
 
   const stored = await prisma.metric.findUnique({ where: { key: LIFETIME_METRIC_KEY } });
   const previous = stored ? Number(stored.value) : 0;
@@ -116,6 +129,23 @@ async function snapshotLifetimeUsers() {
 }
 
 /**
+ * Delete users matching `where`, announcing the size of the sweep first.
+ *
+ * The count is not decoration. These deletes cascade across every per-user
+ * table and are irreversible, so the first production run needs to be
+ * reviewable from the logs alone — `will remove N users` before the fact is
+ * what makes an unexpectedly large sweep visible rather than merely done.
+ * The extra COUNT is negligible against an indexed range scan.
+ */
+async function sweepUsers(name, where, results) {
+  await runStep(name, async () => {
+    const pending = await prisma.user.count({ where });
+    logger.info(`[retention] ${name} will remove ${pending} users`);
+    return prisma.user.deleteMany({ where });
+  }, results);
+}
+
+/**
  * Execute the full sweep once. Exported so tests can drive it directly and so
  * an operator can trigger it from a REPL without waiting for the interval.
  *
@@ -124,6 +154,11 @@ async function snapshotLifetimeUsers() {
  */
 export async function runRetentionOnce(now = Date.now()) {
   const results = {};
+
+  // 0. Lifetime snapshot, FIRST — before the user deletes below, which cascade
+  //    to operation_logs and would otherwise erase the very users this figure
+  //    exists to remember.
+  await runStep('lifetime-users-metric', () => snapshotLifetimeUsers(), results, 'snapshot');
 
   // 1. Library cache tier. Pages are immutable once written, so they age by
   //    createdAt; the state row is rewritten on every sync, so it ages by
@@ -137,25 +172,22 @@ export async function runRetentionOnce(now = Date.now()) {
   // 2. Accounts that disconnected and did not come back. Logging in clears
   //    disconnectedAt, so anything still stamped a week later is settled.
   const disconnectedCutoff = daysAgo(now, DISCONNECTED_GRACE_DAYS);
-  await runStep('disconnected-users', () =>
-    prisma.user.deleteMany({ where: { disconnectedAt: { lt: disconnectedCutoff } } }), results);
+  await sweepUsers('disconnected-users',
+    { disconnectedAt: { lt: disconnectedCutoff } }, results);
 
   // 3. Dormant accounts. Rows created before lastLoginAt existed have it null;
   //    updatedAt is the best available proxy for those, and the OAuth callback
   //    touches it on every login.
   const inactiveCutoff = monthsAgo(now, numFromEnv('INACTIVE_MONTHS', 24));
-  await runStep('inactive-users', () =>
-    prisma.user.deleteMany({
-      where: {
-        OR: [
-          { lastLoginAt: { lt: inactiveCutoff } },
-          { AND: [{ lastLoginAt: null }, { updatedAt: { lt: inactiveCutoff } }] },
-        ],
-      },
-    }), results);
+  await sweepUsers('inactive-users', {
+    OR: [
+      { lastLoginAt: { lt: inactiveCutoff } },
+      { AND: [{ lastLoginAt: null }, { updatedAt: { lt: inactiveCutoff } }] },
+    ],
+  }, results);
 
-  // 4. Lifetime snapshot FIRST, then the log purge it protects.
-  await runStep('lifetime-users-metric', () => snapshotLifetimeUsers(), results, 'snapshot');
+  // 4. Aged operation logs. The snapshot that protects the all-time figure
+  //    already ran as step 0.
   const oplogCutoff = daysAgo(now, numFromEnv('OPLOG_RETENTION_DAYS', 365));
   await runStep('operation-logs', () =>
     prisma.operationLog.deleteMany({ where: { createdAt: { lt: oplogCutoff } } }), results);

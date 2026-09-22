@@ -18,8 +18,9 @@ const ok = (count = 0) => {
 const libraryCachePageDeleteMany = ok(3);
 const libraryCacheStateDeleteMany = ok(2);
 const userDeleteMany = ok(1);
+const userCount = jest.fn();
 const operationLogDeleteMany = ok(40);
-const operationLogFindMany = jest.fn();
+const queryRaw = jest.fn();
 const growthActionDeleteMany = ok(7);
 const feedbackDeleteMany = ok(1);
 const betaSignupUpdateMany = ok(5);
@@ -30,14 +31,16 @@ const metricUpsert = jest.fn();
 const prismaMock = {
   libraryCachePage: { deleteMany: libraryCachePageDeleteMany },
   libraryCacheState: { deleteMany: libraryCacheStateDeleteMany },
-  user: { deleteMany: userDeleteMany },
-  operationLog: { deleteMany: operationLogDeleteMany, findMany: operationLogFindMany },
+  user: { deleteMany: userDeleteMany, count: userCount },
+  operationLog: { deleteMany: operationLogDeleteMany },
   growthAction: { deleteMany: growthActionDeleteMany },
   feedback: { deleteMany: feedbackDeleteMany },
   betaSignup: { updateMany: betaSignupUpdateMany },
   track: { updateMany: trackUpdateMany },
   metric: { findUnique: metricFindUnique, upsert: metricUpsert },
 };
+// $queryRaw hangs off the client itself, not off a model delegate.
+prismaMock.$queryRaw = queryRaw;
 
 jest.unstable_mockModule('../server/lib/prisma.js', () => ({ default: prismaMock }));
 
@@ -52,20 +55,40 @@ afterAll(() => { infoSpy.mockRestore(); errorSpy.mockRestore(); });
 beforeEach(() => {
   // mockReset, not mockClear: implementations have to go too, or the
   // "everything rejects" test poisons every later one.
-  for (const model of Object.values(prismaMock)) {
-    for (const fn of Object.values(model)) {
-      fn.mockReset();
-      if (DEFAULT_COUNTS.has(fn)) fn.mockResolvedValue({ count: DEFAULT_COUNTS.get(fn) });
-    }
+  for (const fn of allMocks()) {
+    fn.mockReset();
+    if (DEFAULT_COUNTS.has(fn)) fn.mockResolvedValue({ count: DEFAULT_COUNTS.get(fn) });
   }
   infoSpy.mockClear();
   errorSpy.mockClear();
-  operationLogFindMany.mockResolvedValue([{ userId: 'a' }, { userId: 'b' }, { userId: 'c' }]);
+  // COUNT(DISTINCT "userId") comes back as a one-row result set.
+  queryRaw.mockResolvedValue([{ count: 3 }]);
+  userCount.mockResolvedValue(1);
   metricFindUnique.mockResolvedValue(null);
   metricUpsert.mockResolvedValue({});
 });
 
 const logLines = () => infoSpy.mock.calls.map((c) => c.join(' '));
+
+/**
+ * Drain the microtask queue. `runRetentionOnce` is a chain of ~20 awaits and
+ * every mock resolves immediately, so a fixed number of turns runs it to
+ * completion — and fake timers make setImmediate unavailable as a flush.
+ */
+const flush = async (turns = 60) => {
+  for (let i = 0; i < turns; i++) await Promise.resolve();
+};
+
+/** Every jest.fn in the mocked client, including the top-level $queryRaw. */
+function allMocks() {
+  const fns = [];
+  for (const [key, value] of Object.entries(prismaMock)) {
+    if (typeof value === 'function') fns.push(value);
+    else if (value && typeof value === 'object') fns.push(...Object.values(value));
+    void key;
+  }
+  return fns;
+}
 
 describe('cutoff dates', () => {
   test('library cache pages age by createdAt, states by updatedAt, both at 7 days', async () => {
@@ -182,10 +205,13 @@ describe('lifetime distinct-user snapshot', () => {
 
     await runRetentionOnce(NOW);
 
-    expect(operationLogFindMany).toHaveBeenCalledWith({
-      distinct: ['userId'],
-      select: { userId: true },
-    });
+    // Aggregated in Postgres, not by dragging one row per user into Node.
+    expect(queryRaw).toHaveBeenCalledTimes(1);
+    const sql = queryRaw.mock.calls[0][0];
+    const text = Array.isArray(sql?.strings) ? sql.strings.join('') : String(sql);
+    expect(text).toMatch(/COUNT\(DISTINCT "userId"\)/);
+    expect(text).toMatch(/FROM operation_logs/);
+
     expect(metricUpsert).toHaveBeenCalledWith({
       where: { key: LIFETIME_METRIC_KEY },
       create: { key: LIFETIME_METRIC_KEY, value: 3n },
@@ -217,6 +243,28 @@ describe('lifetime distinct-user snapshot', () => {
     expect(metricUpsert.mock.invocationCallOrder[0])
       .toBeLessThan(operationLogDeleteMany.mock.invocationCallOrder[0]);
   });
+
+  test('the snapshot runs before ANY user delete, not just before the log purge', async () => {
+    // The user sweeps cascade into operation_logs. Counting after them would
+    // drop exactly the departing users the all-time figure exists to keep.
+    await runRetentionOnce(NOW);
+
+    expect(queryRaw.mock.invocationCallOrder[0])
+      .toBeLessThan(userDeleteMany.mock.invocationCallOrder[0]);
+    expect(metricUpsert.mock.invocationCallOrder[0])
+      .toBeLessThan(userDeleteMany.mock.invocationCallOrder[0]);
+  });
+
+  test('it is the very first thing the run does', async () => {
+    await runRetentionOnce(NOW);
+
+    const everythingElse = allMocks()
+      .filter((fn) => fn !== queryRaw && fn !== metricFindUnique && fn !== metricUpsert)
+      .flatMap((fn) => fn.mock.invocationCallOrder);
+
+    expect(Math.min(...everythingElse))
+      .toBeGreaterThan(queryRaw.mock.invocationCallOrder[0]);
+  });
 });
 
 describe('step isolation', () => {
@@ -245,11 +293,19 @@ describe('step isolation', () => {
   });
 
   test('runRetentionOnce never rejects, even if every step throws', async () => {
-    for (const model of Object.values(prismaMock)) {
-      for (const fn of Object.values(model)) fn.mockRejectedValue(new Error('everything is down'));
-    }
+    for (const fn of allMocks()) fn.mockRejectedValue(new Error('everything is down'));
 
     await expect(runRetentionOnce(NOW)).resolves.toEqual(expect.any(Object));
+  });
+
+  test('a failing pre-delete count does not delete anything for that step', async () => {
+    userCount.mockRejectedValueOnce(new Error('count failed'));
+
+    const results = await runRetentionOnce(NOW);
+
+    expect(results['disconnected-users']).toBeNull();
+    // Only the inactive sweep got through; the disconnected delete never ran.
+    expect(userDeleteMany).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -269,6 +325,29 @@ describe('logging', () => {
       '[INFO] [retention] beta-signup-emails removed 5',
       '[INFO] [retention] catalog-gone-metadata removed 9',
     ]));
+  });
+
+  test('every user delete announces its size before running', async () => {
+    userCount.mockResolvedValue(12);
+
+    await runRetentionOnce(NOW);
+
+    const lines = logLines();
+    expect(lines).toContain('[INFO] [retention] disconnected-users will remove 12 users');
+    expect(lines).toContain('[INFO] [retention] inactive-users will remove 12 users');
+
+    // Announced before the fact, not after — that is the whole point.
+    expect(userCount.mock.invocationCallOrder[0])
+      .toBeLessThan(userDeleteMany.mock.invocationCallOrder[0]);
+    expect(lines.indexOf('[INFO] [retention] disconnected-users will remove 12 users'))
+      .toBeLessThan(lines.indexOf('[INFO] [retention] disconnected-users removed 1'));
+  });
+
+  test('the count is scoped to the same filter as the delete', async () => {
+    await runRetentionOnce(NOW);
+
+    expect(userCount.mock.calls[0][0]).toEqual(userDeleteMany.mock.calls[0][0]);
+    expect(userCount.mock.calls[1][0]).toEqual(userDeleteMany.mock.calls[1][0]);
   });
 
   test('the metric step does not claim to have removed anything', async () => {
@@ -329,7 +408,7 @@ describe('scheduler', () => {
     expect(operationLogDeleteMany).not.toHaveBeenCalled();
 
     jest.advanceTimersByTime(10 * 60 * 1000);
-    await Promise.resolve();
+    await flush();
     expect(libraryCachePageDeleteMany).toHaveBeenCalled();
 
     clearInterval(interval);
@@ -340,11 +419,11 @@ describe('scheduler', () => {
     try {
       const interval = startRetentionScheduler();
       jest.advanceTimersByTime(10 * 60 * 1000);
-      await Promise.resolve();
+      await flush();
       const afterFirst = libraryCachePageDeleteMany.mock.calls.length;
 
       jest.advanceTimersByTime(60 * 60 * 1000);
-      await Promise.resolve();
+      await flush();
       expect(libraryCachePageDeleteMany.mock.calls.length).toBeGreaterThan(afterFirst);
 
       clearInterval(interval);

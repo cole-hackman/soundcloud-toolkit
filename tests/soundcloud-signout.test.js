@@ -62,16 +62,26 @@ describe('isInvalidGrantResponse', () => {
     expect(isInvalidGrantResponse(401, '{"error":"invalid_grant"}')).toBe(true);
   });
 
-  test('a 401 with no parsable body is revocation', () => {
+  test('a 401 with an empty body is revocation', () => {
     expect(isInvalidGrantResponse(401, '')).toBe(true);
     expect(isInvalidGrantResponse(401, '   ')).toBe(true);
-    expect(isInvalidGrantResponse(401, '<html>gateway</html>')).toBe(true);
+    expect(isInvalidGrantResponse(401, undefined)).toBe(true);
+  });
+
+  test('a 401 with a non-empty non-JSON body is NOT revocation', () => {
+    // An HTML error page from a proxy or WAF in front of the token endpoint
+    // is far likelier than a revocation, and acting on it would destroy a
+    // live user's tokens because of someone else's infrastructure.
+    expect(isInvalidGrantResponse(401, '<html><body>502 Bad Gateway</body></html>')).toBe(false);
+    expect(isInvalidGrantResponse(401, 'Unauthorized')).toBe(false);
+    expect(isInvalidGrantResponse(401, '<!DOCTYPE html>')).toBe(false);
   });
 
   test('a 400 with no parsable body is NOT revocation', () => {
     // A bare 400 is too ambiguous to log someone out over.
     expect(isInvalidGrantResponse(400, '')).toBe(false);
     expect(isInvalidGrantResponse(400, 'Bad Request')).toBe(false);
+    expect(isInvalidGrantResponse(400, '<html>nope</html>')).toBe(false);
   });
 
   test('another OAuth error code is not revocation', () => {

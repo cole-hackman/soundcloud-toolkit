@@ -42,17 +42,21 @@ export async function disconnectUser(userId, { accessToken, reason } = {}) {
 
   // deleteMany, not delete: the token row may already be gone (a second
   // disconnect, or a revocation racing a manual one) and that is not an error.
-  await prisma.token.deleteMany({ where: { userId } });
+  try {
+    await prisma.token.deleteMany({ where: { userId } });
+  } finally {
+    // The auth memo holds DECRYPTED tokens for 30s — the landmine documented
+    // in STATE.md. This runs immediately after the delete, in a finally, so no
+    // later failure in this function can leave the memo serving credentials
+    // whose database row is already gone. Invalidating when the delete itself
+    // failed is harmless: a miss only costs one lookup.
+    invalidateCachedAuth(userId);
+  }
 
   await prisma.user.update({
     where: { id: userId },
     data: { disconnectedAt: new Date() },
   });
-
-  // The auth memo holds DECRYPTED tokens for 30s. Without this, requests
-  // arriving in that window would keep working against tokens that no longer
-  // exist in the database — the landmine documented in STATE.md.
-  invalidateCachedAuth(userId);
 
   // Their library payloads are derived from the grant we just gave back, so
   // nothing about them should outlive it in memory or in the durable tier.

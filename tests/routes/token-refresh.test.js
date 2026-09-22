@@ -159,7 +159,7 @@ describe('revocation detection at the refresh choke point', () => {
     expect(tokenUpdate).not.toHaveBeenCalled();
   });
 
-  test('a bare 401 from the token endpoint counts as revocation', async () => {
+  test('a 401 with an empty body counts as revocation', async () => {
     fetch
       .mockReturnValueOnce(Promise.resolve(new Response('', { status: 401 })))
       .mockReturnValueOnce(Promise.resolve(new Response('', { status: 401 })));
@@ -168,6 +168,23 @@ describe('revocation detection at the refresh choke point', () => {
 
     expect(tokenDeleteMany).toHaveBeenCalledWith({ where: { userId: 'user-1' } });
     expect(userUpdate).toHaveBeenCalled();
+  });
+
+  test('a 401 carrying an HTML error page deletes nothing', async () => {
+    // A proxy or WAF in front of the token endpoint, not SoundCloud saying
+    // the grant is gone. Destroying tokens over this would be an outage.
+    fetch
+      .mockReturnValueOnce(Promise.resolve(new Response('', { status: 401 })))
+      .mockReturnValueOnce(Promise.resolve(new Response(
+        '<html><head><title>401 Authorization Required</title></head></html>',
+        { status: 401 }
+      )));
+
+    const res = await request(app).get('/probe').set('Cookie', sessionCookie());
+
+    expect(res.body.error).toBe('Token refresh failed');
+    expect(tokenDeleteMany).not.toHaveBeenCalled();
+    expect(userUpdate).not.toHaveBeenCalled();
   });
 
   test('a 503 deletes nothing — SoundCloud being down is not revocation', async () => {

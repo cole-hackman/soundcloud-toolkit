@@ -93,25 +93,32 @@ export async function signOut(accessToken) {
  * Does this failed token-endpoint response mean the authorization is gone for
  * good, as opposed to SoundCloud having a bad minute?
  *
- * Only `invalid_grant` on a 400/401 counts, plus a bare 401 with no parsable
- * body (SoundCloud sometimes returns one for a revoked grant). Network errors,
- * timeouts, 429 and every 5xx deliberately do NOT count: disconnecting a user
- * because SoundCloud was briefly down would log them out and delete their
- * tokens over a transient blip.
+ * Exactly two things count:
+ *   - a 400 or 401 whose JSON body says `{"error": "invalid_grant"}`;
+ *   - a 401 with an *empty* body (SoundCloud returns one for a revoked grant).
+ *
+ * A 401 with a non-empty body that is not JSON does NOT count. That shape is
+ * far more likely to be an HTML error page from a proxy or WAF in front of the
+ * token endpoint than a revocation, and acting on it would delete a live
+ * user's tokens because of someone else's infrastructure.
+ *
+ * Network errors, timeouts, 429 and every 5xx are likewise excluded:
+ * disconnecting a user because SoundCloud was briefly down would log them out
+ * and destroy their tokens over a transient blip.
  */
 export function isInvalidGrantResponse(status, bodyText) {
   if (status !== 400 && status !== 401) return false;
 
   const text = typeof bodyText === 'string' ? bodyText.trim() : '';
-  if (text) {
-    try {
-      return JSON.parse(text)?.error === 'invalid_grant';
-    } catch {
-      // Unparsable body — a 400 could be anything, a 401 is unambiguous.
-      return status === 401;
-    }
+  // Empty body: unambiguous on a 401, meaningless on a 400.
+  if (!text) return status === 401;
+
+  try {
+    return JSON.parse(text)?.error === 'invalid_grant';
+  } catch {
+    // Non-empty and not JSON — an error page, not an OAuth error.
+    return false;
   }
-  return status === 401;
 }
 
 /**

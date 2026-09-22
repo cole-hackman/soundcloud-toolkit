@@ -21,6 +21,9 @@ const PAGES: PageCase[] = [
   { path: "/does-not-exist/" },
   { path: "/dashboard/", needsMock: true },
   { path: "/like-manager/", needsMock: true },
+  { path: "/following-manager/", needsMock: true },
+  { path: "/repost-manager/", needsMock: true },
+  { path: "/combine/", needsMock: true },
   { path: "/playlist-modifier/", needsMock: true },
   { path: "/feedback/", needsMock: true },
   {

@@ -22,11 +22,10 @@ const PAGES: PageCase[] = [
   { path: "/login/" },
   { path: "/does-not-exist/", expectedStatus: 404 },
   { path: "/dashboard/", needsMock: true },
-  {
-    path: "/like-manager/",
-    needsMock: true,
-    fixme: "Phase 6 — the sort <select> has no accessible name (select-name)",
-  },
+  { path: "/like-manager/", needsMock: true },
+  { path: "/following-manager/", needsMock: true },
+  { path: "/repost-manager/", needsMock: true },
+  { path: "/combine/", needsMock: true },
   { path: "/playlist-modifier/", needsMock: true },
   { path: "/growth/", needsMock: true },
   { path: "/feedback/", needsMock: true },
@@ -52,6 +51,16 @@ for (const { path, needsMock, fixme, expectedStatus } of PAGES) {
 
     if (expectedStatus !== undefined) {
       expect(response?.status()).toBe(expectedStatus);
+    }
+
+    // Audit the route's own content, not the shell's spinner. `AppLayout`
+    // renders a hydration/auth placeholder before the page mounts, and axe is
+    // fast enough to scan that placeholder and report a clean pass while the
+    // page under test was never audited at all — a green suite that proves
+    // nothing. Waiting for the `<h1>` every `(app)` page renders through
+    // `PageHeader` is the cheapest proof that the real thing is on screen.
+    if (needsMock) {
+      await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
     }
 
     const results = await new AxeBuilder({ page })

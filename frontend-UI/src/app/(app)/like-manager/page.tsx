@@ -17,6 +17,10 @@ import {
   TrackRow,
   Card,
   Input,
+  Field,
+  Select,
+  ProgressBar,
+  SectionHeading,
   Button
 } from "@/components/ui";
 import { ProgressiveBlur } from "@/components/ui/ProgressiveBlur";
@@ -302,17 +306,13 @@ export default function LikeManagerPage() {
         )}
 
         {removing && unlikeProgress && (
-          <div className="mb-6 p-4 rounded-lg border-2 border-border bg-secondary/10">
-            <div className="text-sm font-medium text-foreground mb-2">
-              Unliking tracks… {unlikeProgress.completed}/{unlikeProgress.total} (batch {unlikeProgress.currentBatch} of {unlikeProgress.totalBatches})
-            </div>
-            <div className="w-full h-1.5 rounded bg-secondary/30 overflow-hidden">
-              <div 
-                className="h-full bg-primary transition-all duration-300"
-                style={{ width: `${(unlikeProgress.completed / unlikeProgress.total) * 100}%` }}
-              />
-            </div>
-          </div>
+          <ProgressBar
+            className="mb-6 rounded-lg border-2 border-border bg-secondary/10 p-4"
+            label="Unliking tracks"
+            detail={`batch ${unlikeProgress.currentBatch} of ${unlikeProgress.totalBatches}`}
+            value={unlikeProgress.completed}
+            max={unlikeProgress.total}
+          />
         )}
 
         {likesState.isLoadingFirstPage ? (
@@ -341,32 +341,47 @@ export default function LikeManagerPage() {
           </Card>
         ) : (
           <Card className="p-6">
+            <SectionHeading className="mb-3">Liked tracks</SectionHeading>
+
             {/* Controls */}
-            <div className="flex items-center gap-3 mb-4 flex-wrap">
-              <div className="relative flex-1 min-w-[200px]">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                  type="text"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search likes..."
-                  className="pl-9 h-10 bg-secondary/20 border-border"
-                />
-              </div>
-              <select
+            <div className="grid grid-cols-1 gap-2 mb-4 sm:grid-cols-2 lg:flex lg:flex-wrap lg:items-end">
+              <Field
+                label="Search likes"
+                className="lg:min-w-[200px] lg:flex-1 [&>label]:sr-only"
+              >
+                {(field) => (
+                  <div className="relative">
+                    <Search
+                      aria-hidden="true"
+                      className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground"
+                    />
+                    <Input
+                      {...field}
+                      type="text"
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                      placeholder="Search likes..."
+                      className="h-11 pl-9 bg-secondary/20 border-border"
+                    />
+                  </div>
+                )}
+              </Field>
+              <Select
+                label="Sort"
                 value={sort}
                 onChange={(e) => setSort(e.target.value as SortOption)}
-                className="h-10 px-3 border-2 border-border rounded-lg text-sm text-foreground bg-secondary/20 focus:border-primary focus:outline-none"
+                className="bg-secondary/20"
               >
                 <option value="recent">Most Recent</option>
                 <option value="oldest">Oldest First</option>
                 <option value="alpha">A → Z</option>
-              </select>
+              </Select>
               {uniqueGenres.length > 0 && (
-                <select
+                <Select
+                  label="Genre"
                   value={genreFilter}
                   onChange={(e) => setGenreFilter(e.target.value)}
-                  className="h-10 px-3 border-2 border-border rounded-lg text-sm text-foreground bg-secondary/20 focus:border-primary focus:outline-none max-w-[150px] truncate"
+                  className="bg-secondary/20 lg:max-w-[150px]"
                 >
                   <option value="All">All Genres</option>
                   {uniqueGenres.map((g) => (
@@ -374,36 +389,41 @@ export default function LikeManagerPage() {
                       {g}
                     </option>
                   ))}
-                </select>
+                </Select>
               )}
-              <select
+              <Select
+                label="Show"
                 value={durationFilter}
                 onChange={(e) => setDurationFilter(e.target.value)}
-                className="h-10 px-3 border-2 border-border rounded-lg text-sm text-foreground bg-secondary/20 focus:border-primary focus:outline-none"
+                className="bg-secondary/20"
               >
                 <option value="All">All Durations</option>
                 <option value="< 3 mins">&lt; 3 mins</option>
                 <option value="3-5 mins">3-5 mins</option>
                 <option value="5-10 mins">5-10 mins</option>
                 <option value="> 10 mins">&gt; 10 mins</option>
-              </select>
-              <button
+              </Select>
+              <Button
+                variant="ghost"
+                size="sm"
                 onClick={selectAll}
-                className="text-sm text-primary-text hover:underline font-medium whitespace-nowrap"
+                className="whitespace-nowrap text-primary-text sm:col-span-2 lg:col-span-1"
               >
                 {selected.size === filteredLikes.length
                   ? "Deselect All"
                   : selectAllLabel(likesState, filteredLikes.length)}
-              </button>
+              </Button>
             </div>
 
             {likesStatus && (
-              <div className="text-sm text-muted-foreground mb-2">{likesStatus}</div>
+              <p role="status" className="text-sm text-muted-foreground mb-2">
+                {likesStatus}
+              </p>
             )}
 
             <ProgressiveBlur
               ref={listScrollRef}
-              className="max-h-[600px] overflow-y-auto"
+              className="max-h-[60dvh] overflow-y-auto"
               active={filteredLikes.length > 8}
               fadeHeight={72}
             >

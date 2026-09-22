@@ -21,7 +21,17 @@ export type Tone = "primary" | "ok" | "warn" | "danger" | "info" | "muted";
  * declares for exactly that (`globals.css`: "Never use --primary for small
  * text"). Before 2026-09-22 all three used `--chart-*`/`--primary`, which put
  * a 10px `TONE_SOFT.warn` pill at **1.43:1** and `StatusPill` SPLIT at
- * 1.42:1. Every pair below is now a row in `scripts/contrast-check.mjs`.
+ * 1.42:1.
+ *
+ * **`scripts/contrast-check.mjs` parses these two maps out of this file** and
+ * turns every entry into a gated pair, so editing a class here changes what
+ * `npm run contrast` measures. It does not hold a copy of them: it held one
+ * for about an hour, and a copy cannot notice its original changing — putting
+ * `text-chart-3` back on `ok` left the gate reporting 115 passing pairs. Keep
+ * the shape it parses: one `bg-…` and one `text-…` per `TONE_SOFT` entry, one
+ * `text-…` per `TONE_TEXT` entry, each on its own line in a double-quoted
+ * string. Adding a seventh tone fails the gate until `EXPECTED_TONES` there
+ * is updated, which is the prompt to check the new tone's numbers.
  */
 export const TONE_TEXT: Record<Tone, string> = {
   primary: "text-primary-text",
@@ -44,9 +54,14 @@ export const TONE_BG: Record<Tone, string> = {
 /**
  * The tint half is unchanged — the hue is what tells one pill from another,
  * and every pill also carries a word, so colour is never the only signal.
- * Only the ink moved. `danger` is `/10` rather than `/12` because
- * `--destructive` is the one tint dark enough in light mode to pull the
- * composite below AA at 12% (4.51:1 vs 4.94:1).
+ * Only the ink moved.
+ *
+ * `danger` is `/10` rather than `/12` for margin, not because `/12` fails:
+ * `--destructive` is the one tint dark enough in light mode to bring the
+ * composite down to 4.51:1, which passes AA by 0.01. `/10` is 4.94:1. Both
+ * are gated, so `/12` would stay green — the tenth of a point is a choice
+ * about how close to the line this map should sit, and the answer is "not
+ * that close".
  */
 export const TONE_SOFT: Record<Tone, string> = {
   primary: "bg-primary/12 text-primary-text",

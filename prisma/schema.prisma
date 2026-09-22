@@ -33,6 +33,7 @@ model User {
   growthActions         GrowthAction[]
   betaSignups           BetaSignup[]
   rebrandVotes          RebrandVote[]
+  feedback              Feedback[]
   // Tables owned by other feature branches (AI library chat, library indexing).
   // Declared here so `prisma db push` from this branch does not drop live
   // production data. Keep in sync when those branches change their schema.
@@ -104,6 +105,42 @@ model RebrandVote {
   @@index([nameChoice])
   @@index([soundcloudId])
   @@map("rebrand_votes")
+}
+
+/// In-app feedback — the "Send feedback" form. Login-required, so every row is
+/// attributable and the honeypot plus the per-user limiter are enough; there is
+/// no email delivery, no webhook and no third-party widget. `message` and
+/// `email` are the only free text a user supplies, and neither is ever logged.
+///
+/// `messageHash` is the sha256 of the whitespace-collapsed, lowercased message.
+/// It exists so a double-submit (or a user re-sending the same report because
+/// nothing visibly happened) is answered 409 instead of filling the inbox with
+/// duplicates — matched against the same user's last 24 hours, which is what
+/// the ([userId, messageHash, createdAt]) index serves.
+model Feedback {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  soundcloudId Int
+  type         String // bug | feature | other
+  message      String   @db.Text
+  // Route the feedback was sent from, e.g. "/playlist-keyword-search".
+  page         String?
+  // Optional reply address. Absent unless the user typed one.
+  email        String?
+  // Coarse device/browser/platform from extractClientInfo() — no IP, no raw UA.
+  clientInfo   Json?
+  status       String   @default("new") // new | seen | done | spam
+  // Admin-only triage note. Never returned by any non-admin route.
+  adminNote    String?  @db.Text
+  messageHash  String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([status, createdAt])
+  @@index([userId, createdAt])
+  @@index([userId, messageHash, createdAt])
+  @@map("feedback")
 }
 
 model BetaSignup {

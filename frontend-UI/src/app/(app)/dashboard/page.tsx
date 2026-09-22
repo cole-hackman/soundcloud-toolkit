@@ -29,7 +29,16 @@ import {
   History,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
-import { Card, EmptyState, Input, PageContainer, Skeleton, Button } from "@/components/ui";
+import {
+  Button,
+  Card,
+  EmptyState,
+  Field,
+  Input,
+  PageContainer,
+  PageHeader,
+  Skeleton,
+} from "@/components/ui";
 import { SupportLink } from "@/components/SupportLink";
 import { WhatsNewModal } from "@/components/WhatsNewModal";
 import {
@@ -282,19 +291,21 @@ function DashboardStats() {
   return (
     <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
       {statsData.map((stat, index) => {
+        // The key lives on whichever element the map returns (the `Link` or
+        // the wrapping `div`), never here as well — a duplicate on the inner
+        // node is dead weight React ignores.
         const cardContent = (
           <Card
-            key={index}
             variant="glass"
             className={`p-3 sm:p-4 text-center ${stat.link ? "hover:-translate-y-0.5 hover:border-primary/50 transition-all cursor-pointer" : ""}`}
           >
             <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center mb-2 mx-auto">
-              <stat.icon className="w-4 h-4 text-primary" />
+              <stat.icon aria-hidden="true" className="w-4 h-4 text-primary" />
             </div>
             <div className="text-xl sm:text-2xl font-bold mb-0.5 text-foreground">
               {stat.value.toLocaleString()}
             </div>
-            <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
+            <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
               {stat.label}
             </div>
           </Card>
@@ -412,52 +423,57 @@ export default function DashboardPage() {
     <PageContainer maxWidth="default">
       <WhatsNewModal open={showWhatsNew} onClose={handleCloseWhatsNew} />
 
-      {/* Welcome Section */}
-      <div className="flex items-start justify-between gap-4 mb-5">
-        <div className="min-w-0">
-          <h1 className="text-xl sm:text-2xl font-bold text-foreground">
-            Dashboard
-          </h1>
-          <p className="text-sm mt-0.5 text-muted-foreground">
-            Quick access to your tools, stats, and recent activity.
-          </p>
-        </div>
-        <div className="flex items-center gap-3 shrink-0">
-          {user?.avatar_url && (
+      {/*
+        PageHeader rather than a hand-rolled h1: it is what gives the route its
+        own `document.title` and the focusable `<h1>` the post-navigation focus
+        move lands on. `backHref=""` suppresses the mobile back link — this is
+        the page everything else goes back to.
+      */}
+      <PageHeader
+        title="Dashboard"
+        backHref=""
+        description="Quick access to your tools, stats, and recent activity."
+        actions={
+          user?.avatar_url ? (
             <img
               src={user.avatar_url}
-              alt={user.display_name}
+              alt={user.display_name || "Your profile"}
               width={40}
               height={40}
               loading="lazy"
               decoding="async"
-              className="w-10 h-10 rounded-full ring-2 ring-primary/20 shrink-0"
+              className="h-10 w-10 shrink-0 rounded-full ring-2 ring-primary/20"
             />
-          )}
-        </div>
-      </div>
+          ) : undefined
+        }
+        className="mb-5"
+      />
 
       {/* Link Resolver Quick Input */}
       <Card variant="glass" className="p-3 sm:p-4 mb-5">
-        <div className="flex flex-col sm:flex-row gap-2.5">
-          <div className="flex-1 relative">
-            <LinkIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input
-              type="text"
-              value={linkUrl}
-              onChange={(e) => setLinkUrl(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleResolveLink()}
-              placeholder="Paste a SoundCloud URL to resolve..."
-              className="pl-10 text-sm h-10 bg-surface dark:bg-black/20"
-            />
-          </div>
-          <Button
-            onClick={handleResolveLink}
-            disabled={!linkUrl.trim()}
-            size="default"
-            className="h-10"
-          >
-            <Search className="w-4 h-4" />
+        <div className="flex flex-col gap-2.5 sm:flex-row sm:items-end">
+          <Field label="Resolve a SoundCloud link" className="flex-1">
+            {(field) => (
+              <div className="relative">
+                <LinkIcon
+                  aria-hidden="true"
+                  className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground"
+                />
+                <Input
+                  {...field}
+                  type="url"
+                  inputMode="url"
+                  value={linkUrl}
+                  onChange={(e) => setLinkUrl(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleResolveLink()}
+                  placeholder="Paste a SoundCloud URL to resolve..."
+                  className="pl-10 bg-surface dark:bg-black/20"
+                />
+              </div>
+            )}
+          </Field>
+          <Button onClick={handleResolveLink} disabled={!linkUrl.trim()}>
+            <Search aria-hidden="true" className="w-4 h-4" />
             Resolve
           </Button>
         </div>
@@ -491,17 +507,24 @@ export default function DashboardPage() {
       )}
 
       {/* Tool search */}
-      <div className="mb-3">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            value={toolQuery}
-            onChange={(e) => setToolQuery(e.target.value)}
-            placeholder="Search tools…"
-            className="pl-9 h-10 bg-card"
-          />
-        </div>
-      </div>
+      <Field label="Search tools" className="mb-3">
+        {(field) => (
+          <div className="relative">
+            <Search
+              aria-hidden="true"
+              className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground"
+            />
+            <Input
+              {...field}
+              type="search"
+              value={toolQuery}
+              onChange={(e) => setToolQuery(e.target.value)}
+              placeholder="Search tools…"
+              className="pl-9 bg-card"
+            />
+          </div>
+        )}
+      </Field>
 
       {/* Quick Actions - Feature Cards, grouped by category */}
       {filteredFeatures.length === 0 ? (
@@ -527,9 +550,9 @@ export default function DashboardPage() {
                     <Link href={feature.path} className="block">
                       <div className="flex items-start justify-between mb-3">
                         <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center text-primary-foreground shadow-sm">
-                          <feature.icon className="w-5 h-5" />
+                          <feature.icon aria-hidden="true" className="w-5 h-5" />
                         </div>
-                        <ArrowRight className="w-4 h-4 text-primary opacity-0 group-hover:opacity-100 transition-opacity" />
+                        <ArrowRight aria-hidden="true" className="w-4 h-4 text-primary opacity-0 group-hover:opacity-100 transition-opacity" />
                       </div>
                       <h3 className="text-base font-bold mb-1 group-hover:text-primary-text transition text-foreground">
                         {feature.title}
@@ -563,7 +586,7 @@ export default function DashboardPage() {
           </span>
           <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-primary-text">
             Send feedback
-            <ArrowRight className="h-4 w-4" />
+            <ArrowRight aria-hidden="true" className="h-4 w-4" />
           </span>
         </Link>
       </Card>

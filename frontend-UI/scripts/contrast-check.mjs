@@ -19,7 +19,15 @@ const PAIRS = [
   ["muted-foreground-subtle", "background", 4.5, "subtle text"],
   ["primary-text", "background", 4.5, "orange as text"],
   ["primary-text", "card", 4.5, "orange as text on cards"],
-  ["primary-text", "accent", 4.5, "orange as text on a hovered row"],
+  // 3.0, not 4.5, because after the hovered-link fix the only things wearing
+  // the brand orange on `--accent` are icons — batch-link-resolver's
+  // open-on-SoundCloud button and following-manager's — and a glyph is a
+  // graphical object under 1.4.11. The three *text* links that used to pair
+  // these (batch-link-resolver's Clone and Downloads, ExportBackLink) now
+  // hover to `--accent-foreground`, gated on the next line. If this pair is
+  // ever put back on text, this threshold has to go to 4.5 — and it fails.
+  ["primary-text", "accent", 3.0, "orange ICON on a hovered row (1.4.11)"],
+  ["accent-foreground", "accent", 4.5, "text on a hovered row"],
   ["primary-foreground", "primary", 4.5, "primary button label"],
   ["destructive-foreground", "destructive", 4.5, "destructive button label"],
   ["destructive-text", "background", 4.5, "error text"],
@@ -80,22 +88,6 @@ const ALLOWANCES = {
   "dark:input / background": {
     min: 2.9,
     reason: "border plus the --surface fill together identify the control",
-  },
-  // OPEN, not accepted. `hover:bg-accent hover:text-primary-text` is real text
-  // on three call sites (batch-link-resolver's two result-toolbar buttons and
-  // ExportBackLink) and it is below AA in both themes. Closing it means moving
-  // --accent or --primary-text far enough to repaint every hovered row, which
-  // is a palette decision no task owns yet; the icon-only users of the same
-  // pair (batch-link-resolver's copy button, following-manager's external
-  // link) are graphics and clear 3:1. Listed here so the number is printed on
-  // every run rather than going latent again — raise the floor, never lower it.
-  "light:primary-text / accent": {
-    min: 4.2,
-    reason: "OPEN — hovered-row orange is below AA; needs a palette ruling",
-  },
-  "dark:primary-text / accent": {
-    min: 3.7,
-    reason: "OPEN — hovered-row orange is below AA; needs a palette ruling",
   },
 };
 

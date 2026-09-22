@@ -63,14 +63,34 @@ app.use('/api', apiRoutes);
 
 afterAll(() => { process.env.NODE_ENV = ORIGINAL_NODE_ENV; });
 
-beforeEach(() => {
+// Awaited, and BEFORE the cache wipe. Both halves of that matter, and getting
+// either wrong is invisible until the suite fails once in thirty runs:
+//
+//   - `__resetCacheCoordinationForTests` is async because it drains the
+//     background revalidations and in-flight loads the previous test left
+//     scheduled. Calling it without `await` runs only its synchronous half —
+//     clearing the coordination maps — and lets the pending work resolve
+//     inside the NEXT test. Worse, clearing `invalidatedAt` removes the mark
+//     that would have made `revalidateInBackground` discard its stale result,
+//     so the un-awaited call actively re-enables the write it was supposed to
+//     wait for.
+//   - Those writes land in `requestCache`. Wiping the cache first and settling
+//     afterwards therefore wipes it and then lets the previous test's
+//     playlists be written straight back in, which is exactly the bug: the
+//     route is then served a cached list it never asked SoundCloud for, and
+//     assertions about totals, ranges and "could not fully read" guards
+//     describe the wrong fixture.
+//
+// tests/social-cache.test.js and tests/social-cache-tiering.test.js already
+// do it in this order for the same reason; this suite was the one that drifted.
+beforeEach(async () => {
+  await __resetCacheCoordinationForTests();
+  requestCache.invalidateUser('user-a');
   getPlaylists.mockReset();
   getAllPlaylists.mockReset();
   getPlaylistWithTracks.mockReset();
   addTracksToPlaylist.mockReset();
   logOperation.mockReset();
-  requestCache.invalidateUser('user-a');
-  __resetCacheCoordinationForTests();
 });
 
 /** N playlist stubs, ids 1..N — what getAllPlaylists hands back. */

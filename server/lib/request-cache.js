@@ -75,6 +75,19 @@ export function createRequestCache({ maxEntries = DEFAULT_MAX_ENTRIES } = {}) {
         }
       }
     },
+
+    /**
+     * Drop every entry, for every user.
+     *
+     * Only the test reset (`__resetCacheCoordinationForTests` in
+     * social-cache.js) has any business calling this: production
+     * invalidation is always scoped to the user whose data changed, and a
+     * process-wide wipe there would throw away every other user's warm
+     * collections to serve one mutation.
+     */
+    clear() {
+      cache.clear();
+    },
   };
 }
 

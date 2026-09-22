@@ -22,6 +22,7 @@ const PAGES: PageCase[] = [
   { path: "/dashboard/", needsMock: true },
   { path: "/like-manager/", needsMock: true },
   { path: "/playlist-modifier/", needsMock: true },
+  { path: "/link-resolver/", needsMock: true },
   { path: "/feedback/", needsMock: true },
   {
     path: "/growth/",
@@ -87,6 +88,52 @@ for (const { path, needsMock, fixme } of PAGES) {
     );
   });
 }
+
+/**
+ * The playlist-modifier track editor is only reachable after picking a
+ * playlist, so the load-state overflow check above never sees it — and that
+ * is exactly where the row actions live. Before Phase 6 the cluster was
+ * `opacity-0 group-hover:opacity-100` below `sm`: invisible on a phone, and
+ * still tappable, so a stray touch reordered or removed a track with nothing
+ * on screen to explain it.
+ */
+test("playlist-modifier row actions are visible and fit: /playlist-modifier/", async ({
+  page,
+}, testInfo) => {
+  test.skip(!MOBILE_PROJECTS.includes(testInfo.project.name), "mobile projects only");
+
+  await mockApi(page);
+  await page.goto("/playlist-modifier/");
+
+  await page.getByRole("button", { name: "Sample Playlist 1" }).click();
+
+  const moreActions = page.getByRole("button", {
+    name: "More actions for Sample Playlist Track 1",
+  });
+  await expect(moreActions).toBeVisible();
+  await expect(moreActions).toHaveCSS("opacity", "1");
+
+  const { scrollWidth, clientWidth } = await page.evaluate(() => ({
+    scrollWidth: document.documentElement.scrollWidth,
+    clientWidth: document.documentElement.clientWidth,
+  }));
+  expect(scrollWidth, `scrollWidth=${scrollWidth} clientWidth=${clientWidth}`).toBeLessThanOrEqual(
+    clientWidth,
+  );
+
+  // The sheet replaces a popover that was clipped inside the virtual
+  // scroller; on a phone it is also where reorder and remove live.
+  await moreActions.click();
+  const sheet = page.getByRole("dialog");
+  await expect(sheet).toHaveAccessibleName("Track actions");
+  await expect(sheet.getByRole("button", { name: "Move down" })).toBeEnabled();
+  await expect(sheet.getByRole("button", { name: "Move up" })).toBeDisabled();
+  await expect(sheet.getByRole("button", { name: "Remove from playlist" })).toBeVisible();
+
+  await page.keyboard.press("Escape");
+  await expect(sheet).toBeHidden();
+  await expect(moreActions).toBeFocused();
+});
 
 test("dashboard tap targets are at least 24x24: /dashboard/", async ({ page }, testInfo) => {
   test.skip(!MOBILE_PROJECTS.includes(testInfo.project.name), "mobile projects only");

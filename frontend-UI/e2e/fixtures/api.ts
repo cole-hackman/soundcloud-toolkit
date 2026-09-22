@@ -49,6 +49,29 @@ const FAKE_PLAYLISTS = {
   total: 3,
 };
 
+/**
+ * `GET /api/playlists/:id` — the track-editor state of /playlist-modifier/,
+ * which is where the row action cluster lives. Three rows is enough to cover
+ * first/middle/last (move-up and move-down disabled states).
+ */
+const FAKE_PLAYLIST_DETAIL = {
+  id: 1,
+  title: "Sample Playlist 1",
+  track_count: 3,
+  artwork_url: null as string | null,
+  tracks: Array.from({ length: 3 }, (_, i) => ({
+    id: 300 + i,
+    title: `Sample Playlist Track ${i + 1}`,
+    user: { username: "testartist" },
+    artwork_url: null as string | null,
+    duration: 210000,
+    downloadable: i === 0,
+    download_url:
+      i === 0 ? "https://api.soundcloud.com/tracks/300/download" : undefined,
+    permalink_url: `https://soundcloud.com/testartist/sample-playlist-track-${i + 1}`,
+  })),
+};
+
 const FAKE_LIKES_PAGED = {
   collection: Array.from({ length: 5 }, (_, i) => ({
     id: 100 + i,
@@ -163,6 +186,11 @@ export async function mockApi(page: Page): Promise<void> {
     }
     if (method === "GET" && path === "/api/playlists") {
       return route.fulfill(json(FAKE_PLAYLISTS));
+    }
+    if (method === "GET" && /^\/api\/playlists\/\d+$/.test(path)) {
+      return route.fulfill(
+        json({ ...FAKE_PLAYLIST_DETAIL, id: Number(path.split("/").pop()) }),
+      );
     }
     if (method === "GET" && path === "/api/likes/paged") {
       return route.fulfill(json(FAKE_LIKES_PAGED));

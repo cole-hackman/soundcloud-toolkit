@@ -629,9 +629,9 @@ Three things that look arbitrary but are not:
   grace period plus up to one `RETENTION_INTERVAL_MS`. At 7 that worst case was
   up to 8 days — past the ceiling. At 6 it is ≈7 and inside it. It is a
   constant so it cannot be pushed past the deadline from a deployment
-  dashboard, and `RETENTION_INTERVAL_MS` eats the margin the sixth day buys, so
-  treat that as compliance-relevant too. See `docs/internal/TERMS-CHECK.md`
-  finding B.
+  dashboard, and `RETENTION_INTERVAL_MS` is clamped to 24h in code for the same
+  reason — it would otherwise spend the margin the sixth day buys, from an env
+  var and with no signal. See `docs/internal/TERMS-CHECK.md` finding B.
 - **`INACTIVE_MONTHS` is calendar months in UTC.** Local-time `setMonth` shifts
   the cutoff by an hour across a DST boundary, making the same input produce
   different cutoffs depending on host timezone and time of year.
@@ -906,7 +906,7 @@ clone, and every bulk write.
 | `SESSION_COOKIE_SAMESITE` | No | `lax`, `none` or `strict` for the session cookie. Unset keeps the historical default (`none` in production). Same-origin hosting sets `lax` |
 | `LEGACY_REDIRECT_HOSTS` | No | Comma-separated hostnames Express redirects to `APP_URL` (301 GET/HEAD, 308 otherwise). Unset disables the middleware |
 | `RETENTION_ENABLED` | No | Set to `false` to disable the daily retention purge. **Defaults to on** — a retention policy that is off by default is not a policy |
-| `RETENTION_INTERVAL_MS` | No | Sweep period (default 24h). First run is always 10 min after boot. Compliance-relevant, not a tuning knob: raising it eats the day of margin the 6-day disconnect window buys against the terms' 7-day deletion deadline |
+| `RETENTION_INTERVAL_MS` | No | Sweep period (default 24h), **clamped to a 24h maximum in code** (`resolveIntervalMs`) and logged when a larger value is refused. First run is always 10 min after boot. Compliance-relevant, not a tuning knob: a longer period would eat the day of margin the 6-day disconnect window buys against the terms' 7-day deletion deadline, so it is enforced rather than documented. Lowering it is always allowed |
 | `CACHE_TTL_DAYS` | No | Library-cache page/state lifetime in days (default `7`) |
 | `INACTIVE_MONTHS` | No | Dormant-account window in **calendar months** (default `24`) |
 | `OPLOG_RETENTION_DAYS` | No | `OperationLog` lifetime in days (default `365`) |

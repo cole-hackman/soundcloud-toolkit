@@ -54,8 +54,10 @@ const numFromEnv = (name, fallback) => {
  *  row is gone inside the deadline rather than just after it.
  *
  *  Consequences of touching this: raising it back to 7 reopens the breach;
- *  raising RETENTION_INTERVAL_MS past 24h does the same by eating the day of
- *  margin this number buys. Both are compliance changes, not tuning. */
+ *  raising RETENTION_INTERVAL_MS past 24h used to do the same by eating the
+ *  day of margin this number buys, which is why that variable is now clamped
+ *  (see resolveIntervalMs) rather than merely documented. Both are compliance
+ *  changes, not tuning. */
 const DISCONNECTED_GRACE_DAYS = 6;
 const GROWTH_RETENTION_DAYS = 365;
 const FEEDBACK_RETENTION_DAYS = 730;
@@ -67,6 +69,9 @@ export const LIFETIME_METRIC_KEY = 'lifetime_distinct_users';
  *  requests to settle before a job that issues large deletes. */
 const INITIAL_DELAY_MS = 10 * 60 * 1000;
 const DEFAULT_INTERVAL_MS = 24 * 60 * 60 * 1000;
+/** Hard ceiling on the sweep period. The default is already the maximum —
+ *  see resolveIntervalMs for why a longer one breaks the deletion deadline. */
+const MAX_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
 const daysAgo = (now, days) => new Date(now - days * DAY_MS);
 
@@ -255,13 +260,46 @@ export async function runRetentionOnce(now = Date.now()) {
  * (including unset) enables it, because a retention policy that is off by
  * default is not a policy.
  */
+/**
+ * The sweep period, clamped to at most 24 hours.
+ *
+ * This is a compliance guard, not a sanity check on a tuning knob. The
+ * disconnect window is 6 days (DISCONNECTED_GRACE_DAYS) and the terms' ceiling
+ * is 7, so the single day between them is the entire margin — and that margin
+ * is spent by the wait for the *next* sweep after a row becomes eligible. At a
+ * 24-hour cadence the worst case lands at 7 days. At 48 hours it lands at 8,
+ * outside the ceiling, with nothing in the code to say so.
+ *
+ * Leaving that to a comment meant a deployment dashboard could push the
+ * effective deletion deadline past the limit with an env var and no signal.
+ * Clamping it means the deadline holds whatever the environment says, and the
+ * operator is told their value was not honoured rather than left believing it
+ * was. Lowering it is always allowed: a more frequent sweep only shortens the
+ * worst case.
+ *
+ * @returns {number} milliseconds, in (0, MAX_INTERVAL_MS]
+ */
+export function resolveIntervalMs() {
+  const configured = numFromEnv('RETENTION_INTERVAL_MS', DEFAULT_INTERVAL_MS);
+  if (configured > MAX_INTERVAL_MS) {
+    logger.warn(
+      `[retention] RETENTION_INTERVAL_MS=${configured} exceeds the ${MAX_INTERVAL_MS}ms ceiling; ` +
+      'clamped to 24h. The 6-day disconnect window leaves one day of margin against the ' +
+      "terms' 7-day deletion deadline, and a longer sweep period would spend it. " +
+      'See docs/internal/TERMS-CHECK.md finding B.',
+    );
+    return MAX_INTERVAL_MS;
+  }
+  return configured;
+}
+
 export function startRetentionScheduler() {
   if (process.env.RETENTION_ENABLED === 'false') {
     logger.info('[retention] Disabled via RETENTION_ENABLED=false');
     return null;
   }
 
-  const intervalMs = numFromEnv('RETENTION_INTERVAL_MS', DEFAULT_INTERVAL_MS);
+  const intervalMs = resolveIntervalMs();
   const run = () =>
     runRetentionOnce().catch((err) => logger.error('[retention] Run failed:', safeError(err)));
 

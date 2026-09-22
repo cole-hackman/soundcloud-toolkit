@@ -9,6 +9,8 @@ export { EmptyState } from "./EmptyState";
 export { Skeleton } from "./Skeleton";
 export { TrackRow } from "./TrackRow";
 export { SelectionBanner } from "./SelectionBanner";
+export { Dialog } from "./Dialog";
+export { useDialog } from "./useDialog";
 export { ConfirmDialog } from "./ConfirmDialog";
 export { PageContainer } from "./PageContainer";
 export { PageHeader } from "./PageHeader";

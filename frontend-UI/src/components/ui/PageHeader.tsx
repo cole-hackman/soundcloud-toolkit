@@ -54,7 +54,14 @@ export function PageHeader({
         <Link
           href={backHref}
           className={cn(
-            "mb-4 inline-flex items-center gap-2 text-sm font-medium text-muted-foreground transition hover:text-primary-text",
+            // `min-h-11` and the padding are the target, not decoration: as
+            // bare text this link rendered about 152x20 on every `(app)`
+            // route, under the 24px floor WCAG 2.5.8 sets — and axe does not
+            // flag target size, so no page sweep could have caught it. The
+            // negative margin keeps the label optically flush with the `<h1>`
+            // below it now that it carries horizontal padding.
+            "-ml-2 mb-2 inline-flex min-h-11 items-center gap-2 rounded-lg px-2",
+            "text-sm font-medium text-muted-foreground transition hover:text-primary-text",
             "lg:hidden",
             backClassName,
           )}

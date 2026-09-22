@@ -286,7 +286,7 @@ export default function PlaylistHealthCheckPage() {
                   variant="destructive"
                 >
                   {saving ? (
-                    <LoadingSpinner size="sm" className="w-4 h-4 border-white" />
+                    <LoadingSpinner size="sm" className="w-4 h-4 text-white" />
                   ) : (
                     <Trash2 aria-hidden="true" className="w-4 h-4" />
                   )}

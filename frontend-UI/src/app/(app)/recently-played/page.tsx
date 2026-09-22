@@ -224,20 +224,28 @@ export default function RecentlyPlayedPage() {
             {/* Track list */}
             <Card className="min-w-0 p-4 sm:p-6 lg:col-span-2">
               <div className="mb-4 flex flex-wrap items-center gap-2">
-                <div className="relative min-w-0 flex-1">
-                  <Search
-                    aria-hidden="true"
-                    className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground-subtle"
-                  />
-                  <Input
-                    type="search"
-                    aria-label="Search recently played tracks"
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    placeholder="Search tracks…"
-                    className="h-11 pl-10"
-                  />
-                </div>
+                <Field
+                  label="Search recently played tracks"
+                  labelHidden
+                  className="min-w-0 flex-1"
+                >
+                  {(field) => (
+                    <div className="relative">
+                      <Search
+                        aria-hidden="true"
+                        className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground-subtle"
+                      />
+                      <Input
+                        {...field}
+                        type="search"
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                        placeholder="Search tracks…"
+                        className="h-11 pl-10"
+                      />
+                    </div>
+                  )}
+                </Field>
                 <Button
                   variant="ghost"
                   size="sm"

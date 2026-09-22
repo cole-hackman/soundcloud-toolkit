@@ -12,6 +12,17 @@ export interface FieldRenderProps {
 
 export interface FieldProps {
   label: string;
+  /**
+   * Render the label `sr-only` instead of visibly.
+   *
+   * For a control whose purpose is already obvious from what surrounds it —
+   * the search box in a toolbar above the list it filters — where a visible
+   * label would only repeat the placeholder. It is still a real `<label>`
+   * tied to the control by `htmlFor`, which is what an `aria-label` on the
+   * input is not: the label text stays in the accessibility tree, the click
+   * target still includes it, and the hint/error wiring is unchanged.
+   */
+  labelHidden?: boolean;
   hint?: string;
   error?: string;
   required?: boolean;
@@ -38,6 +49,7 @@ export interface FieldProps {
  */
 export function Field({
   label,
+  labelHidden = false,
   hint,
   error,
   required = false,
@@ -56,7 +68,12 @@ export function Field({
 
   return (
     <div className={cn("grid gap-1.5", className)}>
-      <label htmlFor={fieldId} className="text-sm font-semibold text-foreground">
+      <label
+        htmlFor={fieldId}
+        className={cn(
+          labelHidden ? "sr-only" : "text-sm font-semibold text-foreground",
+        )}
+      >
         {label}
         {required && <span aria-hidden="true"> *</span>}
       </label>

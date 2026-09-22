@@ -573,7 +573,7 @@ export default function CombinePlaylistsPage() {
               >
                 {isProcessing ? (
                   <>
-                    <LoadingSpinner size="sm" className="border-white" />
+                    <LoadingSpinner size="sm" className="text-white" />
                     {/* The spinner is decoration; this is what says the merge
                         is running, so it has to be in a live region. */}
                     <span role="status">Merging…</span>

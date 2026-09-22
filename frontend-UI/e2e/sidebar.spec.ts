@@ -89,6 +89,26 @@ test.describe("collapsed sidebar", () => {
     await expect(sidebar).toHaveCSS("width", COLLAPSED);
   });
 
+  test("a mouse click after tabbing in still collapses it", async ({ page }) => {
+    await openDashboard(page, { collapsed: false });
+
+    const sidebar = page.locator("aside");
+    await expect(sidebar).toHaveCSS("width", EXPANDED);
+
+    // Tab in first, so the keyboard-focus flag is genuinely set...
+    await tabIntoSidebar(page);
+
+    // ...then collapse with the mouse. The blur that follows has a
+    // `relatedTarget` inside the rail, so nothing clears the flag on the way
+    // out; only re-reading `:focus-visible` on the incoming focus does. While
+    // the flag survived, the rail stayed expanded until focus left it
+    // entirely and the toggle looked dead.
+    await page.getByRole("button", { name: "Collapse sidebar" }).click();
+    await page.mouse.move(900, 400);
+
+    await expect(sidebar).toHaveCSS("width", COLLAPSED);
+  });
+
   test("every rail control has an accessible name while collapsed", async ({ page }) => {
     await openDashboard(page, { collapsed: true });
 

@@ -69,7 +69,7 @@ const TABS: { key: TabKey; short: string; long: string; Icon: typeof Sparkles }[
 
 /** Words, not just a colour and an emoji, for the discovery score. */
 const SCORE_BADGE: Record<Suggestion["scoreLabel"], { emoji: string; text: string; className: string }> = {
-  high: { emoji: "🔥", text: "High match", className: "bg-orange-700 text-white" },
+  high: { emoji: "🔥", text: "High match", className: "bg-tone-match text-tone-foreground" },
   medium: { emoji: "⚡", text: "Medium", className: "bg-amber-400 text-black" },
   limited: {
     emoji: "ℹ",

@@ -56,6 +56,14 @@ export default {
         warning: {
           text: 'hsl(var(--warning-text))'
         },
+        /* Categorical chip tones — see the block in globals.css. `foreground`
+           is shared because all three are dark surfaces carrying white. */
+        tone: {
+          foreground: 'hsl(var(--tone-foreground))',
+          download: 'hsl(var(--tone-download))',
+          purchase: 'hsl(var(--tone-purchase))',
+          match: 'hsl(var(--tone-match))'
+        },
         glass: 'hsl(var(--glass))',
         surface: 'hsl(var(--surface))',
         'surface-hover': 'hsl(var(--surface-hover))',

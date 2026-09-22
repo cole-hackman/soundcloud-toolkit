@@ -63,6 +63,9 @@ const headingClass = "text-2xl font-bold mb-4 text-foreground";
 const thClass =
   "border-b border-border px-3 py-2 text-left align-bottom text-sm font-semibold text-foreground";
 const tdClass = "border-b border-border px-3 py-3 align-top text-sm";
+/** In-sentence link, matching the FAQ's. */
+const inlineLinkClass =
+  "font-medium text-foreground underline underline-offset-2 transition hover:text-primary";
 
 /** Rows of the "What we collect and why" table. */
 const COLLECTED: { data: string; source: string; why: string; kept: string }[] = [
@@ -360,21 +363,31 @@ export default function PrivacyPage() {
                   <strong className="text-foreground">
                     Download your data.
                   </strong>{" "}
-                  Account page → &ldquo;Download my data&rdquo;. You get
-                  everything keyed to your account as a JSON file.
+                  <Link href="/account/" className={inlineLinkClass}>
+                    Account page
+                  </Link>{" "}
+                  → &ldquo;Download my data&rdquo;. You get everything keyed to
+                  your account as a JSON file.
                 </li>
                 <li>
                   <strong className="text-foreground">Disconnect.</strong> From
-                  the Account page, or from SoundCloud → Settings → Connected
-                  apps.
+                  the{" "}
+                  <Link href="/account/" className={inlineLinkClass}>
+                    Account page
+                  </Link>
+                  , or from SoundCloud → Settings → Connected apps.
                 </li>
                 <li>
                   <strong className="text-foreground">
                     Delete your account.
                   </strong>{" "}
-                  From the Account page. It happens immediately, it cannot be
-                  undone, and it removes everything keyed to your account.
-                  Catalog rows are not yours and stay.
+                  From the{" "}
+                  <Link href="/account/" className={inlineLinkClass}>
+                    Account page
+                  </Link>
+                  . It happens immediately, it cannot be undone, and it removes
+                  everything keyed to your account. Catalog rows are not yours
+                  and stay.
                 </li>
                 <li>
                   <strong className="text-foreground">Ask us.</strong> Email us

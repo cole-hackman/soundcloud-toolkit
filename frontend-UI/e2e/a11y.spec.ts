@@ -55,14 +55,16 @@ for (const { path, needsMock, fixme, expectedStatus } of PAGES) {
       expect(response?.status()).toBe(expectedStatus);
     }
 
-    // Audit the page, not the spinner. `AppLayout` renders a hydration gate
-    // before it mounts any child, so on a fast run `analyze()` can catch that
-    // spinner, find nothing wrong with it, and pass without the real page ever
-    // having been scanned. Every protected route puts an <h1> on screen — via
-    // `PageHeader`, or its own on the dashboard — so waiting for one is the
-    // cheap, route-agnostic proof that the content under test is mounted.
+    // Audit the page, not the spinner. `AppLayout` renders a hydration/auth
+    // gate before it mounts any child, so on a fast run `analyze()` can catch
+    // that spinner, find nothing wrong with it, and pass without the real page
+    // ever having been scanned. Every protected route puts an <h1> on screen —
+    // via `PageHeader`, or its own on the dashboard — so waiting for the main
+    // landmark and a heading is the cheap, route-agnostic proof that the
+    // content under test is mounted.
     if (needsMock) {
-      await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+      await expect(page.locator("main#main-content")).toBeVisible();
+      await expect(page.getByRole("heading", { level: 1 }).first()).toBeVisible();
     }
 
     const results = await new AxeBuilder({ page })
@@ -78,27 +80,36 @@ for (const { path, needsMock, fixme, expectedStatus } of PAGES) {
 }
 
 /**
- * The shared `Dialog` primitive, exercised through the one dialog that is
- * reachable from a mocked page without a write: the delete-account confirm in
- * the desktop sidebar. Covers the four things a modal has to get right —
- * it is labelled by its visible heading, Tab cannot leave it, Escape closes
- * it, and focus goes back where it came from.
+ * The shared `Dialog` primitive, exercised through a confirm that is reachable
+ * from a mocked page without a write: `/like-manager/`'s bulk-unlike prompt.
+ * (It used to be the sidebar's delete-account confirm; that moved to
+ * `/account`.) Covers the five things a modal has to get right — it is
+ * labelled by its visible heading, `initialFocusRef` beats "first focusable",
+ * Tab wraps rather than escaping, Escape closes it, and focus goes back where
+ * it came from.
+ *
+ * The panel's focusables in DOM order are: "Export selection"
+ * (BulkReviewDetails), Cancel, then the confirm button. Cancel is in the
+ * middle, which is the point — it is focused first only because
+ * `ConfirmDialog` passes it as `initialFocusRef`.
  */
-test("Dialog: labelled by its heading, traps Tab, Escape closes and restores focus", async ({
+test("Dialog: labelled by its heading, honours initialFocusRef, wraps Tab, Escape restores focus", async ({
   page,
-}, testInfo) => {
-  test.skip(
-    testInfo.project.name !== "desktop",
-    "the sidebar 'Delete account' control is only rendered at lg and up",
-  );
-
+}) => {
   await mockApi(page);
-  await page.goto("/dashboard/");
+  await page.goto("/like-manager/");
 
-  // Opened from the keyboard on purpose: Chromium on macOS does not focus a
-  // <button> on mouse click, so a click would leave `document.body` as the
-  // element to restore to and the last assertion would prove nothing.
-  const trigger = page.getByRole("button", { name: "Delete account", exact: true });
+  // Select a track so the banner — and with it the trigger — appears.
+  const firstRow = page.getByRole("checkbox", { name: "Sample Track 1" });
+  await expect(firstRow).toBeVisible();
+  await firstRow.focus();
+  await page.keyboard.press("Space");
+
+  // Opened from the keyboard on purpose: Chromium does not focus a <button>
+  // on a mouse click, so a click would leave `document.body` as the element to
+  // restore to and the last assertion would prove nothing.
+  const trigger = page.getByRole("button", { name: /Unlike Selected/ });
+  await expect(trigger).toBeVisible();
   await trigger.focus();
   await trigger.press("Enter");
 
@@ -106,24 +117,29 @@ test("Dialog: labelled by its heading, traps Tab, Escape closes and restores foc
   await expect(dialog).toBeVisible();
 
   // aria-labelledby must resolve to the visible h2, not to a hidden string.
-  await expect(dialog).toHaveAccessibleName("Delete your account?");
+  await expect(dialog).toHaveAccessibleName("Unlike selected tracks?");
   await expect(
-    dialog.getByRole("heading", { level: 2, name: "Delete your account?" }),
+    dialog.getByRole("heading", { level: 2, name: "Unlike selected tracks?" }),
   ).toBeVisible();
 
-  // Opens on Cancel, so a stray Enter never confirms a destructive action.
-  await expect(dialog.getByRole("button", { name: "Cancel" })).toBeFocused();
+  const exportButton = dialog.getByRole("button", { name: "Export selection" });
+  const cancel = dialog.getByRole("button", { name: "Cancel" });
+  const confirm = dialog.getByRole("button", { name: "Unlike", exact: true });
 
-  // More presses than the dialog has focusable elements, so the trap has to
-  // wrap at least once for this to hold.
-  for (let i = 0; i < 8; i += 1) {
-    await page.keyboard.press("Tab");
-    const focusStayedInside = await page.evaluate(() => {
-      const panel = document.querySelector('[role="dialog"]');
-      return !!panel && !!document.activeElement && panel.contains(document.activeElement);
-    });
-    expect(focusStayedInside, `focus escaped the dialog after ${i + 1} Tab(s)`).toBe(true);
-  }
+  // Opens on Cancel, so a stray Enter never confirms a destructive action —
+  // and it is not the first focusable, so this can only pass via
+  // `initialFocusRef`.
+  await expect(cancel).toBeFocused();
+
+  // Shift+Tab off the first element wraps to the last, and Tab off the last
+  // wraps back to the first. Both assertions fail the moment focus is allowed
+  // to reach the page behind the dialog.
+  await page.keyboard.press("Shift+Tab");
+  await expect(exportButton).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(confirm).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(exportButton).toBeFocused();
 
   await page.keyboard.press("Escape");
   await expect(dialog).toBeHidden();

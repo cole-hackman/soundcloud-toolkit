@@ -46,6 +46,8 @@ export interface DialogProps {
   labelledById?: string;
   /** `false` hides the corner close button (Escape and the backdrop still close). */
   showClose?: boolean;
+  /** Accessible name for the corner close button — "Close menu" on the drawer. */
+  closeLabel?: string;
   panelClassName?: string;
 }
 
@@ -73,6 +75,7 @@ export function Dialog({
   returnFocusRef,
   labelledById,
   showClose = true,
+  closeLabel = "Close",
   panelClassName,
 }: DialogProps) {
   const reactId = useId();
@@ -120,7 +123,7 @@ export function Dialog({
       >
         {showClose ? (
           <IconButton
-            label="Close"
+            label={closeLabel}
             size="sm"
             onClick={onClose}
             className="absolute right-2 top-2 z-10"

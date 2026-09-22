@@ -1,5 +1,5 @@
 /**
- * Narrowing helpers for values that came off the network.
+ * A narrowing helper for values that came off the network.
  *
  * Every tool page reads a list out of a query payload and hands it straight to
  * `.map`. The shape those payloads are typed as is a *claim*, not a check: the
@@ -35,18 +35,4 @@
  */
 export function asArray<T>(value: unknown): T[] {
   return Array.isArray(value) ? (value as T[]) : [];
-}
-
-/**
- * The value as a record, or `undefined` if it is not a plain object.
- *
- * For payloads read key-by-key rather than iterated — the Growth history and
- * analytics responses, where `data.sessions.length` on a `{}` was the crash.
- * Reading a key off the result is then safe; whether that key holds what you
- * expect is still `asArray`'s job (or a check of your own).
- */
-export function asRecord(value: unknown): Record<string, unknown> | undefined {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : undefined;
 }

@@ -219,9 +219,12 @@ after seven days.
 `disconnectUser()` calls `invalidateCachedAuth(userId)`. This is not optional:
 `server/lib/auth-cache.js` memoizes the **decrypted** token pair for 30
 seconds, so without it a request arriving inside that window would keep
-working against tokens that no longer exist. The same call drops the library
-request cache, the invalidation marks, and the durable snapshot tier, since
-all of it is derived from the grant that was just returned.
+working against tokens that no longer exist. It runs inside a `finally`
+wrapped around the token delete, i.e. before the user update and the cache
+teardown, so a failure anywhere later in the function cannot leave the memo
+serving credentials whose database row is already gone. `disconnectUser` also
+drops the library request cache, the invalidation marks, and the durable
+snapshot tier, since all of it is derived from the grant just returned.
 
 The route takes no body, so the second CSRF layer (empty body → validator
 fails closed) has nothing to act on. `rejectUntrustedOrigin` is the whole
@@ -230,16 +233,26 @@ is refused with 403 before the handler runs.
 
 **Revocation detection.** A user can also revoke the app from SoundCloud's own
 settings page, which this service never hears about directly. It is detected
-at the single refresh choke point (`refreshTokensAndPersist`): when the token
-endpoint answers `400`/`401` with `{"error":"invalid_grant"}` — or a bare
-`401` with no parsable body — the same teardown runs with `reason: 'revoked'`
-and no sign-out call, because the token is already dead. The thrown error is
-unchanged, so the request surfaces exactly as it always did.
+at the single refresh choke point (`refreshTokensAndPersist`). Exactly two
+responses count, and the rule is deliberately narrow:
 
-What deliberately does **not** trigger it: `429`, every `5xx`, timeouts and
-network failures. Disconnecting everyone because SoundCloud had a bad minute
-would be a self-inflicted outage, so the check is narrow by design and
-`tests/routes/token-refresh.test.js` pins both directions.
+1. a `400` or `401` whose JSON body is `{"error":"invalid_grant"}`;
+2. a `401` with an **empty** body.
+
+The teardown then runs with `reason: 'revoked'` and no sign-out call, because
+the token is already dead. The thrown error is unchanged, so the request
+surfaces exactly as it always did.
+
+What deliberately does **not** trigger it: a `401` with a non-empty body that
+is not JSON, plus `429`, every `5xx`, timeouts and network failures. The
+non-JSON `401` matters most — that shape is an HTML error page from a proxy,
+WAF or load balancer in front of the token endpoint far more often than it is
+a revocation, and treating it as one would destroy a live user's tokens
+because of someone else's infrastructure. Disconnecting people over a
+transient upstream failure would be a self-inflicted outage.
+`tests/routes/token-refresh.test.js` pins every branch, and
+`tests/soundcloud-signout.test.js` holds the full truth table for
+`isInvalidGrantResponse`.
 
 **Export** — `GET /api/auth/export`, `heavyOperationRateLimiter`. Returns
 every row keyed to the caller as one JSON attachment. Two invariants, both

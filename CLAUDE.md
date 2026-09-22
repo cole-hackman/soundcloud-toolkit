@@ -251,7 +251,7 @@ The schema (`prisma/schema.prisma`) has **17 models**, not two:
 | `chat_conversations` / `chat_messages` | AI library chat (owned by `feature/ai-library-chat`; declared here so `prisma db push` does not drop them) |
 | `indexed_likes` / `indexed_playlist_tracks` / `library_snapshots` | Library indexing for that same feature — same db-push caveat |
 | `LibraryCachePage` / `LibraryCacheState` | Persistent tier of the library cache — one row per 200-item page plus a sync-state row. **Not** the same thing as `library_snapshots` above |
-| `Metric` | Counters that must outlive the rows they were computed from. One key today: `lifetime_distinct_users`, snapshotted before each operation-log purge. Deliberately **not** per-user, so it is absent from the deletion cascade by design |
+| `Metric` | Counters that must outlive the rows they were computed from. One key today: `lifetime_distinct_users`, snapshotted as the first step of every retention run — before any delete in that run. Deliberately **not** per-user, so it is absent from the deletion cascade by design |
 
 The two models this app touches on every request are detailed below.
 
@@ -491,29 +491,35 @@ in clears the stamp — but the retention job deletes the row after 7 days.
 **It must call `invalidateCachedAuth`.** `lib/auth-cache.js` memoizes the
 *decrypted* token pair for 30 seconds; without that call a request inside the
 window would keep working against tokens that no longer exist. Same landmine
-as the refresh path.
+as the refresh path. It runs in a `finally` immediately after the token
+delete, so no later failure in the teardown can leave the memo holding
+credentials whose row is already gone.
 
 **Revocation is detected, not merely handled.** A user revoking the app from
 SoundCloud's own settings never tells this service. `refreshTokensAndPersist`
-— the single refresh choke point — treats `invalid_grant` on a 400/401, or a
-bare 401 with no parsable body, as revocation and runs the same teardown with
-`reason: 'revoked'`. **429, every 5xx, timeouts and network errors
-deliberately do not**: disconnecting everyone because SoundCloud had a bad
-minute would be a self-inflicted outage. The thrown error is unchanged, so
-callers still see the generic "Token refresh failed".
+— the single refresh choke point — treats exactly two things as revocation and
+runs the same teardown with `reason: 'revoked'`: `invalid_grant` in a JSON
+body on a 400/401, and a 401 with an **empty** body. **A 401 with a non-empty
+non-JSON body does not count** — that shape is an HTML error page from a proxy
+or WAF far more often than a revocation, and acting on it would destroy a live
+user's tokens over someone else's infrastructure. 429, every 5xx, timeouts and
+network errors are excluded for the same reason. The thrown error is
+unchanged, so callers still see the generic "Token refresh failed".
 
 **Retention** ([`lib/retention.js`](server/lib/retention.js)) runs 10 minutes
-after boot and then every `RETENTION_INTERVAL_MS`. Eight steps, each one bulk
-statement, each isolated — a step that throws is logged (`[retention] <step>
-removed N`) and the rest still run; `runRetentionOnce()` never rejects, so the
-interval cannot die. It is exported for tests and for a REPL.
+after boot and then every `RETENTION_INTERVAL_MS`. A snapshot step plus eight
+purges, each one bulk statement, each isolated — a step that throws is logged
+(`[retention] <step> removed N`) and the rest still run; `runRetentionOnce()`
+never rejects, so the interval cannot die. It is exported for tests and for a
+REPL.
 
 | # | Step | Window |
 |---|------|--------|
+| 0 | Lifetime-user snapshot → `Metric.lifetime_distinct_users` | every run, **first** |
 | 1 | `LibraryCachePage` (by `createdAt`) + `LibraryCacheState` (by `updatedAt`) | `CACHE_TTL_DAYS` (7) |
 | 2 | Users still stamped `disconnectedAt` | 7 days (constant, see below) |
 | 3 | Dormant users (`lastLoginAt`, or `updatedAt` when null) | `INACTIVE_MONTHS` (24) |
-| 4 | Lifetime-user snapshot **then** `OperationLog` purge | `OPLOG_RETENTION_DAYS` (365) |
+| 4 | `OperationLog` purge | `OPLOG_RETENTION_DAYS` (365) |
 | 5 | `GrowthAction` | 365 days |
 | 6 | `Feedback` (guarded on `prisma.feedback`) | 730 days |
 | 7 | `BetaSignup.email` → null | every run |
@@ -521,11 +527,16 @@ interval cannot die. It is exported for tests and for a REPL.
 
 Three things that look arbitrary but are not:
 
-- **Step 4's order.** The snapshot of `COUNT(DISTINCT userId)` over
-  `operation_logs` is written to `Metric.lifetime_distinct_users` *before* the
-  purge, or the all-time figure would shrink every time rows aged out. The
-  metric is monotonic — a run only raises it — and admin `/stats` surfaces it
-  as `lifetimeUsers` (null before the first run).
+- **Step 0 runs first, before any delete in the run — not merely before the
+  log purge.** The user sweeps at steps 2 and 3 cascade into `operation_logs`
+  too, so snapshotting after them would drop exactly the departing users the
+  all-time figure exists to remember. It is `SELECT COUNT(DISTINCT "userId")`
+  via `$queryRaw` (one row out of Postgres, matching the admin aggregates),
+  monotonic — a run only ever raises it — and admin `/stats` surfaces it as
+  `lifetimeUsers` (null before the first run).
+  Every user delete also logs `[retention] <step> will remove N users` *before*
+  it runs, so the first production sweep is reviewable from the logs rather
+  than only from its aftermath.
 - **The 7-day disconnect window is a constant, not an env var.** It is the
   SoundCloud terms' deletion deadline; it should not be possible to push past
   it from a deployment dashboard. `RETENTION_INTERVAL_MS` eats into its margin,

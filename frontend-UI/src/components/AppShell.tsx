@@ -4,25 +4,29 @@ import { useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  Accessibility,
   ChevronDown,
   ChevronLeft,
+  ChevronRight,
   FileText,
+  HelpCircle,
   LogOut,
   Menu,
+  MessageSquare,
   Moon,
+  ScrollText,
   Shield,
   Sun,
+  UserCog,
 } from "lucide-react";
 import { BrandMark, BrandWordmark } from "@/components/brand/Logo";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/contexts/ThemeContext";
 import { cn } from "@/lib/utils";
 import { NAV, isGroup, type NavGroup, type NavLink } from "@/lib/nav";
-import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Dialog } from "@/components/ui/Dialog";
+import { IconButton } from "@/components/ui/IconButton";
 import { LiveRegion } from "@/components/ui/LiveRegion";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "";
 
 /* ── Navigation structure ──
    `NAV`, its types and `isGroup` live in `@/lib/nav` so pages that only need
@@ -34,8 +38,12 @@ const MOBILE_NAV_ID = "mobile-nav";
 
 const FOOTER_ITEMS: NavLink[] = [
   { href: "/about", label: "About", icon: FileText },
+  { href: "/faq", label: "FAQ", icon: HelpCircle },
+  { href: "/feedback", label: "Send feedback", icon: MessageSquare },
+  { href: "/account", label: "Account", icon: UserCog },
   { href: "/privacy", label: "Privacy", icon: Shield },
-  { href: "/accessibility", label: "Accessibility", icon: Shield },
+  { href: "/terms", label: "Terms", icon: ScrollText },
+  { href: "/accessibility", label: "Accessibility", icon: Accessibility },
 ];
 
 /**
@@ -46,12 +54,18 @@ function isActivePath(pathname: string | null, href: string): boolean {
   return pathname === href || !!pathname?.startsWith(href + "/");
 }
 
-/* ── One nav row ── */
+/* ── One nav row ──
+   The label span is always rendered and only becomes `sr-only` in the
+   collapsed sidebar. Keeping the element mounted is what lets the collapsed
+   rail expand on keyboard focus without the focused link disappearing
+   underneath the user, and it means every row has an accessible name in
+   both states. */
 
 function NavRow({
   item,
   active,
   collapsed,
+  isMobile,
   onNavigate,
   indented = false,
   iconSize = "w-[18px] h-[18px]",
@@ -59,6 +73,7 @@ function NavRow({
   item: NavLink;
   active: boolean;
   collapsed: boolean;
+  isMobile: boolean;
   onNavigate?: () => void;
   indented?: boolean;
   iconSize?: string;
@@ -71,8 +86,11 @@ function NavRow({
       aria-current={active ? "page" : undefined}
       title={collapsed ? item.label : undefined}
       className={cn(
-        "group relative flex items-center gap-3 overflow-hidden rounded-lg transition-colors duration-150 text-[13px] font-medium py-2",
+        "group relative flex items-center gap-3 overflow-hidden rounded-lg transition-colors duration-150 text-[13px] font-medium",
         indented ? "pl-5 pr-3" : "px-3",
+        // The drawer is the only place these rows are touched rather than
+        // clicked, so the 44px floor applies there and nowhere else.
+        isMobile ? "min-h-11 py-2.5" : "py-2",
         collapsed && "justify-center",
         active ? "bg-primary/10 text-primary-text" : "text-muted-foreground",
       )}
@@ -93,7 +111,9 @@ function NavRow({
             : "group-hover:text-foreground dark:group-hover:text-white transition-colors",
         )}
       />
-      {!collapsed && <span className="relative z-10 truncate">{item.label}</span>}
+      <span className={cn("relative z-10 truncate", collapsed && "sr-only")}>
+        {item.label}
+      </span>
     </Link>
   );
 }
@@ -133,7 +153,9 @@ function SidebarGroup({
             item={item}
             active={isActivePath(pathname, item.href)}
             collapsed
+            isMobile={false}
             onNavigate={onNavigate}
+            iconSize="w-[18px] h-[18px]"
           />
         ))}
       </div>
@@ -147,7 +169,10 @@ function SidebarGroup({
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
         aria-controls={listId}
-        className="w-full flex items-center justify-between rounded-lg px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors"
+        className={cn(
+          "w-full flex items-center justify-between rounded-lg px-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors",
+          isMobile ? "min-h-11 py-2" : "py-1.5",
+        )}
       >
         <span>{group.label}</span>
         <ChevronDown
@@ -167,6 +192,7 @@ function SidebarGroup({
             item={item}
             active={isActivePath(pathname, item.href)}
             collapsed={false}
+            isMobile={isMobile}
             onNavigate={onNavigate}
             indented
             iconSize="w-[16px] h-[16px]"
@@ -180,34 +206,37 @@ function SidebarGroup({
 /* ── Sidebar navigation ──
    A module-level component, not a closure declared inside `AppShell`: a
    nested definition is a new component type on every render, so React
-   remounted the whole sidebar — and reset every group's open/closed state,
-   which is now exposed as `aria-expanded` — whenever the shell re-rendered.
-   Hovering the rail does exactly that. */
+   remounted the whole sidebar (and reset every group's open/closed state)
+   whenever the shell re-rendered — which hovering it does. */
 
 function SidebarNav({
   collapsed,
   isMobile = false,
   onNavigate,
   navId,
-  onDeleteAccount,
-  deleteAccountRef,
 }: {
   collapsed: boolean;
   isMobile?: boolean;
   onNavigate?: () => void;
   navId?: string;
-  onDeleteAccount: () => void;
-  deleteAccountRef?: React.RefObject<HTMLButtonElement>;
 }) {
   const pathname = usePathname();
   const { user, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
 
+  const themeLabel = theme === "dark" ? "Switch to light mode" : "Switch to dark mode";
+  const ThemeIcon = theme === "dark" ? Sun : Moon;
+
   return (
     <nav
       id={navId}
       aria-label={isMobile ? "Main navigation" : "Main"}
-      className="flex-1 overflow-y-auto py-3"
+      className={cn(
+        "flex-1 overflow-y-auto py-3",
+        // The drawer's panel already carries the Dialog's own padding; pull
+        // the rows back out so a phone keeps the full-width list it had.
+        isMobile && "-mx-4",
+      )}
     >
       <div className="space-y-1 px-2">
         {NAV.map((entry) => {
@@ -231,6 +260,7 @@ function SidebarNav({
               item={entry}
               active={isActivePath(pathname, entry.href)}
               collapsed={collapsed && !isMobile}
+              isMobile={isMobile}
               onNavigate={onNavigate}
             />
           );
@@ -251,12 +281,15 @@ function SidebarNav({
             item={item}
             active={isActivePath(pathname, item.href)}
             collapsed={collapsed && !isMobile}
+            isMobile={isMobile}
             onNavigate={onNavigate}
           />
         ))}
       </div>
 
-      {/* User Profile Section (Inline) */}
+      {/* User Profile Section (Inline).
+          Account deletion lives on /account — it is a destructive, rarely
+          wanted action and does not belong in the navigation chrome. */}
       <div className="px-2 mt-4">
         {!collapsed || isMobile ? (
           <div className="space-y-2">
@@ -270,45 +303,50 @@ function SidebarNav({
                 decoding="async"
                 className="w-6 h-6 rounded-full ring-1 ring-primary/20 shrink-0"
               />
-              <span className="text-[13px] font-medium text-foreground truncate flex-1">
+              <span className="text-[13px] font-medium text-foreground truncate min-w-0 flex-1">
                 {user?.display_name}
               </span>
-              <button
-                type="button"
-                onClick={toggleTheme}
-                className="p-1.5 rounded-md hover:bg-black/[0.04] dark:hover:bg-white/[0.04] text-muted-foreground transition"
-                aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-              >
-                {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-              </button>
-              <button
-                type="button"
-                onClick={logout}
-                className="p-1.5 rounded-md hover:bg-black/[0.04] dark:hover:bg-white/[0.04] text-muted-foreground hover:text-primary dark:hover:text-primary transition"
-                aria-label="Log out"
-              >
-                <LogOut className="w-4 h-4" />
-              </button>
+              {/* On a phone these are 44px targets (touch-44), which would
+                  leave the display name a sliver — so they get their own row
+                  in the drawer. */}
+              {!isMobile && (
+                <span className="flex items-center gap-0.5 shrink-0">
+                  <IconButton label={themeLabel} size="sm" onClick={toggleTheme}>
+                    <ThemeIcon className="w-4 h-4" />
+                  </IconButton>
+                  <IconButton label="Log out" size="sm" onClick={logout}>
+                    <LogOut className="w-4 h-4" />
+                  </IconButton>
+                </span>
+              )}
             </div>
+
+            {isMobile && (
+              <div className="flex items-center gap-1 px-3">
+                <IconButton label={themeLabel} size="sm" onClick={toggleTheme}>
+                  <ThemeIcon className="w-4 h-4" />
+                </IconButton>
+                <IconButton label="Log out" size="sm" onClick={logout}>
+                  <LogOut className="w-4 h-4" />
+                </IconButton>
+              </div>
+            )}
 
             <div className="px-3 pb-2">
               <a
                 href="https://www.buymeacoffee.com/hackman"
                 target="_blank"
                 rel="noreferrer"
-                className="group inline-flex w-full items-center justify-center gap-2 rounded-xl border border-black bg-[#fcffff] px-3 py-2 text-[12px] font-semibold text-black shadow-sm transition hover:-translate-y-[1px] hover:shadow-md"
+                className={cn(
+                  "group inline-flex w-full items-center justify-center gap-2 rounded-xl border border-black bg-[#fcffff] px-3 py-2 text-[12px] font-semibold text-black shadow-sm transition hover:shadow-md",
+                  isMobile && "min-h-11",
+                )}
               >
-                <span className="text-[14px] leading-none">☕</span>
+                <span className="text-[14px] leading-none" aria-hidden="true">
+                  ☕
+                </span>
                 <span>Support Me</span>
               </a>
-              <button
-                type="button"
-                ref={deleteAccountRef}
-                onClick={onDeleteAccount}
-                className="mt-2 w-full text-center text-xs text-muted-foreground-subtle hover:text-destructive-text transition"
-              >
-                Delete account
-              </button>
             </div>
           </div>
         ) : (
@@ -323,29 +361,21 @@ function SidebarNav({
               decoding="async"
               className="w-6 h-6 rounded-full ring-1 ring-primary/20 shrink-0"
             />
-            <button
-              type="button"
-              onClick={toggleTheme}
-              className="p-1.5 rounded-md hover:bg-black/[0.04] dark:hover:bg-white/[0.04] text-muted-foreground transition"
-            >
-              {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-            </button>
-            <button
-              type="button"
-              onClick={logout}
-              className="p-1.5 rounded-md hover:bg-black/[0.04] dark:hover:bg-white/[0.04] text-muted-foreground hover:text-primary dark:hover:text-primary transition"
-            >
+            <IconButton label={themeLabel} size="sm" onClick={toggleTheme}>
+              <ThemeIcon className="w-4 h-4" />
+            </IconButton>
+            <IconButton label="Log out" size="sm" onClick={logout}>
               <LogOut className="w-4 h-4" />
-            </button>
+            </IconButton>
             <a
               href="https://www.buymeacoffee.com/hackman"
               target="_blank"
               rel="noreferrer"
-              className="mt-1 inline-flex h-8 w-8 items-center justify-center rounded-lg border border-black bg-[#fcffff] text-[14px] leading-none text-black shadow-sm transition hover:-translate-y-[1px] hover:shadow-md"
+              className="mt-1 inline-flex h-8 w-8 items-center justify-center rounded-lg border border-black bg-[#fcffff] text-[14px] leading-none text-black shadow-sm transition hover:shadow-md"
               aria-label="Support me on Buy Me a Coffee"
               title="Support Me"
             >
-              ☕
+              <span aria-hidden="true">☕</span>
             </a>
           </div>
         )}
@@ -359,43 +389,19 @@ function SidebarNav({
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
-  const [deleteAccountOpen, setDeleteAccountOpen] = useState(false);
-  const deleteAccountTriggerRef = useRef<HTMLButtonElement>(null);
-  const [deleteConfirmText, setDeleteConfirmText] = useState("");
-  const [deletingAccount, setDeletingAccount] = useState(false);
+  // Hover and keyboard focus are tracked separately on purpose. With one flag,
+  // moving the mouse off the rail while a link inside it had focus would
+  // re-collapse the sidebar and unmount the focused element.
+  const [hasFocusWithin, setHasFocusWithin] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const asideRef = useRef<HTMLElement>(null);
   // Chromium does not focus a <button> on a mouse click, so the element the
   // dialog would otherwise restore to is <body>. Naming the trigger keeps the
   // drawer's focus return correct however it was opened.
   const menuButtonRef = useRef<HTMLButtonElement>(null);
 
-  const handleDeleteAccount = async () => {
-    if (deleteConfirmText !== "DELETE" || deletingAccount) return;
-    setDeletingAccount(true);
-    try {
-      const res = await fetch(`${API_BASE}/api/auth/account`, {
-        method: "DELETE",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ confirm: "DELETE" }),
-      });
-      if (res.ok) {
-        window.location.href = "/";
-        return;
-      }
-    } catch {
-      // fall through to re-enable the button
-    }
-    setDeletingAccount(false);
-  };
-
-  const openDeleteAccount = () => {
-    setDeleteConfirmText("");
-    setDeleteAccountOpen(true);
-  };
-
-  // Determine effective collapsed state (expanded if hovered)
-  const effectiveCollapsed = sidebarCollapsed && !isHovered;
+  // Determine effective collapsed state (expanded while hovered or focused)
+  const effectiveCollapsed = sidebarCollapsed && !isHovered && !hasFocusWithin;
 
   // Persist sidebar state in localStorage
   useEffect(() => {
@@ -413,53 +419,63 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen flex bg-background">
+      {/* The app's only live region — everything `useAnnounce` says lands here.
+          It sits outside <main> so a route change never unmounts it
+          mid-announcement. */}
+      <LiveRegion />
+
       {/* Desktop sidebar */}
       <aside
+        ref={asideRef}
         className={cn(
           "hidden lg:flex flex-col bg-gradient-to-b from-[#FAFAFA] to-white dark:from-background dark:to-background border-r border-gray-200/80 dark:border-border transition-all duration-200 shrink-0",
           effectiveCollapsed ? "w-[56px]" : "w-56",
         )}
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
+        onFocusCapture={() => setHasFocusWithin(true)}
+        onBlurCapture={(event) => {
+          const next = event.relatedTarget as Node | null;
+          if (!next || !asideRef.current?.contains(next)) setHasFocusWithin(false);
+        }}
       >
         {/* Top accent bar */}
         <div className="h-[2px] bg-gradient-to-r from-[#FF5500] to-[#FF7733] shrink-0" />
 
         <div className="flex items-center justify-between h-12 px-3 border-b border-gray-200/80 dark:border-border shrink-0">
-          {effectiveCollapsed ? (
-            <button
-              type="button"
-              onClick={toggleSidebar}
-              className="flex items-center min-w-0 cursor-pointer"
-              aria-label="Expand sidebar"
+          {/* One element in both states, so tabbing into a collapsed rail
+              expands it without the focused control being replaced. */}
+          <Link href="/dashboard" className="flex items-center min-w-0">
+            <BrandMark title="" className="h-7 w-7 shrink-0" />
+            {/* The mark is decorative, so this text is the link's accessible
+                name in both states — visible when there is room, `sr-only`
+                on the collapsed rail. */}
+            <span
+              className={cn(
+                "font-bold text-sm text-foreground truncate",
+                effectiveCollapsed ? "sr-only" : "ml-2",
+              )}
             >
-              <BrandMark className="h-7 w-7 shrink-0" />
-            </button>
-          ) : (
-            <Link href="/dashboard" className="flex items-center min-w-0">
-              <BrandMark title="" className="h-7 w-7 shrink-0" />
-              <span className="ml-2 font-bold text-sm text-foreground truncate">
-                Track Toolkit
-              </span>
-            </Link>
-          )}
+              Track Toolkit
+            </span>
+          </Link>
           {!effectiveCollapsed && (
-            <button
-              type="button"
+            <IconButton
+              label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+              size="sm"
               onClick={toggleSidebar}
-              className="p-1 rounded-md hover:bg-black/[0.04] dark:hover:bg-white/[0.04] text-muted-foreground-subtle hidden lg:flex"
-              aria-label="Collapse sidebar"
+              className="hidden lg:inline-flex"
             >
-              <ChevronLeft className="w-3.5 h-3.5" />
-            </button>
+              {sidebarCollapsed ? (
+                <ChevronRight className="w-3.5 h-3.5" />
+              ) : (
+                <ChevronLeft className="w-3.5 h-3.5" />
+              )}
+            </IconButton>
           )}
         </div>
 
-        <SidebarNav
-          collapsed={effectiveCollapsed}
-          onDeleteAccount={openDeleteAccount}
-          deleteAccountRef={deleteAccountTriggerRef}
-        />
+        <SidebarNav collapsed={effectiveCollapsed} />
       </aside>
 
       {/* Mobile header */}
@@ -467,21 +483,22 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         className="lg:hidden fixed left-0 right-0 z-50 bg-white/95 dark:bg-background/95 backdrop-blur-sm border-b border-gray-200/80 dark:border-border h-12 flex items-center justify-between px-4"
         style={{ top: "var(--announcement-h)" }}
       >
-        <button
-          type="button"
+        <IconButton
           ref={menuButtonRef}
-          onClick={() => setMobileOpen(true)}
-          className="p-1.5 rounded-md hover:bg-black/[0.04] dark:hover:bg-white/[0.04] text-muted-foreground"
-          aria-label="Open menu"
+          label="Open menu"
+          size="sm"
           aria-expanded={mobileOpen}
           aria-controls={MOBILE_NAV_ID}
+          onClick={() => setMobileOpen(true)}
         >
           <Menu className="w-5 h-5" />
-        </button>
+        </IconButton>
         <Link href="/dashboard" className="flex items-center">
           <BrandWordmark className="h-7 w-auto text-foreground" />
         </Link>
-        <div className="w-8" />
+        {/* Balances the hamburger so the wordmark stays centred; `touch-44`
+            keeps it the same width as the button on a coarse pointer. */}
+        <div className="touch-44 w-9" aria-hidden="true" />
       </header>
 
       {/* Mobile drawer. A real dialog: the focus trap, Escape, focus return
@@ -500,7 +517,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           collapsed={false}
           onNavigate={closeMobile}
           navId={MOBILE_NAV_ID}
-          onDeleteAccount={openDeleteAccount}
         />
       </Dialog>
 
@@ -510,33 +526,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         tabIndex={-1}
         className="flex-1 min-w-0 min-h-0 pt-12 lg:pt-0 focus:outline-none"
       >
-        {/* The app's only live region — everything `useAnnounce` says lands here. */}
-        <LiveRegion />
         {children}
       </main>
-
-      <ConfirmDialog
-        open={deleteAccountOpen}
-        title="Delete your account?"
-        description="This permanently deletes your Track Toolkit account and everything stored with it — your login, connected SoundCloud tokens, and all operation history. Your SoundCloud account and playlists are not affected. This cannot be undone."
-        confirmLabel={deletingAccount ? "Deleting…" : "Delete my account"}
-        variant="destructive"
-        onConfirm={handleDeleteAccount}
-        onCancel={() => setDeleteAccountOpen(false)}
-        returnFocusRef={deleteAccountTriggerRef}
-      >
-        <label className="block text-xs text-muted-foreground" htmlFor="delete-account-confirm">
-          Type <span className="font-mono font-semibold">DELETE</span> to confirm
-        </label>
-        <input
-          id="delete-account-confirm"
-          value={deleteConfirmText}
-          onChange={(e) => setDeleteConfirmText(e.target.value)}
-          className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-red-500/40"
-          placeholder="DELETE"
-          autoComplete="off"
-        />
-      </ConfirmDialog>
     </div>
   );
 }

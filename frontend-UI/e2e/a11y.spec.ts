@@ -74,58 +74,13 @@ for (const { path, needsMock, fixme, expectedStatus } of PAGES) {
   });
 }
 
-/**
- * The shared `Dialog` primitive, exercised through the one dialog that is
- * reachable from a mocked page without a write: the delete-account confirm in
- * the desktop sidebar. Covers the four things a modal has to get right —
- * it is labelled by its visible heading, Tab cannot leave it, Escape closes
- * it, and focus goes back where it came from.
+/*
+ * The shared `Dialog` primitive used to be exercised here through the
+ * sidebar's delete-account confirm. That control moved to `/account` with the
+ * rest of account management, so the primitive is now covered by the mobile
+ * drawer — the one modal reachable from a mocked page without a write. See
+ * `e2e/drawer.spec.ts`.
  */
-test("Dialog: labelled by its heading, traps Tab, Escape closes and restores focus", async ({
-  page,
-}, testInfo) => {
-  test.skip(
-    testInfo.project.name !== "desktop",
-    "the sidebar 'Delete account' control is only rendered at lg and up",
-  );
-
-  await mockApi(page);
-  await page.goto("/dashboard/");
-
-  // Opened from the keyboard on purpose: Chromium on macOS does not focus a
-  // <button> on mouse click, so a click would leave `document.body` as the
-  // element to restore to and the last assertion would prove nothing.
-  const trigger = page.getByRole("button", { name: "Delete account", exact: true });
-  await trigger.focus();
-  await trigger.press("Enter");
-
-  const dialog = page.getByRole("dialog");
-  await expect(dialog).toBeVisible();
-
-  // aria-labelledby must resolve to the visible h2, not to a hidden string.
-  await expect(dialog).toHaveAccessibleName("Delete your account?");
-  await expect(
-    dialog.getByRole("heading", { level: 2, name: "Delete your account?" }),
-  ).toBeVisible();
-
-  // Opens on Cancel, so a stray Enter never confirms a destructive action.
-  await expect(dialog.getByRole("button", { name: "Cancel" })).toBeFocused();
-
-  // More presses than the dialog has focusable elements, so the trap has to
-  // wrap at least once for this to hold.
-  for (let i = 0; i < 8; i += 1) {
-    await page.keyboard.press("Tab");
-    const focusStayedInside = await page.evaluate(() => {
-      const panel = document.querySelector('[role="dialog"]');
-      return !!panel && !!document.activeElement && panel.contains(document.activeElement);
-    });
-    expect(focusStayedInside, `focus escaped the dialog after ${i + 1} Tab(s)`).toBe(true);
-  }
-
-  await page.keyboard.press("Escape");
-  await expect(dialog).toBeHidden();
-  await expect(trigger).toBeFocused();
-});
 
 /**
  * Selection is a real checkbox, and the banner that appears is a status

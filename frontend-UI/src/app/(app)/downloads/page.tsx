@@ -12,6 +12,7 @@ import {
   Card,
   ConfirmDialog,
   EmptyState,
+  Field,
   IconButton,
   InlineAlert,
   Input,
@@ -360,10 +361,25 @@ export default function DownloadsPage() {
     return `Open ${track.title} on SoundCloud`;
   };
 
+  /**
+   * The button's surface, as HSL tokens rather than raw palette classes.
+   *
+   * The hue is decoration — `getDownloadLabel` above is what actually tells
+   * you which route a button takes — but it still has to carry its own glyph,
+   * and the old `bg-green-500` put white at 2.28:1, under even the 3:1 a
+   * graphic needs. Each branch names its own foreground as well, because
+   * white on `bg-primary` is 3.29:1: the brand orange's readable pairing is
+   * `--primary-foreground`, not white. `hover:text-*` is repeated because
+   * `IconButton`'s ghost variant sets `hover:text-accent-foreground`.
+   */
   const getDownloadTone = (track: Track) => {
-    if (track.download_url) return "bg-green-500 hover:bg-green-600";
-    if (isHypedditUrl(track.purchase_url)) return "bg-purple-600 hover:bg-purple-700";
-    return "bg-primary hover:bg-primary/90";
+    if (track.download_url) {
+      return "bg-tone-download text-tone-foreground hover:bg-tone-download/90 hover:text-tone-foreground";
+    }
+    if (isHypedditUrl(track.purchase_url)) {
+      return "bg-tone-purchase text-tone-foreground hover:bg-tone-purchase/90 hover:text-tone-foreground";
+    }
+    return "bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground";
   };
 
   const handleDownload = async (track: Track) => {
@@ -440,20 +456,24 @@ export default function DownloadsPage() {
               <>
                 {/* Search filter */}
                 {playlists.length > 5 && (
-                  <div className="relative mb-4">
-                    <Search
-                      aria-hidden="true"
-                      className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground-subtle"
-                    />
-                    <Input
-                      type="search"
-                      aria-label="Search playlists"
-                      value={sourceSearch}
-                      onChange={(e) => setSourceSearch(e.target.value)}
-                      placeholder="Search playlists…"
-                      className="h-11 pl-9 bg-transparent dark:text-foreground dark:border-border"
-                    />
-                  </div>
+                  <Field label="Search playlists" labelHidden className="mb-4">
+                    {(field) => (
+                      <div className="relative">
+                        <Search
+                          aria-hidden="true"
+                          className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground-subtle"
+                        />
+                        <Input
+                          {...field}
+                          type="search"
+                          value={sourceSearch}
+                          onChange={(e) => setSourceSearch(e.target.value)}
+                          placeholder="Search playlists…"
+                          className="h-11 pl-9 bg-transparent dark:text-foreground dark:border-border"
+                        />
+                      </div>
+                    )}
+                  </Field>
                 )}
 
                 <div className="grid md:grid-cols-2 gap-4">
@@ -637,7 +657,7 @@ export default function DownloadsPage() {
                         variant="destructive"
                       >
                         {isRemoving ? (
-                          <LoadingSpinner className="w-4 h-4 text-white" />
+                          <LoadingSpinner className="w-4 h-4 text-current" />
                         ) : (
                           <Trash2 className="w-4 h-4" />
                         )}
@@ -689,7 +709,7 @@ export default function DownloadsPage() {
                       <Button
                         onClick={sendToExtension}
                         disabled={selectedHypedditIds.size === 0}
-                        className="bg-purple-600 hover:bg-purple-700 text-white"
+                        className="bg-tone-purchase text-tone-foreground hover:bg-tone-purchase/90"
                       >
                         <Zap className="w-4 h-4" />
                         Queue {selectedHypedditIds.size} track{selectedHypedditIds.size !== 1 ? "s" : ""}
@@ -754,10 +774,10 @@ export default function DownloadsPage() {
                                   e.stopPropagation();
                                   handleDownload(track);
                                 }}
-                                className={`text-white hover:text-white ${getDownloadTone(track)}`}
+                                className={getDownloadTone(track)}
                               >
                                 {downloadingTrackId === track.id ? (
-                                  <LoadingSpinner className="h-5 w-5 text-white" />
+                                  <LoadingSpinner className="h-5 w-5 text-current" />
                                 ) : (
                                   <Download className="h-5 w-5" />
                                 )}
@@ -828,10 +848,10 @@ export default function DownloadsPage() {
                           label={getDownloadLabel(track)}
                           disabled={downloadingTrackId === track.id}
                           onClick={() => handleDownload(track)}
-                          className={`text-white hover:text-white ${getDownloadTone(track)}`}
+                          className={getDownloadTone(track)}
                         >
                           {downloadingTrackId === track.id ? (
-                            <LoadingSpinner className="h-5 w-5 text-white" />
+                            <LoadingSpinner className="h-5 w-5 text-current" />
                           ) : (
                             <Download className="w-5 h-5" />
                           )}

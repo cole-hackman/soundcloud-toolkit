@@ -126,7 +126,7 @@ export default function PlaylistComparePage() {
               <div className="flex items-end">
                 <Button onClick={compare} disabled={!canCompare}>
                   {comparing ? (
-                    <LoadingSpinner size="sm" className="border-white" />
+                    <LoadingSpinner size="sm" className="text-white" />
                   ) : (
                     <ArrowRightLeft aria-hidden="true" className="h-4 w-4" />
                   )}

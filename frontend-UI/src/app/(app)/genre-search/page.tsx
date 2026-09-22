@@ -362,7 +362,7 @@ export default function GenreSearchPage() {
           <Button onClick={handleSearch} disabled={searching}>
             {searching ? (
               <>
-                <LoadingSpinner size="sm" className="border-white" />
+                <LoadingSpinner size="sm" className="text-white" />
                 Searching…
               </>
             ) : (
@@ -473,7 +473,7 @@ export default function GenreSearchPage() {
                 disabled={adding || (addMode === "new" ? !playlistName.trim() : !targetPlaylist)}
                 className="flex-1"
               >
-                {adding ? <><LoadingSpinner size="sm" className="border-white" /> Adding…</> : "Add tracks"}
+                {adding ? <><LoadingSpinner size="sm" className="text-white" /> Adding…</> : "Add tracks"}
               </Button>
             </div>
           }

@@ -377,7 +377,7 @@ function ResultRow({
           <NextLink
             href={`/playlist-cloner?url=${encodeURIComponent(result.data.permalink_url)}`}
             aria-label={`Clone ${title || "this playlist"}`}
-            className="inline-flex h-10 shrink-0 items-center rounded-md px-3 text-sm font-semibold text-foreground hover:bg-accent hover:text-primary-text"
+            className="inline-flex h-10 shrink-0 items-center rounded-md px-3 text-sm font-semibold text-foreground hover:bg-accent hover:text-accent-foreground"
           >
             Clone
           </NextLink>
@@ -387,7 +387,7 @@ function ResultRow({
           <NextLink
             href="/downloads"
             aria-label={`Find downloads for ${title || "this track"}`}
-            className="inline-flex h-10 shrink-0 items-center rounded-md px-3 text-sm font-semibold text-foreground hover:bg-accent hover:text-primary-text"
+            className="inline-flex h-10 shrink-0 items-center rounded-md px-3 text-sm font-semibold text-foreground hover:bg-accent hover:text-accent-foreground"
           >
             Downloads
           </NextLink>

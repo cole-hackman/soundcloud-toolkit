@@ -262,7 +262,7 @@ export default function LikesToPlaylistPage() {
                   href={result.playlist.permalink_url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-block px-6 py-3 rounded-lg font-semibold bg-primary/10 text-primary-text hover:bg-primary/20 transition"
+                  className="inline-block px-6 py-3 rounded-lg font-semibold bg-primary/10 text-primary-text hover:bg-primary/15 transition"
                 >
                   Open in SoundCloud
                 </a>
@@ -498,7 +498,7 @@ export default function LikesToPlaylistPage() {
               >
                 {creating ? (
                   <>
-                    <LoadingSpinner size="sm" className="border-white" />
+                    <LoadingSpinner size="sm" className="text-white" />
                     {addMode === "existing" ? "Adding..." : "Creating..."}
                   </>
                 ) : (

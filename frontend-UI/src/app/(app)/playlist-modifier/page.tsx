@@ -826,7 +826,7 @@ export default function PlaylistModifierPage() {
                   disabled={saving}
                 >
                   {saving ? (
-                    <LoadingSpinner size="sm" className="w-4 h-4 border-white" />
+                    <LoadingSpinner size="sm" className="w-4 h-4 text-white" />
                   ) : (
                     <Save className="w-4 h-4" aria-hidden="true" />
                   )}
@@ -1112,7 +1112,7 @@ export default function PlaylistModifierPage() {
               onClick={() => void submitTransfer()}
             >
               {transferLoading ? (
-                <LoadingSpinner size="sm" className="w-4 h-4 border-white" />
+                <LoadingSpinner size="sm" className="w-4 h-4 text-white" />
               ) : null}
               {transfer?.action === "move"
                 ? isLikedTracksView

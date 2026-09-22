@@ -16,6 +16,37 @@ const FOCUSABLE_SELECTOR = [
   '[tabindex]:not([tabindex="-1"])',
 ].join(", ");
 
+/**
+ * Is this element actually rendered?
+ *
+ * A selector cannot tell: `querySelectorAll` happily matches a `<button>`
+ * inside a `hidden` container, and that button is not tabbable. Treating one
+ * as the panel's first or last focusable loses focus outright — `.focus()` on
+ * a display:none element is a no-op, so Shift+Tab off the first element goes
+ * nowhere, and forward Tab off the last *visible* element is never
+ * intercepted, so focus escapes the dialog to the page behind it.
+ *
+ * `checkVisibility` is the direct answer where it exists; `offsetParent` is
+ * the fallback, with `getClientRects()` covering the `position: fixed` case
+ * it reports as null.
+ */
+function isRendered(element: HTMLElement): boolean {
+  const check = (
+    element as unknown as { checkVisibility?: (options?: object) => boolean }
+  ).checkVisibility;
+  if (typeof check === "function") {
+    return check.call(element, { visibilityProperty: true });
+  }
+  return !!element.offsetParent || element.getClientRects().length > 0;
+}
+
+/** Every element inside `panel` that Tab can actually reach, in DOM order. */
+function focusableWithin(panel: Element): HTMLElement[] {
+  return Array.from(panel.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter(
+    isRendered,
+  );
+}
+
 export interface UseDialogOptions {
   open: boolean;
   /** Called on Escape. The caller decides what closing means. */
@@ -65,7 +96,7 @@ export function useDialog({
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
 
     const panel = panelRef.current;
-    const firstFocusable = panel?.querySelector<HTMLElement>(FOCUSABLE_SELECTOR) ?? null;
+    const firstFocusable = panel ? (focusableWithin(panel)[0] ?? null) : null;
     (initialFocusOptionRef.current?.current ?? firstFocusable ?? panel)?.focus();
 
     // Restore the previous value rather than clearing it, so a dialog opened
@@ -87,9 +118,7 @@ export function useDialog({
 
       // `aria-modal` alone does not stop Tab reaching the page behind the
       // dialog, so cycle within the panel by hand.
-      const focusable = Array.from(
-        currentPanel.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR),
-      );
+      const focusable = focusableWithin(currentPanel);
       if (focusable.length === 0) {
         event.preventDefault();
         currentPanel.focus();

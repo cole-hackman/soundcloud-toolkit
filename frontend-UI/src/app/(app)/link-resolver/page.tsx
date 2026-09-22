@@ -240,7 +240,7 @@ function LinkResolverContent() {
               className="h-12 px-6"
             >
               {loading ? (
-                <LoadingSpinner size="sm" className="border-white" />
+                <LoadingSpinner size="sm" className="text-white" />
               ) : (
                 <Search className="w-5 h-5" aria-hidden="true" />
               )}

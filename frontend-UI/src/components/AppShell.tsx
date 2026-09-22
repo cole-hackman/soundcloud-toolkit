@@ -455,10 +455,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           // <button> on mousedown, so a plain focus check would mean clicking
           // "Collapse sidebar" immediately re-expanded the rail and the
           // control looked dead until you clicked somewhere else.
+          //
+          // Assigned, never only set: a keyboard-then-mouse sequence — Tab
+          // into the rail, then click "Collapse sidebar" — used to leave the
+          // flag pinned on, because the blur's `relatedTarget` was still
+          // inside the rail so nothing cleared it and the rail stayed open
+          // until focus left entirely. A mouse focus inside the rail now
+          // clears it, which is the same answer a fresh mouse focus gives.
           const target = event.target as HTMLElement;
-          if (typeof target.matches === "function" && target.matches(":focus-visible")) {
-            setHasFocusWithin(true);
-          }
+          const keyboard =
+            typeof target.matches === "function" && target.matches(":focus-visible");
+          setHasFocusWithin(keyboard);
         }}
         onBlurCapture={(event) => {
           const next = event.relatedTarget as Node | null;

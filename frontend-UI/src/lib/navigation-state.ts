@@ -9,13 +9,13 @@
  * the old page and mounts a new one, so per-instance state is always "first
  * mount" and would never fire.
  *
- * It lives here rather than in `PageHeader` because `PageHeader` cannot see
- * every navigation: `/dashboard/` is the one route in the app group that does
- * not render one. Hard-load a tool, go to the dashboard, come back, and a
- * PageHeader-local latch is still unset while the pathname is once again the
- * one the document loaded at — so the return trip silently skipped focus.
- * `AppGroupLayout` stays mounted across every navigation and marks the flag
- * for the routes no PageHeader sees.
+ * It lives here rather than in `PageHeader` because nothing guarantees every
+ * route in the app group renders one — `/dashboard/` did not until Task 15
+ * gave it one, and a route added tomorrow need not. Hard-load a tool, go to a
+ * route with no PageHeader, come back, and a PageHeader-local latch is still
+ * unset while the pathname is once again the one the document loaded at — so
+ * the return trip silently skipped focus. `AppGroupLayout` stays mounted
+ * across every navigation and marks the flag whatever the route renders.
  */
 
 let navigated = false;

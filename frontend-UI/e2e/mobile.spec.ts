@@ -74,6 +74,16 @@ for (const { path, needsMock, fixme } of PAGES) {
 
     await page.goto(path);
 
+    // Measure the route's own content, not the shell's spinner. `AppLayout`
+    // renders a hydration/auth placeholder first, and it is narrow enough to
+    // never overflow — so a measurement taken before the page mounts reports
+    // on the placeholder and passes regardless of what the page does. Same
+    // failure mode the a11y spec has, and the same guard: every `(app)` route
+    // renders an `<h1>` through `PageHeader`.
+    if (needsMock) {
+      await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+    }
+
     // Compare against `clientWidth`, not `window.innerWidth`: on content
     // wider than the device, Chromium's mobile emulation can expand the
     // *layout* viewport (`innerWidth`) to fit it, and `scrollWidth` grows

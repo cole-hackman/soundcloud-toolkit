@@ -488,16 +488,12 @@ export default function RepostManagerPage() {
                         as="div"
                         id={repost.id}
                         selected={isSelected}
-                        label={repost.title}
+                        // Track or playlist is part of what the row IS, so it
+                        // belongs in the checkbox's name — without it a
+                        // screen-reader user tabbing the list cannot tell a
+                        // reposted playlist from a reposted track.
+                        label={`${repost.title} (${repost.resourceType})`}
                         onToggle={(e) => toggleItem(repost.id, index, filteredReposts, e)}
-                        rightSlot={
-                          /* One neutral chip for both kinds. The track badge
-                             used to be orange text on an orange-100 chip,
-                             which axe measured below 4.5:1. */
-                          <span className="rounded-full bg-secondary px-2 py-1 text-xs font-semibold uppercase tracking-wide text-foreground">
-                            {repost.resourceType}
-                          </span>
-                        }
                       >
                         <span className="flex min-w-0 items-center gap-3">
                           {/* Artwork */}
@@ -529,6 +525,14 @@ export default function RepostManagerPage() {
                             <span className="block text-xs text-muted-foreground truncate">
                               {repost.user?.username}
                             </span>
+                          </span>
+
+                          {/* Inside the toggle, not `rightSlot`: it is a label
+                              for the row, not a control. One neutral chip for
+                              both kinds — the track badge used to be orange
+                              text on an orange-100 chip, below 4.5:1. */}
+                          <span className="shrink-0 rounded-full bg-secondary px-2 py-1 text-xs font-semibold uppercase tracking-wide text-foreground">
+                            {repost.resourceType}
                           </span>
                         </span>
                       </SelectableRow>

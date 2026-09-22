@@ -172,6 +172,18 @@ test("combine: the target-playlist picker is the shared Dialog", async ({ page }
   await page.keyboard.press("Escape");
   await expect(dialog).toBeHidden();
   await expect(trigger).toBeFocused();
+
+  // Choosing an option closes the picker too, and focus has to land back on
+  // the trigger there as well. That only works because React reuses the same
+  // <button> node across the "Choose a target playlist…" / "Change" ternary —
+  // add a `key` or a wrapper and `returnFocusRef` would point at a detached
+  // node and focus would fall to <body>. Pinned here so that stays true.
+  await trigger.focus();
+  await trigger.press("Enter");
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("button", { name: /Sample Playlist 1/ }).click();
+  await expect(dialog).toBeHidden();
+  await expect(page.getByRole("button", { name: /Change/ })).toBeFocused();
 });
 
 /**

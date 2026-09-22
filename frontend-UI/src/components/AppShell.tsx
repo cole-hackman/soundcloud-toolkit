@@ -41,6 +41,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/contexts/ThemeContext";
 import { cn } from "@/lib/utils";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { LiveRegion } from "@/components/ui/LiveRegion";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "";
 
@@ -566,6 +567,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       {/* Main content */}
       <main id="main-content" tabIndex={-1} className="flex-1 min-w-0 min-h-0 pt-12 lg:pt-0 focus:outline-none">
+        {/* The app's only live region — everything `useAnnounce` says lands here. */}
+        <LiveRegion />
         {children}
       </main>
 

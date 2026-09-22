@@ -10,16 +10,22 @@ import {
   Search,
   Trash2,
   Loader2,
-  Check,
 } from "lucide-react";
 import {
   BulkReviewDetails,
+  Button,
+  Card,
   ConfirmDialog,
   EmptyState,
+  Field,
   InlineAlert,
-  LoadingSpinner,
+  Input,
   PageContainer,
   PageHeader,
+  ProgressBar,
+  SectionHeading,
+  Select,
+  SelectableRow,
   SelectionBanner,
   Skeleton,
 } from "@/components/ui";
@@ -56,6 +62,9 @@ export default function RepostManagerPage() {
   const queryClient = useQueryClient();
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [removing, setRemoving] = useState(false);
+  const [removeProgress, setRemoveProgress] = useState<{ current: number; total: number } | null>(
+    null,
+  );
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<SortOption>("recent");
   const [showRemoveConfirm, setShowRemoveConfirm] = useState(false);
@@ -128,6 +137,8 @@ export default function RepostManagerPage() {
       const removedIds = new Set<number>();
       let rateLimited = false;
 
+      setRemoveProgress({ current: 0, total: items.length });
+
       for (let i = 0; i < items.length; i += CHUNK) {
         const chunk = items.slice(i, i + CHUNK);
         const response = await apiFetch("/api/reposts/bulk-remove", {
@@ -146,6 +157,11 @@ export default function RepostManagerPage() {
         for (const r of data.results as { id: number; status: string }[]) {
           if (r.status === "ok") removedIds.add(r.id);
         }
+
+        setRemoveProgress({
+          current: Math.min(i + CHUNK, items.length),
+          total: items.length,
+        });
       }
 
       removeItemsFromRepostsCache(queryClient, removedIds);
@@ -173,6 +189,7 @@ export default function RepostManagerPage() {
       setNotice({ type: "error", text: "An error occurred while removing reposts." });
     } finally {
       setRemoving(false);
+      setRemoveProgress(null);
     }
   };
 
@@ -301,101 +318,143 @@ export default function RepostManagerPage() {
           </InlineAlert>
         )}
 
+        {removing && removeProgress && (
+          <ProgressBar
+            className="mb-6 rounded-lg border-2 border-border bg-secondary/10 p-4"
+            label="Removing reposts"
+            value={removeProgress.current}
+            max={removeProgress.total}
+          />
+        )}
+
         {!loading && reposts.length === 0 ? (
-          <div className="bg-white dark:bg-card rounded-2xl p-8 border-2 border-gray-200 dark:border-border">
+          <Card className="p-8">
             <EmptyState
               icon={<Repeat2 className="w-12 h-12" />}
               title="No reposts found"
               description="You haven't reposted any tracks or playlists recently."
             />
-          </div>
+          </Card>
         ) : (
-          <div className="bg-white dark:bg-card rounded-2xl p-6 border-2 border-gray-200 dark:border-border">
+          <Card className="p-6">
+            <SectionHeading className="mb-3">Reposts</SectionHeading>
+
             {/* Controls — stay interactive while the list is still loading */}
-            <div className="flex items-center gap-3 mb-4 flex-wrap">
-              <div className="relative flex-1 min-w-[200px]">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground-subtle" />
-                <input
-                  type="text"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search reposts..."
-                  className="w-full pl-10 pr-3 py-2 border-2 border-gray-200 dark:border-border rounded-lg text-sm text-foreground bg-gray-50 dark:bg-secondary/20 focus:border-primary focus:outline-none"
-                />
-              </div>
-              <select
+            <div className="grid grid-cols-1 gap-2 mb-4 sm:grid-cols-2 lg:flex lg:flex-wrap lg:items-end">
+              <Field
+                label="Search reposts"
+                className="lg:min-w-[200px] lg:flex-1 [&>label]:sr-only"
+              >
+                {(field) => (
+                  <div className="relative">
+                    <Search
+                      aria-hidden="true"
+                      className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground-subtle"
+                    />
+                    <Input
+                      {...field}
+                      type="text"
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                      placeholder="Search reposts..."
+                      className="h-11 pl-10 bg-gray-50 dark:bg-secondary/20"
+                    />
+                  </div>
+                )}
+              </Field>
+              {/* The brief called this one "Type"; its options are Most
+                  Recent / Oldest / A → Z, so "Sort" is what it actually does
+                  and what a screen reader should say. */}
+              <Select
+                label="Sort"
                 value={sort}
                 onChange={(e) => setSort(e.target.value as SortOption)}
-                className="px-3 py-2 border-2 border-gray-200 dark:border-border rounded-lg text-sm text-foreground bg-gray-50 dark:bg-secondary/20 focus:border-primary focus:outline-none"
+                className="bg-gray-50 dark:bg-secondary/20"
               >
                 <option value="recent">Most Recent</option>
                 <option value="oldest">Oldest First</option>
                 <option value="alpha">A → Z</option>
-              </select>
-              <button
+              </Select>
+              <Button
+                variant="ghost"
+                size="sm"
                 onClick={selectAll}
                 disabled={loading}
-                className="text-sm text-primary-text font-medium whitespace-nowrap disabled:opacity-50"
+                className="whitespace-nowrap text-primary-text"
               >
                 {selected.size === filteredReposts.length
                   ? "Deselect All"
                   : selectAllLabel(repostsState, filteredReposts.length)}
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
                 onClick={() => setShowAutoSelect((v) => !v)}
                 disabled={loading}
-                className="text-sm text-muted-foreground hover:text-foreground dark:hover:text-foreground font-medium whitespace-nowrap disabled:opacity-50"
+                aria-expanded={showAutoSelect}
+                className="whitespace-nowrap text-muted-foreground"
               >
                 {showAutoSelect ? "Hide auto-select" : "Auto-select…"}
-              </button>
+              </Button>
             </div>
 
             {/* Auto-select with a keep-list (everything except matches gets selected) */}
             {showAutoSelect && !loading && (
               <div className="mb-4 p-4 rounded-xl bg-gray-50 dark:bg-secondary/20 border-2 border-gray-200 dark:border-border">
-                <div className="text-sm font-semibold text-foreground mb-1">
+                <SectionHeading as="h3" className="mb-1">
                   Auto-select everything except your keep-list
-                </div>
+                </SectionHeading>
                 <p className="text-xs text-muted-foreground mb-3">
                   One artist or title per line (or comma-separated). Matches are kept; everything
                   else in the current view is selected. Wrap a line in <code>/slashes/</code> for regex.
                   Nothing is removed until you confirm.
                 </p>
-                <textarea
-                  value={keepList}
-                  onChange={(e) => setKeepList(e.target.value)}
-                  placeholder={"Phibes\nMyFavoriteArtist\n/remix$/"}
-                  rows={3}
-                  className="w-full px-3 py-2 mb-3 border-2 border-gray-200 dark:border-border rounded-lg text-sm font-mono text-foreground bg-white dark:bg-secondary/20 focus:border-primary focus:outline-none resize-y"
-                />
-                <div className="flex items-center gap-3 flex-wrap">
-                  <label className="text-xs text-muted-foreground flex items-center gap-2">
-                    Limit
-                    <input
-                      type="number"
-                      min={1}
-                      value={limitInput}
-                      onChange={(e) => setLimitInput(e.target.value)}
-                      placeholder="all"
-                      className="w-20 px-2 py-1 border-2 border-gray-200 dark:border-border rounded-lg text-sm text-foreground bg-white dark:bg-secondary/20 focus:border-primary focus:outline-none"
+                {/* The brief's label for this box was "Track or playlist URLs,
+                    one per line" — that is another page's control. This one
+                    takes artist/title patterns to KEEP, and mislabelling it
+                    would be worse than the missing label was. */}
+                <Field label="Keep-list — one artist or title per line" className="mb-3">
+                  {(field) => (
+                    <textarea
+                      {...field}
+                      value={keepList}
+                      onChange={(e) => setKeepList(e.target.value)}
+                      placeholder={"Phibes\nMyFavoriteArtist\n/remix$/"}
+                      rows={3}
+                      className="w-full px-3 py-2 border-2 border-gray-200 dark:border-border rounded-lg text-base sm:text-sm font-mono text-foreground bg-white dark:bg-secondary/20 focus:border-primary focus:outline-none resize-y"
                     />
-                  </label>
-                  <button
-                    onClick={selectExceptKeepList}
-                    className="px-3 py-1.5 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-medium"
-                  >
+                  )}
+                </Field>
+                <div className="flex items-end gap-3 flex-wrap">
+                  <Field label="Limit">
+                    {(field) => (
+                      <Input
+                        {...field}
+                        type="number"
+                        inputMode="numeric"
+                        min={1}
+                        value={limitInput}
+                        onChange={(e) => setLimitInput(e.target.value)}
+                        placeholder="all"
+                        className="h-11 w-24 bg-white dark:bg-secondary/20"
+                      />
+                    )}
+                  </Field>
+                  <Button size="sm" onClick={selectExceptKeepList}>
                     Select {Math.min(removableReposts.length, parsedLimit === Infinity ? removableReposts.length : parsedLimit)} to remove
-                  </button>
-                  <span className="text-xs text-muted-foreground-subtle">
+                  </Button>
+                  <p role="status" className="text-xs text-muted-foreground-subtle">
                     {keptCount} kept · {removableReposts.length} removable in view
                     {!repostsState.isComplete && " (more still loading)"}
-                  </span>
+                  </p>
                 </div>
               </div>
             )}
 
             {!loading && repostsStatus && (
-              <div className="text-sm text-muted-foreground-subtle mb-2">{repostsStatus}</div>
+              <p role="status" className="text-sm text-muted-foreground-subtle mb-2">
+                {repostsStatus}
+              </p>
             )}
 
             {loading ? (
@@ -405,7 +464,7 @@ export default function RepostManagerPage() {
                 ))}
               </div>
             ) : (
-            <div ref={listScrollRef} className="max-h-[600px] overflow-y-auto">
+            <div ref={listScrollRef} className="max-h-[60dvh] overflow-y-auto">
               <div style={{ height: rowVirtualizer.getTotalSize(), position: "relative" }}>
                 {rowVirtualizer.getVirtualItems().map((virtualRow) => {
                   const repost = filteredReposts[virtualRow.index];
@@ -425,67 +484,58 @@ export default function RepostManagerPage() {
                       }}
                       className="pb-2"
                     >
-                      <button
-                        onClick={(e) => toggleItem(repost.id, index, filteredReposts, e)}
-                        className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all text-left ${
-                          isSelected
-                            ? "bg-red-50 dark:bg-red-900/10 border-2 border-red-200 dark:border-red-900/30"
-                            : "bg-gray-50 dark:bg-secondary/20 border-2 border-transparent hover:border-gray-200 dark:hover:border-border"
-                        }`}
+                      <SelectableRow
+                        as="div"
+                        id={repost.id}
+                        selected={isSelected}
+                        // Track or playlist is part of what the row IS, so it
+                        // belongs in the checkbox's name — without it a
+                        // screen-reader user tabbing the list cannot tell a
+                        // reposted playlist from a reposted track.
+                        label={`${repost.title} (${repost.resourceType})`}
+                        onToggle={(e) => toggleItem(repost.id, index, filteredReposts, e)}
                       >
-                        {/* Checkbox indicator */}
-                        <div
-                          className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${
-                            isSelected
-                              ? "bg-red-500 text-white"
-                              : "bg-gray-200 dark:bg-secondary"
-                          }`}
-                        >
-                          {isSelected && <Check className="w-3.5 h-3.5" />}
-                        </div>
+                        <span className="flex min-w-0 items-center gap-3">
+                          {/* Artwork */}
+                          {repost.artwork_url ? (
+                            <img
+                              src={repost.artwork_url}
+                              alt=""
+                              width={40}
+                              height={40}
+                              loading="lazy"
+                              decoding="async"
+                              className="w-10 h-10 rounded-lg object-cover shrink-0"
+                            />
+                          ) : (
+                            <span className="w-10 h-10 rounded-lg bg-gray-200 dark:bg-secondary flex items-center justify-center shrink-0">
+                              {repost.resourceType === "playlist" ? (
+                                <ListMusic aria-hidden="true" className="w-5 h-5 text-muted-foreground-subtle" />
+                              ) : (
+                                <Music aria-hidden="true" className="w-5 h-5 text-muted-foreground-subtle" />
+                              )}
+                            </span>
+                          )}
 
-                        {/* Artwork */}
-                        {repost.artwork_url ? (
-                          <img
-                            src={repost.artwork_url}
-                            alt={repost.title}
-                            width={40}
-                            height={40}
-                            loading="lazy"
-                            decoding="async"
-                            className="w-10 h-10 rounded-lg object-cover flex-shrink-0"
-                          />
-                        ) : (
-                          <div className="w-10 h-10 rounded-lg bg-gray-200 dark:bg-secondary flex items-center justify-center flex-shrink-0">
-                            {repost.resourceType === "playlist" ? (
-                              <ListMusic className="w-5 h-5 text-muted-foreground-subtle" />
-                            ) : (
-                              <Music className="w-5 h-5 text-muted-foreground-subtle" />
-                            )}
-                          </div>
-                        )}
+                          {/* Info */}
+                          <span className="min-w-0 flex-1">
+                            <span className="block font-semibold text-foreground text-sm truncate">
+                              {repost.title}
+                            </span>
+                            <span className="block text-xs text-muted-foreground truncate">
+                              {repost.user?.username}
+                            </span>
+                          </span>
 
-                        {/* Info */}
-                        <div className="flex-1 min-w-0">
-                          <div className="font-semibold text-foreground text-sm truncate">
-                            {repost.title}
-                          </div>
-                          <div className="text-xs text-muted-foreground truncate">
-                            {repost.user?.username}
-                          </div>
-                        </div>
-
-                        {/* Type badge */}
-                        <span
-                          className={`text-xs font-semibold uppercase tracking-wide px-2 py-1 rounded-full shrink-0 ${
-                            repost.resourceType === "playlist"
-                              ? "bg-purple-100 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400"
-                              : "bg-orange-100 dark:bg-orange-900/20 text-primary-text"
-                          }`}
-                        >
-                          {repost.resourceType}
+                          {/* Inside the toggle, not `rightSlot`: it is a label
+                              for the row, not a control. One neutral chip for
+                              both kinds — the track badge used to be orange
+                              text on an orange-100 chip, below 4.5:1. */}
+                          <span className="shrink-0 rounded-full bg-secondary px-2 py-1 text-xs font-semibold uppercase tracking-wide text-foreground">
+                            {repost.resourceType}
+                          </span>
                         </span>
-                      </button>
+                      </SelectableRow>
                     </div>
                   );
                 })}
@@ -499,7 +549,7 @@ export default function RepostManagerPage() {
                 Loading more…
               </div>
             )}
-          </div>
+          </Card>
         )}
       <SelectionBanner
         count={selected.size}

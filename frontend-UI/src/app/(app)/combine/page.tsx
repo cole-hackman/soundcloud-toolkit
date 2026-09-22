@@ -3,9 +3,26 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import { ArrowLeft, X, Combine, Check, Music, Trash2, AlertTriangle } from "lucide-react";
+import { X, Combine, Check, Music, Trash2, AlertTriangle } from "lucide-react";
 import { apiFetch } from "@/lib/api";
-import { BulkReviewDetails, ConfirmDialog, EmptyState, LoadingSpinner, PageContainer, PageHeader, Skeleton, Card, Button } from "@/components/ui";
+import {
+  BulkReviewDetails,
+  ConfirmDialog,
+  Dialog,
+  EmptyState,
+  Field,
+  IconButton,
+  InlineAlert,
+  Input,
+  LoadingSpinner,
+  PageContainer,
+  PageHeader,
+  SelectableList,
+  SelectableRow,
+  Card,
+  Button,
+  useAnnounce,
+} from "@/components/ui";
 import { invalidatePlaylistCaches, playlistsQueryOptions } from "@/lib/queries";
 
 interface Playlist {
@@ -20,7 +37,8 @@ type MergeMode = "new" | "existing";
 
 export default function CombinePlaylistsPage() {
   const queryClient = useQueryClient();
-  
+  const announce = useAnnounce();
+
   const { data: playlistsData } = useSuspenseQuery(playlistsQueryOptions());
   const userPlaylists = useMemo(
     () => (playlistsData?.collection || []) as unknown as Playlist[],
@@ -34,7 +52,6 @@ export default function CombinePlaylistsPage() {
   const [showPlaylistPicker, setShowPlaylistPicker] = useState(false);
   const [deleteAfterMerge, setDeleteAfterMerge] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const pickerDialogRef = useRef<HTMLDivElement>(null);
   const pickerTriggerRef = useRef<HTMLButtonElement | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isComplete, setIsComplete] = useState(false);
@@ -63,39 +80,9 @@ export default function CombinePlaylistsPage() {
 
   const closePlaylistPicker = () => setShowPlaylistPicker(false);
 
-  useEffect(() => {
-    if (!showPlaylistPicker) return;
-    const dialog = pickerDialogRef.current;
-    const focusable = () => Array.from(dialog?.querySelectorAll<HTMLElement>(
-      'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
-    ) || []);
-
-    focusable()[0]?.focus();
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        closePlaylistPicker();
-        return;
-      }
-      if (event.key !== "Tab") return;
-      const items = focusable();
-      if (items.length === 0) return;
-      const first = items[0];
-      const last = items[items.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-    document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.removeEventListener("keydown", handleKeyDown);
-      pickerTriggerRef.current?.focus();
-    };
-  }, [showPlaylistPicker]);
+  // The focus trap, the Escape handler and the focus restore that used to be
+  // written out here now come from the shared `Dialog` (which adds the body
+  // scroll lock and the safe-area padding this copy never had).
 
   const handlePlaylistToggle = (playlist: Playlist, index?: number, event?: React.MouseEvent | React.KeyboardEvent) => {
     const idNum = Number(playlist.id);
@@ -157,6 +144,9 @@ export default function CombinePlaylistsPage() {
     setShowDeleteConfirm(false);
     setMergeError(null);
     setIsProcessing(true);
+    // One POST does the whole merge, so there is no per-playlist count to
+    // drive a ProgressBar. Announce the start and the finish instead.
+    announce(`Merging ${selectedPlaylists.length} playlists…`);
     try {
       const body: Record<string, unknown> = {
         sourcePlaylistIds: selectedPlaylists.map((p) => p.id),
@@ -200,6 +190,28 @@ export default function CombinePlaylistsPage() {
     [selectedPlaylists],
   );
 
+  // The success screen replaces the whole page, so focus is left pointing at a
+  // Merge button that no longer exists. Move it to the new heading — the same
+  // thing `PageHeader` does on a client-side navigation — and say what
+  // happened, because the outcome is otherwise only a change of pixels.
+  // Declared before the `isComplete` early return: hooks cannot be conditional.
+  const successHeadingRef = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    if (!isComplete) return;
+    successHeadingRef.current?.focus({ preventScroll: false });
+
+    const created = result?.playlists || (result?.playlist ? [result.playlist] : []);
+    const overflow = result?.overflowPlaylists || [];
+    const count = created.length + overflow.length;
+    const tracks =
+      result?.stats?.totalTracks || result?.stats?.finalCount || result?.totalTracks || 0;
+    announce(
+      mergeMode === "existing"
+        ? `Merged: ${result?.stats?.addedCount ?? tracks} tracks added.`
+        : `Merged: ${count} playlist${count === 1 ? "" : "s"} created with ${tracks} tracks.`,
+    );
+  }, [isComplete, result, mergeMode, announce]);
+
   // ── SUCCESS SCREEN ──────────────────────────────────────────────────────────
   if (isComplete) {
     const playlists =
@@ -218,11 +230,15 @@ export default function CombinePlaylistsPage() {
     return (
       <div className="flex items-center justify-center px-6 py-12">
         <div className="max-w-2xl w-full">
-          <Card className="text-center rounded-2xl p-10 shadow-xl border-2">
+          <Card className="text-center rounded-2xl p-6 sm:p-10 shadow-xl border-2">
             <div className="w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-6 bg-primary shadow-lg">
-              <Check className="w-12 h-12 text-primary-foreground" />
+              <Check aria-hidden="true" className="w-12 h-12 text-primary-foreground" />
             </div>
-            <h1 className="text-4xl md:text-5xl font-bold mb-4 text-foreground">
+            <h1
+              ref={successHeadingRef}
+              tabIndex={-1}
+              className="text-3xl sm:text-5xl font-bold mb-4 text-foreground focus:outline-none"
+            >
               {mergeMode === "existing" ? "Playlist Updated!" : numPlaylists > 1 ? `${numPlaylists} Playlists Created!` : "Playlist Created!"}
             </h1>
             <p className="text-lg mb-4 leading-relaxed text-muted-foreground">
@@ -298,7 +314,7 @@ export default function CombinePlaylistsPage() {
           description="Select playlists to merge. Duplicates will be automatically removed."
         />
 
-        <div className="grid lg:grid-cols-3 gap-8">
+        <div className="grid lg:grid-cols-3 gap-6 lg:gap-8">
           {/* Playlist Selection */}
           <div className="lg:col-span-2">
             <Card className="rounded-2xl p-6 border-2 border-border">
@@ -313,53 +329,49 @@ export default function CombinePlaylistsPage() {
                 />
               ) : (
                 <div className="relative">
-                <div className="space-y-2 max-h-[600px] overflow-y-auto pr-1">
+                <SelectableList className="max-h-[60dvh] overflow-y-auto pr-1">
                   {userPlaylists.map((playlist, index) => {
                     const isSelected = selectedPlaylists.some(
                       (p) => Number(p.id) === Number(playlist.id)
                     );
                     const isTarget = targetPlaylist && Number(targetPlaylist.id) === Number(playlist.id);
                     return (
-                      <button
+                      <SelectableRow
                         key={playlist.id}
-                        onClick={(e) => handlePlaylistToggle(playlist, index, e)}
+                        id={playlist.id}
+                        selected={isSelected}
                         disabled={isTarget === true}
-                        className={`w-full flex items-center gap-4 p-4 rounded-xl transition-all ${
-                          isTarget
-                            ? "opacity-40 cursor-not-allowed bg-secondary/20 border-2 border-transparent"
-                            : isSelected
-                            ? "bg-primary/10 border-2 border-primary"
-                            : "bg-secondary/20 border-2 border-transparent hover:border-border"
-                        }`}
+                        // The target is not selectable as a source, and the
+                        // checkbox has to say so — the row used to communicate
+                        // it with 40% opacity and nothing else.
+                        label={isTarget ? `${playlist.title} (merge target)` : playlist.title}
+                        onToggle={(e) => handlePlaylistToggle(playlist, index, e)}
                       >
-                        <img
-                          src={playlist.artwork_url || playlist.coverUrl || "/brand/icon-192.png"}
-                          alt={playlist.title}
-                          width={48}
-                          height={48}
-                          loading="lazy"
-                          decoding="async"
-                          className="w-12 h-12 rounded-lg object-cover"
-                        />
-                        <div className="flex-1 text-left">
-                          <div className="font-semibold text-foreground">
-                            {playlist.title}
-                          </div>
-                          <div className="text-sm text-muted-foreground">
-                            {playlist.track_count} tracks
-                            {isTarget && <span className="ml-2 text-primary-text">(target)</span>}
-                          </div>
-                        </div>
-                        {isSelected && (
-                          <div className="w-6 h-6 rounded-full bg-primary flex items-center justify-center">
-                            <Check className="w-4 h-4 text-primary-foreground" />
-                          </div>
-                        )}
-                      </button>
+                        <span className="flex min-w-0 items-center gap-4">
+                          <img
+                            src={playlist.artwork_url || playlist.coverUrl || "/brand/icon-192.png"}
+                            alt=""
+                            width={48}
+                            height={48}
+                            loading="lazy"
+                            decoding="async"
+                            className="w-12 h-12 shrink-0 rounded-lg object-cover"
+                          />
+                          <span className="min-w-0 flex-1 text-left">
+                            <span className="block truncate font-semibold text-foreground">
+                              {playlist.title}
+                            </span>
+                            <span className="block text-sm text-muted-foreground">
+                              {playlist.track_count} tracks
+                              {isTarget && <span className="ml-2 text-primary-text">(target)</span>}
+                            </span>
+                          </span>
+                        </span>
+                      </SelectableRow>
                     );
                   })}
-                </div>
-                <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-card to-transparent rounded-b-xl" />
+                </SelectableList>
+                <div aria-hidden="true" className="pointer-events-none absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-card to-transparent rounded-b-xl" />
                 </div>
               )}
             </Card>
@@ -367,30 +379,31 @@ export default function CombinePlaylistsPage() {
 
           {/* Merge Panel */}
           <div className="lg:col-span-1">
-            <Card className="rounded-2xl p-6 border-2 border-border sticky top-24 space-y-5">
+            <Card className="rounded-2xl p-6 border-2 border-border lg:sticky lg:top-24 space-y-5">
               <h2 className="text-xl font-bold text-foreground">
                 Merge Settings
               </h2>
 
               {/* Selected Playlists */}
               <div>
-                <label className="block text-sm font-medium mb-2 text-muted-foreground">
+                <h3 className="block text-sm font-medium mb-2 text-muted-foreground">
                   Selected ({selectedPlaylists.length})
-                </label>
+                </h3>
                 {selectedPlaylists.length === 0 ? (
                   <p className="text-sm text-muted-foreground py-4 text-center border-2 border-dashed border-border rounded-lg">
                     Select at least 2 playlists
                   </p>
                 ) : (
-                  <div className="space-y-2">
+                  // eslint-disable-next-line jsx-a11y/no-redundant-roles -- Tailwind preflight strips list semantics in WebKit
+                  <ul role="list" className="space-y-2">
                     {selectedPlaylists.map((playlist) => (
-                      <div
+                      <li
                         key={playlist.id}
                         className="flex items-center gap-2 p-2 bg-secondary/20 rounded-lg"
                       >
                         <img
                           src={playlist.artwork_url || playlist.coverUrl || "/brand/icon-192.png"}
-                          alt={playlist.title}
+                          alt=""
                           width={28}
                           height={28}
                           loading="lazy"
@@ -400,15 +413,16 @@ export default function CombinePlaylistsPage() {
                         <span className="text-sm truncate flex-1 text-foreground">
                           {playlist.title}
                         </span>
-                        <button
+                        <IconButton
+                          size="sm"
+                          label={`Remove ${playlist.title}`}
                           onClick={() => handlePlaylistToggle(playlist)}
-                          className="p-1 hover:bg-secondary/50 rounded shrink-0"
                         >
-                          <X className="w-4 h-4 text-muted-foreground" />
-                        </button>
-                      </div>
+                          <X className="w-4 h-4" />
+                        </IconButton>
+                      </li>
                     ))}
-                  </div>
+                  </ul>
                 )}
               </div>
 
@@ -425,13 +439,19 @@ export default function CombinePlaylistsPage() {
 
               {/* Merge Mode Toggle */}
               <div>
-                <label className="block text-sm font-medium mb-2 text-muted-foreground">
+                <h3 className="block text-sm font-medium mb-2 text-muted-foreground" id="merge-into-label">
                   Merge into
-                </label>
-                <div className="flex rounded-lg border-2 border-border overflow-hidden">
+                </h3>
+                <div
+                  role="group"
+                  aria-labelledby="merge-into-label"
+                  className="flex rounded-lg border-2 border-border overflow-hidden"
+                >
                   <button
+                    type="button"
                     onClick={() => setMergeMode("new")}
-                    className={`flex-1 py-2 text-sm font-medium transition ${
+                    aria-pressed={mergeMode === "new"}
+                    className={`min-h-11 flex-1 px-2 text-sm font-medium transition ${
                       mergeMode === "new"
                         ? "bg-primary text-primary-foreground"
                         : "text-muted-foreground hover:bg-secondary/20"
@@ -440,8 +460,10 @@ export default function CombinePlaylistsPage() {
                     New playlist
                   </button>
                   <button
+                    type="button"
                     onClick={() => setMergeMode("existing")}
-                    className={`flex-1 py-2 text-sm font-medium transition ${
+                    aria-pressed={mergeMode === "existing"}
+                    className={`min-h-11 flex-1 px-2 text-sm font-medium transition ${
                       mergeMode === "existing"
                         ? "bg-primary text-primary-foreground"
                         : "text-muted-foreground hover:bg-secondary/20"
@@ -454,38 +476,39 @@ export default function CombinePlaylistsPage() {
 
               {/* New Playlist Title (only in "new" mode) */}
               {mergeMode === "new" && (
-                <div>
-                  <label className="block text-sm font-medium mb-2 text-muted-foreground">
-                    New Playlist Name
-                  </label>
-                  <input
-                    type="text"
-                    value={newPlaylistTitle}
-                    onChange={(e) => setNewPlaylistTitle(e.target.value)}
-                    placeholder="Enter playlist name..."
-                    className="w-full px-4 py-3 rounded-lg border-2 border-border focus:border-primary focus:outline-none transition bg-secondary/20 text-foreground"
-                  />
-                </div>
+                <Field label="New Playlist Name">
+                  {(field) => (
+                    <Input
+                      {...field}
+                      type="text"
+                      value={newPlaylistTitle}
+                      onChange={(e) => setNewPlaylistTitle(e.target.value)}
+                      placeholder="Enter playlist name..."
+                      className="h-12 border-2 border-border bg-secondary/20 px-4"
+                    />
+                  )}
+                </Field>
               )}
 
               {/* Target Playlist Picker (only in "existing" mode) */}
               {mergeMode === "existing" && (
                 <div>
-                  <label className="block text-sm font-medium mb-2 text-muted-foreground">
+                  <h3 className="block text-sm font-medium mb-2 text-muted-foreground">
                     Target Playlist
-                  </label>
+                  </h3>
                   {availableTargets.length === 0 ? (
                     <p className="text-sm text-muted-foreground py-3 text-center border-2 border-dashed border-border rounded-lg">
                       No available targets (deselect a source first)
                     </p>
                   ) : targetPlaylist ? (
                     <button
+                      type="button"
                       onClick={openPlaylistPicker}
                       className="w-full flex items-center gap-3 p-3 rounded-xl bg-primary/10 border-2 border-primary transition-all hover:bg-primary/15 text-left"
                     >
                       <img
                         src={targetPlaylist.coverUrl || targetPlaylist.artwork_url || "/brand/icon-192.png"}
-                        alt={targetPlaylist.title}
+                        alt=""
                         width={40}
                         height={40}
                         loading="lazy"
@@ -504,8 +527,9 @@ export default function CombinePlaylistsPage() {
                     </button>
                   ) : (
                     <button
+                      type="button"
                       onClick={openPlaylistPicker}
-                      className="w-full px-4 py-3 rounded-lg border-2 border-dashed border-border text-sm text-muted-foreground hover:border-primary hover:text-primary-text transition-all text-center"
+                      className="min-h-11 w-full px-4 py-3 rounded-lg border-2 border-dashed border-border text-sm text-muted-foreground hover:border-primary hover:text-primary-text transition-all text-center"
                     >
                       Choose a target playlist…
                     </button>
@@ -515,12 +539,12 @@ export default function CombinePlaylistsPage() {
 
               {/* Delete after merge checkbox */}
               {mergeMode === "existing" && (
-                <label className="flex items-start gap-3 cursor-pointer group">
+                <label className="touch-44 flex items-center gap-3 cursor-pointer group">
                   <input
                     type="checkbox"
                     checked={deleteAfterMerge}
                     onChange={(e) => setDeleteAfterMerge(e.target.checked)}
-                    className="mt-0.5 w-4 h-4 accent-primary"
+                    className="h-6 w-6 shrink-0 cursor-pointer accent-primary"
                   />
                   <span className="text-sm text-muted-foreground group-hover:text-foreground transition">
                     Delete source playlists after merge
@@ -529,11 +553,7 @@ export default function CombinePlaylistsPage() {
               )}
 
               {/* Inline merge error */}
-              {mergeError && (
-                <div className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-4 py-3">
-                  {mergeError}
-                </div>
-              )}
+              {mergeError && <InlineAlert variant="error">{mergeError}</InlineAlert>}
 
               {/* Merge Button */}
               <Button
@@ -545,11 +565,13 @@ export default function CombinePlaylistsPage() {
                 {isProcessing ? (
                   <>
                     <LoadingSpinner size="sm" className="border-white" />
-                    Merging...
+                    {/* The spinner is decoration; this is what says the merge
+                        is running, so it has to be in a live region. */}
+                    <span role="status">Merging…</span>
                   </>
                 ) : (
                   <>
-                    <Combine className="w-5 h-5" />
+                    <Combine aria-hidden="true" className="w-5 h-5" />
                     Merge Playlists
                   </>
                 )}
@@ -581,87 +603,65 @@ export default function CombinePlaylistsPage() {
       </ConfirmDialog>
 
       {/* ── PLAYLIST PICKER MODAL ──────────────────────────────────────────── */}
-      {showPlaylistPicker && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          {/* Backdrop */}
-          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={closePlaylistPicker} />
-
-          {/* Modal */}
-          <Card
-            ref={pickerDialogRef}
-            role="dialog"
-            aria-modal="true"
-            aria-label="Choose a target playlist"
-            tabIndex={-1}
-            className="relative w-full max-w-lg rounded-2xl shadow-2xl border-2 border-border overflow-hidden animate-in fade-in zoom-in-95 duration-200"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Header */}
-            <div className="flex items-center justify-between px-6 pt-6 pb-4">
-              <h3 className="text-xl font-bold text-foreground">
-                Target Playlist
-              </h3>
-              <button
-                aria-label="Close"
-                onClick={closePlaylistPicker}
-                className="p-1.5 rounded-lg hover:bg-secondary/40 transition"
-              >
-                <X className="w-5 h-5 text-muted-foreground" />
-              </button>
-            </div>
-
-            {/* Playlist list */}
-            <div className="px-6 pb-6 space-y-2 max-h-[60vh] overflow-y-auto">
-              {availableTargets.length === 0 ? (
-                <p className="text-sm text-muted-foreground py-3 text-center border-2 border-dashed border-border rounded-lg">
-                  No available targets (deselect a source first)
-                </p>
-              ) : (
-                availableTargets.map((playlist) => {
-                  const isSelected = targetPlaylist && Number(targetPlaylist.id) === Number(playlist.id);
-                  return (
-                    <button
-                      key={playlist.id}
-                      onClick={() => {
-                        setTargetPlaylist(playlist);
-                        closePlaylistPicker();
-                      }}
-                      className={`w-full flex items-center gap-4 p-4 rounded-xl transition-all ${
-                        isSelected
-                          ? "bg-primary/10 border-2 border-primary"
-                          : "bg-secondary/20 border-2 border-transparent hover:border-border"
-                      }`}
-                    >
-                      <img
-                        src={playlist.coverUrl || playlist.artwork_url || "/brand/icon-192.png"}
-                        alt={playlist.title}
-                        width={48}
-                        height={48}
-                        loading="lazy"
-                        decoding="async"
-                        className="w-12 h-12 rounded-lg object-cover"
-                      />
-                      <div className="flex-1 text-left min-w-0">
-                        <div className="font-semibold text-foreground truncate">
-                          {playlist.title}
-                        </div>
-                        <div className="text-sm text-muted-foreground">
-                          {playlist.track_count} tracks
-                        </div>
-                      </div>
-                      {isSelected && (
-                        <div className="w-6 h-6 rounded-full bg-primary flex items-center justify-center shrink-0">
-                          <Check className="w-4 h-4 text-primary-foreground" />
-                        </div>
-                      )}
-                    </button>
-                  );
-                })
-              )}
-            </div>
-          </Card>
+      <Dialog
+        open={showPlaylistPicker}
+        onClose={closePlaylistPicker}
+        title="Target Playlist"
+        variant="sheet"
+        size="md"
+        returnFocusRef={pickerTriggerRef}
+      >
+        <div className="space-y-2 max-h-[60dvh] overflow-y-auto">
+          {availableTargets.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-3 text-center border-2 border-dashed border-border rounded-lg">
+              No available targets (deselect a source first)
+            </p>
+          ) : (
+            availableTargets.map((playlist) => {
+              const isSelected = targetPlaylist && Number(targetPlaylist.id) === Number(playlist.id);
+              return (
+                <button
+                  key={playlist.id}
+                  type="button"
+                  aria-pressed={isSelected === true}
+                  onClick={() => {
+                    setTargetPlaylist(playlist);
+                    closePlaylistPicker();
+                  }}
+                  className={`w-full flex items-center gap-4 p-4 rounded-xl transition-all ${
+                    isSelected
+                      ? "bg-primary/10 border-2 border-primary"
+                      : "bg-secondary/20 border-2 border-transparent hover:border-border"
+                  }`}
+                >
+                  <img
+                    src={playlist.coverUrl || playlist.artwork_url || "/brand/icon-192.png"}
+                    alt=""
+                    width={48}
+                    height={48}
+                    loading="lazy"
+                    decoding="async"
+                    className="w-12 h-12 shrink-0 rounded-lg object-cover"
+                  />
+                  <span className="flex-1 text-left min-w-0">
+                    <span className="block font-semibold text-foreground truncate">
+                      {playlist.title}
+                    </span>
+                    <span className="block text-sm text-muted-foreground">
+                      {playlist.track_count} tracks
+                    </span>
+                  </span>
+                  {isSelected && (
+                    <span className="w-6 h-6 rounded-full bg-primary flex items-center justify-center shrink-0">
+                      <Check aria-hidden="true" className="w-4 h-4 text-primary-foreground" />
+                    </span>
+                  )}
+                </button>
+              );
+            })
+          )}
         </div>
-      )}
+      </Dialog>
     </PageContainer>
   );
 }

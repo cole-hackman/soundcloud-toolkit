@@ -3,14 +3,20 @@
 import { useState, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { Users, Search, UserMinus, Loader2, Check, ExternalLink } from "lucide-react";
+import { Users, Search, UserMinus, Loader2, ExternalLink } from "lucide-react";
 import {
+  Button,
   ConfirmDialog,
   BulkReviewDetails,
   EmptyState,
+  Field,
   InlineAlert,
   PageContainer,
   PageHeader,
+  ProgressBar,
+  SectionHeading,
+  Select,
+  SelectableRow,
   SelectionBanner,
   Skeleton,
   Card,
@@ -322,6 +328,15 @@ export default function FollowingManagerPage() {
           </InlineAlert>
         )}
 
+        {removing && progress && (
+          <ProgressBar
+            className="mb-6 rounded-lg border-2 border-border bg-secondary/10 p-4"
+            label="Unfollowing users"
+            value={progress.current}
+            max={progress.total}
+          />
+        )}
+
         {followingsState.isLoadingFirstPage ? (
           <Card className="p-6">
             <div className="flex items-center gap-3 mb-4 flex-wrap">
@@ -350,74 +365,107 @@ export default function FollowingManagerPage() {
           </Card>
         ) : (
           <Card className="p-6">
+            <SectionHeading className="mb-3">Followings</SectionHeading>
+
             {/* Controls */}
-            <div className="flex items-center gap-3 mb-4 flex-wrap">
-              <div className="relative flex-1 min-w-[200px]">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                  type="text"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search followings..."
-                  className="pl-9 h-10 bg-secondary/20 border-border"
-                />
-              </div>
-              <select
+            <div className="grid grid-cols-1 gap-2 mb-4 sm:grid-cols-2 lg:flex lg:flex-wrap lg:items-end">
+              <Field
+                label="Search followings"
+                className="lg:min-w-[200px] lg:flex-1 [&>label]:sr-only"
+              >
+                {(field) => (
+                  <div className="relative">
+                    <Search
+                      aria-hidden="true"
+                      className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground"
+                    />
+                    <Input
+                      {...field}
+                      type="text"
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                      placeholder="Search followings..."
+                      className="h-11 pl-9 bg-secondary/20 border-border"
+                    />
+                  </div>
+                )}
+              </Field>
+              <Select
+                label="Sort"
                 value={sort}
                 onChange={(e) => setSort(e.target.value as SortOption)}
-                className="h-10 px-3 border-2 border-border rounded-lg text-sm text-foreground bg-secondary/20 focus:border-primary focus:outline-none"
+                className="bg-secondary/20"
               >
                 <option value="alpha">A → Z</option>
                 <option value="followers">Most Followers</option>
                 <option value="tracks">Most Tracks</option>
                 <option value="reposts">Most Reposts</option>
                 <option value="last_modified">Recently Active</option>
-              </select>
-              
-              <div className="flex bg-secondary/20 p-1 rounded-lg border-2 border-border/50">
-                <button
-                  onClick={() => setFilterMode("all")}
-                  className={`px-3 py-1 rounded-md text-sm font-medium transition-all ${
-                    filterMode === "all" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  All
-                </button>
-                <button
-                  onClick={() => followersReady && setFilterMode("not-following-back")}
-                  disabled={!followersReady}
-                  title={!followersReady ? "Still loading followers — who follows you back isn't known yet." : undefined}
-                  className={`px-3 py-1 rounded-md text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
-                    filterMode === "not-following-back" ? "bg-card text-primary-text shadow-sm" : "text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  Not Following Back
-                </button>
-              </div>
-              {!followersReady && (
-                <span className="text-xs text-muted-foreground-subtle flex items-center gap-1.5">
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                  Loading followers…
-                </span>
-              )}
+              </Select>
 
-              <button
+              <div className="sm:col-span-2 lg:col-span-1">
+                <div
+                  role="group"
+                  aria-label="Filter"
+                  className="flex bg-secondary/20 p-1 rounded-lg border-2 border-border/50"
+                >
+                  <button
+                    type="button"
+                    onClick={() => setFilterMode("all")}
+                    aria-pressed={filterMode === "all"}
+                    className={`min-h-11 flex-1 px-3 rounded-md text-sm font-medium transition-all ${
+                      filterMode === "all" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    All
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => followersReady && setFilterMode("not-following-back")}
+                    disabled={!followersReady}
+                    aria-pressed={filterMode === "not-following-back"}
+                    className={`min-h-11 flex-1 px-3 rounded-md text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
+                      filterMode === "not-following-back" ? "bg-card text-primary-text shadow-sm" : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    Not Following Back
+                  </button>
+                </div>
+                {/* The reason the filter is unavailable is helper text, not a
+                    `title`: a tooltip never reaches a keyboard or touch user,
+                    and this is the only explanation of a disabled control. */}
+                {!followersReady && (
+                  <p
+                    role="status"
+                    className="mt-1.5 flex items-center gap-1.5 text-xs text-muted-foreground-subtle"
+                  >
+                    <Loader2 aria-hidden="true" className="h-3 w-3 animate-spin" />
+                    Loading followers — who follows you back isn&apos;t known yet.
+                  </p>
+                )}
+              </div>
+
+              <Button
+                variant="ghost"
+                size="sm"
                 onClick={selectAll}
-                className="text-sm text-primary-text hover:underline font-medium whitespace-nowrap"
+                className="whitespace-nowrap text-primary-text sm:col-span-2 lg:col-span-1"
               >
                 {selected.size === filteredFollowings.length
                   ? "Deselect All"
                   : selectAllLabel(followingsState, filteredFollowings.length)}
-              </button>
+              </Button>
             </div>
 
             {followingsStatus && (
-              <div className="text-sm text-muted-foreground mb-2">{followingsStatus}</div>
+              <p role="status" className="text-sm text-muted-foreground mb-2">
+                {followingsStatus}
+              </p>
             )}
 
             <ProgressiveBlur
               ref={listScrollRef}
-              className="max-h-[600px] overflow-y-auto"
+              className="max-h-[60dvh] overflow-y-auto"
               active={filteredFollowings.length > 8}
               fadeHeight={72}
             >
@@ -443,68 +491,62 @@ export default function FollowingManagerPage() {
                         const index = rowStart + col;
                         const isSelected = selected.has(user.id);
                         return (
-                          <div
+                          <SelectableRow
                             key={user.id}
-                            className={`flex items-center gap-3 p-3 rounded-xl transition-all ${
-                              isSelected
-                                ? "bg-destructive/5 border-2 border-destructive/30"
-                                : "bg-secondary/20 border-2 border-transparent hover:border-border"
-                            }`}
-                            onClick={(e) => toggleUser(user.id, index, filteredFollowings, e)}
-                            role="button"
-                            tabIndex={0}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter" || e.key === " ") {
-                                e.preventDefault();
-                                toggleUser(user.id, index, filteredFollowings, e);
-                              }
-                            }}
+                            as="div"
+                            id={user.id}
+                            selected={isSelected}
+                            label={user.username}
+                            onToggle={(e) => toggleUser(user.id, index, filteredFollowings, e)}
+                            rightSlot={
+                              <a
+                                href={user.permalink_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                aria-label={`Open ${user.username} on SoundCloud`}
+                                className="touch-44 inline-flex h-11 w-11 items-center justify-center rounded-md text-primary transition-colors hover:bg-accent hover:text-primary-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                              >
+                                <ExternalLink aria-hidden="true" className="w-4 h-4" />
+                              </a>
+                            }
                           >
-                            <button
-                              className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${
-                                isSelected ? "bg-destructive text-destructive-foreground" : "bg-secondary"
-                              }`}
-                            >
-                              {isSelected && <Check className="w-3.5 h-3.5" />}
-                            </button>
-                            <img
-                              src={user.avatar_url || "/brand/icon-192.png"}
-                              alt={user.username}
-                              width={48}
-                              height={48}
-                              loading="lazy"
-                              decoding="async"
-                              className="w-12 h-12 rounded-full object-cover"
-                            />
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2">
-                                <div className="font-semibold text-foreground text-sm truncate">
-                                  {user.username}
-                                </div>
-                                {user.last_modified && (
-                                  <span className="text-xs px-1.5 py-0.5 rounded-full bg-secondary/80 text-muted-foreground">
-                                     Active: {formatDate(user.last_modified)}
+                            <span className="flex min-w-0 items-center gap-3">
+                              <img
+                                src={user.avatar_url || "/brand/icon-192.png"}
+                                alt=""
+                                width={48}
+                                height={48}
+                                loading="lazy"
+                                decoding="async"
+                                className="w-12 h-12 shrink-0 rounded-full object-cover"
+                              />
+                              <span className="min-w-0 flex-1">
+                                <span className="flex items-center gap-2">
+                                  <span className="font-semibold text-foreground text-sm truncate">
+                                    {user.username}
                                   </span>
-                                )}
-                              </div>
-                              <div className="text-xs text-muted-foreground mt-0.5 flex flex-wrap gap-x-3">
-                                <span>{formatNumber(user.followers_count || 0)} followers</span>
-                                <span>{formatNumber(user.track_count || 0)} tracks</span>
-                                {user.reposts_count !== undefined && (
-                                  <span>{formatNumber(user.reposts_count)} reposts</span>
-                                )}
-                              </div>
-                            </div>
-                            <a
-                              href={user.permalink_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-primary hover:text-primary-text dark:hover:bg-primary/10 rounded flex-shrink-0"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <ExternalLink className="w-4 h-4" />
-                            </a>
-                          </div>
+                                  {user.last_modified && (
+                                    <span className="shrink-0 text-xs px-1.5 py-0.5 rounded-full bg-secondary/80 text-muted-foreground">
+                                      Active: {formatDate(user.last_modified)}
+                                    </span>
+                                  )}
+                                </span>
+                                {/* Separators are decorative — a screen reader
+                                    reads the three counts, not "middle dot". */}
+                                <span className="text-xs text-muted-foreground mt-0.5 flex flex-wrap items-center gap-x-1.5">
+                                  <span>{formatNumber(user.followers_count || 0)} followers</span>
+                                  <span aria-hidden="true">·</span>
+                                  <span>{formatNumber(user.track_count || 0)} tracks</span>
+                                  {user.reposts_count !== undefined && (
+                                    <>
+                                      <span aria-hidden="true">·</span>
+                                      <span>{formatNumber(user.reposts_count)} reposts</span>
+                                    </>
+                                  )}
+                                </span>
+                              </span>
+                            </span>
+                          </SelectableRow>
                         );
                       })}
                     </div>

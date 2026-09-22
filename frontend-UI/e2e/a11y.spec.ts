@@ -22,11 +22,10 @@ const PAGES: PageCase[] = [
   { path: "/login/" },
   { path: "/does-not-exist/", expectedStatus: 404 },
   { path: "/dashboard/", needsMock: true },
-  {
-    path: "/like-manager/",
-    needsMock: true,
-    fixme: "Phase 6 — the sort <select> has no accessible name (select-name)",
-  },
+  { path: "/like-manager/", needsMock: true },
+  { path: "/following-manager/", needsMock: true },
+  { path: "/repost-manager/", needsMock: true },
+  { path: "/combine/", needsMock: true },
   { path: "/playlist-modifier/", needsMock: true },
   { path: "/growth/", needsMock: true },
   { path: "/feedback/", needsMock: true },
@@ -144,6 +143,64 @@ test("Dialog: labelled by its heading, honours initialFocusRef, wraps Tab, Escap
   await page.keyboard.press("Escape");
   await expect(dialog).toBeHidden();
   await expect(trigger).toBeFocused();
+});
+
+/**
+ * Combine's target-playlist picker was the last hand-rolled focus trap in the
+ * app; Phase 6 deleted it in favour of the shared `Dialog`. A dialog that is
+ * closed on load is invisible to the route's own axe run, so the behaviour
+ * that was deleted is asserted here instead: it is labelled by its heading,
+ * Escape closes it, focus returns to the trigger, and the open dialog is
+ * clean.
+ */
+test("combine: the target-playlist picker is the shared Dialog", async ({ page }) => {
+  await mockApi(page);
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto("/combine/");
+
+  await page.getByRole("button", { name: "Existing playlist" }).click();
+
+  const trigger = page.getByRole("button", { name: "Choose a target playlist…" });
+  await trigger.focus();
+  await trigger.press("Enter");
+
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toHaveAccessibleName("Target Playlist");
+
+  const results = await new AxeBuilder({ page })
+    .withTags(["wcag2a", "wcag2aa", "wcag22aa"])
+    .analyze();
+  const blocking = results.violations.filter(
+    (violation) => violation.impact === "serious" || violation.impact === "critical",
+  );
+  expect(blocking, JSON.stringify(blocking, null, 2)).toEqual([]);
+
+  // More presses than the panel has stops, so the trap must wrap to hold.
+  for (let i = 0; i < 8; i += 1) {
+    await page.keyboard.press("Tab");
+    const inside = await page.evaluate(() => {
+      const panel = document.querySelector('[role="dialog"]');
+      return !!panel && !!document.activeElement && panel.contains(document.activeElement);
+    });
+    expect(inside, `focus escaped the picker after ${i + 1} Tab(s)`).toBe(true);
+  }
+
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+  await expect(trigger).toBeFocused();
+
+  // Choosing an option closes the picker too, and focus has to land back on
+  // the trigger there as well. That only works because React reuses the same
+  // <button> node across the "Choose a target playlist…" / "Change" ternary —
+  // add a `key` or a wrapper and `returnFocusRef` would point at a detached
+  // node and focus would fall to <body>. Pinned here so that stays true.
+  await trigger.focus();
+  await trigger.press("Enter");
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("button", { name: /Sample Playlist 1/ }).click();
+  await expect(dialog).toBeHidden();
+  await expect(page.getByRole("button", { name: /Change/ })).toBeFocused();
 });
 
 /**

@@ -8,7 +8,7 @@ export default function CombineLoading() {
         description="Select playlists to merge. Duplicates will be automatically removed."
       />
 
-      <div className="grid lg:grid-cols-3 gap-8">
+      <div className="grid lg:grid-cols-3 gap-6 lg:gap-8">
         <div className="lg:col-span-2">
           <Card className="p-6">
             <h2 className="text-xl font-bold mb-4 text-foreground">
@@ -23,15 +23,15 @@ export default function CombineLoading() {
         </div>
 
         <div className="lg:col-span-1">
-          <Card className="p-6 sticky top-24 space-y-5">
+          <Card className="p-6 lg:sticky lg:top-24 space-y-5">
             <h2 className="text-xl font-bold text-foreground">
               Merge Settings
             </h2>
             
             <div>
-              <label className="block text-sm font-medium mb-2 text-muted-foreground">
+              <h3 className="block text-sm font-medium mb-2 text-muted-foreground">
                 Selected
-              </label>
+              </h3>
               <Skeleton className="h-12 w-full rounded-lg" />
             </div>
 
@@ -41,16 +41,16 @@ export default function CombineLoading() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium mb-2 text-muted-foreground">
+              <h3 className="block text-sm font-medium mb-2 text-muted-foreground">
                 Merge into
-              </label>
+              </h3>
               <Skeleton className="h-10 w-full rounded-lg" />
             </div>
 
             <div>
-              <label className="block text-sm font-medium mb-2 text-muted-foreground">
+              <h3 className="block text-sm font-medium mb-2 text-muted-foreground">
                 New Playlist Name
-              </label>
+              </h3>
               <Skeleton className="h-12 w-full rounded-lg" />
             </div>
 

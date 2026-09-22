@@ -6,7 +6,23 @@ import Link from "next/link";
 import { ArrowLeft, Download, Heart, ListMusic, Trash2, X, CheckSquare, Search, Zap } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
-import { Button, BulkReviewDetails, ConfirmDialog, EmptyState, Input, LoadingSpinner, PageContainer, PageHeader, Skeleton, TrackRow } from "@/components/ui";
+import {
+  Button,
+  BulkReviewDetails,
+  Card,
+  ConfirmDialog,
+  EmptyState,
+  IconButton,
+  InlineAlert,
+  Input,
+  LoadingSpinner,
+  PageContainer,
+  PageHeader,
+  ProgressBar,
+  Skeleton,
+  TrackRow,
+  useAnnounce,
+} from "@/components/ui";
 import {
   invalidatePlaylistCaches,
   useLikesQuery,
@@ -61,6 +77,7 @@ const hasGateUrl = (url?: string) => !!url;
 
 export default function DownloadsPage() {
   const queryClient = useQueryClient();
+  const announce = useAnnounce();
   const { user } = useAuth();
   // Gated server-side: /api/auth/me returns canDownload based on the
   // DOWNLOAD_ALLOWLIST env (SoundCloud IDs) + admins.
@@ -218,6 +235,7 @@ export default function DownloadsPage() {
 
     const remainingTracks = tracks.filter((t) => !selectedTrackIds.has(t.id));
     const remainingIds = remainingTracks.map((t) => t.id);
+    const removedCount = tracks.length - remainingTracks.length;
 
     setIsRemoving(true);
     try {
@@ -228,6 +246,10 @@ export default function DownloadsPage() {
       });
 
       if (response.ok) {
+        announce(
+          `${removedCount} track${removedCount === 1 ? "" : "s"} removed from ${selectedSource.title}`,
+          { assertive: true },
+        );
         setTracks(remainingTracks);
         setSelectedTrackIds(new Set());
         setSelectionMode(false);
@@ -303,6 +325,15 @@ export default function DownloadsPage() {
     [downloadableTracks],
   );
 
+  // How many of the source's tracks are actually downloadable is the whole
+  // point of the page, and nothing else says it out loud.
+  useEffect(() => {
+    if (!selectedSource || loadingTracks) return;
+    announce(
+      `${downloadableTracks.length} downloadable track${downloadableTracks.length === 1 ? "" : "s"} in ${selectedSource.title}`,
+    );
+  }, [selectedSource, loadingTracks, downloadableTracks.length, announce]);
+
   const filteredPlaylists = useMemo(
     () => playlists.filter((p) => p.title.toLowerCase().includes(sourceSearch.toLowerCase())),
     [playlists, sourceSearch],
@@ -314,11 +345,19 @@ export default function DownloadsPage() {
     return `${minutes}:${seconds.toString().padStart(2, "0")}`;
   };
 
+  /**
+   * The button's accessible name, not a tooltip. It names the track as well
+   * as the route, because a column of buttons all called "Download" tells a
+   * screen-reader user which control they are on and nothing else — and the
+   * colour that used to carry "free" vs "Hypeddit" is invisible to them.
+   */
   const getDownloadLabel = (track: Track) => {
-    if (track.download_url) return "Download directly";
-    if (isHypedditUrl(track.purchase_url)) return "Hypeddit download";
-    if (track.purchase_url) return track.purchase_title || "Go to download/buy";
-    return "Open on SoundCloud";
+    if (track.download_url) return `Download ${track.title} (free download)`;
+    if (isHypedditUrl(track.purchase_url)) return `Download ${track.title} via Hypeddit`;
+    if (track.purchase_url) {
+      return `Download ${track.title} — ${track.purchase_title || "opens the artist’s link"}`;
+    }
+    return `Open ${track.title} on SoundCloud`;
   };
 
   const getDownloadTone = (track: Track) => {
@@ -387,8 +426,8 @@ export default function DownloadsPage() {
 
         {!selectedSource ? (
           /* Source Selection */
-          <div className="bg-white dark:bg-card rounded-2xl p-6 border-2 border-gray-200 dark:border-border">
-            <h2 className="text-xl font-bold mb-4 text-foreground">
+          <Card className="p-4 sm:p-6">
+            <h2 className="text-lg sm:text-xl font-bold mb-4 text-foreground">
               Select Source
             </h2>
             {loading ? (
@@ -402,13 +441,17 @@ export default function DownloadsPage() {
                 {/* Search filter */}
                 {playlists.length > 5 && (
                   <div className="relative mb-4">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground-subtle" />
+                    <Search
+                      aria-hidden="true"
+                      className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground-subtle"
+                    />
                     <Input
-                      type="text"
+                      type="search"
+                      aria-label="Search playlists"
                       value={sourceSearch}
                       onChange={(e) => setSourceSearch(e.target.value)}
                       placeholder="Search playlists…"
-                      className="pl-9 h-9 bg-transparent dark:text-foreground dark:border-border"
+                      className="h-11 pl-9 bg-transparent dark:text-foreground dark:border-border"
                     />
                   </div>
                 )}
@@ -416,6 +459,7 @@ export default function DownloadsPage() {
                 <div className="grid md:grid-cols-2 gap-4">
                   {/* Liked Tracks — always shown */}
                   <button
+                    type="button"
                     onClick={() =>
                       handleSelectSource({
                         id: LIKED_TRACKS_ID,
@@ -444,13 +488,14 @@ export default function DownloadsPage() {
 
                   {filteredPlaylists.map((playlist) => (
                     <button
+                      type="button"
                       key={playlist.id}
                       onClick={() => handleSelectSource(playlist)}
                       className="flex items-center gap-4 p-4 rounded-xl bg-gray-50 dark:bg-secondary/20 border-2 border-transparent hover:border-primary transition-all text-left"
                     >
                       <img
                         src={playlist.coverUrl || playlist.artwork_url || "/brand/icon-192.png"}
-                        alt={playlist.title}
+                        alt=""
                         width={64}
                         height={64}
                         loading="lazy"
@@ -479,11 +524,13 @@ export default function DownloadsPage() {
                 </div>
               </>
             )}
-          </div>
+          </Card>
         ) : (
           /* Track List */
           <div>
-            <button
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={() => {
                 setSelectedSource(null);
                 setTracks([]);
@@ -491,20 +538,20 @@ export default function DownloadsPage() {
                 setHypedditMode(false);
                 setSelectionMode(false);
               }}
-              className="text-muted-foreground hover:text-primary-text transition mb-4 flex items-center gap-2"
+              className="mb-4 text-muted-foreground"
             >
-              <ArrowLeft className="w-4 h-4" />
+              <ArrowLeft className="w-4 h-4" aria-hidden="true" />
               Back to sources
-            </button>
+            </Button>
 
-            <h2 className="text-2xl font-bold text-foreground mb-6 flex items-center gap-3">
+            <h2 className="mb-6 flex flex-wrap items-center gap-x-3 gap-y-1 text-xl sm:text-2xl font-bold text-foreground">
               {selectedSource.id === LIKED_TRACKS_ID ? (
-                <Heart className="w-6 h-6 text-primary" fill="currentColor" />
+                <Heart className="w-6 h-6 shrink-0 text-primary" fill="currentColor" aria-hidden="true" />
               ) : (
-                <ListMusic className="w-6 h-6" />
+                <ListMusic className="w-6 h-6 shrink-0" aria-hidden="true" />
               )}
-              {selectedSource.title}
-              <span className="text-lg font-normal text-muted-foreground ml-2">
+              <span className="min-w-0 break-words">{selectedSource.title}</span>
+              <span className="text-base font-normal text-muted-foreground">
                 ({downloadableTracks.length} downloadable)
               </span>
             </h2>
@@ -512,27 +559,17 @@ export default function DownloadsPage() {
             {/* Hypeddit progress banner (owner-only) */}
             {isOwner && showProgressBanner && (
               <div className="mb-4 rounded-xl border border-purple-200 dark:border-purple-900/40 bg-purple-50 dark:bg-purple-950/30 px-4 py-3">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-medium text-purple-800 dark:text-purple-300">
-                    {hdActive
-                      ? `Auto-downloading… ${hdCompleted}/${hdTotal}`
-                      : `Done — ${hdCompleted}/${hdTotal}`}
-                    {hdFailed > 0 && (
-                      <span className="ml-2 text-destructive-text">({hdFailed} failed)</span>
-                    )}
-                  </span>
-                  <button
-                    onClick={dismissProgress}
-                    className="text-purple-400 hover:text-purple-600 dark:hover:text-purple-200 transition"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-                <div className="h-1.5 rounded-full bg-purple-200 dark:bg-purple-900/50 overflow-hidden">
-                  <div
-                    className="h-full rounded-full bg-purple-500 transition-all duration-500"
-                    style={{ width: `${hdTotal ? Math.round(((hdCompleted + hdFailed) / hdTotal) * 100) : 0}%` }}
+                <div className="flex items-start gap-2">
+                  <ProgressBar
+                    className="min-w-0 flex-1"
+                    label={hdActive ? "Downloading" : "Downloaded"}
+                    value={hdCompleted}
+                    max={hdTotal}
+                    detail={hdFailed > 0 ? `${hdFailed} failed` : undefined}
                   />
+                  <IconButton label="Dismiss" size="sm" onClick={dismissProgress}>
+                    <X className="w-4 h-4" />
+                  </IconButton>
                 </div>
                 {!extInstalled && (
                   <p className="mt-2 text-xs text-purple-600 dark:text-purple-400">
@@ -544,38 +581,42 @@ export default function DownloadsPage() {
 
             {/* Queue-sent confirmation (owner-only) */}
             {isOwner && queueSent && (
-              <div className="mb-4 flex items-start gap-3 rounded-xl bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-900/40 px-4 py-3 text-sm text-purple-800 dark:text-purple-300">
-                <Zap className="w-4 h-4 shrink-0 mt-0.5" />
-                <span>
+              <div
+                role="status"
+                className="mb-4 flex items-start gap-3 rounded-xl bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-900/40 px-4 py-3 text-sm text-purple-800 dark:text-purple-300"
+              >
+                <Zap className="w-4 h-4 shrink-0 mt-0.5" aria-hidden="true" />
+                <span className="min-w-0 flex-1">
                   Queue sent to extension. Open the Track Toolkit side panel from the Chrome toolbar
                   and click <strong>Start</strong> to begin downloading.
                 </span>
-                <button onClick={() => setQueueSent(false)} className="shrink-0 hover:opacity-70">
+                <IconButton label="Dismiss" size="sm" onClick={() => setQueueSent(false)}>
                   <X className="w-4 h-4" />
-                </button>
+                </IconButton>
               </div>
             )}
 
             {/* Inline error */}
             {inlineError && (
-              <div className="flex items-start gap-3 mb-4 text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-900/30 rounded-lg px-4 py-3">
-                <span className="flex-1">{inlineError}</span>
-                <button onClick={() => setInlineError(null)} className="shrink-0 hover:opacity-70 transition">
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
+              <InlineAlert
+                variant="error"
+                className="mb-4"
+                onDismiss={() => setInlineError(null)}
+              >
+                {inlineError}
+              </InlineAlert>
             )}
 
             {/* Toolbar */}
             {downloadableTracks.length > 0 && (
-              <div className="flex flex-wrap items-center gap-3 mb-6">
+              <div className="mb-6 flex flex-wrap items-center gap-2">
                 {/* Remove-from-playlist mode (playlists only, not likes) */}
                 {selectedSource.id !== LIKED_TRACKS_ID && !hypedditMode && (
                   !selectionMode ? (
                     <Button
                       onClick={toggleSelectionMode}
                       variant="secondary"
-                      className="h-10 px-4 text-muted-foreground"
+                      className="text-muted-foreground"
                     >
                       <CheckSquare className="w-4 h-4" />
                       Select to Remove
@@ -585,7 +626,7 @@ export default function DownloadsPage() {
                       <Button
                         onClick={toggleSelectionMode}
                         variant="secondary"
-                        className="h-10 px-4 text-muted-foreground"
+                        className="text-muted-foreground"
                       >
                         <X className="w-4 h-4" />
                         Cancel
@@ -594,7 +635,6 @@ export default function DownloadsPage() {
                         onClick={handleRemoveSelected}
                         disabled={selectedTrackIds.size === 0 || isRemoving}
                         variant="destructive"
-                        className="h-10 px-4"
                       >
                         {isRemoving ? (
                           <LoadingSpinner className="w-4 h-4 text-white" />
@@ -613,7 +653,7 @@ export default function DownloadsPage() {
                     <Button
                       onClick={toggleHypedditMode}
                       variant="secondary"
-                      className="h-10 px-4 text-purple-700 dark:text-purple-400 border-purple-200 dark:border-purple-900"
+                      className="text-purple-700 dark:text-purple-400 border-purple-200 dark:border-purple-900"
                     >
                       <Zap className="w-4 h-4" />
                       Auto-Download ({hypedditTracks.length})
@@ -623,7 +663,7 @@ export default function DownloadsPage() {
                       <Button
                         onClick={toggleHypedditMode}
                         variant="secondary"
-                        className="h-10 px-4 text-muted-foreground"
+                        className="text-muted-foreground"
                       >
                         <X className="w-4 h-4" />
                         Cancel
@@ -633,7 +673,7 @@ export default function DownloadsPage() {
                           setSelectedHypedditIds(new Set(hypedditTracks.map((t) => t.id)))
                         }
                         variant="secondary"
-                        className="h-10 px-4 text-muted-foreground"
+                        className="text-muted-foreground"
                       >
                         Select All ({hypedditTracks.length})
                       </Button>
@@ -641,7 +681,7 @@ export default function DownloadsPage() {
                         <Button nowrap
                           onClick={() => setSelectedHypedditIds(new Set())}
                           variant="secondary"
-                          className="h-10 px-4 text-muted-foreground"
+                          className="text-muted-foreground"
                         >
                           Deselect All
                         </Button>
@@ -649,7 +689,7 @@ export default function DownloadsPage() {
                       <Button
                         onClick={sendToExtension}
                         disabled={selectedHypedditIds.size === 0}
-                        className="h-10 px-4 bg-purple-600 hover:bg-purple-700 text-white"
+                        className="bg-purple-600 hover:bg-purple-700 text-white"
                       >
                         <Zap className="w-4 h-4" />
                         Queue {selectedHypedditIds.size} track{selectedHypedditIds.size !== 1 ? "s" : ""}
@@ -657,15 +697,19 @@ export default function DownloadsPage() {
                       <Button
                         onClick={exportQueue}
                         variant="secondary"
-                        className="h-10 px-4 text-muted-foreground"
-                        title="Download a JSON queue for the headless localhost downloader"
+                        className="text-muted-foreground"
                       >
                         Export queue (JSON)
                       </Button>
                       {!extInstalled && (
-                        <span className="text-xs text-muted-foreground-subtle self-center">
-                          Track Toolkit extension required
-                        </span>
+                        // Visible helper text, not a `title`: the reason a
+                        // control may not work has to be readable without a
+                        // pointer hover.
+                        <p className="w-full text-xs text-muted-foreground-subtle">
+                          Queueing needs the Track Toolkit browser extension.
+                          &ldquo;Export queue (JSON)&rdquo; downloads the same list as a file
+                          for the local downloader.
+                        </p>
                       )}
                     </>
                   )
@@ -673,7 +717,7 @@ export default function DownloadsPage() {
               </div>
             )}
 
-            <div className="bg-white dark:bg-card rounded-2xl p-6 border-2 border-gray-200 dark:border-border">
+            <Card className="p-4 sm:p-6">
               {loadingTracks ? (
                 <div className="space-y-3">
                   {Array.from({ length: 5 }).map((_, i) => (
@@ -703,22 +747,21 @@ export default function DownloadsPage() {
                               <span className="text-xs text-muted-foreground">
                                 {formatDuration(track.duration)}
                               </span>
-                              <button
-                                type="button"
+                              <IconButton
+                                label={getDownloadLabel(track)}
                                 disabled={downloadingTrackId === track.id}
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   handleDownload(track);
                                 }}
-                                className={`rounded-lg p-2 text-white transition disabled:cursor-not-allowed disabled:opacity-60 ${getDownloadTone(track)}`}
-                                title={getDownloadLabel(track)}
+                                className={`text-white hover:text-white ${getDownloadTone(track)}`}
                               >
                                 {downloadingTrackId === track.id ? (
                                   <LoadingSpinner className="h-5 w-5 text-white" />
                                 ) : (
                                   <Download className="h-5 w-5" />
                                 )}
-                              </button>
+                              </IconButton>
                             </div>
                           }
                         />
@@ -739,7 +782,7 @@ export default function DownloadsPage() {
                               </span>
                               {isHypeddit && (
                                 <span className="rounded-md px-2 py-0.5 text-xs font-medium bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300">
-                                  H
+                                  Hypeddit
                                 </span>
                               )}
                             </div>
@@ -753,17 +796,20 @@ export default function DownloadsPage() {
                         key={track.id}
                         className={`group flex items-center gap-4 rounded-xl bg-gray-50 p-3 transition-colors dark:bg-secondary/20 ${hypedditMode ? "opacity-40" : "hover:bg-gray-100 dark:hover:bg-secondary/40"}`}
                       >
-                        <span className="w-8 text-center text-sm text-muted-foreground-subtle">
+                        <span
+                          aria-hidden="true"
+                          className="hidden w-8 shrink-0 text-center text-sm text-muted-foreground-subtle sm:block"
+                        >
                           {index + 1}
                         </span>
                         <img
                           src={track.artwork_url || "/brand/icon-192.png"}
-                          alt={track.title}
+                          alt=""
                           width={40}
                           height={40}
                           loading="lazy"
                           decoding="async"
-                          className="h-10 w-10 rounded-lg object-cover"
+                          className="h-10 w-10 shrink-0 rounded-lg object-cover"
                         />
                         <div className="min-w-0 flex-1">
                           <div className="truncate font-semibold text-foreground">
@@ -775,28 +821,27 @@ export default function DownloadsPage() {
                         </div>
                         {isOwner && isHypeddit && !hypedditMode && (
                           <span className="rounded-md px-2 py-0.5 text-xs font-medium bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 shrink-0">
-                            H
+                            Hypeddit
                           </span>
                         )}
-                        <button
-                          type="button"
+                        <IconButton
+                          label={getDownloadLabel(track)}
                           disabled={downloadingTrackId === track.id}
                           onClick={() => handleDownload(track)}
-                          className={`rounded-lg p-2 text-white transition disabled:cursor-not-allowed disabled:opacity-60 ${getDownloadTone(track)}`}
-                          title={getDownloadLabel(track)}
+                          className={`text-white hover:text-white ${getDownloadTone(track)}`}
                         >
                           {downloadingTrackId === track.id ? (
                             <LoadingSpinner className="h-5 w-5 text-white" />
                           ) : (
                             <Download className="w-5 h-5" />
                           )}
-                        </button>
+                        </IconButton>
                       </div>
                     );
                   })}
                 </div>
               )}
-            </div>
+            </Card>
           </div>
         )}
 

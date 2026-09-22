@@ -1,21 +1,24 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { Check, Heart, Music } from "lucide-react";
+import { ArrowLeft, Check, Heart, Music } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import {
   Button,
+  Card,
   EmptyState,
   InlineAlert,
   LoadingSpinner,
   PageContainer,
   PageHeader,
+  ProgressBar,
   ResultPanel,
   SelectableList,
   Skeleton,
   TrackRow,
+  useAnnounce,
 } from "@/components/ui";
 import {
   usePlaylistsQuery,
@@ -51,6 +54,8 @@ interface LikeResult {
 
 export default function PlaylistToLikesPage() {
   const queryClient = useQueryClient();
+  const announce = useAnnounce();
+  const successHeadingRef = useRef<HTMLHeadingElement>(null);
   const [selectedPlaylist, setSelectedPlaylist] = useState<PlaylistOption | null>(null);
   const [selectedTracks, setSelectedTracks] = useState<Set<number>>(new Set());
   const [liking, setLiking] = useState(false);
@@ -82,6 +87,19 @@ export default function PlaylistToLikesPage() {
       setNotice({ type: "error", text: "Couldn’t load your playlists. Try refreshing the page." });
     }
   }, [playlistsQuery.isError]);
+
+  // A playlist's tracks arriving is only a visual change; say how many.
+  useEffect(() => {
+    if (!selectedPlaylist || !detailQuery.isSuccess) return;
+    announce(`${tracks.length} track${tracks.length === 1 ? "" : "s"} loaded`);
+  }, [selectedPlaylist, detailQuery.isSuccess, tracks.length, announce]);
+
+  // The success screen replaces the page, so focus its heading — otherwise
+  // focus is left on a button that no longer exists.
+  useEffect(() => {
+    if (!result) return;
+    successHeadingRef.current?.focus();
+  }, [result]);
 
   const toggleTrack = (id: number) => {
     setSelectedTracks((prev) => {
@@ -144,6 +162,10 @@ export default function PlaylistToLikesPage() {
       await invalidatePlaylistCaches(queryClient, selectedPlaylist?.id ?? null);
 
       setResult({ liked, failed, total: ids.length });
+      announce(
+        `Liked ${liked} of ${ids.length} tracks${failed > 0 ? `, ${failed} failed` : ""}`,
+        { assertive: true },
+      );
     } catch (error) {
       setNotice({
         type: "error",
@@ -164,7 +186,13 @@ export default function PlaylistToLikesPage() {
             <div className="w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-6 bg-gradient-to-br from-[#22c55e] to-[#16a34a] shadow-lg">
               <Check className="w-12 h-12 text-white" />
             </div>
-            <h1 className="text-2xl md:text-3xl font-bold mb-4 text-foreground">Tracks Liked!</h1>
+            <h1
+              ref={successHeadingRef}
+              tabIndex={-1}
+              className="text-2xl md:text-3xl font-bold mb-4 text-foreground focus:outline-none"
+            >
+              Tracks Liked!
+            </h1>
             <p className="text-sm mb-6 text-muted-foreground">
               Liked {result.liked} track{result.liked !== 1 ? "s" : ""} from &quot;{selectedPlaylist?.title}&quot;.
               {result.failed > 0 && ` ${result.failed} could not be liked (they may be unavailable).`}
@@ -172,20 +200,21 @@ export default function PlaylistToLikesPage() {
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Link
                 href="/dashboard"
-                className="px-8 py-3 rounded-lg font-semibold bg-gradient-to-r from-[#FF5500] to-[#E64A00] text-white hover:shadow-lg transition"
+                className="inline-flex min-h-11 items-center justify-center px-8 py-3 rounded-lg font-semibold bg-gradient-to-r from-[#FF5500] to-[#E64A00] text-white hover:shadow-lg transition"
               >
                 Back to Dashboard
               </Link>
-              <button
+              <Button
+                variant="outline"
                 onClick={() => {
                   setResult(null);
                   setSelectedPlaylist(null);
                   setSelectedTracks(new Set());
                 }}
-                className="px-8 py-3 rounded-lg font-semibold border-2 border-gray-200 dark:border-border text-foreground hover:border-primary transition"
+                className="px-8"
               >
                 Like Another Playlist
-              </button>
+              </Button>
             </div>
           </ResultPanel>
         </div>
@@ -209,8 +238,8 @@ export default function PlaylistToLikesPage() {
 
       {/* STEP 1: choose a playlist */}
       {!selectedPlaylist ? (
-        <div className="bg-white dark:bg-card rounded-2xl p-6 border-2 border-gray-200 dark:border-border">
-          <h2 className="text-xl font-bold text-foreground mb-4">Choose a Playlist</h2>
+        <Card className="p-4 sm:p-6">
+          <h2 className="text-lg sm:text-xl font-bold text-foreground mb-4">Choose a Playlist</h2>
           {playlistsQuery.isLoading ? (
             <div className="space-y-3">
               {Array.from({ length: 8 }).map((_, i) => (
@@ -220,44 +249,53 @@ export default function PlaylistToLikesPage() {
           ) : playlists.length === 0 ? (
             <EmptyState icon={<Music className="w-12 h-12" />} title="No playlists found" />
           ) : (
-            <div className="space-y-2 max-h-[600px] overflow-y-auto">
+            <div className="space-y-2 max-h-[60dvh] overflow-y-auto">
               {playlists.map((p) => (
                 <button
+                  type="button"
                   key={p.id}
                   onClick={() => choosePlaylist(p)}
-                  className="w-full flex items-center gap-3 p-3 rounded-xl border-2 border-gray-200 dark:border-border hover:border-primary hover:bg-primary/5 transition text-left"
+                  className="min-h-11 w-full flex items-center gap-3 p-3 rounded-xl border-2 border-gray-200 dark:border-border hover:border-primary hover:bg-primary/5 transition text-left"
                 >
                   <img
                     src={p.coverUrl || p.artwork_url || "/brand/icon-192.png"}
-                    alt={p.title}
+                    alt=""
                     width={48}
                     height={48}
                     loading="lazy"
                     decoding="async"
                     className="w-12 h-12 rounded-lg object-cover"
                   />
-                  <div className="flex-1 min-w-0">
-                    <div className="font-semibold text-foreground truncate">{p.title}</div>
-                    <div className="text-xs text-muted-foreground">{p.track_count} tracks</div>
-                  </div>
+                  <span className="flex-1 min-w-0">
+                    <span className="block font-semibold text-foreground truncate">{p.title}</span>
+                    <span className="block text-xs text-muted-foreground">{p.track_count} tracks</span>
+                  </span>
                 </button>
               ))}
             </div>
           )}
-        </div>
+        </Card>
       ) : (
         <div className="grid lg:grid-cols-3 gap-8">
           {/* Track list */}
-          <div className="lg:col-span-2">
-            <div className="bg-white dark:bg-card rounded-2xl p-6 border-2 border-gray-200 dark:border-border">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-bold text-foreground truncate">
-                  {selectedPlaylist.title} ({tracks.length})
+          <div className="min-w-0 lg:col-span-2">
+            <Card className="p-4 sm:p-6">
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+                <h2 className="min-w-0 break-words text-lg sm:text-xl font-bold text-foreground">
+                  {selectedPlaylist.title}{" "}
+                  <span className="text-base font-normal text-muted-foreground">
+                    ({tracks.length})
+                  </span>
                 </h2>
                 {tracks.length > 0 && (
-                  <button onClick={toggleAll} className="text-sm text-primary-text hover:underline shrink-0">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={toggleAll}
+                    className="shrink-0 text-primary-text"
+                  >
                     {selectedTracks.size === tracks.length ? "Deselect All" : "Select All"}
-                  </button>
+                  </Button>
                 )}
               </div>
 
@@ -270,7 +308,7 @@ export default function PlaylistToLikesPage() {
               ) : tracks.length === 0 ? (
                 <EmptyState icon={<Music className="w-12 h-12" />} title="This playlist has no tracks" />
               ) : (
-                <SelectableList className="max-h-[600px] overflow-y-auto">
+                <SelectableList className="max-h-[60dvh] overflow-y-auto">
                   {tracks.map((track) => (
                     <TrackRow
                       as="li"
@@ -287,28 +325,42 @@ export default function PlaylistToLikesPage() {
                   ))}
                 </SelectableList>
               )}
-            </div>
+            </Card>
           </div>
 
           {/* Action panel */}
-          <div className="lg:col-span-1">
-            <div className="bg-white dark:bg-card rounded-2xl p-6 border-2 border-gray-200 dark:border-border sticky top-24 space-y-5">
-              <h2 className="text-xl font-bold text-foreground">Like Tracks</h2>
+          <div className="min-w-0 lg:col-span-1">
+            <Card className="space-y-5 p-4 sm:p-6 lg:sticky lg:top-24">
+              <h2 className="text-lg sm:text-xl font-bold text-foreground">Like Tracks</h2>
 
               <div className="p-4 bg-gray-50 dark:bg-secondary/20 rounded-lg">
                 <div className="text-sm text-muted-foreground">Selected Tracks</div>
                 <div className="text-2xl font-bold text-foreground">{selectedTracks.size}</div>
               </div>
 
-              <button
+              <Button
+                variant="ghost"
+                size="sm"
                 onClick={() => {
                   setSelectedPlaylist(null);
                   setSelectedTracks(new Set());
                 }}
-                className="text-sm text-primary-text hover:underline"
+                className="text-primary-text"
               >
-                ← Change playlist
-              </button>
+                <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+                Change playlist
+              </Button>
+
+              {/* Progress lives outside the button: a disabled control is
+                  skipped by some assistive technology, so the only report of
+                  a long job would never be read out. */}
+              {liking && progress ? (
+                <ProgressBar
+                  label="Liking tracks"
+                  value={progress.done}
+                  max={progress.total}
+                />
+              ) : null}
 
               <Button
                 onClick={handleLike}
@@ -318,7 +370,7 @@ export default function PlaylistToLikesPage() {
                 {liking ? (
                   <>
                     <LoadingSpinner size="sm" />
-                    {progress ? `Liking ${progress.done}/${progress.total}…` : "Liking…"}
+                    Liking…
                   </>
                 ) : (
                   <>
@@ -331,7 +383,7 @@ export default function PlaylistToLikesPage() {
               <p className="text-xs text-muted-foreground">
                 Tracks are liked one at a time to stay within SoundCloud’s limits, so large playlists take a little while.
               </p>
-            </div>
+            </Card>
           </div>
         </div>
       )}

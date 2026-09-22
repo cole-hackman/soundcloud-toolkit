@@ -1,21 +1,27 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useId, useMemo, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { Check, Plus, Music, X } from "lucide-react";
+import { Check, Plus, Music } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import {
   Button,
+  Card,
+  Dialog,
   EmptyState,
+  Field,
   InlineAlert,
+  Input,
   LoadingSpinner,
   PageContainer,
   PageHeader,
   ResultPanel,
+  SectionHeading,
   SelectableList,
   Skeleton,
   TrackRow,
+  useAnnounce,
 } from "@/components/ui";
 import { invalidatePlaylistCaches, useLikesQuery, usePlaylistsQuery } from "@/lib/queries";
 
@@ -46,6 +52,10 @@ type AddMode = "new" | "existing";
 
 export default function LikesToPlaylistPage() {
   const queryClient = useQueryClient();
+  const announce = useAnnounce();
+  const modeGroupLabelId = useId();
+  const successHeadingRef = useRef<HTMLHeadingElement>(null);
+  const pickerTriggerRef = useRef<HTMLButtonElement>(null);
   const [prefillTrackId, setPrefillTrackId] = useState<number | null>(null);
   const [selectedTracks, setSelectedTracks] = useState<Set<number>>(new Set());
   const [playlistName, setPlaylistName] = useState("");
@@ -82,6 +92,12 @@ export default function LikesToPlaylistPage() {
       setNotice({ type: "error", text: "Couldn’t load your liked tracks. Try refreshing the page." });
     }
   }, [likesQuery.isError]);
+
+  // The list arriving is a purely visual event; say how much of it there is.
+  useEffect(() => {
+    if (!likesQuery.isSuccess) return;
+    announce(`${likes.length} liked track${likes.length === 1 ? "" : "s"} loaded`);
+  }, [likesQuery.isSuccess, likes.length, announce]);
 
   const [lastSelectedIndex, setLastSelectedIndex] = useState<number | null>(null);
 
@@ -132,6 +148,14 @@ export default function LikesToPlaylistPage() {
     }
   };
 
+  // The success screen replaces the page, so move focus to its heading —
+  // otherwise focus sits on a button that no longer exists and a screen
+  // reader is never told the operation finished.
+  useEffect(() => {
+    if (!success) return;
+    successHeadingRef.current?.focus();
+  }, [success]);
+
   const canCreate =
     selectedTracks.size > 0 &&
     (addMode === "existing" ? targetPlaylist !== null : playlistName.trim().length > 0);
@@ -160,6 +184,12 @@ export default function LikesToPlaylistPage() {
         await invalidatePlaylistCaches(queryClient, targetPlaylist?.id ?? null);
         setResult(data);
         setSuccess(true);
+        announce(
+          addMode === "existing"
+            ? "Tracks added to playlist"
+            : "Playlist created",
+          { assertive: true },
+        );
       } else {
         const message = typeof data?.error === "string" ? data.error : "Failed to create playlist";
         setNotice({ type: "error", text: message });
@@ -190,7 +220,11 @@ export default function LikesToPlaylistPage() {
             <div className="w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-6 bg-gradient-to-br from-[#22c55e] to-[#16a34a] shadow-lg">
               <Check className="w-12 h-12 text-white" />
             </div>
-            <h1 className="text-2xl md:text-3xl font-bold mb-4 text-foreground">
+            <h1
+              ref={successHeadingRef}
+              tabIndex={-1}
+              className="text-2xl md:text-3xl font-bold mb-4 text-foreground focus:outline-none"
+            >
               {isExisting ? "Tracks Added!" : multiple ? "Playlists Created!" : "Playlist Created!"}
             </h1>
             <p className="text-sm mb-6 text-muted-foreground">
@@ -237,11 +271,12 @@ export default function LikesToPlaylistPage() {
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Link
                 href="/dashboard"
-                className="px-8 py-3 rounded-lg font-semibold bg-gradient-to-r from-[#FF5500] to-[#E64A00] text-white hover:shadow-lg transition"
+                className="inline-flex min-h-11 items-center justify-center px-8 py-3 rounded-lg font-semibold bg-gradient-to-r from-[#FF5500] to-[#E64A00] text-white hover:shadow-lg transition"
               >
                 Back to Dashboard
               </Link>
-              <button
+              <Button
+                variant="outline"
                 onClick={() => {
                   setSuccess(false);
                   setResult(null);
@@ -249,10 +284,10 @@ export default function LikesToPlaylistPage() {
                   setPlaylistName("");
                   setTargetPlaylist(null);
                 }}
-                className="px-8 py-3 rounded-lg font-semibold border-2 border-gray-200 dark:border-border text-foreground hover:border-primary transition"
+                className="px-8"
               >
                 {isExisting ? "Add More" : "Create Another"}
-              </button>
+              </Button>
             </div>
           </ResultPanel>
         </div>
@@ -281,14 +316,17 @@ export default function LikesToPlaylistPage() {
         <div className="grid lg:grid-cols-3 gap-8">
           {/* Track List */}
           <div className="lg:col-span-2">
-            <div className="bg-white dark:bg-card rounded-2xl p-6 border-2 border-gray-200 dark:border-border">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-bold text-foreground">
-                  Your Liked Tracks ({likes.length})
+            <Card className="p-4 sm:p-6">
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+                <h2 className="text-lg font-bold text-foreground sm:text-xl">
+                  Your Liked Tracks{" "}
+                  <span className="text-base font-normal text-muted-foreground">
+                    ({likes.length})
+                  </span>
                 </h2>
-                <button onClick={selectAll} className="text-sm text-primary-text hover:underline">
+                <Button variant="ghost" size="sm" onClick={selectAll} className="text-primary-text">
                   {selectedTracks.size === likes.length ? "Deselect All" : "Select All"}
-                </button>
+                </Button>
               </div>
 
               {loading ? (
@@ -300,7 +338,7 @@ export default function LikesToPlaylistPage() {
               ) : likes.length === 0 ? (
                 <EmptyState icon={<Music className="w-12 h-12" />} title="No liked tracks found" />
               ) : (
-                <SelectableList className="max-h-[600px] overflow-y-auto">
+                <SelectableList className="max-h-[60dvh] overflow-y-auto">
                   {likes.map((track, index) => {
                     const isSelected = selectedTracks.has(track.id);
                     return (
@@ -320,13 +358,13 @@ export default function LikesToPlaylistPage() {
                   })}
                 </SelectableList>
               )}
-            </div>
+            </Card>
           </div>
 
           {/* Create Panel */}
           <div className="lg:col-span-1">
-            <div className="bg-white dark:bg-card rounded-2xl p-6 border-2 border-gray-200 dark:border-border sticky top-24 space-y-5">
-              <h2 className="text-xl font-bold text-foreground">
+            <Card className="space-y-5 p-4 sm:p-6 lg:sticky lg:top-24">
+              <h2 className="text-lg font-bold text-foreground sm:text-xl">
                 {addMode === "existing" ? "Add to Playlist" : "Create Playlist"}
               </h2>
 
@@ -345,13 +383,22 @@ export default function LikesToPlaylistPage() {
 
               {/* Mode Toggle */}
               <div>
-                <label className="block text-sm font-medium mb-2 text-muted-foreground">
+                <span
+                  id={modeGroupLabelId}
+                  className="mb-2 block text-sm font-semibold text-foreground"
+                >
                   Add to
-                </label>
-                <div className="flex rounded-lg border-2 border-gray-200 dark:border-border overflow-hidden">
+                </span>
+                <div
+                  role="group"
+                  aria-labelledby={modeGroupLabelId}
+                  className="flex overflow-hidden rounded-lg border-2 border-gray-200 dark:border-border"
+                >
                   <button
+                    type="button"
+                    aria-pressed={addMode === "new"}
                     onClick={() => setAddMode("new")}
-                    className={`flex-1 py-2 text-sm font-medium transition ${
+                    className={`min-h-11 flex-1 px-2 py-2 text-sm font-medium transition ${
                       addMode === "new"
                         ? "bg-primary text-primary-foreground"
                         : "text-muted-foreground hover:bg-gray-50 dark:hover:bg-secondary/20"
@@ -360,8 +407,10 @@ export default function LikesToPlaylistPage() {
                     New playlist
                   </button>
                   <button
+                    type="button"
+                    aria-pressed={addMode === "existing"}
                     onClick={() => setAddMode("existing")}
-                    className={`flex-1 py-2 text-sm font-medium transition ${
+                    className={`min-h-11 flex-1 px-2 py-2 text-sm font-medium transition ${
                       addMode === "existing"
                         ? "bg-primary text-primary-foreground"
                         : "text-muted-foreground hover:bg-gray-50 dark:hover:bg-secondary/20"
@@ -374,26 +423,24 @@ export default function LikesToPlaylistPage() {
 
               {/* New Playlist Name (only in "new" mode) */}
               {addMode === "new" && (
-                <div>
-                  <label className="block text-sm font-medium mb-2 text-muted-foreground">
-                    Playlist Name
-                  </label>
-                  <input
-                    type="text"
-                    value={playlistName}
-                    onChange={(e) => setPlaylistName(e.target.value)}
-                    placeholder="Enter playlist name..."
-                    className="w-full px-4 py-3 rounded-lg border-2 border-gray-200 dark:border-border focus:border-primary focus:outline-none transition dark:bg-secondary/20 dark:text-foreground"
-                  />
-                </div>
+                <Field label="Playlist name">
+                  {(field) => (
+                    <Input
+                      {...field}
+                      type="text"
+                      value={playlistName}
+                      onChange={(e) => setPlaylistName(e.target.value)}
+                      placeholder="Enter playlist name…"
+                      className="h-11"
+                    />
+                  )}
+                </Field>
               )}
 
               {/* Target Playlist Picker (only in "existing" mode) */}
               {addMode === "existing" && (
-                <div>
-                  <label className="block text-sm font-medium mb-2 text-muted-foreground">
-                    Target Playlist
-                  </label>
+                <div className="space-y-2">
+                  <SectionHeading as="h3">Target playlist</SectionHeading>
                   {loadingPlaylists ? (
                     <div className="flex items-center gap-2 py-3 text-sm text-muted-foreground-subtle">
                       <LoadingSpinner size="sm" />
@@ -405,8 +452,11 @@ export default function LikesToPlaylistPage() {
                     </p>
                   ) : targetPlaylist ? (
                     <button
+                      type="button"
+                      ref={pickerTriggerRef}
+                      aria-haspopup="dialog"
                       onClick={() => setShowPlaylistPicker(true)}
-                      className="w-full flex items-center gap-3 p-3 rounded-xl bg-primary/10 border-2 border-primary transition-all hover:bg-primary/15 text-left"
+                      className="min-h-11 w-full flex items-center gap-3 p-3 rounded-xl bg-primary/10 border-2 border-primary transition-all hover:bg-primary/15 text-left"
                     >
                       <img
                         src={targetPlaylist.coverUrl || targetPlaylist.artwork_url || "/brand/icon-192.png"}
@@ -429,8 +479,11 @@ export default function LikesToPlaylistPage() {
                     </button>
                   ) : (
                     <button
+                      type="button"
+                      ref={pickerTriggerRef}
+                      aria-haspopup="dialog"
                       onClick={() => setShowPlaylistPicker(true)}
-                      className="w-full px-4 py-3 rounded-lg border-2 border-dashed border-gray-300 dark:border-border text-sm text-muted-foreground-subtle hover:border-primary hover:text-primary-text transition-all text-center"
+                      className="min-h-11 w-full px-4 py-3 rounded-lg border-2 border-dashed border-gray-300 dark:border-border text-sm text-muted-foreground-subtle hover:border-primary hover:text-primary-text transition-all text-center"
                     >
                       Choose a playlist…
                     </button>
@@ -441,7 +494,7 @@ export default function LikesToPlaylistPage() {
               <Button
                 onClick={handleCreate}
                 disabled={!canCreate || creating}
-                className="h-10 w-full px-4"
+                className="w-full"
               >
                 {creating ? (
                   <>
@@ -455,83 +508,69 @@ export default function LikesToPlaylistPage() {
                   </>
                 )}
               </Button>
-            </div>
+            </Card>
           </div>
         </div>
 
-      {/* ── PLAYLIST PICKER MODAL ──────────────────────────────────────────── */}
-      {showPlaylistPicker && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4"
-          onClick={() => setShowPlaylistPicker(false)}
-        >
-          {/* Backdrop */}
-          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
-
-          {/* Modal */}
-          <div
-            className="relative w-full max-w-lg bg-white dark:bg-card rounded-2xl shadow-2xl border-2 border-gray-200 dark:border-border overflow-hidden animate-in fade-in zoom-in-95 duration-200"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Header */}
-            <div className="flex items-center justify-between px-6 pt-6 pb-4">
-              <h3 className="text-xl font-bold text-foreground">
-                Your Playlists
-              </h3>
-              <button
-                onClick={() => setShowPlaylistPicker(false)}
-                className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-secondary/40 transition"
-              >
-                <X className="w-5 h-5 text-muted-foreground" />
-              </button>
-            </div>
-
-            {/* Playlist list */}
-            <div className="px-6 pb-6 space-y-2 max-h-[60vh] overflow-y-auto">
-              {userPlaylists.map((playlist) => {
-                const isSelected = targetPlaylist && Number(targetPlaylist.id) === Number(playlist.id);
-                return (
-                  <button
-                    key={playlist.id}
-                    onClick={() => {
-                      setTargetPlaylist(playlist);
-                      setShowPlaylistPicker(false);
-                    }}
-                    className={`w-full flex items-center gap-4 p-4 rounded-xl transition-all ${
-                      isSelected
-                        ? "bg-primary/10 border-2 border-primary"
-                        : "bg-gray-50 dark:bg-secondary/20 border-2 border-transparent hover:border-gray-200 dark:hover:border-border"
-                    }`}
-                  >
-                    <img
-                      src={playlist.coverUrl || playlist.artwork_url || "/brand/icon-192.png"}
-                      alt={playlist.title}
-                      width={48}
-                      height={48}
-                      loading="lazy"
-                      decoding="async"
-                      className="w-12 h-12 rounded-lg object-cover"
-                    />
-                    <div className="flex-1 text-left min-w-0">
-                      <div className="font-semibold text-foreground truncate">
-                        {playlist.title}
-                      </div>
-                      <div className="text-sm text-muted-foreground">
-                        {playlist.track_count} tracks
-                      </div>
-                    </div>
-                    {isSelected && (
-                      <div className="w-6 h-6 rounded-full bg-primary flex items-center justify-center shrink-0">
-                        <Check className="w-4 h-4 text-white" />
-                      </div>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      )}
+      {/* ── PLAYLIST PICKER DIALOG ─────────────────────────────────────────── */}
+      <Dialog
+        open={showPlaylistPicker}
+        onClose={() => setShowPlaylistPicker(false)}
+        title="Your playlists"
+        variant="sheet"
+        size="md"
+        returnFocusRef={pickerTriggerRef}
+      >
+        {/* eslint-disable-next-line jsx-a11y/no-redundant-roles -- Tailwind's
+            preflight sets list-style:none, which makes WebKit drop the list
+            semantics; the explicit role is what keeps them. Same reason as
+            components/ui/SelectableList.tsx. */}
+        <ul role="list" className="max-h-[60dvh] space-y-2 overflow-y-auto">
+          {userPlaylists.map((playlist) => {
+            const isSelected = !!targetPlaylist && Number(targetPlaylist.id) === Number(playlist.id);
+            return (
+              <li key={playlist.id}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTargetPlaylist(playlist);
+                    setShowPlaylistPicker(false);
+                  }}
+                  className={`min-h-11 w-full flex items-center gap-4 p-4 rounded-xl transition-all ${
+                    isSelected
+                      ? "bg-primary/10 border-2 border-primary"
+                      : "bg-gray-50 dark:bg-secondary/20 border-2 border-transparent hover:border-gray-200 dark:hover:border-border"
+                  }`}
+                >
+                  <img
+                    src={playlist.coverUrl || playlist.artwork_url || "/brand/icon-192.png"}
+                    alt=""
+                    width={48}
+                    height={48}
+                    loading="lazy"
+                    decoding="async"
+                    className="w-12 h-12 rounded-lg object-cover"
+                  />
+                  <span className="flex-1 text-left min-w-0">
+                    <span className="block font-semibold text-foreground truncate">
+                      {playlist.title}
+                    </span>
+                    <span className="block text-sm text-muted-foreground">
+                      {playlist.track_count} tracks
+                    </span>
+                  </span>
+                  {isSelected && (
+                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary">
+                      <Check className="w-4 h-4 text-white" aria-hidden="true" />
+                      <span className="sr-only">Currently selected</span>
+                    </span>
+                  )}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      </Dialog>
     </PageContainer>
   );
 }

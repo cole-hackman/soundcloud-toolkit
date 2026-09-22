@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
+import { cn } from "@/lib/utils";
 
 interface WhatsNewModalProps {
   open: boolean;
@@ -83,11 +84,24 @@ export function WhatsNewModal({ open, onClose }: WhatsNewModalProps) {
       }
       footer={
         <div className="flex flex-col gap-2 pt-1 sm:flex-row-reverse">
-          <Link href={PRIMARY_HREF} onClick={onClose} className="sm:flex-1">
-            <Button className="w-full gap-2">
-              <TrendingUp className="h-4 w-4" />
-              Try Grow Your Network
-            </Button>
+          {/* A link that looks like the primary button, rather than a
+              `<Button>` inside a `<Link>` — that nested a control inside a
+              control, which is both invalid and ambiguous to assistive
+              technology. Styled the same way the rebrand modal's link is. */}
+          <Link
+            href={PRIMARY_HREF}
+            onClick={onClose}
+            className={cn(
+              "inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg px-4",
+              "bg-primary text-sm font-semibold text-primary-foreground shadow-elevation-1",
+              "transition-all duration-150 hover:-translate-y-0.5 hover:shadow-glow-sm",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/80",
+              "focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+              "sm:flex-1",
+            )}
+          >
+            <TrendingUp className="h-4 w-4" aria-hidden="true" />
+            Try Grow Your Network
           </Link>
           <Button
             ref={dismissRef}

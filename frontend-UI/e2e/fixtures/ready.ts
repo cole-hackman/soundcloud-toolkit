@@ -30,4 +30,17 @@ export const READY: Record<string, ReadyLocator> = {
   "/growth/": (page) => page.getByRole("checkbox", { name: "testfollowing1" }),
   // This route's settled load state is its form.
   "/link-resolver/": (page) => page.getByLabel("SoundCloud URL"),
+  // The track list, from `/api/likes/paged`.
+  "/likes-to-playlist/": (page) => page.getByRole("checkbox", { name: "Sample Track 1" }),
+  // Opens on a playlist chooser, from `/api/playlists`.
+  "/playlist-to-likes/": (page) => page.getByRole("button", { name: /Sample Playlist 1/ }),
+  // The track list, from `/api/recently-played`.
+  "/recently-played/": (page) => page.getByRole("checkbox", { name: "Sample Track 1" }),
+  // The track list, from `/api/activities`.
+  "/activity-to-playlist/": (page) => page.getByRole("checkbox", { name: "Sample Track 1" }),
+  // Opens on a source chooser, from `/api/playlists`.
+  "/downloads/": (page) => page.getByRole("button", { name: /Sample Playlist 1/ }),
+  // `/genre-search/` is deliberately absent: its landing state is a static
+  // filter form with no query behind it and no skeleton branch, so there is
+  // nothing a second gate could wait for that the `h1` does not already prove.
 };

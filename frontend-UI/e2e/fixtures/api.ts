@@ -61,29 +61,62 @@ const FAKE_PLAYLISTS = {
 const LONG_TRACK_TITLE = "Sample Playlist Track 4 With A Deliberately Very Long Title";
 
 /**
- * `GET /api/playlists/:id` — the track-editor state of /playlist-modifier/,
- * which is where the row action cluster lives. Three short rows cover
- * first/middle/last (move-up and move-down disabled states); the fourth is
- * the long-title case, and is the downloadable one.
+ * `GET /api/playlists/:id` — the one playlist detail every tool that opens on
+ * a playlist chooser reads, so it has to cover all of them at once.
+ *
+ * Rows 1-4 are the track-editor state of /playlist-modifier/, where the row
+ * action cluster lives: three short rows cover first/middle/last (move-up and
+ * move-down disabled states) and the fourth is the long-title case.
+ *
+ * Rows 5-6 are /downloads/'s two download flavours — "Sample Track 1" carries
+ * a direct `download_url`, "Sample Track 2" a Hypeddit `purchase_url` — and
+ * are also the rows /playlist-to-likes/ selects by name. They are deliberately
+ * named differently from the "Sample Playlist Track N" rows above so that
+ * neither set is a substring of the other and `getByRole` stays unambiguous.
  */
 const FAKE_PLAYLIST_DETAIL = {
   id: 1,
   title: "Sample Playlist 1",
-  track_count: 4,
+  track_count: 6,
   artwork_url: null as string | null,
-  tracks: Array.from({ length: 4 }, (_, i) => ({
-    id: 300 + i,
-    title: i === 3 ? LONG_TRACK_TITLE : `Sample Playlist Track ${i + 1}`,
-    user: { username: "testartist" },
-    artwork_url: null as string | null,
-    duration: 210000,
-    downloadable: i === 0 || i === 3,
-    download_url:
-      i === 0 || i === 3
-        ? `https://api.soundcloud.com/tracks/${300 + i}/download`
-        : undefined,
-    permalink_url: `https://soundcloud.com/testartist/sample-playlist-track-${i + 1}`,
-  })),
+  tracks: [
+    ...Array.from({ length: 4 }, (_, i) => ({
+      id: 300 + i,
+      title: i === 3 ? LONG_TRACK_TITLE : `Sample Playlist Track ${i + 1}`,
+      user: { username: "testartist" },
+      artwork_url: null as string | null,
+      duration: 210000,
+      downloadable: i === 0 || i === 3,
+      download_url:
+        i === 0 || i === 3
+          ? `https://api.soundcloud.com/tracks/${300 + i}/download`
+          : undefined,
+      purchase_url: undefined as string | undefined,
+      permalink_url: `https://soundcloud.com/testartist/sample-playlist-track-${i + 1}`,
+    })),
+    {
+      id: 100,
+      title: "Sample Track 1",
+      user: { username: "testartist" },
+      artwork_url: null as string | null,
+      duration: 200000,
+      downloadable: true,
+      download_url: "https://api.soundcloud.com/tracks/100/download",
+      purchase_url: undefined as string | undefined,
+      permalink_url: "https://soundcloud.com/testartist/sample-track-1",
+    },
+    {
+      id: 101,
+      title: "Sample Track 2",
+      user: { username: "testartist" },
+      artwork_url: null as string | null,
+      duration: 180000,
+      downloadable: false,
+      download_url: undefined as string | undefined,
+      purchase_url: "https://hypeddit.com/example/sample-track-2",
+      permalink_url: "https://soundcloud.com/testartist/sample-track-2",
+    },
+  ],
 };
 
 export { LONG_TRACK_TITLE };
@@ -95,6 +128,68 @@ const FAKE_LIKES_PAGED = {
     user: { username: "testartist" },
     artwork_url: null,
     duration: 200000,
+    permalink_url: `https://soundcloud.com/testartist/sample-track-${i + 1}`,
+  })),
+  next_href: null as string | null,
+};
+
+/** `GET /api/recently-played` — the shape `useRecentlyPlayedQuery` reads. */
+const FAKE_RECENTLY_PLAYED = {
+  collection: Array.from({ length: 3 }, (_, i) => ({
+    id: 300 + i,
+    title: `Sample Track ${i + 1}`,
+    user: { username: "testartist" },
+    artwork_url: null,
+    duration: 200000,
+    permalink_url: `https://soundcloud.com/testartist/sample-track-${i + 1}`,
+  })),
+};
+
+/**
+ * `GET /api/activities` — one plain track activity and one repost. The repost
+ * carries a URN-shaped `reposter` with no username, which is the case the row
+ * subtitle must not print as a bare numeric id.
+ */
+const FAKE_ACTIVITIES = {
+  collection: [
+    {
+      type: "track",
+      created_at: "2026-09-20T12:00:00.000Z",
+      reposter: null,
+      origin: {
+        id: 400,
+        title: "Sample Track 1",
+        user: { username: "testartist" },
+        artwork_url: null,
+        duration: 200000,
+        permalink_url: "https://soundcloud.com/testartist/sample-track-1",
+      },
+    },
+    {
+      type: "track-repost",
+      created_at: "2026-09-19T12:00:00.000Z",
+      reposter: "soundcloud:users:1000002",
+      origin: {
+        id: 401,
+        title: "Sample Track 2",
+        user: { username: "testartist" },
+        artwork_url: null,
+        duration: 180000,
+        permalink_url: "https://soundcloud.com/testartist/sample-track-2",
+      },
+    },
+  ],
+};
+
+/** `GET /api/tracks/search` — genre-search results. */
+const FAKE_TRACK_SEARCH = {
+  collection: Array.from({ length: 2 }, (_, i) => ({
+    id: 500 + i,
+    title: `Sample Track ${i + 1}`,
+    user: { username: "testartist" },
+    artwork_url: null,
+    duration: 200000,
+    genre: "house",
     permalink_url: `https://soundcloud.com/testartist/sample-track-${i + 1}`,
   })),
   next_href: null as string | null,
@@ -338,8 +433,22 @@ export async function mockApi(page: Page): Promise<void> {
         json({ ...FAKE_PLAYLIST_DETAIL, id: Number(path.split("/").pop()) }),
       );
     }
+    if (method === "GET" && path === "/api/recently-played") {
+      return route.fulfill(json(FAKE_RECENTLY_PLAYED));
+    }
+    if (method === "GET" && path === "/api/activities") {
+      return route.fulfill(json(FAKE_ACTIVITIES));
+    }
+    if (method === "GET" && path === "/api/tracks/search") {
+      return route.fulfill(json(FAKE_TRACK_SEARCH));
+    }
     if (method === "GET" && path === "/api/likes/paged") {
       return route.fulfill(json(FAKE_LIKES_PAGED));
+    }
+    if (method === "GET" && path === "/api/likes") {
+      return route.fulfill(
+        json({ collection: FAKE_LIKES_PAGED.collection, total: FAKE_LIKES_PAGED.collection.length }),
+      );
     }
     if (method === "GET" && (path === "/api/followings/paged" || path === "/api/followings")) {
       return route.fulfill(json(FAKE_FOLLOWINGS_PAGED));
@@ -364,6 +473,20 @@ export async function mockApi(page: Page): Promise<void> {
     }
     if (method === "POST" && path === "/api/resolve") {
       return route.fulfill(json(FAKE_RESOLVE));
+    }
+    if (method === "POST" && path === "/api/playlists/from-likes") {
+      return route.fulfill(
+        json({
+          playlist: {
+            id: 9,
+            title: "Sample Playlist 9",
+            permalink_url: "https://soundcloud.com/testuser/sets/sample-playlist-9",
+          },
+          totalTracks: 1,
+          addedCount: 1,
+          numPlaylistsCreated: 1,
+        }),
+      );
     }
     if (method === "POST" && path === "/api/events") {
       return route.fulfill({ status: 204, body: "" });

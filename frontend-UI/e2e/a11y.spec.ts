@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 import { mockApi } from "./fixtures/api";
 import { READY, type ReadyLocator } from "./fixtures/ready";
@@ -38,7 +38,31 @@ const PAGES: PageCase[] = [
   { path: "/link-resolver/", needsMock: true },
   { path: "/feedback/", needsMock: true },
   { path: "/account/", needsMock: true },
+  { path: "/likes-to-playlist/", needsMock: true },
+  { path: "/playlist-to-likes/", needsMock: true },
+  { path: "/recently-played/", needsMock: true },
+  { path: "/activity-to-playlist/", needsMock: true },
+  // No `ready` in the shared map on purpose: genre-search's landing state is a
+  // static filter form with no query behind it and no skeleton branch, so
+  // there is nothing for a second gate to wait for that the `h1` does not
+  // already prove. Its results and dialog are audited by the dedicated test
+  // further down.
+  { path: "/genre-search/", needsMock: true },
+  { path: "/downloads/", needsMock: true },
 ];
+
+/** Audit whatever is on screen right now and fail on serious/critical. */
+async function expectNoBlockingViolations(page: Page) {
+  const results = await new AxeBuilder({ page })
+    .withTags(["wcag2a", "wcag2aa", "wcag22aa"])
+    .analyze();
+
+  const blocking = results.violations.filter(
+    (violation) => violation.impact === "serious" || violation.impact === "critical",
+  );
+
+  expect(blocking, JSON.stringify(blocking, null, 2)).toEqual([]);
+}
 
 for (const { path, needsMock, fixme, expectedStatus, ready = READY[path] } of PAGES) {
   test(`has no serious/critical WCAG 2.2 AA violations: ${path}`, async ({ page }) => {
@@ -67,25 +91,20 @@ for (const { path, needsMock, fixme, expectedStatus, ready = READY[path] } of PA
     // that spinner, find nothing wrong with it, and pass without the real page
     // ever having been scanned. Every protected route puts an <h1> on screen —
     // via `PageHeader`, or its own on the dashboard — so waiting for the main
-    // landmark and a heading is the cheap, route-agnostic proof that the
-    // content under test is mounted.
+    // landmark and a heading is the cheap, route-agnostic proof that the shell
+    // is mounted. It is still not proof the *route's* content is: a
+    // `loading.tsx` and every in-page skeleton branch render the same
+    // `PageHeader`, so the route's `ready` locator is what clears the skeleton
+    // and the empty state.
     if (needsMock) {
       await expect(page.locator("main#main-content")).toBeVisible();
       await expect(page.getByRole("heading", { level: 1 }).first()).toBeVisible();
     }
     if (ready) {
-      await expect(ready(page)).toBeVisible();
+      await expect(ready(page).first()).toBeVisible();
     }
 
-    const results = await new AxeBuilder({ page })
-      .withTags(["wcag2a", "wcag2aa", "wcag22aa"])
-      .analyze();
-
-    const blocking = results.violations.filter(
-      (violation) => violation.impact === "serious" || violation.impact === "critical",
-    );
-
-    expect(blocking, JSON.stringify(blocking, null, 2)).toEqual([]);
+    await expectNoBlockingViolations(page);
   });
 }
 
@@ -109,15 +128,7 @@ test("has no serious/critical WCAG 2.2 AA violations: /link-resolver/ result", a
     page.getByRole("heading", { level: 2, name: "Sample Resolved Track" }),
   ).toBeVisible();
 
-  const results = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag22aa"])
-    .analyze();
-
-  const blocking = results.violations.filter(
-    (violation) => violation.impact === "serious" || violation.impact === "critical",
-  );
-
-  expect(blocking, JSON.stringify(blocking, null, 2)).toEqual([]);
+  await expectNoBlockingViolations(page);
 });
 
 /**
@@ -148,6 +159,168 @@ test("link-resolver: copying swaps the label and announces it", async ({ page, c
 
   // Reverts on its own, so the next copy is unambiguous.
   await expect(copyUrl).toBeVisible({ timeout: 4000 });
+});
+
+/**
+ * Three batch-C routes show a chooser first and keep the markup this sweep
+ * actually changed one interaction away. `goto` + axe would audit the
+ * chooser and report nothing about the track rows, the toolbar or the
+ * add-to-playlist dialog, so each of these walks in one step further.
+ */
+test("has no serious/critical violations: /playlist-to-likes/ with a playlist chosen", async ({
+  page,
+}) => {
+  await mockApi(page);
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto("/playlist-to-likes/");
+
+  await page.getByRole("button", { name: /Sample Playlist 1/ }).click();
+  await expect(page.getByRole("checkbox", { name: "Sample Track 1" })).toBeVisible();
+
+  await expectNoBlockingViolations(page);
+});
+
+test("has no serious/critical violations: /genre-search/ results and add-to-playlist dialog", async ({
+  page,
+}) => {
+  await mockApi(page);
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto("/genre-search/");
+
+  // The advanced panel is `hidden` rather than unmounted, so `aria-controls`
+  // always points at a real element; audit it open as well as closed.
+  const advanced = page.getByRole("button", { name: "Advanced filters" });
+  await expect(advanced).toHaveAttribute("aria-expanded", "false");
+  await advanced.click();
+  await expect(advanced).toHaveAttribute("aria-expanded", "true");
+  await expect(page.getByLabel("Min BPM")).toBeVisible();
+
+  await page.getByRole("button", { name: "house", exact: true }).click();
+  await page.getByRole("button", { name: "Search", exact: true }).click();
+  await page.getByRole("checkbox", { name: "Sample Track 1" }).check();
+
+  await page.getByRole("button", { name: /Add to Playlist/i }).click();
+
+  // The panel used to be a bare `fixed inset-0` div; it has to be a dialog
+  // named by its own heading before the audit means anything.
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toHaveAccessibleName("Add to playlist");
+
+  await expectNoBlockingViolations(page);
+
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+});
+
+/**
+ * A successful add clears the selection, which unmounts `SelectionBanner` and
+ * with it the button the dialog was opened from — so the focus `useDialog`
+ * would otherwise restore to no longer exists, and `.focus()` on a detached
+ * node silently leaves the user at `<body>`, above everything. The page hands
+ * focus to the results block instead.
+ */
+test("genre-search: focus survives a successful add", async ({ page }) => {
+  await mockApi(page);
+  await page.goto("/genre-search/");
+
+  await page.getByRole("button", { name: "house", exact: true }).click();
+  await page.getByRole("button", { name: "Search", exact: true }).click();
+  await page.getByRole("checkbox", { name: "Sample Track 1" }).check();
+
+  await page.getByRole("button", { name: /Add to Playlist/i }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toBeVisible();
+
+  await dialog.getByLabel("Playlist name").fill("E2E Sample Playlist");
+  await dialog.getByRole("button", { name: "Add tracks" }).click();
+
+  await expect(dialog).toBeHidden();
+  // Exact text: a looser match also catches the live region's copy of the
+  // same announcement, which is deliberately worded differently.
+  await expect(
+    page.getByText('1 track added to "Sample Playlist 9".', { exact: true }),
+  ).toBeVisible();
+
+  const focus = await page.evaluate(() => ({
+    isBody: document.activeElement === document.body,
+    text: (document.activeElement?.textContent || "").trim().slice(0, 40),
+  }));
+  expect(focus.isBody, "focus fell back to <body> after a successful add").toBe(false);
+  expect(focus.text).toContain("Results");
+});
+
+test("has no serious/critical violations: /downloads/ track list and selection mode", async ({
+  page,
+}) => {
+  await mockApi(page);
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto("/downloads/");
+
+  await page.getByRole("button", { name: /Sample Playlist 1/ }).click();
+
+  // Each download control names its track and its route, so a column of them
+  // is not four buttons all called "Download".
+  await expect(
+    page.getByRole("button", { name: "Download Sample Track 1 (free download)" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Download Sample Track 2 via Hypeddit" }),
+  ).toBeVisible();
+
+  // The button sets its own background, so `twMerge` has to drop the ghost
+  // variant's `hover:text-accent-foreground` — otherwise the icon changes
+  // colour on hover over green/purple and can fall below contrast.
+  await expect(
+    page.getByRole("button", { name: "Download Sample Track 1 (free download)" }),
+  ).not.toHaveClass(/hover:text-accent-foreground/);
+
+  await expectNoBlockingViolations(page);
+
+  // Selection mode puts the same control in `rightSlot`, outside the row's
+  // toggle label — the nested-interactive case this sweep was fixing.
+  await page.getByRole("button", { name: "Select to Remove" }).click();
+  await expect(page.getByRole("checkbox", { name: "Sample Track 1" })).toBeVisible();
+
+  await expectNoBlockingViolations(page);
+});
+
+/**
+ * "What's new" put a `<Button>` inside a `<Link>` — a control inside a
+ * control, which axe reports as `nested-interactive` and which leaves a
+ * screen reader describing one thing twice. The primary action is now the
+ * link itself, and this pins both that and the localStorage gate it must not
+ * have disturbed.
+ */
+test("What's new: the primary action is a link, and dismissal still persists", async ({
+  page,
+}) => {
+  await mockApi(page);
+  // `mockApi` pre-dismisses this announcement so it stays out of the way of
+  // every other test; this is the one test that wants to see it.
+  await page.addInitScript(() => {
+    try {
+      window.localStorage.removeItem("sc-toolkit-whatsnew-dismissed");
+    } catch {
+      // Private mode / blocked storage — nothing this init script can do.
+    }
+  });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto("/dashboard/");
+
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toHaveAccessibleName("What's new in Track Toolkit");
+  await expect(dialog.getByRole("link", { name: "Try Grow Your Network" })).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Try Grow Your Network" })).toHaveCount(0);
+
+  await expectNoBlockingViolations(page);
+
+  await dialog.getByRole("button", { name: "Got it" }).click();
+  await expect(dialog).toBeHidden();
+  expect(
+    await page.evaluate(() => window.localStorage.getItem("sc-toolkit-whatsnew-dismissed")),
+  ).toBe("2026-07-growth");
 });
 
 /**

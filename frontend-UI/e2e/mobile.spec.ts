@@ -24,16 +24,11 @@ const PAGES: PageCase[] = [
   { path: "/playlist-modifier/", needsMock: true },
   { path: "/link-resolver/", needsMock: true },
   { path: "/feedback/", needsMock: true },
-  {
-    path: "/growth/",
-    needsMock: true,
-    // Measured against document.documentElement.clientWidth (fix round 1):
-    // scrollWidth=468 on m360 (clientWidth 360), 469 on m390 (clientWidth
-    // 390), 468 on m430 (clientWidth 430) — consistent ~468-469px overflow
-    // regardless of viewport, i.e. a fixed-width element, not a percentage
-    // one. See task-1-report.md fix round 1 for how this was found.
-    fixme: "Phase 6 — scrollWidth ~468-469px overflows clientWidth (360/390/430px) on all three mobile widths",
-  },
+  // Fixed in Phase 6: the tab strip's three long labels ("Discover
+  // Suggestions" / "Campaign History" / "Analytics") were a `w-fit` row that
+  // measured ~397px, which is the whole of the overflow this fixme recorded.
+  // Short labels below `sm` plus equal-width tabs bring it inside 360.
+  { path: "/growth/", needsMock: true },
 ];
 
 /**
@@ -133,6 +128,52 @@ test("playlist-modifier row actions are visible and fit: /playlist-modifier/", a
   await page.keyboard.press("Escape");
   await expect(sheet).toBeHidden();
   await expect(moreActions).toBeFocused();
+});
+
+/**
+ * The growth tab strip is a real tablist now, and the other two panels are
+ * only reachable through it — so neither the load-state overflow check nor
+ * the axe audit sees them unless a test switches tabs.
+ */
+test("growth tabs: arrow keys move between panels and none of them overflow: /growth/", async ({
+  page,
+}, testInfo) => {
+  test.skip(!MOBILE_PROJECTS.includes(testInfo.project.name), "mobile projects only");
+
+  await mockApi(page);
+  await page.goto("/growth/");
+
+  const tablist = page.getByRole("tablist", { name: "Growth sections" });
+  const discover = tablist.getByRole("tab", { name: "Discover" });
+  const history = tablist.getByRole("tab", { name: "History" });
+  const analytics = tablist.getByRole("tab", { name: "Analytics" });
+
+  await expect(discover).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("tabpanel")).toBeVisible();
+
+  await discover.focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(history).toBeFocused();
+  await expect(history).toHaveAttribute("aria-selected", "true");
+
+  await page.keyboard.press("ArrowRight");
+  await expect(analytics).toHaveAttribute("aria-selected", "true");
+
+  // Wraps, so the strip is navigable in one direction alone.
+  await page.keyboard.press("ArrowRight");
+  await expect(discover).toHaveAttribute("aria-selected", "true");
+
+  for (const tab of [history, analytics]) {
+    await tab.click();
+    const { scrollWidth, clientWidth } = await page.evaluate(() => ({
+      scrollWidth: document.documentElement.scrollWidth,
+      clientWidth: document.documentElement.clientWidth,
+    }));
+    expect(
+      scrollWidth,
+      `${await tab.textContent()}: scrollWidth=${scrollWidth} clientWidth=${clientWidth}`,
+    ).toBeLessThanOrEqual(clientWidth);
+  }
 });
 
 test("dashboard tap targets are at least 24x24: /dashboard/", async ({ page }, testInfo) => {

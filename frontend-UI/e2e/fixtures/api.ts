@@ -122,6 +122,22 @@ const FAKE_GROWTH_STATS = {
   uncheckedFollows: 0,
 };
 
+/** `GET /api/growth/history` — the empty state of the Campaign History tab. */
+const FAKE_GROWTH_HISTORY = {
+  actions: [] as unknown[],
+  sessions: [] as unknown[],
+};
+
+/** `GET /api/growth/analytics` — the empty state of the Analytics tab. */
+const FAKE_GROWTH_ANALYTICS = {
+  perSeed: [] as unknown[],
+  followBackCurve: [
+    { bucket: "0-24h", followedBack: 0, notFollowedBack: 0 },
+    { bucket: "1-3d", followedBack: 0, notFollowedBack: 0 },
+  ],
+  totalFollows: 0,
+};
+
 /**
  * Rebrand announcement gate — matches the keys/value `src/lib/rebrand.ts`
  * checks, so the one-time modal and the site-wide banner both treat the
@@ -203,6 +219,12 @@ export async function mockApi(page: Page): Promise<void> {
     }
     if (method === "GET" && path === "/api/growth/stats") {
       return route.fulfill(json(FAKE_GROWTH_STATS));
+    }
+    if (method === "GET" && path === "/api/growth/history") {
+      return route.fulfill(json(FAKE_GROWTH_HISTORY));
+    }
+    if (method === "GET" && path === "/api/growth/analytics") {
+      return route.fulfill(json(FAKE_GROWTH_ANALYTICS));
     }
     if (method === "POST" && path === "/api/events") {
       return route.fulfill({ status: 204, body: "" });

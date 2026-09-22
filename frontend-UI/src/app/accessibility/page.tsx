@@ -6,15 +6,27 @@ import { SupportLink } from "@/components/SupportLink";
 
 const LAST_REVIEWED = "2026-09-22";
 
-// Seeded from the audit that drove this rewrite. Task 16 will prune this
-// list as each item is fixed — remove an entry only once it's actually
-// resolved, not when it merely looks fixed.
+/**
+ * Only what is still true. Five entries were seeded here when this page was
+ * written and all five are now fixed, so all five are gone:
+ *
+ *  - the mobile drawer is a real `Dialog` with a focus trap, Escape and focus
+ *    return (`components/AppShell.tsx`);
+ *  - every bulk operation reports progress, with a `ProgressBar` where there
+ *    is something determinate to count and an announcement where there is not;
+ *  - icon-only controls are `IconButton` (or a link with an `aria-label`);
+ *  - every field has a name, through `Field` / `Select`;
+ *  - the orange-as-text problem is fixed at the token level (`--primary-text`)
+ *    and held there by `npm run contrast`, which fails the build below 4.5:1.
+ *
+ * Add an entry the moment something is found, and remove one only once it is
+ * actually resolved — not when it merely looks resolved. An empty list would
+ * be a claim of full conformance, which is not what the section above says.
+ */
 const KNOWN_ISSUES: string[] = [
-  "The mobile navigation drawer is not yet a proper dialog for screen readers.",
-  "Some bulk operations do not announce progress as they run.",
-  "Some icon-only buttons lack accessible names.",
-  "Some form fields lack visible labels.",
-  "Orange text on light backgrounds is below 4.5:1 contrast in places.",
+  "The small brand-orange icons on the dashboard tiles sit below the 3:1 " +
+    "minimum for non-text contrast. Each one repeats a number and a label " +
+    "printed right beside it, so nothing is available only from the icon.",
 ];
 
 export default function AccessibilityPage() {
@@ -73,6 +85,13 @@ export default function AccessibilityPage() {
                 <li>
                   Automated axe checks at 1280px, 430px, 390px, and 360px
                   viewport widths
+                </li>
+                <li>
+                  A colour-contrast check that fails the build if any pair of
+                  our colours drops below the standard. It compares colours as
+                  we define them, not every way a page might combine them, so
+                  an unusual combination in one component can still slip
+                  through
                 </li>
                 <li>Keyboard-only walkthroughs of every page and tool</li>
                 <li>VoiceOver testing on iOS</li>

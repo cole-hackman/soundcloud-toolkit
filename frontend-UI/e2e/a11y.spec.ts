@@ -30,6 +30,7 @@ const PAGES: PageCase[] = [
   { path: "/playlist-modifier/", needsMock: true },
   { path: "/growth/", needsMock: true },
   { path: "/feedback/", needsMock: true },
+  { path: "/account/", needsMock: true },
 ];
 
 for (const { path, needsMock, fixme, expectedStatus } of PAGES) {
@@ -52,6 +53,16 @@ for (const { path, needsMock, fixme, expectedStatus } of PAGES) {
 
     if (expectedStatus !== undefined) {
       expect(response?.status()).toBe(expectedStatus);
+    }
+
+    // Audit the page, not the spinner. `AppLayout` renders a hydration gate
+    // before it mounts any child, so on a fast run `analyze()` can catch that
+    // spinner, find nothing wrong with it, and pass without the real page ever
+    // having been scanned. Every protected route puts an <h1> on screen — via
+    // `PageHeader`, or its own on the dashboard — so waiting for one is the
+    // cheap, route-agnostic proof that the content under test is mounted.
+    if (needsMock) {
+      await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
     }
 
     const results = await new AxeBuilder({ page })

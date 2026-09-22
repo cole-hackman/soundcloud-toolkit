@@ -23,6 +23,7 @@ const PAGES: PageCase[] = [
   { path: "/like-manager/", needsMock: true },
   { path: "/playlist-modifier/", needsMock: true },
   { path: "/feedback/", needsMock: true },
+  { path: "/account/", needsMock: true },
   {
     path: "/growth/",
     needsMock: true,

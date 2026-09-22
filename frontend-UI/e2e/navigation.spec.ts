@@ -64,3 +64,25 @@ test("navigating between two tools retitles the page and focuses its h1", async 
   await expect(page).toHaveTitle("Playlist Compare · Track Toolkit");
   await expect(page.getByRole("heading", { level: 1, name: "Playlist Compare" })).toBeFocused();
 });
+
+/**
+ * The round trip. `/dashboard/` renders no PageHeader, so when this is the
+ * only thing tracking navigation the pathname is back to the one the document
+ * loaded at and the return trip looks like a fresh load — the heading never
+ * takes focus. The latch lives in the app-group layout, which the dashboard
+ * does mount, so the flag is set while you are there.
+ */
+test("returning to the loaded route via the dashboard still focuses its h1", async ({
+  page,
+}, testInfo) => {
+  await page.goto("/like-manager/");
+  await expect(page.getByRole("heading", { level: 1, name: "Like Manager" })).toBeVisible();
+
+  await navigateTo(page, testInfo.project.name, "Dashboard");
+  await expect(page).toHaveTitle(/Track Toolkit/);
+
+  await navigateTo(page, testInfo.project.name, "Like Manager");
+
+  await expect(page).toHaveTitle("Like Manager · Track Toolkit");
+  await expect(page.getByRole("heading", { level: 1, name: "Like Manager" })).toBeFocused();
+});

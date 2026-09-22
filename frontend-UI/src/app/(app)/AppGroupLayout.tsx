@@ -6,6 +6,7 @@ import { AppLayout } from "@/components/AppLayout";
 import { AppShell } from "@/components/AppShell";
 import { RebrandAnnouncement } from "@/components/RebrandAnnouncement";
 import { apiFetch } from "@/lib/api";
+import { markNavigated } from "@/lib/navigation-state";
 
 const TOOL_SLUGS: Record<string, string> = {
   "/dashboard": "dashboard",
@@ -74,6 +75,12 @@ export function AppGroupLayout({
 
   useEffect(() => {
     if (!pathname) return;
+    // This layout is the only thing mounted for every route in the group, so
+    // it is what notices a navigation to a page that renders no PageHeader —
+    // `/dashboard/`. Without it, going tool → dashboard → same tool leaves
+    // the pathname back where the document loaded and the return trip looks
+    // like a fresh load, so the heading never takes focus.
+    markNavigated(pathname);
     updateRecentTools(pathname);
     logFeatureOpen(pathname);
   }, [pathname]);

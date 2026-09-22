@@ -41,6 +41,9 @@ export function RebrandAnnouncementModal({
       subtitle="New name, same toolkit"
       initialFocusRef={acknowledgeRef}
       descriptionClassName="space-y-3 leading-relaxed"
+      // Acknowledging is the point; the pre-Dialog modal had no corner X and
+      // Escape and the backdrop already record the ack.
+      showClose={false}
       icon={
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary shadow-sm">
           <Sparkles className="h-5 w-5 text-primary-foreground" aria-hidden="true" />

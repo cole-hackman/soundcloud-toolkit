@@ -62,6 +62,9 @@ export function ConfirmDialog({
       description={description}
       initialFocusRef={cancelRef}
       returnFocusRef={returnFocusRef}
+      // Cancel IS the close affordance here, and a corner X next to it would
+      // be a second one. The pre-Dialog ConfirmDialog had none.
+      showClose={false}
       icon={
         <div
           className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${iconBg}`}

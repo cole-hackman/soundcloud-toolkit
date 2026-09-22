@@ -1,5 +1,6 @@
 "use client";
 
+import { useRef } from "react";
 import Link from "next/link";
 import {
   Sparkles,
@@ -63,12 +64,18 @@ const FEATURES: Feature[] = [
 const PRIMARY_HREF = "/growth";
 
 export function WhatsNewModal({ open, onClose }: WhatsNewModalProps) {
+  // Without this, `Dialog` opens on the first focusable element in the panel,
+  // which is the corner close button — so the modal announced itself as
+  // "Close". "Got it" is the dismissal this modal is actually about.
+  const dismissRef = useRef<HTMLButtonElement>(null);
+
   return (
     <Dialog
       open={open}
       onClose={onClose}
       title="What's new in Track Toolkit"
       subtitle="A few new tools since your last visit"
+      initialFocusRef={dismissRef}
       icon={
         <div className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 bg-primary shadow-sm">
           <Sparkles className="w-5 h-5 text-primary-foreground" aria-hidden="true" />
@@ -82,7 +89,12 @@ export function WhatsNewModal({ open, onClose }: WhatsNewModalProps) {
               Try Grow Your Network
             </Button>
           </Link>
-          <Button variant="outline" onClick={onClose} className="sm:flex-1">
+          <Button
+            ref={dismissRef}
+            variant="outline"
+            onClick={onClose}
+            className="sm:flex-1"
+          >
             Got it
           </Button>
         </div>

@@ -27,6 +27,8 @@ const PAGES: PageCase[] = [
   { path: "/privacy/" },
   { path: "/accessibility/" },
   { path: "/login/" },
+  // Public, reached from the Chrome extension's OAuth hand-off.
+  { path: "/extension/connected/" },
   { path: "/does-not-exist/", expectedStatus: 404 },
   { path: "/dashboard/", needsMock: true },
   { path: "/like-manager/", needsMock: true },

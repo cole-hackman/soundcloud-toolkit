@@ -3,7 +3,16 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Download, Loader2 } from "lucide-react";
-import { Button, EmptyState, InlineAlert, LoadingSpinner } from "@/components/ui";
+import {
+  Button,
+  Card,
+  EmptyState,
+  InlineAlert,
+  LoadingSpinner,
+  SectionHeading,
+  Select,
+  useAnnounce,
+} from "@/components/ui";
 import {
   buildDatedFilename,
   buildExportContent,
@@ -61,6 +70,8 @@ export function TrackExportCard({
   const [format, setFormat] = useState<TrackExportFormat>("title-artist");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  const announce = useAnnounce();
+
   const fetchAndPrepare = async () => {
     setPhase("loading");
     setErrorMessage(null);
@@ -70,14 +81,17 @@ export function TrackExportCard({
       const loaded = await loadTracks();
       if (loaded.length === 0) {
         setPhase("empty");
+        announce(emptyTitle);
         return;
       }
       setTracks(loaded);
       setPhase("ready");
+      announce(`${loaded.length.toLocaleString()} track${loaded.length === 1 ? "" : "s"} ready to download.`);
     } catch (err) {
       console.error(`${title} export fetch failed:`, err);
       setPhase("error");
       setErrorMessage("Couldn't load data. Check your connection and try again.");
+      announce("Couldn't load data. Check your connection and try again.", { assertive: true });
     }
   };
 
@@ -104,14 +118,11 @@ export function TrackExportCard({
       {extraControls}
 
       <div className="mt-4">
-        <label htmlFor={`${filenamePrefix}-format`} className="text-xs font-medium text-muted-foreground">
-          Format
-        </label>
-        <select
+        <Select
+          label="Format"
           id={`${filenamePrefix}-format`}
           value={format}
           onChange={(e) => setFormat(e.target.value as TrackExportFormat)}
-          className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
           disabled={isLoading}
         >
           {(Object.keys(TRACK_FORMAT_LABELS) as TrackExportFormat[]).map((key) => (
@@ -119,7 +130,7 @@ export function TrackExportCard({
               {TRACK_FORMAT_LABELS[key]}
             </option>
           ))}
-        </select>
+        </Select>
       </div>
 
       {phase === "error" && errorMessage && (
@@ -136,7 +147,10 @@ export function TrackExportCard({
             description={emptyDescription}
             action={
               emptyLinkHref && emptyLinkLabel ? (
-                <Link href={emptyLinkHref} className="text-sm font-medium text-primary-text hover:underline">
+                <Link
+                  href={emptyLinkHref}
+                  className="inline-flex min-h-11 items-center rounded-lg px-3 text-sm font-semibold text-primary-text hover:bg-accent hover:underline"
+                >
                   {emptyLinkLabel}
                 </Link>
               ) : undefined
@@ -146,7 +160,7 @@ export function TrackExportCard({
       )}
 
       {phase === "ready" && (
-        <div className="mt-4">
+        <div role="status" className="mt-4">
           <p className="text-sm font-medium text-foreground">
             {tracks.length.toLocaleString()} track{tracks.length === 1 ? "" : "s"} ready
           </p>
@@ -156,7 +170,7 @@ export function TrackExportCard({
             </p>
           )}
           <div className="mt-3 max-h-48 overflow-y-auto rounded-xl border border-border bg-muted/30 p-3">
-            <p className="mb-2 text-xs font-medium text-muted-foreground">
+            <p className="mb-2 text-sm font-medium text-muted-foreground">
               Preview (first {PREVIEW_LINE_COUNT} lines)
             </p>
             <pre className="whitespace-pre-wrap font-mono text-xs leading-relaxed text-foreground">
@@ -172,7 +186,7 @@ export function TrackExportCard({
       )}
 
       {isLoading && (
-        <div className="mt-6 flex flex-col items-center gap-3 py-6">
+        <div role="status" className="mt-6 flex flex-col items-center gap-3 py-6">
           <LoadingSpinner />
           <p className="max-w-sm text-center text-sm text-muted-foreground">
             Fetching… This may take a while for large libraries.
@@ -184,7 +198,7 @@ export function TrackExportCard({
         <Button onClick={fetchAndPrepare} disabled={isLoading || fetchDisabled} className="gap-2">
           {isLoading ? (
             <>
-              <Loader2 className="h-4 w-4 animate-spin" />
+              <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
               Fetching…
             </>
           ) : phase === "ready" ? (
@@ -196,7 +210,7 @@ export function TrackExportCard({
 
         {phase === "ready" && (
           <Button variant="secondary" onClick={handleDownload} className="gap-2">
-            <Download className="h-4 w-4" />
+            <Download aria-hidden="true" className="h-4 w-4" />
             Download
           </Button>
         )}
@@ -211,9 +225,7 @@ export function TrackExportCard({
   );
 
   if (embedded) {
-    return (
-      <EmbeddedPanel>{body}</EmbeddedPanel>
-    );
+    return <EmbeddedPanel title={title}>{body}</EmbeddedPanel>;
   }
 
   return (
@@ -223,10 +235,16 @@ export function TrackExportCard({
   );
 }
 
-function EmbeddedPanel({ children }: { children: React.ReactNode }) {
+/**
+ * `embedded` drops `ExportSection`, and with it the only `<h2>` on the page —
+ * leaving the sub-page's `<h1>` with nothing under it and the export controls
+ * in no section at all. The heading comes back here.
+ */
+function EmbeddedPanel({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-2xl border-2 border-gray-200 bg-white p-6 dark:border-border dark:bg-card">
+    <Card className="p-6">
+      <SectionHeading>{title}</SectionHeading>
       {children}
-    </div>
+    </Card>
   );
 }

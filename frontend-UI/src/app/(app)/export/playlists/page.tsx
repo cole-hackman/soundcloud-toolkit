@@ -53,7 +53,7 @@ export default function ExportPlaylistsPage() {
           <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-muted/30 px-4 py-3">
             <img
               src={selectedPlaylist.coverUrl || selectedPlaylist.artwork_url || "/brand/icon-192.png"}
-              alt={selectedPlaylist.title}
+              alt=""
               width={48}
               height={48}
               loading="lazy"
@@ -70,7 +70,7 @@ export default function ExportPlaylistsPage() {
               className="gap-2 text-sm"
               onClick={() => setSelectedPlaylist(null)}
             >
-              <ArrowLeft className="h-4 w-4" />
+              <ArrowLeft aria-hidden="true" className="h-4 w-4" />
               Change playlist
             </Button>
           </div>

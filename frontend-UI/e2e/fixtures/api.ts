@@ -301,6 +301,36 @@ const FAKE_COMPARE = {
   uniqueToB: [{ id: 102, title: "Sample Track 3", user: { username: "testartist" } }],
 };
 
+/**
+ * `GET /api/reposts` — the full (non-paged) crawl the reposts export asks for.
+ * One track and one playlist, which is the shape that distinguishes it.
+ */
+const FAKE_REPOSTS = {
+  collection: [
+    {
+      id: 500,
+      urn: "soundcloud:tracks:500",
+      resourceType: "track",
+      title: "Sample Reposted Track",
+      user: { username: "testartist" },
+      artwork_url: null as string | null,
+      permalink_url: "https://soundcloud.com/testartist/sample-reposted-track",
+      created_at: "2026-09-01T00:00:00.000Z",
+    },
+    {
+      id: 501,
+      urn: "soundcloud:playlists:501",
+      resourceType: "playlist",
+      title: "Sample Reposted Playlist",
+      user: { username: "testartist" },
+      artwork_url: null as string | null,
+      permalink_url: "https://soundcloud.com/testartist/sets/sample-reposted-playlist",
+      created_at: "2026-09-02T00:00:00.000Z",
+    },
+  ],
+  total: 2,
+};
+
 /** `POST /api/playlists/clone` — two parts, so the "Parts Created" card renders. */
 const FAKE_CLONE = {
   playlists: [
@@ -435,8 +465,11 @@ export async function mockApi(page: Page): Promise<void> {
         json({ ...FAKE_PLAYLIST_DETAIL, id: Number(path.split("/").pop()) }),
       );
     }
-    if (method === "GET" && path === "/api/likes/paged") {
+    if (method === "GET" && (path === "/api/likes/paged" || path === "/api/likes")) {
       return route.fulfill(json(FAKE_LIKES_PAGED));
+    }
+    if (method === "GET" && (path === "/api/reposts" || path === "/api/reposts/paged")) {
+      return route.fulfill(json(FAKE_REPOSTS));
     }
     if (method === "GET" && (path === "/api/followings/paged" || path === "/api/followings")) {
       return route.fulfill(json(FAKE_FOLLOWINGS_PAGED));

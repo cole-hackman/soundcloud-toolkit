@@ -73,6 +73,41 @@ const PAGES: PageCase[] = [
       return page.getByRole("group", { name: "Filter tracks" });
     },
   },
+  { path: "/export/", needsMock: true },
+  {
+    path: "/export/likes/",
+    needsMock: true,
+    // The format select and the preview only exist after the list is loaded.
+    ready: async (page) => {
+      await page.getByRole("button", { name: "Load liked tracks" }).click();
+      return page.getByText(/^[\d,]+ tracks? ready$/);
+    },
+  },
+  {
+    path: "/export/playlists/",
+    needsMock: true,
+    ready: async (page) => {
+      await page.getByRole("button", { name: /Sample Playlist 1/ }).click();
+      await page.getByRole("button", { name: "Load playlist tracks" }).click();
+      return page.getByText(/^[\d,]+ tracks? ready$/);
+    },
+  },
+  {
+    path: "/export/followings/",
+    needsMock: true,
+    ready: async (page) => {
+      await page.getByRole("button", { name: "Load followings" }).click();
+      return page.getByText(/^[\d,]+ items? ready$/);
+    },
+  },
+  {
+    path: "/export/reposts/",
+    needsMock: true,
+    ready: async (page) => {
+      await page.getByRole("button", { name: "Load reposts" }).click();
+      return page.getByText(/^[\d,]+ items? ready$/);
+    },
+  },
   {
     path: "/playlist-cloner/",
     needsMock: true,

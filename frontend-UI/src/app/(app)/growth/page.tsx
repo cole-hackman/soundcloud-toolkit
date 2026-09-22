@@ -190,6 +190,12 @@ interface SeedConversion {
   rate: number | null;
 }
 
+interface FollowBackBucket {
+  bucket: string;
+  followedBack: number;
+  notFollowedBack: number;
+}
+
 function formatDuration(seconds: number) {
   const minutes = Math.floor(seconds / 60);
   const remainingSeconds = seconds % 60;
@@ -292,11 +298,23 @@ export default function GrowthPage() {
   const analyticsQuery = useGrowthAnalyticsQuery({ enabled: activeTab === 'analytics' });
   const analytics = analyticsQuery.data as unknown as
     | {
-        perSeed: SeedConversion[];
-        followBackCurve: { bucket: string; followedBack: number; notFollowedBack: number }[];
-        totalFollows: number;
+        perSeed?: SeedConversion[];
+        followBackCurve?: FollowBackBucket[];
+        totalFollows?: number;
       }
     | undefined;
+
+  // Same cast-from-`unknown` hazard as the history payload above, and the
+  // same fix: `!analytics` only covers a missing response, not a present one
+  // missing a key, so `analytics.perSeed.length` on a `{}` crashed the
+  // Analytics tab exactly as `{}` crashed History. Empty arrays fall through
+  // to the "not enough data yet" states, which is the honest answer.
+  const analyticsPerSeed: SeedConversion[] = Array.isArray(analytics?.perSeed)
+    ? analytics.perSeed
+    : [];
+  const analyticsCurve: FollowBackBucket[] = Array.isArray(analytics?.followBackCurve)
+    ? analytics.followBackCurve
+    : [];
 
   // Discovery Mutation
   const discoverMutation = useMutation({
@@ -1449,7 +1467,7 @@ export default function GrowthPage() {
               <p className="text-xs text-muted-foreground mb-4">
                 Follow-back rate of people discovered from each inspiration artist. Seed your next campaign from the winners.
               </p>
-              {!analytics || analytics.perSeed.length === 0 ? (
+              {analyticsPerSeed.length === 0 ? (
                 <EmptyState
                   icon={<BarChart3 className="w-10 h-10" />}
                   title="Not enough data yet"
@@ -1457,7 +1475,7 @@ export default function GrowthPage() {
                 />
               ) : (
                 <div className="space-y-3">
-                  {analytics.perSeed.slice(0, 12).map((seed) => (
+                  {analyticsPerSeed.slice(0, 12).map((seed) => (
                     <div key={seed.seedId} className="flex items-center gap-3">
                       <div className="min-w-0 flex-1">
                         <div className="text-xs font-semibold text-foreground truncate">{seed.name}</div>
@@ -1490,7 +1508,7 @@ export default function GrowthPage() {
               <p className="text-xs text-muted-foreground mb-4">
                 How long after a follow reciprocation was confirmed — helps you time your follow-back checks.
               </p>
-              {!analytics || analytics.followBackCurve.every((b) => b.followedBack + b.notFollowedBack === 0) ? (
+              {analyticsCurve.every((b) => b.followedBack + b.notFollowedBack === 0) ? (
                 <EmptyState
                   icon={<Clock className="w-10 h-10" />}
                   title="No confirmed follow-backs yet"
@@ -1498,7 +1516,7 @@ export default function GrowthPage() {
                 />
               ) : (
                 <div className="space-y-4">
-                  {analytics.followBackCurve.map((b) => {
+                  {analyticsCurve.map((b) => {
                     const total = b.followedBack + b.notFollowedBack;
                     const pct = total > 0 ? Math.round((b.followedBack / total) * 100) : 0;
                     return (

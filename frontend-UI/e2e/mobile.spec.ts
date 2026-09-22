@@ -1,5 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import { mockApi } from "./fixtures/api";
+import { READY, type ReadyLocator } from "./fixtures/ready";
 
 const MOBILE_PROJECTS = ["m360", "m390", "m430"];
 
@@ -8,6 +9,11 @@ interface PageCase {
   needsMock?: boolean;
   /** Set when the page is known to overflow today; names the phase that fixes it. */
   fixme?: string;
+  /**
+   * Something only the route's *real* content renders. Defaults to the shared
+   * `READY` map, which the axe spec uses too — see `fixtures/ready.ts`.
+   */
+  ready?: ReadyLocator;
 }
 
 const PAGES: PageCase[] = [
@@ -56,7 +62,7 @@ export async function assertTapTargets(page: Page, selector: string, min: number
   expect(undersized, JSON.stringify(undersized, null, 2)).toEqual([]);
 }
 
-for (const { path, needsMock, fixme } of PAGES) {
+for (const { path, needsMock, fixme, ready = READY[path] } of PAGES) {
   test(`no horizontal overflow: ${path}`, async ({ page }, testInfo) => {
     test.skip(!MOBILE_PROJECTS.includes(testInfo.project.name), "mobile projects only");
     test.fixme(!!fixme, fixme);
@@ -66,6 +72,18 @@ for (const { path, needsMock, fixme } of PAGES) {
     }
 
     await page.goto(path);
+
+    // Measure the settled page, for the same reason the axe spec audits one:
+    // `AppLayout` renders a hydration/auth spinner and a route with a
+    // `loading.tsx` renders a skeleton, and a width taken then describes the
+    // placeholder rather than the page. The `h1` clears the spinner; the
+    // route's `ready` locator clears the skeleton and the empty state.
+    if (needsMock) {
+      await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+    }
+    if (ready) {
+      await expect(ready(page)).toBeVisible();
+    }
 
     // Compare against `clientWidth`, not `window.innerWidth`: on content
     // wider than the device, Chromium's mobile emulation can expand the
@@ -192,42 +210,25 @@ test("growth tabs: arrow keys move between panels and none of them overflow: /gr
 });
 
 /**
- * `GET /api/growth/history` is cast from `unknown`, so TypeScript vouched for
- * `sessions`/`actions` it had never seen: a response missing either key took
- * the whole History tab down on `sessions.length`. The empty state is the
- * honest answer, and it has to fit a phone like everything else.
+ * `/link-resolver/`'s result — the stacked layout, the stat grid and the
+ * embed — only exists after something resolves, so the page-list check above
+ * measures the empty form and nothing else.
  */
-test("growth history survives a response with no sessions: /growth/", async ({
+test("link-resolver result does not overflow: /link-resolver/", async ({
   page,
 }, testInfo) => {
   test.skip(!MOBILE_PROJECTS.includes(testInfo.project.name), "mobile projects only");
 
   await mockApi(page);
-  // Registered after `mockApi`, so it wins for this one endpoint.
-  await page.route("**/api/growth/history", (route) =>
-    route.fulfill({ status: 200, contentType: "application/json", body: "{}" }),
-  );
+  await page.goto("/link-resolver/");
 
-  const crashes: string[] = [];
-  page.on("pageerror", (error) => crashes.push(error.message));
-
-  await page.goto("/growth/");
-
-  // Awaiting the response is load-bearing. While the query is still in
-  // flight `data` is `undefined`, which every version of this code handles;
-  // the crash only happens on the re-render that receives `{}`. Assert
-  // before that lands and the test passes with the bug still in place.
-  const responded = page.waitForResponse(
-    (response) => response.url().includes("/api/growth/history"),
-  );
-  await page.getByRole("tab", { name: "History" }).click();
-  await responded;
-
-  await expect(page.getByText("No sessions logged")).toBeVisible();
-  // Nothing is selectable, so the panel rendered rather than being replaced
-  // by an error boundary.
-  await expect(page.getByRole("button", { name: "Check" })).toBeVisible();
-  expect(crashes, crashes.join("\n")).toEqual([]);
+  await page
+    .getByLabel("SoundCloud URL")
+    .fill("https://soundcloud.com/testartist/sample-resolved-track");
+  await page.getByRole("button", { name: "Resolve" }).click();
+  await expect(
+    page.getByRole("heading", { level: 2, name: "Sample Resolved Track" }),
+  ).toBeVisible();
 
   const { scrollWidth, clientWidth } = await page.evaluate(() => ({
     scrollWidth: document.documentElement.scrollWidth,
@@ -237,6 +238,71 @@ test("growth history survives a response with no sessions: /growth/", async ({
     clientWidth,
   );
 });
+
+/**
+ * Both growth payloads are cast from `unknown`, so TypeScript vouched for
+ * arrays it had never seen: a response missing a key took the whole tab down
+ * on `.length` / `.every(...)`. The empty state is the honest answer, and it
+ * has to fit a phone like everything else.
+ *
+ * Awaiting the response is load-bearing in both cases. While the query is in
+ * flight `data` is `undefined`, which every version of this code handles; the
+ * crash only happens on the re-render that receives `{}`. Assert before that
+ * lands and the test passes with the bug still in place — verified by
+ * reinstating each bug in turn.
+ */
+for (const { tab, endpoint, emptyText, panelControl } of [
+  {
+    tab: "History",
+    endpoint: "/api/growth/history",
+    emptyText: "No sessions logged",
+    panelControl: "Check",
+  },
+  {
+    tab: "Analytics",
+    endpoint: "/api/growth/analytics",
+    emptyText: "Not enough data yet",
+    panelControl: null as string | null,
+  },
+]) {
+  test(`growth ${tab.toLowerCase()} survives an empty response: /growth/`, async ({
+    page,
+  }, testInfo) => {
+    test.skip(!MOBILE_PROJECTS.includes(testInfo.project.name), "mobile projects only");
+
+    await mockApi(page);
+    // Registered after `mockApi`, so it wins for this one endpoint.
+    await page.route(`**${endpoint}`, (route) =>
+      route.fulfill({ status: 200, contentType: "application/json", body: "{}" }),
+    );
+
+    const crashes: string[] = [];
+    page.on("pageerror", (error) => crashes.push(error.message));
+
+    await page.goto("/growth/");
+
+    const responded = page.waitForResponse((response) => response.url().includes(endpoint));
+    await page.getByRole("tab", { name: tab }).click();
+    await responded;
+
+    await expect(page.getByText(emptyText)).toBeVisible();
+    if (panelControl) {
+      // The panel's own control rendered, so it was not replaced by an error
+      // boundary.
+      await expect(page.getByRole("button", { name: panelControl })).toBeVisible();
+    }
+    expect(crashes, crashes.join("\n")).toEqual([]);
+
+    const { scrollWidth, clientWidth } = await page.evaluate(() => ({
+      scrollWidth: document.documentElement.scrollWidth,
+      clientWidth: document.documentElement.clientWidth,
+    }));
+    expect(
+      scrollWidth,
+      `scrollWidth=${scrollWidth} clientWidth=${clientWidth}`,
+    ).toBeLessThanOrEqual(clientWidth);
+  });
+}
 
 test("dashboard tap targets are at least 24x24: /dashboard/", async ({ page }, testInfo) => {
   test.skip(!MOBILE_PROJECTS.includes(testInfo.project.name), "mobile projects only");

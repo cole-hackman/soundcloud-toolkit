@@ -1,6 +1,7 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 import { mockApi } from "./fixtures/api";
+import { READY, type ReadyLocator } from "./fixtures/ready";
 
 interface PageCase {
   path: string;
@@ -11,14 +12,11 @@ interface PageCase {
   /** Expected HTTP status of the navigation response; defaults to 200. */
   expectedStatus?: number;
   /**
-   * Something only the route's *real* content renders — a row, a control, a
-   * toolbar. The `h1` alone is not enough: `loading.tsx` renders a
-   * `PageHeader` too, and an unmocked endpoint leaves an `EmptyState` that
-   * also has a heading. Either way axe would scan a placeholder and pass.
-   * A route without one is only guaranteed to have been audited past its
-   * spinner, not past its skeleton — add one when you touch that page.
+   * Something only the route's *real* content renders. Defaults to the
+   * shared `READY` map, which the overflow spec uses too — see
+   * `fixtures/ready.ts` for why the `h1` alone is not enough.
    */
-  ready?: (page: Page) => ReturnType<Page["locator"]>;
+  ready?: ReadyLocator;
 }
 
 const PAGES: PageCase[] = [
@@ -36,27 +34,13 @@ const PAGES: PageCase[] = [
     needsMock: true,
     fixme: "Phase 6 — the sort <select> has no accessible name (select-name)",
   },
-  {
-    path: "/playlist-modifier/",
-    needsMock: true,
-    ready: (page) => page.getByRole("button", { name: "Sample Playlist 1" }),
-  },
-  {
-    path: "/growth/",
-    needsMock: true,
-    // Suspends on `/api/followings`, so the h1 alone resolves against
-    // `growth/loading.tsx`'s own PageHeader while the skeleton is up.
-    ready: (page) => page.getByRole("checkbox", { name: "testfollowing1" }),
-  },
-  {
-    path: "/link-resolver/",
-    needsMock: true,
-    ready: (page) => page.getByLabel("SoundCloud URL"),
-  },
+  { path: "/playlist-modifier/", needsMock: true },
+  { path: "/growth/", needsMock: true },
+  { path: "/link-resolver/", needsMock: true },
   { path: "/feedback/", needsMock: true },
 ];
 
-for (const { path, needsMock, fixme, expectedStatus, ready } of PAGES) {
+for (const { path, needsMock, fixme, expectedStatus, ready = READY[path] } of PAGES) {
   test(`has no serious/critical WCAG 2.2 AA violations: ${path}`, async ({ page }) => {
     test.fixme(!!fixme, fixme);
 

@@ -1,7 +1,24 @@
 import { jest } from '@jest/globals';
 import { Response } from 'node-fetch';
+
+// A refresh persists, so the paths that refresh need a database. Mocked rather
+// than stubbed out, because `_refreshAndPersistNow` now REFUSES to exchange
+// without a user context — there would be nowhere to put the rotated pair —
+// and the tests below that refresh therefore run inside a context, exactly as
+// `authenticateUser` (and, since C1-b, the growth scheduler) opens one.
+const tokenUpdate = jest.fn().mockResolvedValue({});
+const tokenFindUnique = jest.fn().mockResolvedValue(null);
+jest.unstable_mockModule('../server/lib/prisma.js', () => ({
+  default: { token: { update: tokenUpdate, findUnique: tokenFindUnique } },
+}));
+
 // We will import the client file and monkey patch fetch
-import { soundcloudClient } from '../server/lib/soundcloud-client.js';
+const { soundcloudClient, clearRecentRotations } =
+  await import('../server/lib/soundcloud-client.js');
+const { runWithTokenContext } = await import('../server/lib/token-context.js');
+
+/** What every real caller does: refresh inside a context that can persist. */
+const asUser = (fn) => runWithTokenContext({ userId: 'user-1' }, fn);
 
 describe('soundcloud client behaviors', () => {
   const endpoint = '/me';
@@ -10,6 +27,10 @@ describe('soundcloud client behaviors', () => {
   beforeEach(() => {
     global.fetch = jest.fn();
     jest.spyOn(console, 'warn').mockImplementation(() => {});
+    tokenUpdate.mockClear();
+    // Module state: a rotation remembered by one test would otherwise answer
+    // the next test's refresh without a fetch.
+    clearRecentRotations();
   });
 
   afterEach(() => {
@@ -28,9 +49,11 @@ describe('soundcloud client behaviors', () => {
       .mockReturnValueOnce(tokenResponse)
       .mockReturnValueOnce(second);
 
-    const res = await soundcloudClient.scRequest(endpoint, 'old', 'r1');
+    const res = await asUser(() => soundcloudClient.scRequest(endpoint, 'old', 'r1'));
     expect(res).toEqual(okJson);
     expect(fetch).toHaveBeenCalledTimes(3);
+    // The rotated pair is stored, which is the whole point of having a context.
+    expect(tokenUpdate).toHaveBeenCalledTimes(1);
   });
 
   test('backs off on 429 and retries', async () => {
@@ -68,10 +91,28 @@ describe('soundcloud client behaviors', () => {
       .mockReturnValueOnce(Promise.resolve(new Response(JSON.stringify({ access_token: 'new', refresh_token: 'r2' }), { status: 200 })))
       .mockReturnValueOnce(Promise.resolve(new Response('', { status: 401 })));
 
-    await expect(
+    await expect(asUser(() =>
       soundcloudClient.getDownloadLink('old', 'r1', 'https://api.soundcloud.com/tracks/123/download')
-    ).rejects.toThrow('Download request failed: 401');
+    )).rejects.toThrow('Download request failed: 401');
     expect(fetch).toHaveBeenCalledTimes(3);
+  });
+
+  test('a refresh with no token context refuses instead of spending the token', async () => {
+    // C1-b. A context-free exchange rotates the refresh token upstream and has
+    // nowhere to store the replacement, leaving the database holding a token
+    // SoundCloud has already consumed — which the revocation classifier then
+    // correctly reads as "revoked" on the user's next request, and deletes
+    // their account's tokens. Refusing keeps the stored pair usable and makes
+    // the caller's mistake loud.
+    fetch.mockReturnValueOnce(Promise.resolve(new Response('', { status: 401 })));
+
+    await expect(soundcloudClient.scRequest(endpoint, 'old', 'r1'))
+      .rejects.toThrow('Token refresh failed');
+
+    // One call: the 401. The token endpoint was never reached.
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(fetch.mock.calls.some(([url]) => String(url).includes('oauth/token'))).toBe(false);
+    expect(tokenUpdate).not.toHaveBeenCalled();
   });
 
   test('fetches a followed user liked tracks page with linked pagination', async () => {
@@ -271,9 +312,9 @@ describe('paginate crawl bounds', () => {
       return new Response('', { status: 401 });
     });
 
-    await expect(
+    await expect(runWithTokenContext({ userId: 'user-1' }, () =>
       soundcloudClient.paginate('/me/likes/tracks', 'at', 'rt', 200, { max401Retries: 2 })
-    ).rejects.toThrow(/401/);
+    )).rejects.toThrow(/401/);
 
     // Bounded: 2 refresh attempts, not an unbounded spin.
     const refreshCalls = global.fetch.mock.calls.filter(c => String(c[0]).includes('oauth/token'));

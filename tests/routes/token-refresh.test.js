@@ -90,6 +90,14 @@ function sessionCookie(userId = 'user-1') {
 
 const originalFetch = global.fetch;
 
+/** Move the clock forward for TTL assertions, without fake timers. */
+let clockSpy = null;
+function advanceClock(ms) {
+  const base = clockSpy ? Date.now() : Date.now();
+  clockSpy?.mockRestore();
+  clockSpy = jest.spyOn(Date, 'now').mockImplementation(() => base + ms);
+}
+
 beforeEach(() => {
   tokenUpdate.mockClear();
   tokenDeleteMany.mockClear();
@@ -113,6 +121,8 @@ beforeEach(() => {
   };
   clearAuthCache();
   clearRecentRotations();
+  clockSpy?.mockRestore();
+  clockSpy = null;
   global.fetch = jest.fn();
 });
 
@@ -425,6 +435,79 @@ describe('a spent refresh token is not a revocation', () => {
     expect(res.body.error).toBe('Token refresh failed');
     expect(tokenDeleteMany).not.toHaveBeenCalled();
     expect(userUpdate).not.toHaveBeenCalled();
+  });
+
+  test('a background job cannot strand the stored pair and get the user torn down', async () => {
+    // C1-b, end to end. The growth scheduler runs from a boot-time timer, so
+    // its SoundCloud calls have no AsyncLocalStorage store. Before the fix the
+    // context-free exchange rotated the token upstream and discarded the
+    // replacement, leaving the row holding a spent token; the user's very next
+    // request then presented it, and because the stored token WAS the one
+    // presented, the classifier concluded "revoked" — correctly, on a false
+    // premise — and destroyed the account's tokens.
+    //
+    // This drives the two halves in order: a context-free call, then the user
+    // coming back. The database fake is shared, so the second half really does
+    // read whatever the first half left behind.
+    mockRotatingSoundCloud();
+
+    // Half one: a SoundCloud call from outside any request. The assertion is
+    // deliberately about the OUTCOME, not the mechanism — whether the client
+    // refuses (today) or exchanges and discards (before the fix) is its
+    // business; what must hold is that the user does not pay for it.
+    await soundcloudClient.getFollowers('stale-access', 'good-refresh').catch(() => {});
+
+    // Half two: the user comes back, and their stored pair is still usable.
+    const res = await request(app).get('/probe').set('Cookie', sessionCookie());
+
+    expect(res.status).toBe(200);
+    expect(tokenDeleteMany).not.toHaveBeenCalled();
+    expect(userUpdate).not.toHaveBeenCalled();
+  });
+
+  test('an expired memo entry is not served, and the database still saves it', async () => {
+    // The memo's 60s TTL is a stated property. Without this, an entry that
+    // never expires passes every other test in the suite.
+    const sc = mockRotatingSoundCloud();
+
+    const first = await request(app).get('/probe').set('Cookie', sessionCookie());
+    expect(first.status).toBe(200);
+    expect(sc.oauthCalls).toBe(1);
+
+    advanceClock(61_000);
+    clearAuthCache();   // the auth memo has its own, shorter TTL
+
+    // The same spent token, presented after the memo should have let go of it.
+    const second = await request(app).get('/probe').set('Cookie', sessionCookie());
+
+    expect(second.status).toBe(200);
+    expect(sc.oauthCalls).toBe(2);              // not answered from the memo
+    expect(tokenDeleteMany).not.toHaveBeenCalled();
+    expect(userUpdate).not.toHaveBeenCalled();
+  });
+
+  test('the recovery path does not write the memo after the row could have gone', async () => {
+    // The read in _resolveInvalidGrant and the value it returns are separated
+    // by an await, so a disconnect can complete in between — delete the row,
+    // then forget the memo. A memo write on that path would land after the
+    // forget and serve a live pair against a row that no longer exists.
+    // Observable form: the recovery must leave the memo empty, so a later
+    // caller presenting the same spent token goes back to the database
+    // instead of being handed something from memory.
+    const sc = mockRotatingSoundCloud();
+
+    const first = await request(app).get('/two-calls?cold=1').set('Cookie', sessionCookie());
+    expect(first.status).toBe(200);
+    expect(sc.oauthCalls).toBe(2);   // the recovery read, not a third exchange
+
+    clearAuthCache();
+    const second = await request(app).get('/probe').set('Cookie', sessionCookie());
+
+    expect(second.status).toBe(200);
+    // Three, not two: the recovery remembered nothing, so this went upstream
+    // and then to the database again.
+    expect(sc.oauthCalls).toBe(3);
+    expect(tokenDeleteMany).not.toHaveBeenCalled();
   });
 
   test('no stored token row at all deletes nothing and stamps nothing', async () => {

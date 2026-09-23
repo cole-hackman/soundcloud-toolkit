@@ -304,6 +304,31 @@ class SoundCloudClient {
 
   /** The original, un-deduplicated refresh+persist. Do not call directly. */
   async _refreshAndPersistNow(refreshToken, userId) {
+    if (!userId) {
+      // Refuse, rather than exchange and throw the result away.
+      //
+      // A context-free refresh can only ever strand the caller. The exchange
+      // rotates the refresh token upstream, there is no userId to persist the
+      // replacement against, and the row is left holding a token SoundCloud
+      // has already consumed. The user's next request presents it, is refused
+      // with invalid_grant, and — because the stored token really IS the one
+      // presented — `_resolveInvalidGrant` correctly concludes "revoked" and
+      // deletes their tokens. So the quiet version of this turns into an
+      // account teardown one request later, which is how it reached a
+      // Critical: `growth-scheduler.js` ran from a boot-time timer with no
+      // AsyncLocalStorage store and did exactly this, daily.
+      //
+      // The old behaviour exchanged first and warned afterwards
+      // ("Token refresh completed without user context; refreshed tokens were
+      // not persisted"), then carried on. That line is what to grep for in
+      // logs predating this change — it means somebody was stranded.
+      //
+      // Every SoundCloud caller either runs inside `authenticateUser` (which
+      // opens the context) or must open one itself with `runWithTokenContext`.
+      logger.warn('Token refresh without user context: refusing the exchange, because the refreshed tokens could not be persisted');
+      throw new Error('Token refresh failed: no user context');
+    }
+
     let newTokens;
     try {
       newTokens = await this.refreshTokens(refreshToken);
@@ -320,15 +345,6 @@ class SoundCloudClient {
       // Rethrow either way: scRequest still converts this into the generic
       // "Token refresh failed" the caller has always seen.
       throw error;
-    }
-
-    if (!userId) {
-      logger.warn('Token refresh completed without user context; refreshed tokens were not persisted', {
-        hasAccessToken: Boolean(newTokens.access_token),
-        hasRefreshToken: Boolean(newTokens.refresh_token),
-        expiresIn: newTokens.expires_in,
-      });
-      return newTokens;
     }
 
     await this._persistRefreshedTokens(userId, newTokens, [refreshToken]);
@@ -409,6 +425,21 @@ class SoundCloudClient {
    * moved on, it is case (2) — and this returns a usable pair so the caller's
    * retry succeeds rather than failing.
    *
+   * **This is the load-bearing half of the fix, not the memo.** The memo above
+   * only saves a round trip, and only for a spent token re-presented in this
+   * process inside its TTL; this is what prevents the teardown in every other
+   * case. Do not drop it as redundant.
+   *
+   * **It assumes one worker, and that assumption is a correctness constraint.**
+   * Inside one process the in-flight map holds its entry until the persist has
+   * completed, so a second caller either joins that promise or reads the
+   * rotated row. Across processes there is no such ordering: two instances can
+   * present the same token, the loser reads the row before the winner's
+   * `token.update` lands, sees it still equal to what it presented, and tears
+   * a live user down. `infra/main.bicep` pins `numberOfWorkers: 1`; raising it
+   * needs a database-side guard here first (a compare-and-swap on `refresh`,
+   * or a `rotatedAt` the loser can compare against), not just a bigger memo.
+   *
    * @returns {Promise<object|null>} tokens to continue with, or null to let the
    *   original error propagate (including after a genuine disconnect)
    */
@@ -438,13 +469,23 @@ class SoundCloudClient {
     if (stored.access && stored.expiresAt
         && stored.expiresAt.getTime() - Date.now() > ACCESS_TOKEN_SKEW_MS) {
       // The stored access token still has life in it; no exchange needed.
-      const tokens = {
+      //
+      // Deliberately NOT remembered in the rotation memo. The read above and
+      // this line are separated by an await, so a disconnect can run to
+      // completion in between — delete the row, then `forgetRecentRotation` —
+      // and a memo write here would land *after* the forget, serving a live
+      // pair for a minute against a row that no longer exists. That is the
+      // auth-memo landmine one layer down. What it would have bought is one
+      // saved exchange on a *third* call presenting the same stale token,
+      // which is not worth a write that happens after the only ordering
+      // guarantee has passed. The success-path write in
+      // `_persistRefreshedTokens` is safe by construction: its `token.update`
+      // throws on a missing row before the memo is touched.
+      return {
         access_token: stored.access,
         refresh_token: stored.refresh,
         expires_in: Math.floor((stored.expiresAt.getTime() - Date.now()) / 1000),
       };
-      rememberRotation(userId, [presentedRefreshToken], tokens);
-      return tokens;
     }
 
     // The stored access token has expired too — a long-running job holding one

@@ -744,25 +744,51 @@ fan-out dashboard read — re-presents a token the first call consumed. Reading
 that as revocation deletes a live user's freshly rotated pair and starts the
 six-day account-deletion clock.
 
-Two things stop it, and both are load-bearing:
+Two things stop it. They are **not** equal partners:
 
-- **`_resolveInvalidGrant`** re-reads the stored pair before believing the
-  error. If the stored refresh token is still the one presented, nothing
-  rotated it and the grant really is gone → teardown. If the database has moved
-  on, it is a spent token → hand the caller the current pair so its retry
-  succeeds, disconnect nothing. If the row cannot be read at all — missing, or
-  the database is down — the answer is "do not know", and "do not know" never
-  means revoked.
-- **The rotation memo** (`rememberRotation`/`readRecentRotation`) keeps the
-  last exchange's result for 60s keyed by the refresh token it spent, so the
+- **`_resolveInvalidGrant` is the correctness mechanism.** It re-reads the
+  stored pair before believing the error. If the stored refresh token is still
+  the one presented, nothing rotated it and the grant really is gone →
+  teardown. If the database has moved on, it is a spent token → hand the
+  caller the current pair so its retry succeeds, disconnect nothing. If the
+  row cannot be read at all — missing, or the database is down — the answer is
+  "do not know", and "do not know" never means revoked. Neutering only this
+  and keeping the memo still tears users down; neutering only the memo tears
+  nobody down. **Do not remove it as redundant.**
+- **The rotation memo is an optimisation.** `rememberRotation` /
+  `readRecentRotation` keep the last exchange's result for 60s
+  (`SC_ROTATION_MEMO_TTL_MS`) keyed by the refresh token it spent, so the
   second call is answered without a network round trip at all. The in-flight
   mutex beside it only collapses refreshes that *overlap*; this covers the
   sequential case, which is the common one. It holds plaintext tokens, so it
   is dropped by `disconnectUser` and by `DELETE /api/auth/account`, exactly
-  like the auth memo.
+  like the auth memo. The recovery path deliberately does **not** write it: its
+  database read and its return are separated by an await, so a write there
+  could land after a disconnect had already forgotten it.
 
-`tests/routes/token-refresh.test.js` covers both, against a mock SoundCloud
-that rotates and refuses spent tokens the way the real one does.
+**Every SoundCloud call must run inside a token context**, or the same teardown
+arrives by a different door. `authenticateUser` opens one with
+`runWithTokenContext`; anything that runs from a timer has to open its own.
+`growth-scheduler.js` did not, so its daily crawl refreshed with no `userId`,
+rotated the token upstream, and — having nowhere to store the replacement —
+left the row holding a token SoundCloud had already spent. The user's next
+request presented exactly that token, the comparison above correctly found it
+equal to the stored one, and the account was torn down. `_refreshAndPersistNow`
+now **refuses** a context-free exchange instead of rotating and discarding, so
+a caller that forgets fails loudly rather than costing somebody their account.
+
+**One worker is a correctness constraint here, not a performance one.** Inside
+one process the in-flight map holds its entry until the persist completes, so a
+second caller either joins that promise or reads the rotated row. Across
+processes there is no such ordering: two instances present the same token, the
+loser reads the row before the winner's `token.update` lands, finds it still
+equal to what it presented, and disconnects a live user. `infra/main.bicep`
+pins `numberOfWorkers: 1`. Raising it needs a database-side guard first — a
+compare-and-swap on `refresh`, or a `rotatedAt` the loser can compare against.
+
+`tests/routes/token-refresh.test.js` covers all of this against a mock
+SoundCloud that rotates and refuses spent tokens the way the real one does;
+`tests/growth-scheduler.test.js` covers the scheduler's context.
 
 **Retention** ([`lib/retention.js`](server/lib/retention.js)) runs 10 minutes
 after boot and then every `RETENTION_INTERVAL_MS`. A snapshot step plus eight
@@ -1101,6 +1127,7 @@ clone, and every bulk write.
 | `GROWTH_AUTOCHECK` | No | Set to `false` to disable the daily growth follow-back scheduler |
 | `ADMIN_IDS` | No | Comma-separated SoundCloud numeric user IDs allowed into `/api/admin/*`. Unset or empty = **nobody** (fails closed) |
 | `SC_FETCH_TIMEOUT_MS` | No | AbortController deadline on every SoundCloud fetch (default `30000`) |
+| `SC_ROTATION_MEMO_TTL_MS` | No | How long the refresh-rotation memo in `soundcloud-client.js` keeps the last exchange's plaintext pair (default `60000`). It exists so a route's second SoundCloud call is not told its already-spent refresh token means "revoked". Lowering it costs an extra refused exchange per multi-call request at a token boundary; raising it keeps decrypted tokens in memory longer. It is **not** the safety net — `_resolveInvalidGrant` is — so a wrong value here degrades latency, not correctness |
 | `CHROME_EXTENSION_IDS` | No | Comma-separated extension IDs allowed as credentialed origins (CORS + `rejectUntrustedOrigin`) |
 | `SESSION_COOKIE_SAMESITE` | No | `lax`, `none` or `strict` for the session cookie. Unset keeps the historical default (`none` in production). Same-origin hosting sets `lax` |
 | `LEGACY_REDIRECT_HOSTS` | No | Comma-separated hostnames Express redirects to `APP_URL` (301 GET/HEAD, 308 otherwise). Unset disables the middleware |
@@ -1317,6 +1344,19 @@ less — the timeout means it costs nothing either way, so it stays.
    rewrites.
 
 6. **In-Memory URL Cache**: The `/api/resolve` cache is per-process and resets on restart. Not shared across multiple server instances. Cache TTL is 5 minutes. (The *library* cache — likes/playlists/followings/followers/reposts — is different: since the 2026-09 performance work it has a Postgres tier underneath that survives restarts. See `docs/performance-audit-2026-09.md`. Its invalidation marks are per-process, though: with more than one worker a second instance can republish a pre-mutation snapshot as `complete`, so the durable tier is only safe single-instance — which is why `infra/main.bicep` pins `capacity: 1` and `numberOfWorkers: 1`. See the header comment in `server/lib/social-cache.js`.)
+
+   **The single worker is now load-bearing for more than the cache.** The
+   revocation classifier (`_resolveInvalidGrant` in
+   `server/lib/soundcloud-client.js`) decides whether a grant is gone by
+   comparing the refresh token presented against the one in the row. Within one
+   process the in-flight refresh map guarantees the row has been updated before
+   any second caller reads it; across processes it does not, so two instances
+   presenting the same token at a 401 can have the loser read a pre-update row,
+   find it equal to what it presented, and **disconnect a live user**. The
+   worst case of scaling out is therefore a destroyed account, not a stale
+   list. Before raising `numberOfWorkers`, put a database-side guard on the
+   rotation — a compare-and-swap on `tokens.refresh`, or a `rotatedAt` the
+   loser can compare against.
 
 7. **Static Export Limitation**: `next export` doesn't support Next.js API routes. All server logic must live in the Express backend. The frontend is pure client-side React.
 

@@ -404,6 +404,25 @@ Read `docs/internal/MIGRATION.md` ("CUTOVER DONE") for that story.
   point (`refreshTokensAndPersist`) and on account deletion. If you add another
   path that rotates or revokes tokens, it must call `invalidateCachedAuth` or
   users will be served a dead refresh token until the TTL expires.
+- **There is a second token memo, with the same rule.** The rotation memo in
+  `server/lib/soundcloud-client.js` (`rememberRotation`/`readRecentRotation`)
+  holds the last refresh's **plaintext** pair for 60s, keyed by the refresh
+  token that exchange spent, so a route's second SoundCloud call is not told
+  its already-spent token means "revoked". Any path that rotates or destroys
+  tokens must call `forgetRecentRotation` as well as `invalidateCachedAuth` —
+  `disconnectUser` and `DELETE /api/auth/account` both do, and both are
+  asserted through the route. TTL is `SC_ROTATION_MEMO_TTL_MS`.
+- **Every SoundCloud call must run inside a token context.** `authenticateUser`
+  opens one with `runWithTokenContext`; anything running from a timer has to
+  open its own (`growth-scheduler.js` does). Without it a 401 refresh has no
+  `userId`, so the rotated pair cannot be stored — and the row is left holding
+  a token SoundCloud has already spent, which the revocation classifier then
+  correctly reads as a revocation on the user's next request and deletes their
+  tokens for. `_refreshAndPersistNow` now **refuses** a context-free exchange
+  rather than rotating and discarding, so this fails loudly; do not "fix" that
+  by removing the guard. Grep old production logs for
+  `Token refresh completed without user context` — every hit is a user who was
+  stranded by this on `main`.
 - Snapshot invalidation marks rows **stale** rather than deleting them, and a
   stale snapshot is still served while it refreshes. If you add a mutation that
   changes likes/playlists/followings/followers/reposts, route its invalidation

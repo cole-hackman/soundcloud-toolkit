@@ -2,6 +2,9 @@ import { jest } from '@jest/globals';
 import express from 'express';
 import cookieParser from 'cookie-parser';
 import request from 'supertest';
+import { readFileSync } from 'fs';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
 
 process.env.ENCRYPTION_KEY ||= 'x'.repeat(32);
 process.env.SESSION_SECRET ||= 's'.repeat(40);
@@ -27,6 +30,17 @@ const cacheStateFindMany = findMany([{ id: 'st-1', userId: 'user-a', resource: '
 const cachePageFindMany = findMany([
   { resource: 'likes', pageIndex: 0, itemCount: 2, items: [{ id: 1 }, { id: 2 }] },
 ]);
+// The four cross-branch tables the privacy policy lists as stored and keyed to
+// the account. They are declared in this schema so `prisma db push` does not
+// drop them, and the export has to carry them for the promise to be true.
+const chatConversationFindMany = findMany([{
+  id: 'c-1', userId: 'user-a', title: 'what did I like in June',
+  chat_messages: [{ id: 'm-1', conversationId: 'c-1', role: 'user', content: 'hello' }],
+}]);
+const indexedLikeFindMany = findMany([{ id: 'il-1', userId: 'user-a', trackId: 42n }]);
+const indexedPlaylistTrackFindMany =
+  findMany([{ id: 'ipt-1', userId: 'user-a', playlistId: 7n, trackId: 42n }]);
+const librarySnapshotFindMany = findMany([{ id: 'ls-1', userId: 'user-a', status: 'synced' }]);
 
 jest.unstable_mockModule('../../server/lib/prisma.js', () => ({
   default: {
@@ -39,12 +53,18 @@ jest.unstable_mockModule('../../server/lib/prisma.js', () => ({
     betaSignup: { findMany: betaSignupFindMany },
     libraryCacheState: { findMany: cacheStateFindMany },
     libraryCachePage: { findMany: cachePageFindMany },
+    chat_conversations: { findMany: chatConversationFindMany },
+    indexed_likes: { findMany: indexedLikeFindMany },
+    indexed_playlist_tracks: { findMany: indexedPlaylistTrackFindMany },
+    library_snapshots: { findMany: librarySnapshotFindMany },
   },
 }));
 jest.unstable_mockModule('../../server/lib/soundcloud-client.js', () => ({
   soundcloudClient: {},
   fetchWithTimeout: jest.fn(async () => ({ ok: false, status: 503 })),
   signOut: jest.fn(async () => true),
+  // account-lifecycle.js drops the rotation memo alongside the auth memo.
+  forgetRecentRotation: jest.fn(),
 }));
 jest.unstable_mockModule('../../server/lib/analytics.js', () => ({
   logOperation: jest.fn(),
@@ -101,6 +121,8 @@ app.use(cookieParser());
 app.use(express.json());
 app.use('/api/auth', authRoutes);
 
+// Keyed by the Prisma delegate name, because the completeness test below
+// derives exactly those names from prisma/schema.prisma.
 const allQueries = [
   ['operationLog', operationLogFindMany],
   ['growthAction', growthActionFindMany],
@@ -110,11 +132,114 @@ const allQueries = [
   ['betaSignup', betaSignupFindMany],
   ['libraryCacheState', cacheStateFindMany],
   ['libraryCachePage', cachePageFindMany],
+  ['chat_conversations', chatConversationFindMany],
+  ['indexed_likes', indexedLikeFindMany],
+  ['indexed_playlist_tracks', indexedPlaylistTrackFindMany],
+  ['library_snapshots', librarySnapshotFindMany],
 ];
+
+/**
+ * Models that relate to User but are deliberately NOT a `findMany` section of
+ * their own, each with the reason. Anything else the schema turns up has to be
+ * queried, or this suite fails.
+ */
+const EXPORT_EXCEPTIONS = {
+  // Exported as `token`, via findFirst and selecting expiresAt only: the two
+  // ciphertext columns are live credentials and never leave Postgres.
+  Token: 'exported as `token`, expiry only — see the token-secrets tests',
+};
 
 beforeEach(() => {
   tokenFindFirst.mockClear().mockResolvedValue({ expiresAt: TOKEN_EXPIRY });
   for (const [, mock] of allQueries) mock.mockClear();
+});
+
+describe('GET /api/auth/export — completeness, derived from the schema', () => {
+  // The policy and the account page both say the file contains everything
+  // keyed to the account. The deletion side has had a schema-driven test since
+  // it was written (tests/account-deletion-cascade.test.js); the export had
+  // none, and had silently drifted four tables behind the schema. This reads
+  // the same source of truth so the same drift cannot happen again.
+  const schemaPath = join(
+    dirname(fileURLToPath(import.meta.url)), '..', '..', 'prisma', 'schema.prisma'
+  );
+  const schema = readFileSync(schemaPath, 'utf8');
+
+  function perUserModels(source) {
+    const names = [];
+    const re = /model\s+(\w+)\s*\{([\s\S]*?)\n\}/g;
+    let m;
+    while ((m = re.exec(source)) !== null) {
+      if (m[1] !== 'User' && /@relation\(fields:\s*\[userId\]/.test(m[2])) names.push(m[1]);
+    }
+    return names;
+  }
+
+  // Prisma lowercases the first letter of a model name to make the delegate;
+  // a name that is already snake_case comes through unchanged.
+  const delegateFor = (model) => model[0].toLowerCase() + model.slice(1);
+
+  const models = perUserModels(schema);
+
+  test('the schema actually parsed', () => {
+    expect(models.length).toBeGreaterThan(8);
+  });
+
+  test('every per-user table is either exported or an explicit exception', async () => {
+    await request(app).get('/api/auth/export');
+
+    const queried = new Map(allQueries);
+    const missing = [];
+    for (const model of models) {
+      if (EXPORT_EXCEPTIONS[model]) continue;
+      const mock = queried.get(delegateFor(model));
+      if (!mock || mock.mock.calls.length === 0) missing.push(model);
+    }
+
+    // Named, so a failure says which table the export would have dropped.
+    expect(missing).toEqual([]);
+  });
+
+  test('chat_messages travels with its conversation', async () => {
+    // It is the one per-user table with no userId of its own: it hangs off
+    // chat_conversations, which is also how the deletion cascade reaches it.
+    expect(schema).toMatch(/model\s+chat_messages\s*\{/);
+    await request(app).get('/api/auth/export');
+    expect(chatConversationFindMany.mock.calls[0][0].include)
+      .toEqual({ chat_messages: true });
+  });
+
+  test('an absent delegate degrades to an empty array, not a 500', async () => {
+    // A model can belong to a branch that has not landed in this checkout.
+    // Asking Prisma for it would throw and cost the caller the whole export.
+    jest.resetModules();
+    jest.unstable_mockModule('../../server/lib/prisma.js', () => ({
+      default: {
+        token: { findFirst: jest.fn().mockResolvedValue(null) },
+        operationLog: { findMany: jest.fn().mockResolvedValue([]) },
+        growthAction: { findMany: jest.fn().mockResolvedValue([]) },
+        rebrandVote: { findMany: jest.fn().mockResolvedValue([]) },
+        surveyResponse: { findMany: jest.fn().mockResolvedValue([]) },
+        betaSignup: { findMany: jest.fn().mockResolvedValue([]) },
+        libraryCacheState: { findMany: jest.fn().mockResolvedValue([]) },
+        libraryCachePage: { findMany: jest.fn().mockResolvedValue([]) },
+        // feedback, chat_conversations, indexed_* and library_snapshots absent
+      },
+    }));
+    const { default: bareRoutes } = await import('../../server/routes/auth.js');
+    const bareApp = express();
+    bareApp.use(cookieParser());
+    bareApp.use(express.json());
+    bareApp.use('/api/auth', bareRoutes);
+
+    const res = await request(bareApp).get('/api/auth/export');
+    expect(res.status).toBe(200);
+    expect(res.body.feedback).toEqual([]);
+    expect(res.body.chatConversations).toEqual([]);
+    expect(res.body.indexedLikes).toEqual([]);
+    expect(res.body.indexedPlaylistTracks).toEqual([]);
+    expect(res.body.librarySnapshots).toEqual([]);
+  });
 });
 
 describe('GET /api/auth/export — scoping', () => {
@@ -192,14 +317,22 @@ describe('GET /api/auth/export — response shape', () => {
   test('carries every section plus its schema version', async () => {
     const res = await request(app).get('/api/auth/export');
 
-    expect(res.body.schemaVersion).toBe(1);
+    // 2 since the four cross-branch tables were added; the number is the
+    // reader's only signal that the shape of the file changed.
+    expect(res.body.schemaVersion).toBe(2);
     expect(typeof res.body.generatedAt).toBe('string');
     for (const key of [
       'user', 'token', 'operationLogs', 'growthActions', 'feedback', 'rebrandVotes',
       'surveyResponses', 'betaSignups', 'libraryCacheState', 'libraryCachePages',
+      'chatConversations', 'indexedLikes', 'indexedPlaylistTracks', 'librarySnapshots',
     ]) {
       expect(res.body).toHaveProperty(key);
     }
+  });
+
+  test('chat messages come through with their conversation', async () => {
+    const res = await request(app).get('/api/auth/export');
+    expect(res.body.chatConversations[0].chat_messages[0].content).toBe('hello');
   });
 
   test('BigInt columns survive serialization', async () => {

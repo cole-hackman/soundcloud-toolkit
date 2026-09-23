@@ -5,7 +5,7 @@
  * stays in the database and the next login picks it straight back up. Deletion
  * is the other extreme and is irreversible. Disconnect is the middle: the
  * SoundCloud grant is handed back, the stored tokens are destroyed, and the
- * user row is stamped so the retention job removes it a week later unless the
+ * user row is stamped so the retention job removes it six days later unless the
  * person comes back (a successful login clears the stamp).
  *
  * Two callers:
@@ -17,7 +17,7 @@
  */
 import prisma from './prisma.js';
 import logger from './logger.js';
-import { signOut } from './soundcloud-client.js';
+import { signOut, forgetRecentRotation } from './soundcloud-client.js';
 import { invalidateCachedAuth } from './auth-cache.js';
 import { requestCache } from './request-cache.js';
 import { dropSnapshots } from './snapshot-cache.js';
@@ -51,6 +51,10 @@ export async function disconnectUser(userId, { accessToken, reason } = {}) {
     // whose database row is already gone. Invalidating when the delete itself
     // failed is harmless: a miss only costs one lookup.
     invalidateCachedAuth(userId);
+    // The rotation memo in soundcloud-client.js holds the last refresh's
+    // plaintext pair for a minute, so that a route's second call is not told
+    // its spent refresh token means revocation. Those tokens are gone too.
+    forgetRecentRotation(userId);
   }
 
   await prisma.user.update({

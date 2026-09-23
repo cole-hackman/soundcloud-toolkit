@@ -716,16 +716,53 @@ as the refresh path. It runs in a `finally` immediately after the token
 delete, so no later failure in the teardown can leave the memo holding
 credentials whose row is already gone.
 
-**Revocation is detected, not merely handled.** A user revoking the app from
-SoundCloud's own settings never tells this service. `refreshTokensAndPersist`
-— the single refresh choke point — treats exactly two things as revocation and
-runs the same teardown with `reason: 'revoked'`: `invalid_grant` in a JSON
-body on a 400/401, and a 401 with an **empty** body. **A 401 with a non-empty
-non-JSON body does not count** — that shape is an HTML error page from a proxy
-or WAF far more often than a revocation, and acting on it would destroy a live
-user's tokens over someone else's infrastructure. 429, every 5xx, timeouts and
-network errors are excluded for the same reason. The thrown error is
-unchanged, so callers still see the generic "Token refresh failed".
+**Revocation is detected, not merely handled — but only when the user comes
+back.** A user revoking the app from SoundCloud's own settings never tells this
+service, and nothing here asks: detection happens inside a token refresh, which
+happens only when a request the user made comes back 401. Someone who revokes
+and never returns is never detected, and their rows live until the 24-month
+dormancy sweep. A proactive sweep is the fix and is a known follow-up
+(`docs/internal/TERMS-CHECK.md`, finding B, item 4).
+
+`refreshTokensAndPersist` — the single refresh choke point — treats exactly two
+response shapes as candidates for revocation and runs the teardown with
+`reason: 'revoked'`: `invalid_grant` in a JSON body on a 400/401, and a 401
+with an **empty** body. **A 401 with a non-empty non-JSON body does not count**
+— that shape is an HTML error page from a proxy or WAF far more often than a
+revocation, and acting on it would destroy a live user's tokens over someone
+else's infrastructure. 429, every 5xx, timeouts and network errors are excluded
+for the same reason. The thrown error is unchanged, so callers still see the
+generic "Token refresh failed".
+
+**`invalid_grant` alone is NOT enough, and this is the landmine.** SoundCloud
+rotates the refresh token on every exchange, so a token that has already been
+spent is refused with exactly the same `invalid_grant`. A route captures
+`req.accessToken`/`req.refreshToken` once and hands that same pair to every
+`scRequest` it makes (only `paginate` rotates its local copy), so at an hourly
+access-token expiry the second call in any two-call route — the merge loop, a
+fan-out dashboard read — re-presents a token the first call consumed. Reading
+that as revocation deletes a live user's freshly rotated pair and starts the
+six-day account-deletion clock.
+
+Two things stop it, and both are load-bearing:
+
+- **`_resolveInvalidGrant`** re-reads the stored pair before believing the
+  error. If the stored refresh token is still the one presented, nothing
+  rotated it and the grant really is gone → teardown. If the database has moved
+  on, it is a spent token → hand the caller the current pair so its retry
+  succeeds, disconnect nothing. If the row cannot be read at all — missing, or
+  the database is down — the answer is "do not know", and "do not know" never
+  means revoked.
+- **The rotation memo** (`rememberRotation`/`readRecentRotation`) keeps the
+  last exchange's result for 60s keyed by the refresh token it spent, so the
+  second call is answered without a network round trip at all. The in-flight
+  mutex beside it only collapses refreshes that *overlap*; this covers the
+  sequential case, which is the common one. It holds plaintext tokens, so it
+  is dropped by `disconnectUser` and by `DELETE /api/auth/account`, exactly
+  like the auth memo.
+
+`tests/routes/token-refresh.test.js` covers both, against a mock SoundCloud
+that rotates and refuses spent tokens the way the real one does.
 
 **Retention** ([`lib/retention.js`](server/lib/retention.js)) runs 10 minutes
 after boot and then every `RETENTION_INTERVAL_MS`. A snapshot step plus eight
@@ -789,6 +826,19 @@ the caller, as a dated JSON attachment. The `Token` record contributes
 the ciphertext never leaves Postgres. Note that `req.user` is the full row
 **with its `tokens` relation included**, which is why the route names fields
 explicitly instead of spreading it.
+
+**"Every row keyed to the caller" is an invariant, not a description.** The
+policy and the account page both promise exactly that, so a per-user table
+missing from the export makes a published statement false — which is how the
+four cross-branch tables (`chat_conversations` with its `chat_messages`,
+`indexed_likes`, `indexed_playlist_tracks`, `library_snapshots`) came to be
+absent for a while. `tests/routes/export.test.js` now derives the per-user
+model list from `prisma/schema.prisma` the way
+`tests/account-deletion-cascade.test.js` does and fails naming any model that
+is neither queried nor on the explicit `EXPORT_EXCEPTIONS` list (today: `Token`,
+which is exported as expiry only). A model whose delegate is absent from the
+generated client contributes an empty array rather than a 500. `schemaVersion`
+is `2` since those four were added.
 
 > `docs/api.json` is **SoundCloud's own OpenAPI spec** (68 upstream paths under
 > `https://api.soundcloud.com`), kept as a reference for what the upstream API

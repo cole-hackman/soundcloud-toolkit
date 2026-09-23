@@ -128,6 +128,7 @@ import authRoutes from './routes/auth.js';
 import { soundcloudClient } from './lib/soundcloud-client.js';
 import { startGrowthScheduler } from './lib/growth-scheduler.js';
 import { startRetentionScheduler } from './lib/retention.js';
+import { verifySchema } from './lib/schema-preflight.js';
 import apiRoutes from './routes/api.js';
 import growthRoutes from './routes/growth.js';
 import adminRoutes from './routes/admin.js';
@@ -196,6 +197,15 @@ app.use(errorHandler);
 app.use('/api/*', (req, res) => {
   res.status(404).json({ error: 'API endpoint not found' });
 });
+
+// Verify the database has the schema this build expects BEFORE serving or
+// scheduling anything. A deploy that ships code ahead of its migration should
+// fail here, loudly, rather than at the first person who tries to sign in —
+// which is exactly how the 2026-09-23 auth outage was discovered. Exiting also
+// keeps the retention scheduler, which deletes accounts, away from a
+// half-migrated database. An unreachable database is a warning, not a failure;
+// see the file header for why those two are treated differently.
+await verifySchema();
 
 app.listen(PORT, () => {
   logger.info(`Server running on port ${PORT}`);

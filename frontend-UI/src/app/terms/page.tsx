@@ -6,6 +6,10 @@ import { SupportLink } from "@/components/SupportLink";
 
 const LAST_UPDATED = "2026-09-22";
 
+/** In-sentence link, matching the Privacy Policy's and the FAQ's. */
+const inlineLinkClass =
+  "font-medium text-foreground underline underline-offset-2 transition hover:text-primary-text";
+
 // Cole's decision, recorded in global-constraints.md: left as a clearly
 // marked placeholder until a state is chosen. Do not fill this in without
 // checking with him first.
@@ -156,8 +160,13 @@ export default function TermsPage() {
               </h2>
               <p>
                 You can delete your Track Toolkit account at any time from
-                the Account page; deletion removes what we store about you
-                and ends these terms between us. We may also end these terms
+                the Account page; deletion removes what we store about you —
+                apart from the public track and playlist catalog, which is not
+                tied to your account and stays, as the{" "}
+                <Link href="/privacy/" className={inlineLinkClass}>
+                  Privacy Policy
+                </Link>{" "}
+                explains — and ends these terms between us. We may also end these terms
                 and your access if you violate them — most likely by
                 suspending the account, as described above.
               </p>

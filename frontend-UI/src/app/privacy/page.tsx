@@ -118,7 +118,7 @@ const COLLECTED: { data: string; source: string; why: string; kept: string }[] =
     kept: "While your account exists; deleted with it",
   },
   {
-    data: "Feedback you send in the app: your message, which tool you were on, and an email address if you choose to give one",
+    data: "Feedback you send in the app: your message, which tool you were on, an email address if you choose to give one, and your device type, browser and OS family (worked out from the browser's user-agent string; the raw string is not stored)",
     source: "You",
     why: "To fix bugs, plan features, and reply if you asked us to",
     kept: "24 months",

@@ -34,3 +34,5 @@ Disallow: /playlist-modifier
 Disallow: /playlist-to-likes
 Disallow: /recently-played
 Disallow: /repost-manager
+Disallow: /account
+Disallow: /feedback

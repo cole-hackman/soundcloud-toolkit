@@ -106,9 +106,9 @@ export default function AccessibilityPage() {
               <ul className="list-disc list-inside space-y-2 ml-4">
                 <li>
                   Automated axe checks on every page you can reach as a
-                  signed-in user, at 1280px, 430px, 390px and 360px, run
-                  before each release. The admin console isn&apos;t in that
-                  suite
+                  signed-in user, at 1280px, 430px, 390px and 360px, run by
+                  hand before a change is merged. The admin console
+                  isn&apos;t in that suite
                 </li>
                 <li>
                   Automated keyboard checks in the same suite, for the parts
@@ -118,8 +118,8 @@ export default function AccessibilityPage() {
                   don&apos;t push controls off a phone screen
                 </li>
                 <li>
-                  A colour-contrast check over the colours we define, run
-                  before each release. It compares colours as we define them,
+                  A colour-contrast check over the colours we define, run by
+                  hand before a change is merged. It compares colours as we define them,
                   not every way a page might combine them, so an unusual
                   combination in one component can still slip through
                 </li>

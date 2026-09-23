@@ -85,6 +85,19 @@ describe('soundcloud client behaviors', () => {
     expect(fetch).toHaveBeenCalledTimes(2);
   });
 
+  test('an exhausted 429 carries status 429 so callers can stop instead of string-matching', async () => {
+    jest.useFakeTimers();
+    fetch
+      .mockReturnValueOnce(Promise.resolve(new Response('', { status: 429 })))
+      .mockReturnValueOnce(Promise.resolve(new Response('', { status: 429 })));
+
+    const request = soundcloudClient.scRequest(endpoint, 'a', 'r', { max429Retries: 1 });
+    const rejects = expect(request).rejects.toMatchObject({ status: 429 });
+    await jest.advanceTimersByTimeAsync(1000);
+
+    await rejects;
+  });
+
   test('refreshes download token only once on repeated 401 responses', async () => {
     fetch
       .mockReturnValueOnce(Promise.resolve(new Response('', { status: 401 })))

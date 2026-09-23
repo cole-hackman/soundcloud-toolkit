@@ -561,7 +561,9 @@ class SoundCloudClient {
     // Handle 429 - rate limit, implement exponential backoff
     if (response.status === 429) {
       if (retryAttempt >= max429Retries) {
-        throw new Error(`API request failed: 429`);
+        // `status` lets a caller stop a loop on the rate limit without
+        // string-matching the message (see bulk-like in routes/api.js).
+        throw Object.assign(new Error(`API request failed: 429`), { status: 429 });
       }
       const retryAfter = response.headers.get('Retry-After');
       const delay = retryAfter ? parseInt(retryAfter) * 1000 : 1000;
@@ -692,7 +694,7 @@ class SoundCloudClient {
 
       if (res.status === 429) {
         if (retries429 >= max429Retries) {
-          throw new Error(`API request failed: 429`);
+          throw Object.assign(new Error(`API request failed: 429`), { status: 429 });
         }
         const retryAfter = res.headers.get('Retry-After');
         const delay = retryAfter ? parseInt(retryAfter) * 1000 : 1000;

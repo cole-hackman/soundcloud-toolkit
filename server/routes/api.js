@@ -2554,57 +2554,99 @@ router.post('/likes/tracks/bulk-unlike', authenticateUser, heavyOperationRateLim
 });
 
 /**
+ * Users with a bulk-like currently running. One at a time per user: on
+ * 2026-09-22 one account had eight 100-track batches in flight at once, each
+ * spending ~460s retrying 429s. In-process is enough because the app is pinned
+ * to one worker (see infra/main.bicep and server/lib/social-cache.js).
+ */
+const bulkLikeInFlight = new Set();
+
+/**
  * POST /api/likes/tracks/bulk-like
  * Like multiple tracks at once (e.g. "like every track in a playlist").
  * Capped at 100 per request; clients chunk larger sets.
+ *
+ * Stops at the first 429 that survives scRequest's own retries: once
+ * SoundCloud's like limit is hit every later track fails the same way, and
+ * trying them only adds ~4.6s each and more pressure on the limit. The
+ * untried tracks come back as `skipped` with `rateLimited: true` so the
+ * client can stop too. Also stops when the client disconnects.
  */
 router.post('/likes/tracks/bulk-like', authenticateUser, heavyOperationRateLimiter, validateBulkLike, async (req, res) => {
-  // Gentle pacing between writes — liking a full playlist is many rapid POSTs.
+  const userId = req.user.id;
+  if (bulkLikeInFlight.has(userId)) {
+    return res.status(409).json({ error: 'A bulk like is already running for your account. Wait for it to finish.' });
+  }
+  bulkLikeInFlight.add(userId);
+
+  let clientDisconnected = false;
+  res.on('close', () => {
+    if (!res.writableEnded) clientDisconnected = true;
+  });
+
   const elapsed = startOperationTimer();
   try {
     const { trackIds } = req.body;
     const results = [];
+    let rateLimited = false;
 
     // Process sequentially to avoid SoundCloud rate limits.
     // NOTE: likeTrack is id-first (accessToken/refreshToken follow) — the
     // opposite of unlikeTrack. Getting this order wrong silently no-ops.
     for (const trackId of trackIds) {
+      if (rateLimited || clientDisconnected) {
+        results.push({ trackId, status: 'skipped' });
+        continue;
+      }
       try {
         await soundcloudClient.likeTrack(trackId, req.accessToken, req.refreshToken);
         results.push({ trackId, status: 'ok' });
       } catch (err) {
         results.push({ trackId, status: 'error', error: err.message || 'Like failed' });
+        if (err.status === 429) {
+          rateLimited = true;
+          continue;
+        }
       }
       await sleep(SC_BULK_PACING_MS);
     }
 
-    res.json({ results });
+    if (!clientDisconnected) res.json({ results, rateLimited });
     const succeeded = results.filter(r => r.status === 'ok').length;
-    const failed = results.length - succeeded;
+    const skipped = results.filter(r => r.status === 'skipped').length;
+    const failed = results.length - succeeded - skipped;
+    const allFailed = failed > 0 && succeeded === 0;
     logOperation({
-      userId: req.user.id,
+      userId,
       action: 'bulk-like',
       trackCount: succeeded,
       itemCount: results.length,
-      status: failed > 0 && succeeded === 0 ? 'error' : 'success',
+      status: allFailed ? 'error' : 'success',
       durationMs: elapsed(),
       clientInfo: extractClientInfo(req),
       trackIds: results.filter(r => r.status === 'ok').map(r => r.trackId),
-      errorCode: failed > 0 && succeeded === 0 ? 'ALL_ITEMS_FAILED' : undefined,
-      errorMessage: failed > 0 && succeeded === 0 ? results.find(r => r.status === 'error')?.error : undefined,
-      metadata: { total: results.length, succeeded, failed },
+      errorCode: allFailed ? (rateLimited ? 'RATE_LIMITED' : 'ALL_ITEMS_FAILED') : undefined,
+      errorMessage: allFailed ? results.find(r => r.status === 'error')?.error : undefined,
+      metadata: {
+        total: results.length,
+        succeeded,
+        failed,
+        ...(skipped > 0 && { skipped }),
+        ...(rateLimited && { rateLimited: true }),
+        ...(clientDisconnected && { clientDisconnected: true }),
+      },
     });
-    const cachedLikes = requestCache.get('likes', req.user.id, 'default');
+    const cachedLikes = requestCache.get('likes', userId, 'default');
     if (Array.isArray(cachedLikes?.collection)) {
       const processed = new Set(trackIds);
       harvestTracks(cachedLikes.collection.filter(t => t && processed.has(t.id)));
     }
-    invalidateUserCollections(req.user.id, ['likes']);
+    invalidateUserCollections(userId, ['likes']);
     piggybackEnrichment(trackIds, req.accessToken, req.refreshToken);
   } catch (error) {
     logger.error('Bulk like error:', safeError(error));
     logOperation({
-      userId: req.user.id,
+      userId,
       action: 'bulk-like',
       status: 'error',
       durationMs: elapsed(),
@@ -2613,7 +2655,9 @@ router.post('/likes/tracks/bulk-like', authenticateUser, heavyOperationRateLimit
       errorCode: error.name || 'BULK_LIKE_FAILED',
       errorMessage: safeError(error).message,
     });
-    res.status(500).json({ error: 'Bulk like failed' });
+    if (!res.headersSent) res.status(500).json({ error: 'Bulk like failed' });
+  } finally {
+    bulkLikeInFlight.delete(userId);
   }
 });
 

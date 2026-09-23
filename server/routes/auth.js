@@ -2,7 +2,7 @@ import express from 'express';
 import { createPkcePair } from '../lib/pkce.js';
 import { signSession, unsignSession, parseSessionData, createSessionCookieOptions } from '../lib/session.js';
 import { encrypt } from '../lib/crypto.js';
-import { soundcloudClient, signOut } from '../lib/soundcloud-client.js';
+import { soundcloudClient, signOut, forgetRecentRotation } from '../lib/soundcloud-client.js';
 import { disconnectUser } from '../lib/account-lifecycle.js';
 import prisma from '../lib/prisma.js';
 import logger from '../lib/logger.js';
@@ -193,7 +193,10 @@ router.get('/callback', async (req, res) => {
       soundcloudId: user.soundcloudId,
       action: 'auth-login',
       status: 'success',
-      metadata: { username: user.username },
+      // No metadata. The privacy page describes the operation log as ids plus
+      // device/browser/OS, and `username` here was a second copy of a column
+      // the `users` row already holds — nothing read it, and it outlived the
+      // description it was supposed to match.
     });
 
     // Clear PKCE verifier and app origin cookies
@@ -255,7 +258,7 @@ router.post('/logout', async (req, res) => {
  * Hand the SoundCloud grant back and destroy the stored tokens, without
  * deleting the account. The user row survives, stamped with disconnectedAt,
  * so logging back in restores the connection — but if they do not, the
- * retention job removes the row (and everything cascading from it) a week
+ * retention job removes the row (and everything cascading from it) six days
  * later. See server/lib/account-lifecycle.js.
  *
  * It is a POST under /api, so rejectUntrustedOrigin already refuses it from a
@@ -298,7 +301,13 @@ router.delete('/account', authenticateUser, async (req, res) => {
     await prisma.user.delete({ where: { id } });
     // The user row and its tokens are gone; drop the memo and any cached
     // library payloads so nothing survives the deletion in process memory.
+    // The auth memo holds DECRYPTED tokens for 30s and the rotation memo holds
+    // the last refresh's pair for a minute, so without these two a request
+    // arriving inside the window would keep working — and writing — against an
+    // account whose row no longer exists. tests/routes/account-deletion.test.js
+    // asserts both through this route, not by calling them directly.
     invalidateCachedAuth(id);
+    forgetRecentRotation(id);
     requestCache.invalidateUser(id);
     dropInvalidationMarks(id);
     await dropSnapshots(id);
@@ -322,12 +331,19 @@ router.delete('/account', authenticateUser, async (req, res) => {
  * download. Deliberately a full dump rather than a summary — the point is that
  * a person can see the actual rows, not a description of them.
  *
- * Two invariants:
+ * Three invariants:
  *   1. Every query is scoped to req.user.id. There is no id parameter to
  *      tamper with, and nothing here reads a foreign row.
  *   2. The token record contributes its expiry only. `encrypted` and `refresh`
  *      are AES-GCM ciphertext of live credentials and never leave the server,
- *      exported or not. Both are asserted by tests/routes/export.test.js.
+ *      exported or not.
+ *   3. Every per-user table is here. The privacy policy and the account page
+ *      both promise "everything keyed to your account", so a table that stores
+ *      per-user rows and is missing from this list makes that promise false.
+ *      The list is not maintained by hand: tests/routes/export.test.js derives
+ *      it from prisma/schema.prisma the way the deletion-cascade test does, so
+ *      a per-user table added later cannot quietly fall out of the export.
+ * All three are asserted by tests/routes/export.test.js.
  *
  * BigInt columns (soundcloudId on the vote/survey tables, growth target ids)
  * serialize through the BigInt.prototype.toJSON patch in server/index.js.
@@ -337,11 +353,12 @@ router.get('/export', authenticateUser, heavyOperationRateLimiter, async (req, r
     const userId = req.user.id;
     const scope = { where: { userId } };
 
-    // `feedback` arrives with the feedback feature; until then the delegate is
-    // absent from the generated client and asking for it would throw.
-    const feedbackQuery = prisma.feedback
-      ? prisma.feedback.findMany(scope)
-      : Promise.resolve([]);
+    // A delegate can be absent from the generated client when the model
+    // belongs to a feature branch that has not landed here yet; asking for it
+    // would throw and cost the caller their whole export. An absent table has
+    // no rows to export either way, so it contributes an empty array.
+    const optional = (delegate, args = scope) =>
+      (delegate ? delegate.findMany(args) : Promise.resolve([]));
 
     const [
       token,
@@ -353,11 +370,22 @@ router.get('/export', authenticateUser, heavyOperationRateLimiter, async (req, r
       betaSignups,
       libraryCacheState,
       libraryCachePages,
+      chatConversations,
+      indexedLikes,
+      indexedPlaylistTracks,
+      librarySnapshots,
     ] = await Promise.all([
       prisma.token.findFirst({ where: { userId }, select: { expiresAt: true } }),
       prisma.operationLog.findMany(scope),
       prisma.growthAction.findMany(scope),
-      feedbackQuery,
+      // No `select`, deliberately: `adminNote` is in the export even though
+      // GET /api/feedback/mine hides it. The two disagree on purpose. /mine is
+      // a convenience list in the UI; this file is the data-subject export,
+      // and a note an operator wrote about a person is still that person's
+      // data, so leaving it out would make "everything keyed to your account"
+      // untrue. The practical consequence, worth knowing before writing one:
+      // an admin note is visible to the person it is about, on request.
+      optional(prisma.feedback),
       prisma.rebrandVote.findMany(scope),
       prisma.surveyResponse.findMany(scope),
       prisma.betaSignup.findMany(scope),
@@ -366,12 +394,27 @@ router.get('/export', authenticateUser, heavyOperationRateLimiter, async (req, r
         where: { userId },
         select: { resource: true, pageIndex: true, itemCount: true, items: true },
       }),
+      // The library-chat and library-index tables. They are declared in this
+      // schema (so `prisma db push` does not drop them) and the privacy policy
+      // lists them as stored and keyed to the account, so the export has to
+      // carry them or the promise it makes is false. `chat_messages` has no
+      // userId of its own — it hangs off the conversation, and is included
+      // that way, which is also how the deletion cascade reaches it.
+      optional(prisma.chat_conversations, {
+        where: { userId },
+        include: { chat_messages: true },
+      }),
+      optional(prisma.indexed_likes),
+      optional(prisma.indexed_playlist_tracks),
+      optional(prisma.library_snapshots),
     ]);
 
     const { id, soundcloudId, username, displayName, avatarUrl, createdAt, lastLoginAt } = req.user;
 
     const payload = {
-      schemaVersion: 1,
+      // 2: added chatConversations (with their messages), indexedLikes,
+      // indexedPlaylistTracks and librarySnapshots.
+      schemaVersion: 2,
       generatedAt: new Date().toISOString(),
       user: { id, soundcloudId, username, displayName, avatarUrl, createdAt, lastLoginAt },
       // Expiry only — see the invariant above.
@@ -384,6 +427,10 @@ router.get('/export', authenticateUser, heavyOperationRateLimiter, async (req, r
       betaSignups,
       libraryCacheState,
       libraryCachePages,
+      chatConversations,
+      indexedLikes,
+      indexedPlaylistTracks,
+      librarySnapshots,
     };
 
     const day = new Date().toISOString().slice(0, 10);

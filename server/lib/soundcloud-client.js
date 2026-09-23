@@ -1,6 +1,6 @@
 import dotenv from 'dotenv';
 dotenv.config();
-import { encrypt } from './crypto.js';
+import { encrypt, decrypt } from './crypto.js';
 import logger from './logger.js';
 import prisma from './prisma.js';
 import { getTokenContext, countScCall } from './token-context.js';
@@ -134,6 +134,68 @@ export function isInvalidGrantResponse(status, bodyText) {
  */
 const inFlightRefreshes = new Map();
 
+/**
+ * The result of the most recent successful refresh for a user, kept for a
+ * short while after the exchange settles and tagged with the refresh token(s)
+ * that were spent to produce it.
+ *
+ * The in-flight map above only collapses refreshes that OVERLAP. The common
+ * case is sequential: `authenticateUser` captures `req.accessToken` /
+ * `req.refreshToken` once and every `scRequest` a route makes is handed that
+ * same pair, so at an access-token expiry boundary the first call refreshes
+ * and the second re-presents the refresh token the first one already spent.
+ * SoundCloud answers a spent refresh token with `invalid_grant` — the same
+ * thing it says about a revoked grant. This memo means the second call never
+ * asks: it is handed the pair the first call obtained.
+ *
+ * Per-process, bounded, and short-lived, matching the auth memo it sits
+ * beside — and, like that one, dropped the moment the connection is torn down
+ * (`forgetRecentRotation`, called from `disconnectUser`).
+ */
+const recentRotations = new Map();
+const ROTATION_MEMO_TTL_MS = Number(process.env.SC_ROTATION_MEMO_TTL_MS) || 60_000;
+const ROTATION_MEMO_MAX_ENTRIES = 1000;
+
+/** How much life an access token must have left before it is worth reusing. */
+const ACCESS_TOKEN_SKEW_MS = 60_000;
+
+function rememberRotation(userId, consumedTokens, tokens) {
+  if (!userId || !tokens?.access_token) return;
+  const consumed = new Set((consumedTokens || []).filter(Boolean));
+  if (consumed.size === 0) return;
+  recentRotations.delete(userId);
+  recentRotations.set(userId, { consumed, tokens, expiresAt: Date.now() + ROTATION_MEMO_TTL_MS });
+  while (recentRotations.size > ROTATION_MEMO_MAX_ENTRIES) {
+    const oldest = recentRotations.keys().next();
+    if (oldest.done) break;
+    recentRotations.delete(oldest.value);
+  }
+}
+
+function readRecentRotation(userId, presentedRefreshToken) {
+  const entry = recentRotations.get(userId);
+  if (!entry) return null;
+  if (entry.expiresAt <= Date.now()) {
+    recentRotations.delete(userId);
+    return null;
+  }
+  return entry.consumed.has(presentedRefreshToken) ? entry.tokens : null;
+}
+
+/**
+ * Forget a user's last rotation. Called wherever the stored tokens stop being
+ * what this process thinks they are — the same contract as
+ * `invalidateCachedAuth`, and for the same reason.
+ */
+export function forgetRecentRotation(userId) {
+  if (userId != null) recentRotations.delete(userId);
+}
+
+/** Drop every remembered rotation. Tests only. */
+export function clearRecentRotations() {
+  recentRotations.clear();
+}
+
 class SoundCloudClient {
   constructor() {
     this.baseUrl = 'https://api.soundcloud.com';
@@ -220,6 +282,13 @@ class SoundCloudClient {
     // No user context => nothing to collide on (and nothing to persist).
     if (!userId) return this._refreshAndPersistNow(refreshToken, null);
 
+    // Sequential case: an earlier call in this same request (or one a moment
+    // ago) already spent this exact refresh token. Presenting it again would
+    // be answered `invalid_grant`, which upstream is indistinguishable from a
+    // revoked grant. Hand back what that exchange produced instead.
+    const alreadyRotated = readRecentRotation(userId, refreshToken);
+    if (alreadyRotated) return alreadyRotated;
+
     const existing = inFlightRefreshes.get(userId);
     if (existing) return existing;
 
@@ -235,58 +304,214 @@ class SoundCloudClient {
 
   /** The original, un-deduplicated refresh+persist. Do not call directly. */
   async _refreshAndPersistNow(refreshToken, userId) {
+    if (!userId) {
+      // Refuse, rather than exchange and throw the result away.
+      //
+      // A context-free refresh can only ever strand the caller. The exchange
+      // rotates the refresh token upstream, there is no userId to persist the
+      // replacement against, and the row is left holding a token SoundCloud
+      // has already consumed. The user's next request presents it, is refused
+      // with invalid_grant, and — because the stored token really IS the one
+      // presented — `_resolveInvalidGrant` correctly concludes "revoked" and
+      // deletes their tokens. So the quiet version of this turns into an
+      // account teardown one request later, which is how it reached a
+      // Critical: `growth-scheduler.js` ran from a boot-time timer with no
+      // AsyncLocalStorage store and did exactly this, daily.
+      //
+      // The old behaviour exchanged first and warned afterwards
+      // ("Token refresh completed without user context; refreshed tokens were
+      // not persisted"), then carried on. That line is what to grep for in
+      // logs predating this change — it means somebody was stranded.
+      //
+      // Every SoundCloud caller either runs inside `authenticateUser` (which
+      // opens the context) or must open one itself with `runWithTokenContext`.
+      logger.warn('Token refresh without user context: refusing the exchange, because the refreshed tokens could not be persisted');
+      throw new Error('Token refresh failed: no user context');
+    }
+
     let newTokens;
     try {
       newTokens = await this.refreshTokens(refreshToken);
     } catch (error) {
-      // SoundCloud says the grant is gone — the user revoked us from their
-      // account settings, or the refresh token was invalidated upstream. The
-      // stored pair is dead weight and every later request would 401 against
-      // it, so tear the connection down now. No signOut: there is nothing
-      // left to sign out of.
+      // `invalid_grant` is what SoundCloud says about a revoked grant AND what
+      // it says about a refresh token that has simply already been spent. Only
+      // one of those should destroy the connection, so ask which it is.
       if (error?.invalidGrant && userId) {
-        try {
-          // Dynamic import: account-lifecycle imports signOut from this
-          // module, so a static import here would close the cycle at
-          // module-evaluation time.
-          const { disconnectUser } = await import('./account-lifecycle.js');
-          await disconnectUser(userId, { reason: 'revoked' });
-        } catch (disconnectError) {
-          logger.error('[account] disconnect after revocation failed:', disconnectError);
-        }
+        const recovered = await this._resolveInvalidGrant(refreshToken, userId);
+        // A pair came back: the token presented was stale, not revoked. Hand it
+        // to the caller so its retry succeeds.
+        if (recovered) return recovered;
       }
       // Rethrow either way: scRequest still converts this into the generic
       // "Token refresh failed" the caller has always seen.
       throw error;
     }
 
-    if (!userId) {
-      logger.warn('Token refresh completed without user context; refreshed tokens were not persisted', {
-        hasAccessToken: Boolean(newTokens.access_token),
-        hasRefreshToken: Boolean(newTokens.refresh_token),
-        expiresIn: newTokens.expires_in,
-      });
-      return newTokens;
-    }
-
-    if (newTokens.access_token && newTokens.refresh_token) {
-      const expiresAt = new Date(Date.now() + ((newTokens.expires_in || 3600) * 1000));
-      await prisma.token.update({
-        where: { userId },
-        data: {
-          encrypted: encrypt(newTokens.access_token, this.encryptionKey),
-          refresh: encrypt(newTokens.refresh_token, this.encryptionKey),
-          expiresAt,
-          updatedAt: new Date(),
-        },
-      });
-      // The auth memo is now holding the tokens we just replaced. SoundCloud
-      // rotates the refresh token on every exchange, so serving the memo after
-      // this point would hand out a refresh token that no longer works.
-      invalidateCachedAuth(userId);
-    }
-
+    await this._persistRefreshedTokens(userId, newTokens, [refreshToken]);
     return newTokens;
+  }
+
+  /**
+   * Store a freshly exchanged pair and tell the rest of the process about it.
+   *
+   * `consumedTokens` are the refresh tokens this exchange spent. Each one is
+   * now dead upstream, so a later caller that presents one is served from the
+   * rotation memo instead of being reported as revoked.
+   */
+  async _persistRefreshedTokens(userId, newTokens, consumedTokens) {
+    if (!userId || !newTokens?.access_token || !newTokens?.refresh_token) return false;
+
+    const expiresAt = new Date(Date.now() + ((newTokens.expires_in || 3600) * 1000));
+    await prisma.token.update({
+      where: { userId },
+      data: {
+        encrypted: encrypt(newTokens.access_token, this.encryptionKey),
+        refresh: encrypt(newTokens.refresh_token, this.encryptionKey),
+        expiresAt,
+        updatedAt: new Date(),
+      },
+    });
+    // The auth memo is now holding the tokens we just replaced. SoundCloud
+    // rotates the refresh token on every exchange, so serving the memo after
+    // this point would hand out a refresh token that no longer works.
+    invalidateCachedAuth(userId);
+    rememberRotation(userId, consumedTokens, newTokens);
+    return true;
+  }
+
+  /**
+   * Read and decrypt the stored token pair. Returns null when there is no row,
+   * or when it cannot be read or decrypted. Never throws.
+   *
+   * "Cannot read" deliberately collapses into the same answer as "no row",
+   * because the only thing this is used for is deciding whether to destroy a
+   * user's connection. That decision must rest on positive evidence; a
+   * database hiccup or a rotated key must never supply it.
+   */
+  async _readStoredTokens(userId) {
+    try {
+      const row = await prisma.token.findUnique({ where: { userId } });
+      if (!row?.refresh) return null;
+      const expiresAt = row.expiresAt ? new Date(row.expiresAt) : null;
+      return {
+        refresh: decrypt(row.refresh, this.encryptionKey),
+        access: row.encrypted ? decrypt(row.encrypted, this.encryptionKey) : null,
+        expiresAt: expiresAt && !Number.isNaN(expiresAt.getTime()) ? expiresAt : null,
+      };
+    } catch {
+      // No identifiers, no ciphertext — just the fact.
+      logger.warn('[auth] could not read the stored token pair while classifying invalid_grant');
+      return null;
+    }
+  }
+
+  /**
+   * SoundCloud refused a refresh token with `invalid_grant`. That means one of
+   * two very different things, and the OAuth error code does not distinguish
+   * them:
+   *
+   *   1. the user revoked this app in SoundCloud's settings — the grant is
+   *      gone and the local connection should be torn down; or
+   *   2. the refresh token presented had simply already been spent. Every
+   *      exchange rotates it, and a route that makes two SoundCloud calls
+   *      hands the same captured pair to both, so the second call presents a
+   *      token the first consumed. Nothing is wrong: the current pair is in
+   *      the database, freshly written.
+   *
+   * Reading (2) as (1) deletes a live user's tokens and starts the
+   * account-deletion clock on an ordinary hourly expiry boundary, so the
+   * database settles it. If the stored refresh token is still the one that was
+   * presented, nothing has rotated and the grant really is gone. If it has
+   * moved on, it is case (2) — and this returns a usable pair so the caller's
+   * retry succeeds rather than failing.
+   *
+   * **This is the load-bearing half of the fix, not the memo.** The memo above
+   * only saves a round trip, and only for a spent token re-presented in this
+   * process inside its TTL; this is what prevents the teardown in every other
+   * case. Do not drop it as redundant.
+   *
+   * **It assumes one worker, and that assumption is a correctness constraint.**
+   * Inside one process the in-flight map holds its entry until the persist has
+   * completed, so a second caller either joins that promise or reads the
+   * rotated row. Across processes there is no such ordering: two instances can
+   * present the same token, the loser reads the row before the winner's
+   * `token.update` lands, sees it still equal to what it presented, and tears
+   * a live user down. `infra/main.bicep` pins `numberOfWorkers: 1`; raising it
+   * needs a database-side guard here first (a compare-and-swap on `refresh`,
+   * or a `rotatedAt` the loser can compare against), not just a bigger memo.
+   *
+   * @returns {Promise<object|null>} tokens to continue with, or null to let the
+   *   original error propagate (including after a genuine disconnect)
+   */
+  async _resolveInvalidGrant(presentedRefreshToken, userId) {
+    const stored = await this._readStoredTokens(userId);
+
+    // Nothing readable to compare against: either the row is already gone (a
+    // disconnect or an account deletion got there first, and re-running the
+    // teardown would only restart the deletion clock) or the database or key
+    // is unavailable. Neither is evidence of a revocation.
+    if (!stored) return null;
+
+    if (stored.refresh === presentedRefreshToken) {
+      // The token presented IS the current one, so nothing rotated it: the
+      // grant is gone. The user revoked us from their account settings, or
+      // SoundCloud invalidated it. The stored pair is dead weight and every
+      // later request would 401 against it, so tear the connection down now.
+      // No signOut: there is nothing left to sign out of.
+      await this._disconnectRevoked(userId);
+      return null;
+    }
+
+    // The stored pair has moved on since this caller captured its copy. That
+    // is the ordinary expiry-boundary shape, not a revocation.
+    logger.warn('[auth] invalid_grant for a superseded refresh token — treated as a spent token, not a revocation');
+
+    if (stored.access && stored.expiresAt
+        && stored.expiresAt.getTime() - Date.now() > ACCESS_TOKEN_SKEW_MS) {
+      // The stored access token still has life in it; no exchange needed.
+      //
+      // Deliberately NOT remembered in the rotation memo. The read above and
+      // this line are separated by an await, so a disconnect can run to
+      // completion in between — delete the row, then `forgetRecentRotation` —
+      // and a memo write here would land *after* the forget, serving a live
+      // pair for a minute against a row that no longer exists. That is the
+      // auth-memo landmine one layer down. What it would have bought is one
+      // saved exchange on a *third* call presenting the same stale token,
+      // which is not worth a write that happens after the only ordering
+      // guarantee has passed. The success-path write in
+      // `_persistRefreshedTokens` is safe by construction: its `token.update`
+      // throws on a missing row before the memo is touched.
+      return {
+        access_token: stored.access,
+        refresh_token: stored.refresh,
+        expires_in: Math.floor((stored.expiresAt.getTime() - Date.now()) / 1000),
+      };
+    }
+
+    // The stored access token has expired too — a long-running job holding one
+    // captured pair for over an hour. One exchange with the CURRENT refresh
+    // token; if that also comes back invalid_grant, the grant really is gone.
+    let refreshed;
+    try {
+      refreshed = await this.refreshTokens(stored.refresh);
+    } catch (retryError) {
+      if (retryError?.invalidGrant) await this._disconnectRevoked(userId);
+      return null;
+    }
+    await this._persistRefreshedTokens(userId, refreshed, [presentedRefreshToken, stored.refresh]);
+    return refreshed;
+  }
+
+  /** Tear the connection down after a confirmed revocation. Never throws. */
+  async _disconnectRevoked(userId) {
+    try {
+      // Dynamic import: account-lifecycle imports signOut from this module, so
+      // a static import here would close the cycle at module-evaluation time.
+      const { disconnectUser } = await import('./account-lifecycle.js');
+      await disconnectUser(userId, { reason: 'revoked' });
+    } catch (disconnectError) {
+      logger.error('[account] disconnect after revocation failed:', disconnectError);
+    }
   }
 
   /**

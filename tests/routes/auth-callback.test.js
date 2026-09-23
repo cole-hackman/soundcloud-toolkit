@@ -28,6 +28,8 @@ jest.unstable_mockModule('../../server/lib/soundcloud-client.js', () => ({
   fetchWithTimeout: jest.fn(async () => ({ ok: false, status: 503 })),
   // routes/auth.js imports signOut for the disconnect/delete paths.
   signOut: jest.fn(async () => true),
+  // account-lifecycle.js drops the rotation memo alongside the auth memo.
+  forgetRecentRotation: jest.fn(),
 }));
 jest.unstable_mockModule('../../server/lib/analytics.js', () => ({
   logOperation: jest.fn(),

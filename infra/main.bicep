@@ -216,6 +216,18 @@ resource webApp 'Microsoft.Web/sites@2023-12-01' = {
       minTlsVersion: '1.2'
       ftpsState: 'Disabled'
       healthCheckPath: '/health'
+      // One worker, deliberately. Two things break at more than one:
+      //   - the library cache's invalidation marks are per-process
+      //     (server/lib/social-cache.js), so a second instance can republish a
+      //     pre-mutation snapshot as 'complete';
+      //   - the revocation classifier in server/lib/soundcloud-client.js
+      //     decides "revoked" by comparing the presented refresh token to the
+      //     stored one, and only the in-process refresh mutex guarantees the
+      //     row has been updated first. Across processes the loser of a
+      //     simultaneous refresh reads a pre-update row and disconnects a live
+      //     user, which starts the six-day account-deletion clock.
+      // The second one destroys accounts, so raising this needs a
+      // database-side guard on the rotation first — not just more memory.
       numberOfWorkers: 1
       appSettings: [
         // Code is built by the GitHub Actions workflow and shipped as a zip

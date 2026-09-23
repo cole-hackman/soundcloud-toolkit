@@ -22,7 +22,7 @@ model User {
   lastLoginAt    DateTime?
   /// Set when the user disconnects (POST /api/auth/disconnect) or when
   /// SoundCloud reports the authorization revoked. Tokens are already gone by
-  /// then; the row itself is purged a week later by the retention job.
+  /// then; the row itself is purged six days later by the retention job.
   disconnectedAt DateTime?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt

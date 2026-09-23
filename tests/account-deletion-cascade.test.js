@@ -29,6 +29,11 @@ describe('account deletion cascade coverage', () => {
     expect(models.length).toBeGreaterThan(5);
   });
 
+  // Same scope note as tests/routes/export.test.js, which parses the schema
+  // the same way: this recognises the one relation spelling today's models
+  // use. A per-user table whose foreign key is named something other than
+  // `userId`, or reached only through a join table, is invisible to both. Widen
+  // them together if that ever changes.
   const userRelated = models.filter(
     model => model.name !== 'User' && /@relation\(fields:\s*\[userId\]/.test(model.body)
   );

@@ -13,6 +13,7 @@ const userUpdate = jest.fn().mockResolvedValue({});
 const tokenDeleteMany = jest.fn().mockResolvedValue({ count: 1 });
 const dropSnapshots = jest.fn().mockResolvedValue(undefined);
 const signOut = jest.fn().mockResolvedValue(true);
+const forgetRecentRotation = jest.fn();
 
 jest.unstable_mockModule('../../server/lib/prisma.js', () => ({
   default: {
@@ -24,6 +25,7 @@ jest.unstable_mockModule('../../server/lib/soundcloud-client.js', () => ({
   soundcloudClient: {},
   fetchWithTimeout: jest.fn(async () => ({ ok: false, status: 503 })),
   signOut,
+  forgetRecentRotation,
 }));
 jest.unstable_mockModule('../../server/lib/analytics.js', () => ({
   logOperation: jest.fn(),
@@ -73,14 +75,43 @@ beforeEach(async () => {
   tokenDeleteMany.mockClear();
   dropSnapshots.mockClear();
   signOut.mockClear();
+  forgetRecentRotation.mockClear();
   clearAuthCache();
 });
 
 describe('DELETE /api/auth/account', () => {
+  test('the auth memo is dropped, through the route', async () => {
+    // The memo holds DECRYPTED tokens for 30s. If the route stops dropping it,
+    // a request arriving inside that window keeps serving credentials — and
+    // writing rows — for an account whose row is already gone.
+    //
+    // This asserts the ROUTE's behaviour deliberately. Until now the coverage
+    // was a comment pointing at tests/routes/auth-cache.test.js, which calls
+    // invalidateCachedAuth() by hand: removing the call from the route left
+    // every one of those tests green.
+    setCachedAuth('user-1', {
+      user: { id: 'user-1' },
+      accessToken: 'live-access-token',
+      refreshToken: 'live-refresh-token',
+    });
+    setCachedAuth('user-2', { user: { id: 'user-2' }, accessToken: 'x', refreshToken: 'y' });
+    expect(getCachedAuth('user-1')).toBeDefined();
+
+    const res = await request(app).delete('/api/auth/account').send({ confirm: 'DELETE' });
+
+    expect(res.status).toBe(200);
+    expect(getCachedAuth('user-1')).toBeUndefined();
+    // A bystander's memo is untouched — the drop is keyed, not a flush.
+    expect(getCachedAuth('user-2')).toBeDefined();
+    // The refresh path's rotation memo holds a plaintext pair for a minute for
+    // the same reason and is dropped by the same route.
+    expect(forgetRecentRotation).toHaveBeenCalledWith('user-1');
+  });
+
   test('nothing about the user survives in process memory', async () => {
     // Populate every in-process structure the deletion path is responsible
-    // for: the library memo and the invalidation marks. (The auth memo is
-    // covered by tests/routes/auth-cache.test.js.)
+    // for: the library memo and the invalidation marks. (The auth memo has its
+    // own test above, through this route.)
     requestCache.set('likes', 'user-1', 'default', { collection: [1] }, 60_000);
     invalidateUserCollections('user-1', ['likes', 'playlists']);
     invalidateUserCollections('user-2', ['likes']);         // a bystander
@@ -176,6 +207,9 @@ describe('POST /api/auth/disconnect', () => {
       expect(res.status).toBe(500);
       expect(tokenDeleteMany).toHaveBeenCalled();
       expect(getCachedAuth('user-1')).toBeUndefined();
+      // The rotation memo in soundcloud-client.js is the same landmine one
+      // layer down, and is dropped in the same finally.
+      expect(forgetRecentRotation).toHaveBeenCalledWith('user-1');
     } finally {
       quiet.mockRestore();
     }

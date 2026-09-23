@@ -1010,6 +1010,11 @@ export const validateFeedbackPatch = [
     .withMessage('id must be between 1 and 64 characters'),
   body('status')
     .optional()
+    // .isString() FIRST, as everywhere else in this file: express-validator 7
+    // applies a validator element-wise to an array, so `{ status: ['new'] }`
+    // satisfies .isIn() and then reaches Prisma as an array.
+    .isString()
+    .withMessage('status must be a string')
     .isIn(FEEDBACK_STATUSES)
     .withMessage(`status must be one of: ${FEEDBACK_STATUSES.join(', ')}`),
   body('adminNote')

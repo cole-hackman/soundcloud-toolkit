@@ -3,6 +3,7 @@ import logger from './logger.js';
 import { decrypt } from './crypto.js';
 import { safeError } from './safe-error.js';
 import { sleep } from './pacing.js';
+import { runWithTokenContext } from './token-context.js';
 
 const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000; // daily
 const INITIAL_DELAY_MS = 5 * 60 * 1000; // let the server settle first
@@ -58,7 +59,28 @@ export async function runScheduledFollowbackChecks(soundcloudClient) {
       const refreshToken = decrypt(token.refresh, process.env.ENCRYPTION_KEY);
 
       if (hasFetchedFollowers) await sleep(USER_CHECK_DELAY_MS);
-      const followers = await soundcloudClient.getFollowers(accessToken, refreshToken);
+      // The token context is not optional here, and it is the whole reason
+      // this line looks the way it does.
+      //
+      // This job runs from a boot-time timer, so there is no request and no
+      // AsyncLocalStorage store — `authenticateUser` is the only other place
+      // that opens one. Without it, a 401 inside `getFollowers` reaches
+      // `refreshTokensAndPersist` with no userId: SoundCloud rotates the
+      // refresh token, there is nobody to persist the replacement against,
+      // and the row is left holding a token SoundCloud has already consumed.
+      // The user's next request presents it, is refused with invalid_grant,
+      // and — because the stored token really is the one presented —
+      // `_resolveInvalidGrant` correctly concludes "revoked" and deletes
+      // their tokens, stamping the six-day deletion clock. A daily job
+      // against users whose access token is almost always expired made that
+      // the common case, not an edge one.
+      //
+      // With the context, the refresh persists exactly as it would in a
+      // request. `_refreshAndPersistNow` now also refuses a context-free
+      // exchange outright, so a future caller that forgets this fails loudly
+      // instead of stranding somebody.
+      const followers = await runWithTokenContext({ userId }, () =>
+        soundcloudClient.getFollowers(accessToken, refreshToken));
       hasFetchedFollowers = true;
       const followerIds = new Set(followers.map((f) => f.id));
 

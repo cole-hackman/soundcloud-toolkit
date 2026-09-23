@@ -157,8 +157,9 @@ export default function AccountPage() {
           <p className="mt-2 text-sm text-muted-foreground">
             One file with everything keyed to your account: your account record,
             your operation history, your growth history, your feedback, your
-            cached library pages, and any survey answers you gave. Your
-            SoundCloud tokens are not in it — they never leave the server.
+            cached library pages, your indexed library and any library chats,
+            and any survey answers you gave. Your SoundCloud tokens are not in
+            it — they never leave the server.
           </p>
           <Button
             onClick={handleDownload}

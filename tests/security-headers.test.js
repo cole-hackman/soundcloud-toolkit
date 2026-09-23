@@ -70,7 +70,15 @@ describe('Content-Security-Policy directives', () => {
     const hosts = cspDirectives.connectSrc.filter((source) => source.includes('//'));
     expect(hosts.length).toBeGreaterThan(0);
     for (const source of hosts) {
-      expect(source).toMatch(/soundcloud\.com|localhost/);
+      // Match on the parsed HOSTNAME, not on the source string. An unanchored
+      // substring test passes `https://api.soundcloud.com.evil.example`, which
+      // is a different site entirely. CSP allows a `:*` port wildcard, which
+      // is not a legal URL port, so drop it before parsing.
+      const { hostname } = new URL(source.replace(/:\*(?=$|\/)/, ''));
+      expect({ source, hostname }).toEqual({
+        source,
+        hostname: expect.stringMatching(/^(([\w-]+\.)*soundcloud\.com|localhost)$/),
+      });
     }
   });
 

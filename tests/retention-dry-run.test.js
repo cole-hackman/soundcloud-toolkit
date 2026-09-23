@@ -2,22 +2,49 @@
  * RETENTION_DRY_RUN — the sweep that counts and writes nothing.
  *
  * Why this exists as its own suite rather than a case in retention.test.js:
- * the property under test is negative ("no write happens"), and the only
- * honest way to assert a negative is to give the mocked client EVERY mutating
- * method it has and check that none of them was called. That means a client
- * mock built from a list of method names, which is a different shape from the
- * per-step mocks the main suite uses for its cutoff assertions.
+ * the property under test is negative ("no write happens"), and a negative is
+ * only worth asserting if the observation covers writes nobody has thought of
+ * yet. That needs a differently-shaped client mock from the per-step ones the
+ * main suite uses for its cutoff assertions.
  *
- * The list below is the contract: add a mutating call anywhere in
- * `runRetentionOnce` without adding it here and the "nothing was written"
- * assertion is silently weaker. `MUTATING` is checked against the mock's own
- * surface in the first test so a typo cannot quietly drop an entry.
+ * **The mock is a Proxy, and that is the entire point.** An earlier version
+ * built a plain object out of the `MUTATING` list below and asserted none of
+ * those nine was called. It passed — 54/54 green — while a rogue
+ * `prisma.user.delete(...)`, `prisma.rebrandVote.deleteMany({})`,
+ * `prisma.metric.deleteMany({})` or
+ * `prisma.$executeRaw(Prisma.sql\`DELETE FROM users\`)` fired under the flag,
+ * because the mock simply had no such property, the call threw a `TypeError`
+ * inside `runStep`, and `runStep` swallows it by design. Four real writes,
+ * silently uncovered, on the one job in this codebase that deletes user
+ * accounts. (The old "the list matches the mock surface" test could not catch
+ * it either: the mock was *built from* the list, so it compared a list to
+ * itself.)
+ *
+ * The Proxy answers every property on every delegate, known or not, and
+ * `recordCall` pushes onto `writes` whenever the method name looks like a
+ * write. So "nothing was written" now means what it says: any `delete*`,
+ * `update*`, `upsert`, `create*`, `$executeRaw*` or `$transaction`, on any
+ * delegate, fails the suite — including ones this file has never heard of.
+ *
+ * `MUTATING` and `READING` survive because the tests need real `jest.fn()`s
+ * with canned return values for the calls the job makes *today*; they are no
+ * longer the boundary of what is observed.
  */
 import { jest } from '@jest/globals';
 
 const NOW = Date.parse('2026-09-22T12:00:00.000Z');
 
-/** Every write the job can issue, as `<delegate>.<method>`. */
+/**
+ * Method names that write. Deliberately prefix-matched and deliberately
+ * generous: `deleteMany`, `updateManyAndReturn`, `createManyAndReturn`,
+ * `upsert` and anything else Prisma adds starting the same way are all
+ * covered without this list being revisited. A read misclassified as a write
+ * would be a loud false failure; a write misclassified as a read is the
+ * silent one, so the bias runs this way on purpose.
+ */
+const WRITE_METHOD = /^(delete|update|upsert|create|\$executeRaw|\$transaction)/;
+
+/** Every write the job issues **today**, as `<delegate>.<method>`. */
 const MUTATING = [
   'libraryCachePage.deleteMany',
   'libraryCacheState.deleteMany',
@@ -43,13 +70,53 @@ const READING = [
   'metric.findUnique',
 ];
 
-const prismaMock = {};
+/** Declared spies, so the tests can set return values and assert call counts. */
+const declared = {};
 for (const path of [...MUTATING, ...READING]) {
   const [delegate, method] = path.split('.');
-  prismaMock[delegate] ??= {};
-  prismaMock[delegate][method] = jest.fn();
+  declared[delegate] ??= {};
+  declared[delegate][method] = jest.fn();
 }
-prismaMock.$queryRaw = jest.fn();
+declared.$queryRaw = jest.fn();
+
+/** `<delegate>.<method>` for every write reaching the client this run. */
+let writes = [];
+
+/**
+ * Wraps one client method so the call is recorded before it is delegated.
+ * Undeclared methods still answer — with `undefined` — because the point is
+ * to observe the call, not to make the rogue step succeed.
+ */
+function recordCall(delegate, method, spy) {
+  return (...args) => {
+    if (WRITE_METHOD.test(method)) writes.push(`${delegate}.${method}`);
+    return spy ? spy(...args) : undefined;
+  };
+}
+
+const delegateCache = new Map();
+function delegateFor(name) {
+  if (!delegateCache.has(name)) {
+    delegateCache.set(name, new Proxy(declared[name] ?? {}, {
+      get: (target, method) =>
+        (typeof method === 'string' ? recordCall(name, method, target[method]) : target[method]),
+      // `prisma.feedback` is probed for existence before use; every delegate
+      // has to look present, or that guard changes behaviour under test.
+      has: () => true,
+    }));
+  }
+  return delegateCache.get(name);
+}
+
+const prismaMock = new Proxy({}, {
+  get(_target, prop) {
+    if (typeof prop !== 'string') return undefined;
+    // Top-level client methods: `$queryRaw` reads, `$executeRaw` writes.
+    if (prop.startsWith('$')) return recordCall('prisma', prop, declared[prop]);
+    return delegateFor(prop);
+  },
+  has: () => true,
+});
 
 jest.unstable_mockModule('../server/lib/prisma.js', () => ({ default: prismaMock }));
 
@@ -60,13 +127,15 @@ const infoSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
 const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
 afterAll(() => { infoSpy.mockRestore(); errorSpy.mockRestore(); });
 
+/** The underlying spy, not the recording wrapper — assertions need the spy. */
 const at = (path) => {
   const [delegate, method] = path.split('.');
-  return prismaMock[delegate][method];
+  return declared[delegate][method];
 };
 const logLines = () => infoSpy.mock.calls.map((c) => c.join(' '));
 
 beforeEach(() => {
+  writes = [];
   for (const path of MUTATING) at(path).mockReset().mockResolvedValue({ count: 99 });
   // Distinct counts so a log line can be traced back to the step that wrote it.
   const counts = {
@@ -81,31 +150,47 @@ beforeEach(() => {
   };
   for (const [path, value] of Object.entries(counts)) at(path).mockReset().mockResolvedValue(value);
   at('metric.findUnique').mockReset().mockResolvedValue(null);
-  prismaMock.$queryRaw.mockReset().mockResolvedValue([{ count: 3 }]);
+  declared.$queryRaw.mockReset().mockResolvedValue([{ count: 3 }]);
   infoSpy.mockClear();
   errorSpy.mockClear();
   delete process.env.RETENTION_DRY_RUN;
 });
 
 describe('RETENTION_DRY_RUN', () => {
-  test('the mutating list matches the mock surface, so "nothing was written" is exhaustive', () => {
-    const onMock = [];
-    for (const [delegate, methods] of Object.entries(prismaMock)) {
-      if (typeof methods !== 'object') continue;
-      for (const method of Object.keys(methods)) {
-        if (/^(delete|update|upsert|create)/.test(method)) onMock.push(`${delegate}.${method}`);
-      }
-    }
-    expect(onMock.sort()).toEqual([...MUTATING].sort());
+  /**
+   * These four are the exact shapes that used to pass unnoticed: a write on a
+   * method this file does not declare, on a delegate it does not declare, and
+   * a raw-SQL delete. They are exercised against the mock directly rather
+   * than through a sabotaged `retention.js`, so the guarantee is pinned here
+   * where someone adding a tenth step will read it.
+   */
+  test.each([
+    ['an undeclared method on a declared delegate', () => prismaMock.user.delete({ where: { id: 'x' } }), 'user.delete'],
+    ['an undeclared delegate entirely', () => prismaMock.rebrandVote.deleteMany({}), 'rebrandVote.deleteMany'],
+    ['a delete on the metrics delegate', () => prismaMock.metric.deleteMany({}), 'metric.deleteMany'],
+    ['raw SQL', () => prismaMock.$executeRaw`DELETE FROM users`, 'prisma.$executeRaw'],
+    ['a transaction', () => prismaMock.$transaction([]), 'prisma.$transaction'],
+    ['a create', () => prismaMock.operationLog.create({ data: {} }), 'operationLog.create'],
+  ])('the observer catches %s', (_label, call, expected) => {
+    call();
+    expect(writes).toEqual([expected]);
+  });
+
+  test('reads are not recorded as writes', () => {
+    prismaMock.user.count({});
+    prismaMock.user.findMany({});
+    prismaMock.$queryRaw`SELECT 1`;
+    prismaMock.someFutureDelegate.aggregate({});
+    expect(writes).toEqual([]);
   });
 
   test('issues NO write at all', async () => {
     process.env.RETENTION_DRY_RUN = 'true';
     await runRetentionOnce(NOW);
 
-    // Named as a list rather than asserted one-by-one so a failure says which
-    // write escaped, not merely that one did.
-    expect(MUTATING.filter((path) => at(path).mock.calls.length > 0)).toEqual([]);
+    // `writes` is what the Proxy recorded, so a failure names the escaped
+    // call — including one on a delegate or method this file never declared.
+    expect(writes).toEqual([]);
   });
 
   test('still performs every count, so the numbers are real', async () => {
@@ -163,7 +248,7 @@ describe('RETENTION_DRY_RUN', () => {
   test('the lifetime metric is computed but not stored', async () => {
     process.env.RETENTION_DRY_RUN = 'true';
     const results = await runRetentionOnce(NOW);
-    expect(prismaMock.$queryRaw).toHaveBeenCalled();
+    expect(declared.$queryRaw).toHaveBeenCalled();
     expect(at('metric.upsert')).not.toHaveBeenCalled();
     expect(results['lifetime-users-metric']).toBe(3);
   });
@@ -177,7 +262,7 @@ describe('RETENTION_DRY_RUN', () => {
     expect(results['operation-logs']).toBeNull();
     // The steps after it still ran.
     expect(results['catalog-gone-metadata']).toBe(9);
-    expect(MUTATING.filter((path) => at(path).mock.calls.length > 0)).toEqual([]);
+    expect(writes).toEqual([]);
   });
 
   test('without the flag the sweep writes normally — the guard is the flag, not the refactor', async () => {
@@ -246,6 +331,6 @@ describe('RETENTION_DRY_RUN at boot', () => {
     for (let i = 0; i < 60; i++) await Promise.resolve();
 
     expect(logLines().some((l) => l.includes('DRY RUN complete'))).toBe(true);
-    expect(MUTATING.filter((path) => at(path).mock.calls.length > 0)).toEqual([]);
+    expect(writes).toEqual([]);
   });
 });

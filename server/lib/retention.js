@@ -29,8 +29,14 @@
  * enable" was the intended first-production-run procedure and there was no way
  * to actually do it — RETENTION_ENABLED=false schedules nothing, so it
  * produces silence, which reads exactly like "nothing to delete".
- * tests/retention-dry-run.test.js fails if any mutating client method is
- * reached while the flag is set.
+ * tests/retention-dry-run.test.js mocks the client with a Proxy that records
+ * every call whose method starts with delete/update/upsert/create, plus
+ * $executeRaw and $transaction, on ANY delegate — declared by that file or
+ * not — and fails if the set is non-empty under the flag. That phrasing is
+ * load-bearing: the first version listed nine method names and a rogue
+ * user.delete, rebrandVote.deleteMany, metric.deleteMany or $executeRaw
+ * DELETE all left it green, because the mock had no such property and runStep
+ * swallows the TypeError.
  *
  * Windows (env-overridable where the brief calls for it):
  *   library cache   CACHE_TTL_DAYS         7 days
@@ -210,10 +216,16 @@ async function snapshotLifetimeUsers(dryRun = false) {
  * Delete users matching `where`, announcing the size of the sweep first.
  *
  * The count is not decoration. These deletes cascade across every per-user
- * table and are irreversible, so the first production run needs to be
- * reviewable from the logs alone — `will remove N users` before the fact is
- * what makes an unexpectedly large sweep visible rather than merely done.
- * The extra COUNT is negligible against an indexed range scan.
+ * table and are irreversible, so an unexpectedly large sweep has to be
+ * visible in the log as something other than its own aftermath. The extra
+ * COUNT is negligible against an indexed range scan.
+ *
+ * It is a running commentary, not a preview — the line is written
+ * microseconds before the delete, in the same pass, so by the time anyone
+ * reads it the rows are gone. Seeing the numbers *before* they are acted on
+ * is RETENTION_DRY_RUN's job (file header), which is why `count` and `mutate`
+ * below both emit the identical line: the dry run's log is the real sweep's
+ * log, not a differently-worded approximation of it.
  */
 async function sweepUsers(name, where, results, dryRun) {
   await purgeStep(name, {
@@ -395,7 +407,13 @@ export function startRetentionScheduler() {
     // nothing.
     logger.info(
       '[retention] Disabled via RETENTION_ENABLED=false — no run, and therefore no counts. ' +
-      'Use RETENTION_DRY_RUN=true to see what a sweep would remove.',
+      (isRetentionDryRun()
+        // Both set. Disabled wins, which is the right precedence — but the
+        // operator has asked for a preview and is about to get silence, so
+        // say which flag is the one in the way.
+        ? 'RETENTION_DRY_RUN=true is also set and has no effect while this is false: ' +
+          'unset RETENTION_ENABLED to let the dry run happen.'
+        : 'Use RETENTION_DRY_RUN=true to see what a sweep would remove.'),
     );
     return null;
   }

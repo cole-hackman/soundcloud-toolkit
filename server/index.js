@@ -21,8 +21,9 @@ BigInt.prototype.toJSON = function () {
 import { apiRateLimiter, authRateLimiter, heavyOperationRateLimiter, healthCheckRateLimiter } from './middleware/rateLimiter.js';
 import { securityHeaders, preventKeyLeakage, validateEnv, rejectUntrustedOrigin } from './middleware/security.js';
 import { legacyHostRedirect } from './middleware/legacy-redirect.js';
+import { mountStaticSite } from './lib/static-site.js';
 import logger from './lib/logger.js';
-import { safeError } from './lib/safe-error.js';
+import { errorHandler } from './middleware/errorHandler.js';
 import { createScMetrics } from './lib/token-context.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -126,6 +127,7 @@ app.use('/api', rejectUntrustedOrigin);
 import authRoutes from './routes/auth.js';
 import { soundcloudClient } from './lib/soundcloud-client.js';
 import { startGrowthScheduler } from './lib/growth-scheduler.js';
+import { startRetentionScheduler } from './lib/retention.js';
 import apiRoutes from './routes/api.js';
 import growthRoutes from './routes/growth.js';
 import adminRoutes from './routes/admin.js';
@@ -158,41 +160,15 @@ app.get('/health', healthCheckRateLimiter, (req, res) => {
 // Serve Next.js static export in production
 if (existsSync(FRONTEND_BUILD_PATH)) {
   logger.info(`Serving frontend from ${FRONTEND_BUILD_PATH}`);
-  
-  // Serve static files from Next.js build
-  app.use(express.static(FRONTEND_BUILD_PATH, {
-    maxAge: '1d',
-    etag: true,
-  }));
-  
-  // Handle client-side routing - serve index.html for non-API routes
-  app.get('*', (req, res, next) => {
-    // Skip API routes
-    if (req.path.startsWith('/api/') || req.path === '/health') {
-      return next();
-    }
-    
-    // Try to serve the specific page's HTML file (Next.js static export creates folder/index.html)
-    const pagePath = req.path.endsWith('/') ? req.path : req.path + '/';
-    const htmlFile = join(FRONTEND_BUILD_PATH, pagePath, 'index.html');
-    
-    if (existsSync(htmlFile)) {
-      return res.sendFile(htmlFile);
-    }
-    
-    // Try exact path with .html extension
-    const exactHtmlFile = join(FRONTEND_BUILD_PATH, req.path + '.html');
-    if (existsSync(exactHtmlFile)) {
-      return res.sendFile(exactHtmlFile);
-    }
-    
-    // Fallback to root index.html for client-side routing
-    const rootIndex = join(FRONTEND_BUILD_PATH, 'index.html');
-    if (existsSync(rootIndex)) {
-      return res.sendFile(rootIndex);
-    }
-    
-    next();
+
+  // Retired paths -> the page that replaced them. 301 (not a client-side
+  // redirect) so search engines and old bookmarks converge on the new URL.
+  mountStaticSite(app, FRONTEND_BUILD_PATH, {
+    aliases: {
+      '/sc-toolkit': '/faq/#rebrand',
+      '/soundcloud-toolkit': '/faq/#rebrand',
+      '/rebrand': '/faq/#rebrand',
+    },
   });
 } else {
   logger.info(`Frontend build not found at ${FRONTEND_BUILD_PATH} - API only mode`);
@@ -214,28 +190,7 @@ if (existsSync(FRONTEND_BUILD_PATH)) {
 }
 
 // Error handling middleware
-app.use((err, req, res, next) => {
-  logger.error('Unhandled error:', safeError(err));
-  
-  // Sanitize error message to prevent information leakage
-  let errorMessage = 'Something went wrong';
-  if (process.env.NODE_ENV === 'development') {
-    // In development, show error but sanitize secrets
-    const msg = String(err.message || '');
-    // Remove potential secrets from error messages
-    errorMessage = msg
-      .replace(/client_secret[=:]\S+/gi, 'client_secret=***')
-      .replace(/secret[=:]\S+/gi, 'secret=***')
-      .replace(/token[=:]\S+/gi, 'token=***')
-      .replace(/key[=:]\S+/gi, 'key=***')
-      .replace(/password[=:]\S+/gi, 'password=***');
-  }
-  
-  res.status(err.status || 500).json({ 
-    error: 'Internal server error',
-    message: errorMessage
-  });
-});
+app.use(errorHandler);
 
 // 404 handler for API routes only
 app.use('/api/*', (req, res) => {
@@ -246,4 +201,8 @@ app.listen(PORT, () => {
   logger.info(`Server running on port ${PORT}`);
   logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`);
   startGrowthScheduler(soundcloudClient);
+  // Enforces the stated retention windows (library cache, disconnected and
+  // dormant accounts, operation logs, growth history, feedback, catalog
+  // metadata for tracks deleted upstream). RETENTION_ENABLED=false to disable.
+  startRetentionScheduler();
 });

@@ -1,9 +1,11 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { ErrorBoundary } from "react-error-boundary";
 import { useAuth } from "@/contexts/AuthContext";
 import { LoadingSpinner } from "@/components/ui";
+import { AppErrorFallback } from "@/components/AppErrorFallback";
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -12,6 +14,7 @@ interface AppLayoutProps {
 export function AppLayout({ children }: AppLayoutProps) {
   const { isAuthenticated, loading } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
 
   // Children must NOT mount during the static export prerender. Several pages
   // call useSuspenseQuery at the top level; mounting them on the server makes
@@ -50,7 +53,15 @@ export function AppLayout({ children }: AppLayoutProps) {
     return null;
   }
 
-  return <>{children}</>;
+  return (
+    // resetKeys={[pathname]} clears a caught error on client-side
+    // navigation — without it, a page that throws once keeps showing the
+    // fallback for every route visited afterward, since ErrorBoundary only
+    // resets on its own explicit action, not on navigation.
+    <ErrorBoundary FallbackComponent={AppErrorFallback} resetKeys={[pathname]}>
+      {children}
+    </ErrorBoundary>
+  );
 }
 
 export default AppLayout;

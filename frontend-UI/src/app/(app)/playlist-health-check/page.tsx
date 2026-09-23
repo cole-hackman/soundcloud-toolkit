@@ -6,6 +6,7 @@ import { ArrowLeft, Stethoscope, Music, AlertTriangle, CheckCircle, Trash2 } fro
 import {
   Button,
   BulkReviewDetails,
+  Card,
   ConfirmDialog,
   EmptyState,
   InlineAlert,
@@ -13,6 +14,7 @@ import {
   PageContainer,
   PageHeader,
   Skeleton,
+  useAnnounce,
 } from "@/components/ui";
 import { apiFetch } from "@/lib/api";
 import {
@@ -20,6 +22,7 @@ import {
   usePlaylistDetailQuery,
   usePlaylistsQuery,
 } from "@/lib/queries";
+import { asArray } from "@/lib/api-shape";
 
 interface Playlist {
   id: number;
@@ -43,6 +46,7 @@ type HealthFilter = "all" | "healthy" | "issues";
 
 export default function PlaylistHealthCheckPage() {
   const queryClient = useQueryClient();
+  const announce = useAnnounce();
   const [selectedPlaylist, setSelectedPlaylist] = useState<Playlist | null>(null);
   const [tracks, setTracks] = useState<Track[]>([]);
   const [saving, setSaving] = useState(false);
@@ -54,7 +58,7 @@ export default function PlaylistHealthCheckPage() {
   const playlistDetailQuery = usePlaylistDetailQuery(selectedPlaylist?.id ?? 0, {
     enabled: selectedPlaylist != null,
   });
-  const playlists = (playlistsQuery.data?.collection || []) as unknown as Playlist[];
+  const playlists = asArray<Playlist>(playlistsQuery.data?.collection);
   const loading = playlistsQuery.isLoading;
   const loadingTracks = selectedPlaylist != null && playlistDetailQuery.isLoading;
 
@@ -71,7 +75,7 @@ export default function PlaylistHealthCheckPage() {
     }
 
     if (playlistDetailQuery.data) {
-      setTracks((playlistDetailQuery.data.tracks || []) as unknown as Track[]);
+      setTracks(asArray<Track>(playlistDetailQuery.data.tracks));
     }
   }, [playlistDetailQuery.data, playlistDetailQuery.isError]);
 
@@ -103,6 +107,25 @@ export default function PlaylistHealthCheckPage() {
   const issueCount = tracks.length - healthyCount;
   const healthPercent = tracks.length > 0 ? Math.round((healthyCount / tracks.length) * 100) : 100;
 
+  // The percentage and the bar were the only carriers of the verdict, and both
+  // said it in colour. The word is the state; the colour is emphasis.
+  const verdict =
+    healthPercent === 100 ? "Healthy" : healthPercent >= 80 ? "Needs attention" : "Unhealthy";
+  const VerdictIcon = healthPercent === 100 ? CheckCircle : AlertTriangle;
+  const verdictTone =
+    healthPercent === 100
+      ? "text-success-text"
+      : healthPercent >= 80
+        ? "text-warning-text"
+        : "text-destructive-text";
+
+  // A scan is one request with no progress to report, so the result is what
+  // gets spoken — otherwise the whole outcome is a silent repaint.
+  useEffect(() => {
+    if (loadingTracks || tracks.length === 0) return;
+    announce(`${healthyCount} of ${tracks.length} tracks healthy — ${verdict}.`);
+  }, [loadingTracks, tracks.length, healthyCount, verdict, announce]);
+
   const filteredTracks = useMemo(() => {
     if (filter === "healthy") return healthyTracks;
     if (filter === "issues") return tracks.filter((t) => !isHealthy(t));
@@ -130,11 +153,12 @@ export default function PlaylistHealthCheckPage() {
       if (response.ok) {
         await invalidatePlaylistCaches(queryClient, selectedPlaylist.id);
         setTracks(healthyTracks);
-        setNotice({
-          type: "success",
-          text: `Removed ${removedCount} unavailable track${removedCount === 1 ? "" : "s"}.`,
-        });
+        const done = `Removed ${removedCount} unavailable track${removedCount === 1 ? "" : "s"}.`;
+        setNotice({ type: "success", text: done });
+        announce(done);
       } else {
+        // The error notice renders as `InlineAlert variant="error"`, which is
+        // `role="alert"` — announcing as well would say it twice.
         setNotice({ type: "error", text: "Failed to update playlist." });
       }
     } catch (error) {
@@ -183,15 +207,17 @@ export default function PlaylistHealthCheckPage() {
 
         {!selectedPlaylist ? (
           /* Playlist Selection */
-          <div className="bg-white dark:bg-card rounded-2xl p-6 border-2 border-gray-200 dark:border-border">
+          <Card className="p-6">
             <h2 className="text-xl font-bold mb-4 text-foreground">
               Select a Playlist to Scan
             </h2>
             {loading ? (
-              <div className="space-y-3">
+              <div role="status" className="space-y-3">
+                <span className="sr-only">Loading your playlists…</span>
                 {Array.from({ length: 5 }).map((_, i) => (
                   <Skeleton
                     key={i}
+                    aria-hidden="true"
                     className="h-16 rounded-lg bg-gray-100 dark:bg-secondary/50"
                   />
                 ))}
@@ -206,12 +232,14 @@ export default function PlaylistHealthCheckPage() {
                 {playlists.map((playlist) => (
                   <button
                     key={playlist.id}
+                    type="button"
                     onClick={() => selectPlaylist(playlist)}
                     className="flex items-center gap-4 p-4 rounded-xl bg-gray-50 dark:bg-secondary/20 border-2 border-transparent hover:border-primary transition-all text-left"
                   >
                     <img
                       src={playlist.artwork_url || "/brand/icon-192.png"}
-                      alt={playlist.title}
+                      /* The title is right there in the button's own text. */
+                      alt=""
                       width={64}
                       height={64}
                       loading="lazy"
@@ -230,23 +258,24 @@ export default function PlaylistHealthCheckPage() {
                 ))}
               </div>
             )}
-          </div>
+          </Card>
         ) : (
           /* Health Check Results */
           <div>
-            <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
-              <div className="flex items-center gap-4">
-                <button
+            <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+              <div className="flex min-w-0 flex-wrap items-center gap-2 sm:gap-4">
+                <Button
+                  variant="ghost"
+                  size="sm"
                   onClick={() => {
                     setSelectedPlaylist(null);
                     setTracks([]);
                   }}
-                  className="inline-flex items-center gap-2 text-muted-foreground transition hover:text-primary"
                 >
-                  <ArrowLeft className="h-4 w-4" />
+                  <ArrowLeft aria-hidden="true" className="h-4 w-4" />
                   Back to playlists
-                </button>
-                <h2 className="text-2xl font-bold text-foreground">
+                </Button>
+                <h2 className="min-w-0 break-words text-2xl font-bold text-foreground">
                   {selectedPlaylist.title}
                 </h2>
               </div>
@@ -257,9 +286,9 @@ export default function PlaylistHealthCheckPage() {
                   variant="destructive"
                 >
                   {saving ? (
-                    <LoadingSpinner size="sm" className="w-4 h-4 border-white" />
+                    <LoadingSpinner size="sm" className="w-4 h-4 text-white" />
                   ) : (
-                    <Trash2 className="w-4 h-4" />
+                    <Trash2 aria-hidden="true" className="w-4 h-4" />
                   )}
                   Remove {issueCount} Dead Track{issueCount > 1 ? "s" : ""}
                 </Button>
@@ -268,30 +297,36 @@ export default function PlaylistHealthCheckPage() {
 
             {/* Summary bar */}
             {!loadingTracks && tracks.length > 0 && (
-              <div className="bg-white dark:bg-card rounded-2xl p-6 border-2 border-gray-200 dark:border-border mb-6">
-                <div className="flex items-center justify-between mb-3">
+              <Card className="mb-6 p-6">
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-3">
-                    <Stethoscope className="w-5 h-5 text-muted-foreground" />
+                    <Stethoscope aria-hidden="true" className="w-5 h-5 text-muted-foreground" />
                     <span className="font-semibold text-foreground">
                       {healthyCount} of {tracks.length} tracks healthy
                     </span>
                   </div>
-                  <span className={`text-lg font-bold ${healthPercent === 100 ? "text-green-600 dark:text-green-500" : healthPercent >= 80 ? "text-yellow-600 dark:text-yellow-500" : "text-red-600 dark:text-red-500"}`}>
+                  <span className={`inline-flex items-center gap-1.5 text-lg font-bold ${verdictTone}`}>
+                    <VerdictIcon aria-hidden="true" className="h-5 w-5" />
                     {healthPercent}%
+                    <span className="text-sm font-semibold">{verdict}</span>
                   </span>
                 </div>
-                <div className="w-full bg-gray-200 dark:bg-secondary/50 rounded-full h-3">
+                {/* Decorative: the line above is the same information in words. */}
+                <div
+                  aria-hidden="true"
+                  className="w-full bg-gray-200 dark:bg-secondary/50 rounded-full h-3"
+                >
                   <div
                     className={`h-3 rounded-full transition-all ${healthPercent === 100 ? "bg-green-500" : healthPercent >= 80 ? "bg-yellow-500" : "bg-red-500"}`}
                     style={{ width: `${healthPercent}%` }}
                   />
                 </div>
-              </div>
+              </Card>
             )}
 
             {/* Filter pills */}
             {!loadingTracks && tracks.length > 0 && (
-              <div className="flex items-center gap-2 mb-4">
+              <div role="group" aria-label="Filter tracks" className="mb-4 flex flex-wrap items-center gap-2">
                 {([
                   { key: "all" as HealthFilter, label: "All", count: tracks.length, icon: null },
                   { key: "healthy" as HealthFilter, label: "Healthy", count: healthyCount, icon: CheckCircle },
@@ -299,26 +334,30 @@ export default function PlaylistHealthCheckPage() {
                 ]).map(({ key, label, count, icon: Icon }) => (
                   <button
                     key={key}
+                    type="button"
+                    aria-pressed={filter === key}
                     onClick={() => setFilter(key)}
-                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-all ${
+                    className={`inline-flex min-h-9 items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-all ${
                       filter === key
                         ? "bg-primary text-primary-foreground"
                         : "bg-gray-100 dark:bg-secondary/20 text-muted-foreground hover:bg-gray-200 dark:hover:bg-secondary/40"
                     }`}
                   >
-                    {Icon ? <Icon className="h-3.5 w-3.5" /> : null}
+                    {Icon ? <Icon aria-hidden="true" className="h-3.5 w-3.5" /> : null}
                     {label} ({count})
                   </button>
                 ))}
               </div>
             )}
 
-            <div className="bg-white dark:bg-card rounded-2xl p-6 border-2 border-gray-200 dark:border-border">
+            <Card className="p-6">
               {loadingTracks ? (
-                <div className="space-y-3">
+                <div role="status" className="space-y-3">
+                  <span className="sr-only">Scanning this playlist…</span>
                   {Array.from({ length: 10 }).map((_, i) => (
                     <Skeleton
                       key={i}
+                      aria-hidden="true"
                       className="h-16 rounded-lg bg-gray-100 dark:bg-secondary/50"
                     />
                   ))}
@@ -339,34 +378,38 @@ export default function PlaylistHealthCheckPage() {
                   {filteredTracks.map((track, index) => {
                     const status = getTrackStatus(track);
                     return (
+                      /* Below `sm` the badge moves under the track instead of
+                         competing with the title for the same line. */
                       <div
                         key={track.id}
-                        className={`flex items-center gap-4 p-3 rounded-xl ${status.icon === "bad" ? "bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-900/30" : status.icon === "warn" ? "bg-yellow-50 dark:bg-yellow-900/10 border border-yellow-200 dark:border-yellow-900/30" : "bg-gray-50 dark:bg-secondary/20 border border-transparent dark:border-border"}`}
+                        className={`flex flex-col gap-2 p-3 rounded-xl sm:flex-row sm:items-center sm:gap-4 ${status.icon === "bad" ? "bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-900/30" : status.icon === "warn" ? "bg-yellow-50 dark:bg-yellow-900/10 border border-yellow-200 dark:border-yellow-900/30" : "bg-gray-50 dark:bg-secondary/20 border border-transparent dark:border-border"}`}
                       >
-                        <span className="w-8 text-center text-sm text-muted-foreground/70">
-                          {index + 1}
-                        </span>
-                        <img
-                          src={track.artwork_url || "/brand/icon-192.png"}
-                          alt={track.title}
-                          width={48}
-                          height={48}
-                          loading="lazy"
-                          decoding="async"
-                          className="w-12 h-12 rounded-lg object-cover"
-                        />
-                        <div className="flex-1 min-w-0">
-                          <div className="font-semibold text-foreground truncate">
-                            {track.title}
-                          </div>
-                          <div className="text-sm text-muted-foreground truncate">
-                            {track.user?.username} • {formatDuration(track.duration)}
+                        <div className="flex min-w-0 flex-1 items-center gap-3 sm:gap-4">
+                          <span className="w-8 shrink-0 text-center text-sm text-muted-foreground-subtle">
+                            {index + 1}
+                          </span>
+                          <img
+                            src={track.artwork_url || "/brand/icon-192.png"}
+                            alt=""
+                            width={48}
+                            height={48}
+                            loading="lazy"
+                            decoding="async"
+                            className="w-12 h-12 shrink-0 rounded-lg object-cover"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <div className="font-semibold text-foreground truncate">
+                              {track.title}
+                            </div>
+                            <div className="text-sm text-muted-foreground truncate">
+                              {track.user?.username} • {formatDuration(track.duration)}
+                            </div>
                           </div>
                         </div>
-                        <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${status.bg} ${status.color} flex-shrink-0`}>
-                          {status.icon === "ok" && <CheckCircle className="w-3.5 h-3.5" />}
-                          {status.icon === "warn" && <AlertTriangle className="w-3.5 h-3.5" />}
-                          {status.icon === "bad" && <AlertTriangle className="w-3.5 h-3.5" />}
+                        <span className={`inline-flex w-fit shrink-0 items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${status.bg} ${status.color}`}>
+                          {status.icon === "ok" && <CheckCircle aria-hidden="true" className="w-3.5 h-3.5" />}
+                          {status.icon === "warn" && <AlertTriangle aria-hidden="true" className="w-3.5 h-3.5" />}
+                          {status.icon === "bad" && <AlertTriangle aria-hidden="true" className="w-3.5 h-3.5" />}
                           {status.label}
                         </span>
                       </div>
@@ -374,7 +417,7 @@ export default function PlaylistHealthCheckPage() {
                   })}
                 </div>
               )}
-            </div>
+            </Card>
           </div>
         )}
       <ConfirmDialog

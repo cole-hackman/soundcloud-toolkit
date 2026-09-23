@@ -1,6 +1,6 @@
 "use client";
 
-import { motion, Variants } from "framer-motion";
+import { motion, useReducedMotion, Variants } from "framer-motion";
 import { cn } from "@/lib/utils";
 import React from "react";
 
@@ -17,6 +17,8 @@ export function TextAnimate({
   animation = "slideLeft",
   by = "character",
 }: TextAnimateProps) {
+  const shouldReduceMotion = useReducedMotion();
+
   const containerVariants: Variants = {
     hidden: { opacity: 0 },
     visible: {
@@ -64,6 +66,12 @@ export function TextAnimate({
   };
 
   const childVariants = getChildVariants();
+
+  // WCAG 2.3.3 — the per-character stagger is decoration, so under
+  // `prefers-reduced-motion: reduce` the text is simply rendered.
+  if (shouldReduceMotion) {
+    return <span className={cn("inline-block", className)}>{children}</span>;
+  }
 
   const getItems = () => {
     if (by === "character") {

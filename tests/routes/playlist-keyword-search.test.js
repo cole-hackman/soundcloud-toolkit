@@ -52,9 +52,8 @@ jest.unstable_mockModule('../../server/middleware/auth.js', () => ({
 const { default: apiRoutes } = await import('../../server/routes/api.js');
 const { SC_WRITE_PACING_MS } = await import('../../server/lib/pacing.js');
 // Real, not mocked: the playlist list is cached per user across the whole
-// module lifetime, so without an explicit reset the second test in this file
-// would be served the first test's playlists.
-const { requestCache } = await import('../../server/lib/request-cache.js');
+// module lifetime, so without the reset in beforeEach the second test in this
+// file would be served the first test's playlists.
 const { __resetCacheCoordinationForTests } = await import('../../server/lib/social-cache.js');
 
 const app = express();
@@ -63,14 +62,20 @@ app.use('/api', apiRoutes);
 
 afterAll(() => { process.env.NODE_ENV = ORIGINAL_NODE_ENV; });
 
-beforeEach(() => {
+// `__resetCacheCoordinationForTests` is awaited because it is async for a
+// reason: it drains the background revalidations and in-flight loads the
+// previous test left scheduled, then wipes every cache they may have written.
+// Its own docblock in server/lib/social-cache.js explains why that order is
+// the whole point — this suite used to call it un-awaited and wipe the cache
+// itself beforehand, which is how one test's playlists ended up serving the
+// next one.
+beforeEach(async () => {
+  await __resetCacheCoordinationForTests();
   getPlaylists.mockReset();
   getAllPlaylists.mockReset();
   getPlaylistWithTracks.mockReset();
   addTracksToPlaylist.mockReset();
   logOperation.mockReset();
-  requestCache.invalidateUser('user-a');
-  __resetCacheCoordinationForTests();
 });
 
 /** N playlist stubs, ids 1..N — what getAllPlaylists hands back. */

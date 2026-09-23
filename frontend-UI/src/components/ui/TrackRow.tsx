@@ -1,7 +1,6 @@
 "use client";
 
-import { Check } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { SelectableRow } from "./SelectableRow";
 
 interface TrackRowTrack {
   id: number | string;
@@ -12,78 +11,64 @@ interface TrackRowTrack {
   artworkAlt?: string;
 }
 
-interface TrackRowProps extends Omit<React.HTMLAttributes<HTMLDivElement>, "onClick" | "onToggle"> {
+interface TrackRowProps {
   track: TrackRowTrack;
   isSelected: boolean;
   onToggle: (event?: React.MouseEvent | React.KeyboardEvent) => void;
   rightSlot?: React.ReactNode;
+  /** `div` by default so an existing plain wrapper stays valid markup. */
+  as?: "li" | "div";
+  className?: string;
 }
 
+/**
+ * A track as a selectable row: artwork, title, subtitle.
+ *
+ * Everything about selection lives in `SelectableRow` — this is the track's
+ * presentation and nothing else. The row used to be a `div` with
+ * `role="button"` and a hand-written Enter/Space handler; the checkbox is
+ * keyboard-native, so that is gone.
+ */
 export function TrackRow({
   track,
   isSelected,
   onToggle,
   rightSlot,
+  as = "div",
   className,
-  ...props
 }: TrackRowProps) {
   const subtitle = track.subtitle ?? track.user?.username;
 
   return (
-    <div
-      role="button"
-      tabIndex={0}
-      aria-pressed={isSelected}
-      onClick={onToggle}
-      onKeyDown={(event) => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          onToggle(event);
-        }
-      }}
-      className={cn(
-        "flex h-16 items-center gap-3 rounded-xl border border-transparent bg-gray-50 px-3 text-left transition-all",
-        "dark:bg-secondary/20 dark:hover:border-border",
-        isSelected
-          ? "border-orange-200 bg-orange-50 border-l-2 border-l-primary dark:border-orange-900/40 dark:bg-orange-950/20"
-          : "hover:border-gray-200",
-        className,
-      )}
-      {...props}
+    <SelectableRow
+      id={track.id}
+      selected={isSelected}
+      onToggle={onToggle}
+      label={track.title}
+      rightSlot={rightSlot}
+      as={as}
+      className={className}
     >
-      <div
-        className={cn(
-          "flex h-6 w-6 shrink-0 items-center justify-center rounded-full border transition-colors",
-          isSelected
-            ? "border-primary bg-primary text-white"
-            : "border-gray-300 bg-white text-transparent dark:border-border dark:bg-secondary",
-        )}
-      >
-        <Check className="h-3.5 w-3.5" />
-      </div>
+      <span className="flex min-w-0 items-center gap-3">
+        <img
+          src={track.artwork_url || "/brand/icon-192.png"}
+          alt={track.artworkAlt || ""}
+          width={40}
+          height={40}
+          loading="lazy"
+          decoding="async"
+          className="h-10 w-10 shrink-0 rounded-lg object-cover"
+        />
 
-      <img
-        src={track.artwork_url || "/brand/icon-192.png"}
-        alt={track.artworkAlt || track.title}
-        width={40}
-        height={40}
-        loading="lazy"
-        decoding="async"
-        className="h-10 w-10 shrink-0 rounded-lg object-cover"
-      />
-
-      <div className="min-w-0 flex-1">
-        <div className="truncate text-sm font-semibold text-foreground">
-          {track.title}
-        </div>
-        {subtitle ? (
-          <div className="truncate text-xs text-muted-foreground">
-            {subtitle}
-          </div>
-        ) : null}
-      </div>
-
-      {rightSlot ? <div className="shrink-0">{rightSlot}</div> : null}
-    </div>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-semibold text-foreground">
+            {track.title}
+          </span>
+          {subtitle ? (
+            <span className="block truncate text-xs text-muted-foreground">{subtitle}</span>
+          ) : null}
+        </span>
+      </span>
+    </SelectableRow>
   );
 }

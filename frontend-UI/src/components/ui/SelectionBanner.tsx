@@ -31,8 +31,9 @@ export function SelectionBanner({
 
   return (
     <div className="fixed inset-x-0 bottom-0 z-40 border-t border-border/60 bg-white/95 backdrop-blur dark:bg-background/95">
-      <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
-        <span className="text-sm font-semibold text-primary">
+      <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-6">
+        {/* The count is the only feedback a selection gives, so it is spoken. */}
+        <span role="status" aria-live="polite" className="text-sm font-semibold text-primary-text">
           {selectedLabel}
         </span>
         {actionVariant === "destructive" ? (
@@ -40,15 +41,16 @@ export function SelectionBanner({
             onClick={onAction}
             disabled={disabled}
             pulseColor="#ef4444"
-            className="h-10 gap-2"
+            // PulsatingButton has no size scale of its own; h-11 matches the
+            // Button default and clears the 44px target floor.
+            className="h-11 gap-2"
           >
             {actionIcon}
             {actionLabel}
           </PulsatingButton>
         ) : (
-          <Button
+          <Button nowrap
             variant={actionVariant}
-            className="h-10 px-4"
             onClick={onAction}
             disabled={disabled}
           >

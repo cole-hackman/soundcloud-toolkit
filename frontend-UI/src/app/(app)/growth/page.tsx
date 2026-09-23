@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, type KeyboardEvent } from "react";
+import { useState, useEffect, useCallback, useRef, type KeyboardEvent } from "react";
 import { useMutation, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 import {
   Sparkles,
@@ -26,12 +26,18 @@ import {
   PageHeader,
   Card,
   Button,
+  Field,
+  IconButton,
   InlineAlert,
   EmptyState,
   ConfirmDialog,
   BulkReviewDetails,
+  ProgressBar,
+  SelectableRow,
   SelectionBanner,
-  Input
+  Select,
+  Input,
+  useAnnounce
 } from "@/components/ui";
 import { ProgressiveBlur } from "@/components/ui/ProgressiveBlur";
 import { apiFetch } from "@/lib/api";
@@ -44,8 +50,34 @@ import {
   useGrowthLimitsQuery,
   useGrowthStatsQuery,
 } from "@/lib/queries";
+import { asArray } from "@/lib/api-shape";
 
 const RISK_ACK_KEY = "sc-toolkit-growth-risk-ack";
+
+type TabKey = "discover" | "history" | "analytics";
+
+/**
+ * Short labels below `sm`. The three long labels laid end to end were ~510px,
+ * which is what pushed the page past 360/390 on a phone — the tab strip was
+ * the whole of this route's horizontal overflow.
+ */
+const TABS: { key: TabKey; short: string; long: string; Icon: typeof Sparkles }[] = [
+  { key: "discover", short: "Discover", long: "Discover Suggestions", Icon: Sparkles },
+  { key: "history", short: "History", long: "Campaign History", Icon: History },
+  { key: "analytics", short: "Analytics", long: "Analytics", Icon: BarChart3 },
+];
+
+/** Words, not just a colour and an emoji, for the discovery score. */
+const SCORE_BADGE: Record<Suggestion["scoreLabel"], { emoji: string; text: string; className: string }> = {
+  high: { emoji: "🔥", text: "High match", className: "bg-tone-match text-tone-foreground" },
+  medium: { emoji: "⚡", text: "Medium", className: "bg-amber-400 text-black" },
+  limited: {
+    emoji: "ℹ",
+    text: "Limited data",
+    className: "bg-blue-100 text-blue-800 dark:bg-blue-950/50 dark:text-blue-200",
+  },
+  low: { emoji: "🌱", text: "Low", className: "bg-secondary text-muted-foreground" },
+};
 
 interface Following {
   id: number;
@@ -159,6 +191,12 @@ interface SeedConversion {
   rate: number | null;
 }
 
+interface FollowBackBucket {
+  bucket: string;
+  followedBack: number;
+  notFollowedBack: number;
+}
+
 function formatDuration(seconds: number) {
   const minutes = Math.floor(seconds / 60);
   const remainingSeconds = seconds % 60;
@@ -194,7 +232,9 @@ function DiscoveryElapsedTimer({
 
 export default function GrowthPage() {
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<"discover" | "history" | "analytics">("discover");
+  const announce = useAnnounce();
+  const [activeTab, setActiveTab] = useState<TabKey>("discover");
+  const tabRefs = useRef<Partial<Record<TabKey, HTMLButtonElement | null>>>({});
 
   // Tab 1: Discover state
   const [selectedInspirations, setSelectedInspirations] = useState<Set<number>>(new Set());
@@ -226,14 +266,27 @@ export default function GrowthPage() {
 
   // Fetch followings for Step 1
   const { data: followingsData } = useSuspenseQuery(followingsQueryOptions());
-  const followings = (followingsData?.collection || []) as unknown as Following[];
+  const followings = asArray<Following>(followingsData?.collection);
 
   // Fetch History & Stats
   const historyQuery = useGrowthHistoryQuery({ enabled: activeTab === 'history' });
   const historyData = historyQuery.data as unknown as
-    | { actions: GrowthAction[]; sessions: SessionGroup[] }
+    | { actions?: GrowthAction[]; sessions?: SessionGroup[] }
     | undefined;
   const refetchHistory = historyQuery.refetch;
+
+  // Normalised once, and every read below goes through these. The raw shape
+  // is cast from `unknown`, so TypeScript was vouching for arrays it had
+  // never seen: a response missing either key — a `{}` from an error path, a
+  // rename upstream — turned `historyData.sessions.length` into a render
+  // crash that took the whole History tab down. Empty arrays render the
+  // empty state instead, which is the honest answer to "no history".
+  const historySessions: SessionGroup[] = Array.isArray(historyData?.sessions)
+    ? historyData.sessions
+    : [];
+  const historyActions: GrowthAction[] = Array.isArray(historyData?.actions)
+    ? historyData.actions
+    : [];
 
   const { data: statsData, refetch: refetchStats } = useGrowthStatsQuery({
     enabled: activeTab === 'history' || activeTab === 'analytics',
@@ -246,11 +299,23 @@ export default function GrowthPage() {
   const analyticsQuery = useGrowthAnalyticsQuery({ enabled: activeTab === 'analytics' });
   const analytics = analyticsQuery.data as unknown as
     | {
-        perSeed: SeedConversion[];
-        followBackCurve: { bucket: string; followedBack: number; notFollowedBack: number }[];
-        totalFollows: number;
+        perSeed?: SeedConversion[];
+        followBackCurve?: FollowBackBucket[];
+        totalFollows?: number;
       }
     | undefined;
+
+  // Same cast-from-`unknown` hazard as the history payload above, and the
+  // same fix: `!analytics` only covers a missing response, not a present one
+  // missing a key, so `analytics.perSeed.length` on a `{}` crashed the
+  // Analytics tab exactly as `{}` crashed History. Empty arrays fall through
+  // to the "not enough data yet" states, which is the honest answer.
+  const analyticsPerSeed: SeedConversion[] = Array.isArray(analytics?.perSeed)
+    ? analytics.perSeed
+    : [];
+  const analyticsCurve: FollowBackBucket[] = Array.isArray(analytics?.followBackCurve)
+    ? analytics.followBackCurve
+    : [];
 
   // Discovery Mutation
   const discoverMutation = useMutation({
@@ -277,6 +342,10 @@ export default function GrowthPage() {
       );
       setSelectedSuggestions(autoSelected);
       setDiscoveryStep(3);
+      const found = data.suggestions.length;
+      announce(
+        `Discovery finished — ${found} suggestion${found === 1 ? "" : "s"} found, ${autoSelected.size} selected.`,
+      );
     },
     onError: (err: Error) => {
       setDiscoveryStartedAt(null);
@@ -355,6 +424,9 @@ export default function GrowthPage() {
             setDiscoveryStep(4);
             refetchBudget();
             invalidateDashboardSummary(queryClient);
+            announce(
+              `Engagement ${data.job.status} — followed ${data.job.followed}, liked ${data.job.liked}.`,
+            );
           }
         }
       } catch {
@@ -362,7 +434,7 @@ export default function GrowthPage() {
       }
     }, 2000);
     return () => clearInterval(interval);
-  }, [job, queryClient, refetchBudget]);
+  }, [job, queryClient, refetchBudget, announce]);
 
   const cancelEngagement = async () => {
     try {
@@ -519,10 +591,31 @@ export default function GrowthPage() {
     });
   };
 
-  const handleCardKeyDown = (event: KeyboardEvent<HTMLElement>, action: () => void) => {
-    if (event.target !== event.currentTarget || (event.key !== "Enter" && event.key !== " ")) return;
+  const selectTab = (key: TabKey) => {
+    setActiveTab(key);
+    setNotice(null);
+    if (key === "history") {
+      refetchHistory();
+      refetchStats();
+    }
+  };
+
+  /**
+   * Arrow-key navigation across the tab strip, with a roving tabIndex so Tab
+   * enters the strip once rather than stepping through all three tabs.
+   */
+  const handleTabKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
+    const order = TABS.map((t) => t.key);
+    const index = order.indexOf(activeTab);
+    let next: TabKey | null = null;
+    if (event.key === "ArrowRight") next = order[(index + 1) % order.length];
+    else if (event.key === "ArrowLeft") next = order[(index - 1 + order.length) % order.length];
+    else if (event.key === "Home") next = order[0];
+    else if (event.key === "End") next = order[order.length - 1];
+    if (!next) return;
     event.preventDefault();
-    action();
+    selectTab(next);
+    tabRefs.current[next]?.focus();
   };
 
   const toggleSuggestion = (id: number) => {
@@ -563,11 +656,11 @@ export default function GrowthPage() {
     !searchInspirations || f.username?.toLowerCase().includes(searchInspirations.toLowerCase())
   );
 
-  const selectedSession = historyData?.sessions.find(s => s.sessionId === selectedSessionId);
-  const sessionActions = historyData?.actions.filter(a => a.sessionId === selectedSessionId) || [];
+  const selectedSession = historySessions.find(s => s.sessionId === selectedSessionId);
+  const sessionActions = historyActions.filter(a => a.sessionId === selectedSessionId);
 
   return (
-    <PageContainer maxWidth="wide" className={selectedSuggestions.size > 0 || (activeTab === "history" && selectedHistoryActions.size > 0) ? "pb-28" : ""}>
+    <PageContainer maxWidth="wide" className="pb-28">
       <PageHeader
         title="Grow Your Network"
         description="Discover active SoundCloud users likely to follow you back, engage with their tracks, and reverse campaigns anytime."
@@ -584,174 +677,162 @@ export default function GrowthPage() {
       )}
 
       {/* Tabs Selector */}
-      <div className="flex bg-secondary/20 p-1 rounded-lg border-2 border-border/50 self-start mb-6 w-fit">
-        <button
-          onClick={() => {
-            setActiveTab("discover");
-            setNotice(null);
-          }}
-          className={`px-4 py-1.5 rounded-md text-sm font-semibold transition-all ${
-            activeTab === "discover"
-              ? "bg-card text-primary shadow-sm"
-              : "text-muted-foreground hover:text-foreground"
-          }`}
+      <div className="mb-6 overflow-x-auto">
+        <div
+          role="tablist"
+          aria-label="Growth sections"
+          className="flex w-full gap-1 rounded-lg border-2 border-border/50 bg-secondary/20 p-1 sm:w-fit"
         >
-          <div className="flex items-center gap-2">
-            <Sparkles className="w-4 h-4" />
-            Discover Suggestions
-          </div>
-        </button>
-        <button
-          onClick={() => {
-            setActiveTab("history");
-            setNotice(null);
-            refetchHistory();
-            refetchStats();
-          }}
-          className={`px-4 py-1.5 rounded-md text-sm font-semibold transition-all ${
-            activeTab === "history"
-              ? "bg-card text-primary shadow-sm"
-              : "text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          <div className="flex items-center gap-2">
-            <History className="w-4 h-4" />
-            Campaign History
-          </div>
-        </button>
-        <button
-          onClick={() => {
-            setActiveTab("analytics");
-            setNotice(null);
-          }}
-          className={`px-4 py-1.5 rounded-md text-sm font-semibold transition-all ${
-            activeTab === "analytics"
-              ? "bg-card text-primary shadow-sm"
-              : "text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          <div className="flex items-center gap-2">
-            <BarChart3 className="w-4 h-4" />
-            Analytics
-          </div>
-        </button>
-      </div>
-
-      {/* Daily budget / cooldown banner */}
-      {budget && activeTab === "discover" && (
-        <div className="mb-6 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-xl border border-border/60 bg-secondary/20 px-4 py-2.5 text-xs">
-          <span className="inline-flex items-center gap-1.5 font-semibold text-foreground">
-            <ShieldAlert className="h-3.5 w-3.5 text-primary" />
-            Daily follow budget
-          </span>
-          <span className="text-muted-foreground">
-            <span className="font-semibold text-foreground">{budget.remaining}</span> of {budget.dailyCap} left
-          </span>
-          {budget.cooldownRemainingMs > 0 && (
-            <span className="text-amber-600 dark:text-amber-400">
-              Cooldown: {Math.ceil(budget.cooldownRemainingMs / 60000)} min until next batch
-            </span>
-          )}
-          <span className="ml-auto text-muted-foreground/80">
-            Caps protect your account from spam flags.
-          </span>
+          {TABS.map(({ key, short, long, Icon }) => (
+            <button
+              key={key}
+              ref={(element) => {
+                tabRefs.current[key] = element;
+              }}
+              type="button"
+              role="tab"
+              id={`growth-tab-${key}`}
+              aria-selected={activeTab === key}
+              aria-controls={`growth-panel-${key}`}
+              tabIndex={activeTab === key ? 0 : -1}
+              onClick={() => selectTab(key)}
+              onKeyDown={handleTabKeyDown}
+              className={`flex min-h-11 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-md px-2 text-sm font-semibold transition-all sm:flex-none sm:gap-2 sm:px-4 ${
+                activeTab === key
+                  ? "bg-card text-primary-text shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+              <span className="sm:hidden">{short}</span>
+              <span className="hidden sm:inline">{long}</span>
+            </button>
+          ))}
         </div>
-      )}
+      </div>
 
       {/* Discover Tab */}
       {activeTab === "discover" && (
-        <>
+        <div
+          role="tabpanel"
+          id="growth-panel-discover"
+          aria-labelledby="growth-tab-discover"
+        >
+          {/* Daily budget / cooldown banner */}
+          {budget && (
+            <div className="mb-6 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-xl border border-border/60 bg-secondary/20 px-4 py-2.5 text-xs">
+              <span className="inline-flex items-center gap-1.5 font-semibold text-foreground">
+                <ShieldAlert className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
+                Daily follow budget
+              </span>
+              <span className="text-muted-foreground">
+                <span className="font-semibold text-foreground">{budget.remaining}</span> of {budget.dailyCap} left
+              </span>
+              {budget.cooldownRemainingMs > 0 && (
+                <span className="text-warning-text">
+                  Cooldown: {Math.ceil(budget.cooldownRemainingMs / 60000)} min until next batch
+                </span>
+              )}
+              {/* `text-muted-foreground-subtle` measures 4.4:1 against this
+                  tinted banner — just under AA, so this one line steps up to
+                  the full-strength muted token. */}
+              <span className="ml-auto text-muted-foreground">
+                Caps protect your account from spam flags.
+              </span>
+            </div>
+          )}
           {/* STEP 1: Select Seeds */}
           {discoveryStep === 1 && (
             <Card className="p-6">
               <div className="mb-4">
-                <h3 className="text-lg font-bold text-foreground">1. Select Inspiration Users</h3>
+                <h2 className="text-lg font-bold text-foreground">1. Select Inspiration Users</h2>
                 <p className="text-sm text-muted-foreground mt-0.5">
                   Select 1–5 users you follow to scan their networks. We'll find people who follow them and similar artists.
                 </p>
               </div>
 
               {/* Crawl strategy and search */}
-              <div className="flex flex-wrap items-center gap-4 mb-4">
-                <div className="relative flex-1 min-w-[240px]">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                  <Input
-                    type="text"
-                    value={searchInspirations}
-                    onChange={(e) => setSearchInspirations(e.target.value)}
-                    placeholder="Search your followings..."
-                    className="pl-9 h-10 bg-secondary/20 border-border"
-                  />
-                </div>
+              <div className="grid grid-cols-1 gap-3 mb-4 sm:grid-cols-2">
+                <Field label="Search your followings">
+                  {(field) => (
+                    <div className="relative">
+                      <Search
+                        className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground"
+                        aria-hidden="true"
+                      />
+                      <Input
+                        {...field}
+                        type="search"
+                        value={searchInspirations}
+                        onChange={(e) => setSearchInspirations(e.target.value)}
+                        placeholder="Username"
+                        className="pl-9 h-11 bg-secondary/20 border-border"
+                      />
+                    </div>
+                  )}
+                </Field>
 
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-semibold text-muted-foreground uppercase">Strategy:</span>
-                  <select
-                    value={strategy}
-                    onChange={(e) => setStrategy(e.target.value as 'followers' | 'followings' | 'both')}
-                    className="h-10 px-3 border-2 border-border rounded-lg text-sm text-foreground bg-secondary/20 focus:border-primary focus:outline-none"
-                  >
-                    <option value="followers">Scan Their Followers</option>
-                    <option value="followings">Scan Their Followings</option>
-                    <option value="both">Scan Both</option>
-                  </select>
-                </div>
+                {/* The id is the one ea978e8 gave this control; the visible
+                    label now points at it, so the accessible name survives. */}
+                <Select
+                  id="growth-seed-strategy"
+                  label="Strategy"
+                  value={strategy}
+                  onChange={(e) => setStrategy(e.target.value as 'followers' | 'followings' | 'both')}
+                  className="bg-secondary/20"
+                >
+                  <option value="followers">Scan Their Followers</option>
+                  <option value="followings">Scan Their Followings</option>
+                  <option value="both">Scan Both</option>
+                </Select>
               </div>
 
-              <div className="text-sm text-muted-foreground mb-3 flex justify-between items-center">
-                <span>{selectedInspirations.size} of 5 selected</span>
+              <div className="text-sm text-muted-foreground mb-3 flex items-center justify-between gap-3">
+                <span role="status">{selectedInspirations.size} of 5 selected</span>
                 {selectedInspirations.size > 0 && (
-                  <button 
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     onClick={() => setSelectedInspirations(new Set())}
-                    className="text-xs text-primary font-medium hover:underline"
+                    className="text-primary-text"
                   >
                     Clear Selection
-                  </button>
+                  </Button>
                 )}
               </div>
 
               {/* Grid lists */}
               <ProgressiveBlur
-                className="grid sm:grid-cols-2 md:grid-cols-3 gap-3 max-h-[400px] overflow-y-auto"
+                className="grid sm:grid-cols-2 md:grid-cols-3 gap-3 max-h-[60dvh] overflow-y-auto"
                 active={filteredInspirations.length > 9}
                 fadeHeight={72}
               >
-                {filteredInspirations.map((user) => {
-                  const isSelected = selectedInspirations.has(user.id);
-                  return (
-                    <div
-                      key={user.id}
-                      onClick={() => handleInspirationClick(user.id)}
-                      onKeyDown={(event) => handleCardKeyDown(event, () => handleInspirationClick(user.id))}
-                      role="button"
-                      tabIndex={0}
-                      className={`flex items-center gap-3 p-3 rounded-xl transition-all border-2 cursor-pointer ${
-                        isSelected
-                          ? "bg-primary/5 border-primary/30"
-                          : "bg-secondary/20 border-transparent hover:border-border"
-                      }`}
-                    >
-                      <div className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 border ${
-                        isSelected ? "bg-primary border-primary text-primary-foreground" : "bg-card border-border"
-                      }`}>
-                        {isSelected && <Check className="w-3 h-3" />}
-                      </div>
+                {filteredInspirations.map((user) => (
+                  <SelectableRow
+                    key={user.id}
+                    as="div"
+                    id={user.id}
+                    selected={selectedInspirations.has(user.id)}
+                    onToggle={() => handleInspirationClick(user.id)}
+                    label={user.username}
+                  >
+                    <span className="flex items-center gap-3">
                       <img
                         src={user.avatar_url || "/brand/icon-192.png"}
-                        alt={user.username}
+                        alt=""
                         width={40}
                         height={40}
                         loading="lazy"
                         decoding="async"
                         className="w-10 h-10 rounded-full object-cover shrink-0"
                       />
-                      <div className="min-w-0 flex-1">
-                        <div className="font-semibold text-sm truncate text-foreground">{user.username}</div>
-                        <div className="text-xs text-muted-foreground truncate">{formatNumber(user.followers_count)} followers</div>
-                      </div>
-                    </div>
-                  );
-                })}
+                      <span className="min-w-0 flex-1">
+                        <span className="block font-semibold text-sm truncate text-foreground">{user.username}</span>
+                        <span className="block text-xs text-muted-foreground truncate">{formatNumber(user.followers_count)} followers</span>
+                      </span>
+                    </span>
+                  </SelectableRow>
+                ))}
               </ProgressiveBlur>
 
               {/* Start Discovery Trigger */}
@@ -777,21 +858,24 @@ export default function GrowthPage() {
 
           {/* STEP 2: Loading scanning state */}
           {discoveryStep === 2 && (
-            <Card className="p-12 flex flex-col items-center justify-center text-center">
-              <div className="relative mb-6">
+            <Card
+              role="status"
+              className="p-6 sm:p-12 flex flex-col items-center justify-center text-center"
+            >
+              <div className="relative mb-6" aria-hidden="true">
                 <div className="absolute inset-0 bg-primary/20 rounded-full animate-ping duration-1000" />
                 <div className="relative w-16 h-16 rounded-full bg-primary/10 border-2 border-primary flex items-center justify-center text-primary">
                   <Loader2 className="w-8 h-8 animate-spin" />
                 </div>
               </div>
-              <h3 className="text-xl font-bold text-foreground">Scanning Networks</h3>
+              <h2 className="text-xl font-bold text-foreground">Scanning Networks</h2>
               <p className="text-sm text-muted-foreground mt-2 max-w-md">
                 Crawling followers and related artists for your selected seed users. We filter out accounts you already follow, then compare scene and activity signals.
                 {anySeedSampled && (
                   <> For large seeds we sample their ~{SEED_SAMPLE_CAP.toLocaleString()} most recent followers — recent followers are the most active.</>
                 )}
               </p>
-              <div className="mt-6 space-y-1 text-xs text-primary font-mono">
+              <div className="mt-6 space-y-1 text-xs text-primary-text font-mono">
                 {discoveryStartedAt != null && (
                   <DiscoveryElapsedTimer
                     startedAt={discoveryStartedAt}
@@ -812,7 +896,7 @@ export default function GrowthPage() {
               <Card className="p-6 mb-6">
                 <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border/60 pb-4 mb-4">
                   <div>
-                    <h3 className="text-lg font-bold text-foreground">Discovery Results</h3>
+                    <h2 className="text-lg font-bold text-foreground">Discovery Results</h2>
                     <p className="text-xs text-muted-foreground mt-0.5">
                       Scanned {discoveryStats?.candidatesScanned} profiles → found {discoveryStats?.afterDedup} new candidates, scored by scene fit
                       {discoveryStats?.durationMs ? ` in ${formatDuration(Math.round(discoveryStats.durationMs / 1000))}` : ""}.
@@ -823,31 +907,33 @@ export default function GrowthPage() {
                       </p>
                     )}
                     {discoveryStats?.partial && (
-                      <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                      <p className="text-xs text-warning-text mt-1">
                         The scan hit its time budget, so results come from a partial crawl. Everything shown is fully scored and ready to use.
                       </p>
                     )}
                     {discoveryStats?.seedGenres && discoveryStats.seedGenres.length > 0 && (
                       <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                        <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Scene:</span>
+                        <span className="text-xs uppercase tracking-wider text-muted-foreground">Scene:</span>
                         {discoveryStats.seedGenres.slice(0, 6).map((g) => (
-                          <span key={g} className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
+                          <span key={g} className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary-text">
                             {g}
                           </span>
                         ))}
                       </div>
                     )}
                   </div>
-                  <div className="flex items-center gap-3">
+                  <div className="grid w-full grid-cols-1 gap-2 sm:flex sm:w-auto sm:items-center sm:gap-3">
                     <Button variant="outline" size="sm" onClick={() => setDiscoveryStep(1)}>
                       Back / Adjust Seeds
                     </Button>
-                    <button
+                    <Button
+                      variant="ghost"
+                      size="sm"
                       onClick={toggleAllSuggestions}
-                      className="text-sm text-primary font-medium hover:underline px-2"
+                      className="text-primary-text"
                     >
                       {selectedSuggestions.size === suggestions.length ? "Deselect All" : "Select All"}
-                    </button>
+                    </Button>
                   </div>
                 </div>
 
@@ -857,7 +943,7 @@ export default function GrowthPage() {
                     type="checkbox"
                     checked={likeTracks}
                     onChange={(e) => setLikeTracks(e.target.checked)}
-                    className="mt-0.5 h-4 w-4 accent-primary"
+                    className="mt-0.5 h-6 w-6 shrink-0 accent-primary"
                   />
                   <span className="text-xs leading-5 text-muted-foreground">
                     <span className="font-semibold text-foreground">Also like each user&apos;s top track</span> when following.
@@ -873,111 +959,95 @@ export default function GrowthPage() {
                   />
                 ) : (
                   <ProgressiveBlur
-                    className="grid md:grid-cols-2 gap-4 max-h-[600px] overflow-y-auto pr-1"
+                    className="grid md:grid-cols-2 gap-4 max-h-[60dvh] overflow-y-auto pr-1"
                     active={suggestions.length > 6}
                     fadeHeight={72}
                   >
                     {suggestions.map((sug) => {
-                      const isSelected = selectedSuggestions.has(sug.user.id);
+                      const badge = SCORE_BADGE[sug.scoreLabel];
+                      const track = sug.suggestedTrack;
                       return (
-                        <div
+                        <SelectableRow
                           key={sug.user.id}
-                          className={`flex flex-col p-4 rounded-xl border-2 transition-all relative ${
-                            isSelected
-                              ? "bg-primary/5 border-primary/30 shadow-sm"
-                              : "bg-secondary/20 border-transparent hover:border-border"
-                          }`}
-                          onClick={() => toggleSuggestion(sug.user.id)}
-                          role="button"
-                          tabIndex={0}
-                          onKeyDown={(event) => handleCardKeyDown(event, () => toggleSuggestion(sug.user.id))}
-                        >
-                          {/* Upper user info */}
-                          <div className="flex items-start gap-3 mb-3">
-                            <img
-                              src={sug.user.avatar_url || "/brand/icon-192.png"}
-                              alt={sug.user.username}
-                              width={48}
-                              height={48}
-                              loading="lazy"
-                              decoding="async"
-                              className="w-12 h-12 rounded-full object-cover shrink-0"
-                            />
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center gap-2">
-                                <span className="font-bold text-sm text-foreground truncate">{sug.user.username}</span>
-                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase select-none ${
-                                  sug.scoreLabel === 'high' 
-                                    ? 'bg-orange-500 text-white' 
-                                    : sug.scoreLabel === 'medium'
-                                    ? 'bg-amber-400 text-black'
-                                    : sug.scoreLabel === 'limited'
-                                    ? 'bg-blue-100 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300'
-                                    : 'bg-secondary text-muted-foreground'
-                                }`}>
-                                  {sug.scoreLabel === 'high' ? '🔥 High' : sug.scoreLabel === 'medium' ? '⚡ Med' : sug.scoreLabel === 'limited' ? 'ℹ Limited data' : '🌱 Low'} ({sug.score}%)
-                                </span>
-                              </div>
-                              <div className="text-[11px] text-muted-foreground flex gap-x-2 mt-0.5">
-                                <span>{formatNumber(sug.user.followers_count)} followers</span>
-                                <span>•</span>
-                                <span>Ratio: {sug.signals.followBackRatio}</span>
-                              </div>
-                            </div>
-                            <a
-                              href={sug.user.permalink_url}
-                              target="_blank"
-                              rel="noreferrer"
-                              onClick={(e) => e.stopPropagation()}
-                              className="text-muted-foreground hover:text-primary shrink-0"
-                            >
-                              <ExternalLink className="w-4 h-4" />
-                            </a>
-                          </div>
-
-                          {/* Seed reason */}
-                          <div className="text-[11px] bg-secondary/40 px-2.5 py-1 rounded-md text-muted-foreground mb-3">
-                            {sug.signals.isRelatedArtist ? "SoundCloud Related Artist" : "Discovered in seeds' follower network"}
-                          </div>
-
-                          {/* Suggested track to like */}
-                          {sug.suggestedTrack ? (
-                            <div 
-                              onClick={(e) => e.stopPropagation()} 
-                              className="flex items-center gap-3 p-2 bg-card rounded-lg border border-border/50 text-xs mt-auto"
-                            >
-                              <img
-                                src={sug.suggestedTrack.artwork_url || "/brand/icon-192.png"}
-                                alt={sug.suggestedTrack.title}
-                                width={40}
-                                height={40}
-                                loading="lazy"
-                                decoding="async"
-                                className="w-10 h-10 rounded object-cover shrink-0"
-                              />
-                              <div className="min-w-0 flex-1">
-                                <div className="font-medium text-foreground truncate">{sug.suggestedTrack.title}</div>
-                                <div className="text-muted-foreground flex items-center gap-1 mt-0.5">
-                                  <Heart className="w-3 h-3 text-primary fill-primary" />
-                                  <span>{formatNumber(sug.suggestedTrack.likes_count)} likes</span>
-                                </div>
-                              </div>
-                              <button
-                                type="button"
-                                aria-label={`Preview ${sug.suggestedTrack.title} on SoundCloud`}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  previewTrack(sug.suggestedTrack!);
-                                }}
-                                className="text-primary hover:opacity-80 shrink-0 p-1"
+                          as="div"
+                          id={sug.user.id}
+                          selected={selectedSuggestions.has(sug.user.id)}
+                          onToggle={() => toggleSuggestion(sug.user.id)}
+                          label={sug.user.username}
+                          className="items-start py-3"
+                          rightSlot={
+                            // Both controls sit outside the toggle label: a
+                            // button inside a label is a nested interactive
+                            // control, and the old card had two of them.
+                            <div className="flex flex-col items-center gap-1">
+                              <a
+                                href={sug.user.permalink_url}
+                                target="_blank"
+                                rel="noreferrer"
+                                aria-label={`Open ${sug.user.username} on SoundCloud`}
+                                className="touch-44 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
                               >
-                                <Play className="w-4 h-4 fill-primary text-primary" />
-                              </button>
+                                <ExternalLink className="w-4 h-4" aria-hidden="true" />
+                              </a>
+                              {track && (
+                                <IconButton
+                                  label={`Preview ${track.title} on SoundCloud`}
+                                  onClick={() => previewTrack(track)}
+                                  className="min-h-11 min-w-11 text-primary hover:text-primary-text"
+                                >
+                                  <Play className="w-4 h-4 fill-current" aria-hidden="true" />
+                                </IconButton>
+                              )}
                             </div>
-                          ) : (
-                            <div className="text-xs text-muted-foreground italic mt-auto">No tracks uploaded</div>
-                          )}
-                        </div>
+                          }
+                        >
+                          <span className="block">
+                            {/* Upper user info */}
+                            <span className="flex flex-wrap items-center gap-2">
+                              <span className="font-bold text-sm text-foreground truncate">{sug.user.username}</span>
+                              <span
+                                className={`text-xs font-bold px-2 py-0.5 rounded-full uppercase select-none ${badge.className}`}
+                              >
+                                <span aria-hidden="true">{badge.emoji} </span>
+                                {badge.text} ({sug.score}%)
+                              </span>
+                            </span>
+                            <span className="text-xs text-muted-foreground flex gap-x-2 mt-0.5">
+                              <span>{formatNumber(sug.user.followers_count)} followers</span>
+                              <span aria-hidden="true">•</span>
+                              <span>Ratio: {sug.signals.followBackRatio}</span>
+                            </span>
+
+                            {/* Seed reason */}
+                            <span className="mt-2 block w-fit text-xs bg-secondary/40 px-2.5 py-1 rounded-md text-muted-foreground">
+                              {sug.signals.isRelatedArtist ? "SoundCloud Related Artist" : "Discovered in seeds' follower network"}
+                            </span>
+
+                            {/* Suggested track to like */}
+                            {track ? (
+                              <span className="mt-2 flex items-center gap-3 p-2 bg-card rounded-lg border border-border/50 text-xs">
+                                <img
+                                  src={track.artwork_url || "/brand/icon-192.png"}
+                                  alt=""
+                                  width={40}
+                                  height={40}
+                                  loading="lazy"
+                                  decoding="async"
+                                  className="w-10 h-10 rounded object-cover shrink-0"
+                                />
+                                <span className="min-w-0 flex-1">
+                                  <span className="block font-medium text-foreground truncate">{track.title}</span>
+                                  <span className="text-muted-foreground flex items-center gap-1 mt-0.5">
+                                    <Heart className="w-3 h-3 text-primary fill-primary" aria-hidden="true" />
+                                    <span>{formatNumber(track.likes_count)} likes</span>
+                                  </span>
+                                </span>
+                              </span>
+                            ) : (
+                              <span className="mt-2 block text-xs text-muted-foreground italic">No tracks uploaded</span>
+                            )}
+                          </span>
+                        </SelectableRow>
                       );
                     })}
                   </ProgressiveBlur>
@@ -987,22 +1057,18 @@ export default function GrowthPage() {
               {/* Live batch progress */}
               {job && job.status === "running" && (
                 <div className="fixed inset-x-0 bottom-0 z-40 border-t border-border/60 bg-card/95 backdrop-blur">
-                  <div className="mx-auto flex max-w-5xl flex-col gap-2 px-4 py-3 sm:px-6">
+                  <div className="mx-auto flex max-w-5xl flex-col gap-2 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-6">
                     <div className="flex items-center justify-between gap-4">
-                      <span className="inline-flex items-center gap-2 text-sm font-semibold text-foreground">
-                        <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                        Following {job.current} of {job.total}
-                        {job.likeTracks && ` · liked ${job.liked}`}
-                      </span>
-                      <Button variant="outline" size="sm" onClick={cancelEngagement}>
+                      <ProgressBar
+                        className="min-w-0 flex-1"
+                        label="Following"
+                        value={job.current}
+                        max={job.total}
+                        detail={job.likeTracks ? `${job.liked} liked` : undefined}
+                      />
+                      <Button variant="outline" size="sm" onClick={cancelEngagement} nowrap>
                         Stop
                       </Button>
-                    </div>
-                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-secondary">
-                      <div
-                        className="h-full rounded-full bg-primary transition-all duration-500"
-                        style={{ width: `${job.total ? (job.current / job.total) * 100 : 0}%` }}
-                      />
                     </div>
                   </div>
                 </div>
@@ -1024,10 +1090,13 @@ export default function GrowthPage() {
           {/* STEP 4: Success confirmation summary */}
           {discoveryStep === 4 && (
             <Card className="p-8 text-center max-w-xl mx-auto">
-              <div className="w-12 h-12 rounded-full bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 flex items-center justify-center mx-auto mb-4 border border-green-200">
+              <div
+                className="w-12 h-12 rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 flex items-center justify-center mx-auto mb-4 border border-green-200"
+                aria-hidden="true"
+              >
                 <Check className="w-6 h-6" />
               </div>
-              <h3 className="text-xl font-bold text-foreground">Campaign Initiated!</h3>
+              <h2 className="text-xl font-bold text-foreground">Campaign Initiated!</h2>
               <p className="text-sm text-muted-foreground mt-2">
                 We've successfully processed your selected engagement actions.
               </p>
@@ -1044,19 +1113,15 @@ export default function GrowthPage() {
               </div>
 
               <div className="mt-8 flex flex-col sm:flex-row gap-3 justify-center">
-                <Button 
-                  variant="outline" 
-                  onClick={() => {
-                    setActiveTab("history");
-                    refetchHistory();
-                    refetchStats();
-                  }}
+                <Button
+                  variant="outline"
+                  onClick={() => selectTab("history")}
                   className="gap-2"
                 >
-                  <History className="w-4 h-4" />
+                  <History className="w-4 h-4" aria-hidden="true" />
                   View Campaign History
                 </Button>
-                <Button 
+                <Button nowrap
                   onClick={() => {
                     setSelectedInspirations(new Set());
                     setDiscoveryStep(1);
@@ -1069,31 +1134,35 @@ export default function GrowthPage() {
               </div>
             </Card>
           )}
-        </>
+        </div>
       )}
 
       {/* History Tab */}
       {activeTab === "history" && (
-        <>
+        <div
+          role="tabpanel"
+          id="growth-panel-history"
+          aria-labelledby="growth-tab-history"
+        >
           {/* Dashboard Stats Panel */}
           {statsData && (
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
               <Card className="p-4 flex flex-col justify-between">
-                <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Total Followed</span>
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Total Followed</span>
                 <span className="text-2xl font-bold mt-1 text-foreground">{statsData.totalFollowed}</span>
               </Card>
               <Card className="p-4 flex flex-col justify-between">
-                <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Total Liked</span>
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Total Liked</span>
                 <span className="text-2xl font-bold mt-1 text-foreground">{statsData.totalLiked}</span>
               </Card>
               <Card className="p-4 flex flex-col justify-between">
-                <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Followback Rate</span>
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Followback Rate</span>
                 <span className="text-2xl font-bold mt-1 text-primary">
                   {Math.round(statsData.followedBackRate * 100)}%
                 </span>
               </Card>
               <Card className="p-4 flex flex-col justify-between">
-                <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Active Follows</span>
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Active Follows</span>
                 <span className="text-2xl font-bold mt-1 text-foreground">{statsData.activeFollows}</span>
               </Card>
             </div>
@@ -1103,65 +1172,72 @@ export default function GrowthPage() {
             {/* Left sidebar: Sessions selection */}
             <div className="lg:col-span-1 space-y-4">
               <Card className="p-4">
-                <div className="flex items-center justify-between border-b border-border/60 pb-3 mb-3">
-                  <h4 className="text-sm font-bold text-foreground">Discovery Sessions</h4>
-                  <Button 
-                    variant="outline" 
+                <div className="flex items-center justify-between gap-2 border-b border-border/60 pb-3 mb-3">
+                  <h2 className="text-sm font-bold text-foreground">Discovery Sessions</h2>
+                  <Button
+                    variant="outline"
                     size="sm"
-                    className="h-8 px-2"
+                    nowrap
+                    className="px-2"
                     onClick={() => checkFollowbacksMutation.mutate(null)}
-                    disabled={checkingFollowbacks || historyData?.actions.length === 0}
+                    disabled={checkingFollowbacks || historyActions.length === 0}
                   >
-                    {checkingFollowbacks ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
-                    <span className="ml-1.5 hidden sm:inline">Check All</span>
+                    {checkingFollowbacks ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />
+                    ) : (
+                      <RefreshCw className="w-3.5 h-3.5" aria-hidden="true" />
+                    )}
+                    <span className="sm:hidden">Check</span>
+                    <span className="hidden sm:inline">Check All</span>
                   </Button>
                 </div>
 
-                {!historyData || historyData.sessions.length === 0 ? (
+                {historySessions.length === 0 ? (
                   <EmptyState
                     icon={<Clock className="w-8 h-8" />}
                     title="No sessions logged"
                     description="Completed campaigns will appear here."
                   />
                 ) : (
-                  <div className="space-y-2 max-h-[450px] overflow-y-auto">
-                    {historyData.sessions.map((sess) => {
+                  <div className="space-y-2 max-h-[60dvh] overflow-y-auto">
+                    {historySessions.map((sess) => {
                       const isActive = selectedSessionId === sess.sessionId;
-                      const followbackPercent = sess.totalActions > 0 
-                        ? Math.round((sess.followedBack / sess.totalActions) * 100) 
+                      const followbackPercent = sess.totalActions > 0
+                        ? Math.round((sess.followedBack / sess.totalActions) * 100)
                         : 0;
 
                       return (
-                        <div
+                        // A real button with `aria-pressed`, not a
+                        // `SelectableRow`: picking a session is single-select
+                        // navigation, so a checkbox would state the wrong
+                        // thing. Native Enter/Space replaces the hand-rolled
+                        // keydown handler.
+                        <button
                           key={sess.sessionId}
+                          type="button"
+                          aria-pressed={isActive}
                           onClick={() => {
                             setSelectedSessionId(sess.sessionId);
                             setSelectedHistoryActions(new Set());
                           }}
-                          onKeyDown={(event) => handleCardKeyDown(event, () => {
-                            setSelectedSessionId(sess.sessionId);
-                            setSelectedHistoryActions(new Set());
-                          })}
-                          role="button"
-                          tabIndex={0}
-                          className={`p-3 rounded-xl border-2 transition-all cursor-pointer text-left ${
+                          className={`block w-full min-h-11 p-3 rounded-xl border-2 transition-all text-left ${
                             isActive
                               ? "bg-primary/5 border-primary/30"
                               : "bg-secondary/20 border-transparent hover:border-border"
                           }`}
                         >
-                          <div className="font-bold text-xs text-foreground line-clamp-1">{sess.label}</div>
-                          <div className="text-[10px] text-muted-foreground mt-1">
+                          <span className="block font-bold text-xs text-foreground line-clamp-1">{sess.label}</span>
+                          <span className="block text-xs text-muted-foreground mt-1">
                             {new Date(sess.date).toLocaleDateString()}
-                          </div>
-                          
-                          <div className="flex justify-between items-center text-[10px] mt-2.5 pt-2 border-t border-border/40 text-muted-foreground">
+                          </span>
+
+                          <span className="flex justify-between items-center text-xs mt-2.5 pt-2 border-t border-border/40 text-muted-foreground">
                             <span>{sess.totalActions} actions</span>
-                            <span className="font-semibold text-primary">
+                            <span className="font-semibold text-primary-text">
                               {followbackPercent}% followback
                             </span>
-                          </div>
-                        </div>
+                          </span>
+                        </button>
                       );
                     })}
                   </div>
@@ -1182,7 +1258,7 @@ export default function GrowthPage() {
                   <>
                     <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border/60 pb-4 mb-4">
                       <div>
-                        <h4 className="text-md font-bold text-foreground">{selectedSession?.label}</h4>
+                        <h2 className="text-md font-bold text-foreground">{selectedSession?.label}</h2>
                         <div className="text-xs text-muted-foreground flex gap-3 mt-1 flex-wrap">
                           <span>Followed back: {selectedSession?.followedBack}</span>
                           <span>•</span>
@@ -1192,7 +1268,7 @@ export default function GrowthPage() {
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-2">
+                      <div className="grid w-full grid-cols-1 gap-2 sm:w-auto sm:flex sm:flex-wrap sm:items-center">
                         <Button
                           variant="outline"
                           size="sm"
@@ -1200,7 +1276,7 @@ export default function GrowthPage() {
                           disabled={sessionActions.length === 0}
                           className="gap-1.5"
                         >
-                          <Download className="w-3.5 h-3.5" />
+                          <Download className="w-3.5 h-3.5" aria-hidden="true" />
                           Export CSV
                         </Button>
                         <Button
@@ -1211,9 +1287,9 @@ export default function GrowthPage() {
                           className="gap-1.5"
                         >
                           {checkingFollowbacks ? (
-                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />
                           ) : (
-                            <RefreshCw className="w-3.5 h-3.5" />
+                            <RefreshCw className="w-3.5 h-3.5" aria-hidden="true" />
                           )}
                           Check Followbacks
                         </Button>
@@ -1232,55 +1308,46 @@ export default function GrowthPage() {
                             setSelectedHistoryActions(new Set(targets));
                             setShowReverseConfirm(true);
                           }}
-                          className="text-red-500 hover:text-red-600 border-red-200 hover:border-red-300 gap-1.5 bg-red-50/50 dark:bg-red-950/20"
+                          className="text-destructive-text hover:bg-destructive/10 border-red-200 hover:border-red-300 gap-1.5 bg-red-50/50 dark:bg-red-950/20"
                         >
                           Unfollow Non-Followbacks
                         </Button>
                       </div>
                     </div>
 
-                    <div className="flex justify-between items-center mb-3">
-                      <button 
+                    <div className="flex justify-between items-center gap-3 mb-3">
+                      <Button
+                        variant="ghost"
+                        size="sm"
                         onClick={() => selectAllHistoryActions(sessionActions)}
-                        className="text-xs text-primary font-medium hover:underline"
+                        className="text-primary-text"
                       >
                         {selectedHistoryActions.size === sessionActions.length ? "Deselect All" : "Select All"}
-                      </button>
-                      <span className="text-xs text-muted-foreground">
+                      </Button>
+                      <span className="text-xs text-muted-foreground" role="status">
                         {sessionActions.length} actions in session
                       </span>
                     </div>
 
                     {/* Action Cards */}
                     <ProgressiveBlur
-                      className="grid sm:grid-cols-2 gap-3 max-h-[450px] overflow-y-auto"
+                      className="grid sm:grid-cols-2 gap-3 max-h-[60dvh] overflow-y-auto"
                       active={sessionActions.length > 6}
                       fadeHeight={72}
                     >
-                      {sessionActions.map((act) => {
-                        const isSelected = selectedHistoryActions.has(act.id);
-                        return (
-                          <div
-                            key={act.id}
-                            onClick={() => toggleHistoryAction(act.id)}
-                            onKeyDown={(event) => handleCardKeyDown(event, () => toggleHistoryAction(act.id))}
-                            role="button"
-                            tabIndex={0}
-                            className={`flex items-center gap-3 p-3 rounded-xl border-2 cursor-pointer transition-all ${
-                              isSelected
-                                ? "bg-primary/5 border-primary/30"
-                                : "bg-secondary/20 border-transparent hover:border-border"
-                            }`}
-                          >
-                            <div className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 border ${
-                              isSelected ? "bg-primary border-primary text-primary-foreground" : "bg-card border-border"
-                            }`}>
-                              {isSelected && <Check className="w-3 h-3" />}
-                            </div>
-
+                      {sessionActions.map((act) => (
+                        <SelectableRow
+                          key={act.id}
+                          as="div"
+                          id={act.id}
+                          selected={selectedHistoryActions.has(act.id)}
+                          onToggle={() => toggleHistoryAction(act.id)}
+                          label={act.targetName || "Action"}
+                        >
+                          <span className="flex items-center gap-3">
                             <img
                               src={act.targetAvatar || "/brand/icon-192.png"}
-                              alt={act.targetName || "Target"}
+                              alt=""
                               width={40}
                               height={40}
                               loading="lazy"
@@ -1288,35 +1355,41 @@ export default function GrowthPage() {
                               className={`w-10 h-10 object-cover shrink-0 ${act.actionType === 'follow' ? 'rounded-full' : 'rounded-lg'}`}
                             />
 
-                            <div className="min-w-0 flex-1">
-                              <div className="font-semibold text-xs text-foreground truncate">{act.targetName}</div>
-                              <div className="text-[10px] text-muted-foreground flex gap-1.5 mt-0.5 flex-wrap items-center">
-                                <span className="font-semibold uppercase tracking-wider text-[8px] bg-secondary px-1.5 py-0.5 rounded text-muted-foreground">
+                            <span className="min-w-0 flex-1">
+                              <span className="block font-semibold text-xs text-foreground truncate">{act.targetName}</span>
+                              <span className="text-xs text-muted-foreground flex gap-1.5 mt-0.5 flex-wrap items-center">
+                                <span className="font-semibold uppercase tracking-wider text-xs bg-secondary px-1.5 py-0.5 rounded text-muted-foreground">
                                   {act.actionType}
                                 </span>
-                                
+
                                 {act.reversed ? (
-                                  <span className="text-amber-500 font-semibold flex items-center gap-0.5">
-                                    <Undo2 className="w-3 h-3" /> Reversed
+                                  <span className="text-warning-text font-semibold flex items-center gap-0.5">
+                                    <Undo2 className="w-3 h-3" aria-hidden="true" /> Reversed
                                   </span>
                                 ) : act.actionType === 'follow' && (
                                   <>
                                     {act.followedBack === true && (
-                                      <span className="text-green-600 dark:text-green-400 font-bold">✓ Follows Back</span>
+                                      <span className="text-xs text-success-text font-bold">
+                                        <span aria-hidden="true">✓ </span>Follows Back
+                                      </span>
                                     )}
                                     {act.followedBack === false && (
-                                      <span className="text-red-500 font-semibold">✗ No Followback</span>
+                                      <span className="text-xs text-destructive-text font-semibold">
+                                        <span aria-hidden="true">✗ </span>No Followback
+                                      </span>
                                     )}
                                     {act.followedBack === null && (
-                                      <span className="text-muted-foreground">⏳ Unchecked</span>
+                                      <span className="text-xs text-muted-foreground">
+                                        <span aria-hidden="true">⏳ </span>Unchecked
+                                      </span>
                                     )}
                                   </>
                                 )}
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
+                              </span>
+                            </span>
+                          </span>
+                        </SelectableRow>
+                      ))}
                     </ProgressiveBlur>
                   </>
                 )}
@@ -1357,28 +1430,32 @@ export default function GrowthPage() {
                 }))}
             />
           </ConfirmDialog>
-        </>
+        </div>
       )}
 
       {/* Analytics Tab */}
       {activeTab === "analytics" && (
-        <>
+        <div
+          role="tabpanel"
+          id="growth-panel-analytics"
+          aria-labelledby="growth-tab-analytics"
+        >
           {statsData && (
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
               <Card className="p-4 flex flex-col justify-between">
-                <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Total Followed</span>
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Total Followed</span>
                 <span className="text-2xl font-bold mt-1 text-foreground">{statsData.totalFollowed}</span>
               </Card>
               <Card className="p-4 flex flex-col justify-between">
-                <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Followback Rate</span>
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Followback Rate</span>
                 <span className="text-2xl font-bold mt-1 text-primary">{Math.round(statsData.followedBackRate * 100)}%</span>
               </Card>
               <Card className="p-4 flex flex-col justify-between">
-                <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Active Follows</span>
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Active Follows</span>
                 <span className="text-2xl font-bold mt-1 text-foreground">{statsData.activeFollows}</span>
               </Card>
               <Card className="p-4 flex flex-col justify-between">
-                <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Pending Check</span>
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Pending Check</span>
                 <span className="text-2xl font-bold mt-1 text-foreground">{statsData.uncheckedFollows}</span>
               </Card>
             </div>
@@ -1387,11 +1464,11 @@ export default function GrowthPage() {
           <div className="grid lg:grid-cols-2 gap-6">
             {/* Per-seed conversion */}
             <Card className="p-6">
-              <h4 className="text-sm font-bold text-foreground mb-1">Which seeds convert best</h4>
+              <h2 className="text-sm font-bold text-foreground mb-1">Which seeds convert best</h2>
               <p className="text-xs text-muted-foreground mb-4">
                 Follow-back rate of people discovered from each inspiration artist. Seed your next campaign from the winners.
               </p>
-              {!analytics || analytics.perSeed.length === 0 ? (
+              {analyticsPerSeed.length === 0 ? (
                 <EmptyState
                   icon={<BarChart3 className="w-10 h-10" />}
                   title="Not enough data yet"
@@ -1399,7 +1476,7 @@ export default function GrowthPage() {
                 />
               ) : (
                 <div className="space-y-3">
-                  {analytics.perSeed.slice(0, 12).map((seed) => (
+                  {analyticsPerSeed.slice(0, 12).map((seed) => (
                     <div key={seed.seedId} className="flex items-center gap-3">
                       <div className="min-w-0 flex-1">
                         <div className="text-xs font-semibold text-foreground truncate">{seed.name}</div>
@@ -1410,7 +1487,7 @@ export default function GrowthPage() {
                           />
                         </div>
                       </div>
-                      <div className="w-24 text-right text-[11px] text-muted-foreground shrink-0">
+                      <div className="w-24 text-right text-xs text-muted-foreground shrink-0">
                         {seed.rate === null ? (
                           <span>{seed.follows} follows</span>
                         ) : (
@@ -1428,11 +1505,11 @@ export default function GrowthPage() {
 
             {/* Follow-back timing */}
             <Card className="p-6">
-              <h4 className="text-sm font-bold text-foreground mb-1">When people follow back</h4>
+              <h2 className="text-sm font-bold text-foreground mb-1">When people follow back</h2>
               <p className="text-xs text-muted-foreground mb-4">
                 How long after a follow reciprocation was confirmed — helps you time your follow-back checks.
               </p>
-              {!analytics || analytics.followBackCurve.every((b) => b.followedBack + b.notFollowedBack === 0) ? (
+              {analyticsCurve.every((b) => b.followedBack + b.notFollowedBack === 0) ? (
                 <EmptyState
                   icon={<Clock className="w-10 h-10" />}
                   title="No confirmed follow-backs yet"
@@ -1440,7 +1517,7 @@ export default function GrowthPage() {
                 />
               ) : (
                 <div className="space-y-4">
-                  {analytics.followBackCurve.map((b) => {
+                  {analyticsCurve.map((b) => {
                     const total = b.followedBack + b.notFollowedBack;
                     const pct = total > 0 ? Math.round((b.followedBack / total) * 100) : 0;
                     return (
@@ -1459,7 +1536,7 @@ export default function GrowthPage() {
               )}
             </Card>
           </div>
-        </>
+        </div>
       )}
 
       {/* Risk interstitial (shown once, before first engagement) */}
@@ -1474,9 +1551,9 @@ export default function GrowthPage() {
         onCancel={() => setShowRiskModal(false)}
       >
         <ul className="space-y-2 text-xs text-muted-foreground">
-          <li className="flex gap-2"><Check className="h-4 w-4 shrink-0 text-primary" />We cap follows at {budget?.dailyCap ?? 50} per day and pace them automatically.</li>
-          <li className="flex gap-2"><Check className="h-4 w-4 shrink-0 text-primary" />Everything is logged so you can undo any campaign from the History tab.</li>
-          <li className="flex gap-2"><Check className="h-4 w-4 shrink-0 text-primary" />Following real artists in your scene is fine; mass follow/unfollow churn is what gets flagged.</li>
+          <li className="flex gap-2"><Check className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />We cap follows at {budget?.dailyCap ?? 50} per day and pace them automatically.</li>
+          <li className="flex gap-2"><Check className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />Everything is logged so you can undo any campaign from the History tab.</li>
+          <li className="flex gap-2"><Check className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />Following real artists in your scene is fine; mass follow/unfollow churn is what gets flagged.</li>
         </ul>
       </ConfirmDialog>
     </PageContainer>

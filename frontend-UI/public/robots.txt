@@ -7,12 +7,32 @@ Allow: /
 # Sitemap location
 Sitemap: https://tracktoolkit.com/sitemap.xml
 
-# Disallow authenticated routes from indexing
-Disallow: /dashboard
-Disallow: /combine
-Disallow: /likes-to-playlist
-Disallow: /playlist-modifier
-Disallow: /link-resolver
-Disallow: /login
+# Disallow authenticated/admin/internal routes from indexing
+Disallow: /admin
 Disallow: /api/
-
+Disallow: /login
+Disallow: /extension/
+Disallow: /activity-to-playlist
+Disallow: /batch-link-resolver
+Disallow: /combine
+Disallow: /dashboard
+Disallow: /downloads
+Disallow: /export
+Disallow: /following-library
+Disallow: /following-manager
+Disallow: /genre-search
+Disallow: /growth
+Disallow: /library-audit
+Disallow: /like-manager
+Disallow: /likes-to-playlist
+Disallow: /link-resolver
+Disallow: /playlist-cloner
+Disallow: /playlist-compare
+Disallow: /playlist-health-check
+Disallow: /playlist-keyword-search
+Disallow: /playlist-modifier
+Disallow: /playlist-to-likes
+Disallow: /recently-played
+Disallow: /repost-manager
+Disallow: /account
+Disallow: /feedback

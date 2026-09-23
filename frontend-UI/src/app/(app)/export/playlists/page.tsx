@@ -15,19 +15,20 @@ import {
   playlistDetailQueryOptions,
   usePlaylistsQuery,
 } from "@/lib/queries";
+import { asArray } from "@/lib/api-shape";
 
 export default function ExportPlaylistsPage() {
   const queryClient = useQueryClient();
   const [selectedPlaylist, setSelectedPlaylist] = useState<PlaylistSummary | null>(null);
   const playlistsQuery = usePlaylistsQuery();
-  const playlists = (playlistsQuery.data?.collection || []) as unknown as PlaylistSummary[];
+  const playlists = asArray<PlaylistSummary>(playlistsQuery.data?.collection);
   const loading = playlistsQuery.isLoading;
   const loadError = playlistsQuery.isError;
 
   const loadPlaylistTracks = async (): Promise<ExportTrack[]> => {
     if (!selectedPlaylist) throw new Error("Select a playlist first");
     const data = await queryClient.ensureQueryData(playlistDetailQueryOptions(selectedPlaylist.id));
-    return (data.tracks || []) as unknown as ExportTrack[];
+    return asArray<ExportTrack>(data.tracks);
   };
 
   return (
@@ -53,7 +54,7 @@ export default function ExportPlaylistsPage() {
           <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-muted/30 px-4 py-3">
             <img
               src={selectedPlaylist.coverUrl || selectedPlaylist.artwork_url || "/brand/icon-192.png"}
-              alt={selectedPlaylist.title}
+              alt=""
               width={48}
               height={48}
               loading="lazy"
@@ -64,13 +65,13 @@ export default function ExportPlaylistsPage() {
               <p className="font-semibold text-foreground truncate">{selectedPlaylist.title}</p>
               <p className="text-sm text-muted-foreground">{selectedPlaylist.track_count} tracks</p>
             </div>
-            <Button
+            <Button nowrap
               type="button"
               variant="secondary"
               className="gap-2 text-sm"
               onClick={() => setSelectedPlaylist(null)}
             >
-              <ArrowLeft className="h-4 w-4" />
+              <ArrowLeft aria-hidden="true" className="h-4 w-4" />
               Change playlist
             </Button>
           </div>

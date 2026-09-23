@@ -8,12 +8,13 @@ import { ListExportCard } from "@/components/export/ListExportCard";
 import { REPOST_FORMATS } from "@/lib/export-config";
 import type { ExportRepost } from "@/lib/export";
 import { repostsQueryOptions } from "@/lib/queries";
+import { asArray } from "@/lib/api-shape";
 
 export default function ExportRepostsPage() {
   const queryClient = useQueryClient();
   const loadReposts = async (): Promise<ExportRepost[]> => {
     const data = await queryClient.ensureQueryData(repostsQueryOptions());
-    return (data.collection || []) as unknown as ExportRepost[];
+    return asArray<ExportRepost>(data.collection);
   };
 
   return (

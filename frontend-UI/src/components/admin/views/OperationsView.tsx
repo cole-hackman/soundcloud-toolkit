@@ -171,7 +171,7 @@ export function OperationsView({ period, enabled, filter, onFilterChange }: Prop
                       <td className={cn(tdClass, "whitespace-nowrap font-mono text-[11px] text-muted-foreground")} title={fmtAbsolute(op.createdAt)}>
                         {timeAgo(op.createdAt)}
                       </td>
-                      <td className={cn(tdClass, "max-w-[160px] truncate font-mono text-[12px] font-medium text-primary")} title={op.user.displayName ?? undefined}>
+                      <td className={cn(tdClass, "max-w-[160px] truncate font-mono text-[12px] font-medium text-primary-text")} title={op.user.displayName ?? undefined}>
                         @{op.user.username}
                       </td>
                       <td className={cn(tdClass, "max-w-[220px] truncate text-foreground/90")}>{op.actionName}</td>
@@ -180,7 +180,7 @@ export function OperationsView({ period, enabled, filter, onFilterChange }: Prop
                       <td className={tdClass}>
                         <StatusPill status={op.status} />
                       </td>
-                      <td className={cn(tdClass, "max-w-[260px] truncate font-mono text-[11px]", op.errorCode || op.errorMessage ? "text-destructive" : "text-muted-foreground")} title={op.errorMessage ?? undefined}>
+                      <td className={cn(tdClass, "max-w-[260px] truncate font-mono text-[11px]", op.errorCode || op.errorMessage ? "text-destructive-text" : "text-muted-foreground")} title={op.errorMessage ?? undefined}>
                         {op.errorCode || op.errorMessage || ""}
                       </td>
                       <td className={cn(tdClass, "text-right")}>

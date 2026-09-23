@@ -99,15 +99,43 @@ All database operations use Prisma methods:
 - `prisma.user.upsert()` - User creation/update
 - `prisma.token.upsert()` - Token storage
 
-### No Raw SQL
-- No `$queryRaw` or `$executeRaw` calls found
-- All queries use Prisma's type-safe query builder
-- User input is validated before database operations
+### Raw SQL
+- Most queries use Prisma's type-safe query builder
+- Raw SQL does exist, and every occurrence is a **tagged template** —
+  `prisma.$queryRaw\`…\`` / `$executeRaw\`…\`` or `Prisma.sql\`…\`` — which
+  parameterises its interpolations. The unsafe variants (`$queryRawUnsafe`,
+  `$executeRawUnsafe`) are not used anywhere, and string-concatenated SQL is
+  not either
+- Call sites: `server/lib/retention.js` (the `COUNT(DISTINCT "userId")`
+  snapshot), `server/lib/catalog.js` and `server/lib/enrichment.js` (upserts
+  Prisma cannot express), `server/routes/admin.js` (aggregate reports) and
+  `server/scripts/backfill-track-catalog.js`
+- User input is validated before database operations. The admin list filters
+  that *are* enumerable — `status`, `type`, `period` — accept only their
+  enumerated values and drop anything else rather than passing it to Prisma.
+  The catalog's `genre` and `artist` filters are necessarily free text; they
+  reach an `ILIKE` through a tagged template, so they are parameterised, not
+  enumerated
 
 ## 5. Additional Security Measures
 
 ### Security Headers (Helmet)
-- Content Security Policy (CSP) configured
+- Content Security Policy configured in `server/middleware/security.js`. It
+  names **no third-party script, style or font source** — that is the
+  enforcement behind the privacy policy's plain-language promise that the app
+  runs no analytics and no advertising scripts. The only external host in it
+  is SoundCloud, in `connectSrc`
+- `frame-src` is `'none'` on every page **except the `/admin` document**,
+  which is served a second helmet instance adding
+  `frame-src https://w.soundcloud.com` for the embedded player and nothing
+  else. A CSP governs the document it is served with, so this cannot widen any
+  other page. `tests/routes/csp-admin-frame.test.js` pins both branches and
+  asserts every other directive is identical between them
+- `tests/security-headers.test.js` sweeps `scriptSrc`, `styleSrc`,
+  `connectSrc`, `fontSrc` **and `frameSrc`** for known tracker, widget and
+  font-host names, and checks the admin frame allowance **by value** — a test
+  that compared it to the constant that produced it would pass for any value
+  that constant was given
 - XSS protection headers
 - MIME type sniffing prevention
 - Frame options (clickjacking protection)
@@ -180,13 +208,22 @@ All database operations use Prisma methods:
 3. **Secrets Rotation**: Rotate API keys and secrets periodically
 4. **HTTPS**: Ensure HTTPS is enforced in production (handled by hosting provider)
 5. **Log Monitoring**: Monitor secure logs for patterns indicating security issues
-6. **Security Testing**: Consider implementing automated security testing in CI/CD pipeline
+6. **Security Testing**: `.github/workflows/azure-deploy.yml` runs the Jest
+   suite on every push to `main` and a failure blocks the deploy, so the
+   authz/CSRF/CSP boundary tests under `tests/routes/` and
+   `tests/security-headers.test.js` do gate a release. Dependency scanning
+   (`npm audit`) and the frontend's own checks are still manual.
 
 
 ## CSRF model
 
-Production cookies are `SameSite=None` (frontend and API live on different
-subdomains), so CSRF is handled in layers: (1) `rejectUntrustedOrigin`
+Production cookies are `SameSite=Lax` since the Azure cutover — the frontend
+and the API are one origin (`https://tracktoolkit.com`), so there is no
+cross-site request to carry a session cookie on. That is now the first layer,
+but it is set from an environment variable (`SESSION_COOKIE_SAMESITE`) and
+`resolveSessionSameSite` still defaults to `none` in production when it is
+unset, so the two layers built for the split-host deployment stay and are
+still the ones under test: (1) `rejectUntrustedOrigin`
 middleware rejects state-changing `/api` requests whose `Origin` header is not
 in the allowlist; (2) `express.json()` is deliberately the ONLY body parser —
 cross-site HTML form posts (urlencoded/text-plain) parse to an empty body and
@@ -201,3 +238,77 @@ Sessions are HMAC-SHA256-signed cookies carrying `iat`; they expire 7 days
 after issuance server-side (`SESSION_TTL_MS`) regardless of cookie replay.
 Known limitation: there is no server-side revocation list — logout clears the
 cookie but a previously exfiltrated cookie stays valid until its TTL.
+
+## Account lifecycle: disconnect, revocation, export
+
+Three paths now exist where there used to be two (`server/routes/auth.js`,
+`server/lib/account-lifecycle.js`).
+
+**Disconnect** — `POST /api/auth/disconnect`. Logout forgets the session
+cookie and nothing else: the encrypted token pair stays in the database and
+the next login picks it straight back up. Disconnect hands the SoundCloud
+grant back (`POST https://api.soundcloud.com/sign-out`, best-effort, on its
+own 5s deadline), deletes the `tokens` row, and stamps `users.disconnectedAt`.
+The account survives — a later login clears the stamp — but if nobody comes
+back the retention job deletes the row (and everything cascading from it)
+after six days. Six, not seven: SoundCloud's terms give seven, the sweep runs
+daily, so the real worst case is the window plus up to one sweep interval, and
+seven would have been up to eight. `RETENTION_INTERVAL_MS` is clamped to a 24h
+maximum in code for the same reason. See `docs/internal/TERMS-CHECK.md`
+finding B.
+
+`disconnectUser()` calls `invalidateCachedAuth(userId)`. This is not optional:
+`server/lib/auth-cache.js` memoizes the **decrypted** token pair for 30
+seconds, so without it a request arriving inside that window would keep
+working against tokens that no longer exist. It runs inside a `finally`
+wrapped around the token delete, i.e. before the user update and the cache
+teardown, so a failure anywhere later in the function cannot leave the memo
+serving credentials whose database row is already gone. `disconnectUser` also
+drops the library request cache, the invalidation marks, and the durable
+snapshot tier, since all of it is derived from the grant just returned.
+
+The route takes no body, so the second CSRF layer (empty body → validator
+fails closed) has nothing to act on. `rejectUntrustedOrigin` is the whole
+guard, and `tests/routes/account-deletion.test.js` asserts a cross-site POST
+is refused with 403 before the handler runs.
+
+**Revocation detection.** A user can also revoke the app from SoundCloud's own
+settings page, which this service never hears about directly. It is detected
+at the single refresh choke point (`refreshTokensAndPersist`). Exactly two
+responses count, and the rule is deliberately narrow:
+
+1. a `400` or `401` whose JSON body is `{"error":"invalid_grant"}`;
+2. a `401` with an **empty** body.
+
+The teardown then runs with `reason: 'revoked'` and no sign-out call, because
+the token is already dead. The thrown error is unchanged, so the request
+surfaces exactly as it always did.
+
+What deliberately does **not** trigger it: a `401` with a non-empty body that
+is not JSON, plus `429`, every `5xx`, timeouts and network failures. The
+non-JSON `401` matters most — that shape is an HTML error page from a proxy,
+WAF or load balancer in front of the token endpoint far more often than it is
+a revocation, and treating it as one would destroy a live user's tokens
+because of someone else's infrastructure. Disconnecting people over a
+transient upstream failure would be a self-inflicted outage.
+`tests/routes/token-refresh.test.js` pins every branch, and
+`tests/soundcloud-signout.test.js` holds the full truth table for
+`isInvalidGrantResponse`.
+
+**Export** — `GET /api/auth/export`, `heavyOperationRateLimiter`. Returns
+every row keyed to the caller as one JSON attachment. Two invariants, both
+asserted in `tests/routes/export.test.js`:
+
+1. Every query is scoped to `req.user.id`; no identifier is read from the
+   request, so there is nothing to tamper with.
+2. The token record contributes `expiresAt` and nothing else. `encrypted` and
+   `refresh` are AES-256-GCM ciphertext of live credentials and are excluded
+   at the `select`, so they never leave Postgres. Note that `req.user` is the
+   full user row **with its `tokens` relation included** — spreading it into
+   the payload would ship both ciphertexts, which is why the route names
+   fields explicitly.
+
+**Retention** (`server/lib/retention.js`) enforces the stated windows daily.
+Relevant to this document: it deletes disconnected accounts after 6 days,
+dormant accounts after `INACTIVE_MONTHS`, and nulls the one free-text PII
+column left in the retired beta-survey table on every run.

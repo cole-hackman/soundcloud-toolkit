@@ -86,12 +86,12 @@ export function PlaylistsTable({ period, enabled }: { period: Period; enabled: b
                 return (
                   <tr key={id} className="transition-colors hover:bg-primary/[0.05]">
                     <td className={cn(tdClass, "max-w-[320px]")}>
-                      <div className={cn("truncate", p.title ? "text-foreground" : "font-mono text-chart-4")}>{p.title || `#${id} (untitled)`}</div>
+                      <div className={cn("truncate", p.title ? "text-foreground" : "font-mono text-warning-text")}>{p.title || `#${id} (untitled)`}</div>
                       <div className="font-mono text-[10px] text-muted-foreground">#{id}</div>
                     </td>
                     <td className={cn(tdClass, "font-mono text-[11px] text-muted-foreground")}>{p.ownerScId != null ? String(p.ownerScId) : "—"}</td>
                     <td className={cn(tdClass, "text-right font-mono tabular-nums text-foreground/80")}>{p.trackCount != null ? fmtInt(p.trackCount) : "—"}</td>
-                    <td className={cn(tdClass, "text-right font-mono font-semibold tabular-nums text-primary")}>{fmtInt(p.touches)}</td>
+                    <td className={cn(tdClass, "text-right font-mono font-semibold tabular-nums text-primary-text")}>{fmtInt(p.touches)}</td>
                     <td className={cn(tdClass, "text-right font-mono tabular-nums text-foreground/80")}>{fmtInt(p.users)}</td>
                     <td className={cn(tdClass, "whitespace-nowrap font-mono text-[11px] text-muted-foreground")} title={fmtAbsolute(p.last_touched)}>
                       {p.last_touched ? timeAgo(p.last_touched) : "—"}

@@ -125,7 +125,7 @@ export function CatalogView({ period, enabled }: { period: Period; enabled: bool
               tone="info"
               items={(summary?.genreBreakdown ?? []).map((g) => ({
                 key: g.genre,
-                label: g.genre === "(none)" ? <span className="text-chart-4">(no genre)</span> : g.genre,
+                label: g.genre === "(none)" ? <span className="text-warning-text">(no genre)</span> : g.genre,
                 value: g.count,
                 tone: g.genre === "(none)" ? ("warn" as Tone) : ("info" as Tone),
                 onClick: () => openTracksWith({ genre: g.genre }),

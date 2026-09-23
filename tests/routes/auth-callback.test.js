@@ -26,6 +26,10 @@ jest.unstable_mockModule('../../server/lib/soundcloud-client.js', () => ({
   // routes/api.js imports this alongside soundcloudClient for the oEmbed
   // supplement; the mock must provide it or the module fails to link.
   fetchWithTimeout: jest.fn(async () => ({ ok: false, status: 503 })),
+  // routes/auth.js imports signOut for the disconnect/delete paths.
+  signOut: jest.fn(async () => true),
+  // account-lifecycle.js drops the rotation memo alongside the auth memo.
+  forgetRecentRotation: jest.fn(),
 }));
 jest.unstable_mockModule('../../server/lib/analytics.js', () => ({
   logOperation: jest.fn(),
@@ -79,6 +83,22 @@ describe('OAuth callback — happy path', () => {
     const payload = parseSessionData(unsignSession(raw, process.env.SESSION_SECRET));
     expect(payload).toMatchObject({ userId: 'user-1', soundcloudId: 555 });
     expect(typeof payload.iat).toBe('number');
+  });
+
+  test('stamps lastLoginAt and clears disconnectedAt on both branches of the upsert', async () => {
+    await request(app)
+      .get('/api/auth/callback?code=abc123')
+      .set('Cookie', ['pkce_verifier=verifier-value', 'app_url=https://app.example.com']);
+
+    const { create, update } = userUpsert.mock.calls[0][0];
+
+    // Returning after a disconnect must un-disconnect the account, or the
+    // retention job would delete a user who just logged back in.
+    expect(update.lastLoginAt).toBeInstanceOf(Date);
+    expect(update.disconnectedAt).toBeNull();
+
+    expect(create.lastLoginAt).toBeInstanceOf(Date);
+    expect(create.disconnectedAt).toBeNull();
   });
 });
 

@@ -24,17 +24,54 @@
     --popover: 0 0% 100%;
     --popover-foreground: 222 47% 11%;
     --primary: 17 100% 52%; /* SoundCloud orange #FF5500 */
-    --primary-foreground: 0 0% 100%;
+    /* Dark navy on #FF5500 is 5.45:1; white was 3.29:1. */
+    --primary-foreground: 222 47% 11%;
+    /* The brand orange when it is TEXT rather than a surface. It has to clear
+       AA on the brand's own tint as well as on a plain surface, because
+       `bg-primary/10 text-primary-text` is how an active nav item, a genre
+       chip and a secondary CTA are all built: at the old 40% that tint
+       measured 4.21:1. At 35% it is 5.87:1 on --background, 6.23:1 on --card
+       and still ≥4.5:1 on the brand tint up to 20%. Never use --primary for
+       small text. */
+    --primary-text: 17 100% 35%;
     --secondary: 215 16% 88%;
     --secondary-foreground: 222 47% 11%;
     --muted: 215 16% 90%;
     --muted-foreground: 215 15% 40%;
+    /* Replaces every alpha-modified muted text utility (the old
+       `text-muted-foreground` + opacity pairs measured 2.2-3.0:1). 44%, not
+       46%: it also has to hold on the `bg-secondary/20` panels it is most
+       often used on, where 46% measured 4.39:1. */
+    --muted-foreground-subtle: 215 15% 44%;
     --accent: 215 20% 84%;
     --accent-foreground: 222 47% 11%;
-    --destructive: 0 84% 60%;
+    /* 45%, not 51%. `Button variant="destructive"` hovers to
+       `bg-destructive/90`, and 51% composited at 90% over the page put white
+       at 4.32:1 — a hover that failed AA on every confirm button in the app
+       while the resting value passed. 45% is 5.81:1 resting and 5.12:1 at the
+       hover. */
+    --destructive: 0 72% 45%;
     --destructive-foreground: 0 0% 100%;
+    /* Same value, for the same reason one level up: as text it sits on
+       `bg-destructive/10` (the destructive IconButton's hover) where 51%
+       measured 3.89:1. */
+    --destructive-text: 0 72% 45%;
+    /* Status colors used as small text. The raw Tailwind green/amber utilities
+       measured 2.0-3.5:1 on the light background.
+       29% → 26%: the admin console's soft status pills put this on a
+       `bg-chart-3/12` tint, where 29% measured 4.37:1. 26% is 5.19:1 there
+       and 5.72:1 on the plain page. */
+    --success-text: 142 71% 26%;
+    --warning-text: 35 90% 30%;
+    /* The blue of the `info` tone, as text. --chart-2 is a data-viz colour
+       (a bar clears the 3:1 graphical bar at 4.02:1 on a card) and was being
+       used for 10-12px labels in the admin console; this is the readable
+       sibling, chosen the same way as --success-text above: it has to hold on
+       `bg-chart-2/12` as well as on a plain surface. */
+    --info-text: 200 94% 32%;
     --border: 215 18% 82%;
-    --input: 215 18% 82%;
+    /* 1.4.11 non-text contrast: a control border must reach 3:1 (3.37:1). */
+    --input: 215 18% 55%;
     --ring: 17 100% 52%;
     --glass: 215 40% 96%;
     --surface: 0 0% 100%;
@@ -45,6 +82,24 @@
     --chart-3: 142 71% 45%;
     --chart-4: 48 96% 53%;
     --chart-5: 340 82% 52%;
+
+    /* Categorical surface tones.
+       Unlike --primary and --destructive these carry no state meaning: the
+       hue only tells one option apart from another (a free download from a
+       Hypeddit link, a high match from a medium one), and every one of them
+       is paired with words, so the colour is never the only signal.
+
+       They replace the raw Tailwind palette classes those chips used to
+       carry. `bg-green-500` was the worst of them: white on #22c55e is
+       2.28:1, below even the 3:1 floor a glyph needs.
+
+       Deliberately theme-independent — a filled chip reads the same in both
+       themes, and each is dark enough to carry --tone-foreground at AA both
+       at rest and at the `/90` hover. `.dark` inherits them from here. */
+    --tone-foreground: 0 0% 100%;
+    --tone-download: 142 72% 26%; /* a direct, free download */
+    --tone-purchase: 271 62% 42%; /* a Hypeddit or purchase link */
+    --tone-match: 22 88% 34%; /* the top discovery-score tier */
   }
 
   .dark {
@@ -57,16 +112,33 @@
     --popover-foreground: 210 40% 98%;
     --primary: 17 100% 52%; /* SoundCloud orange #FF5500 */
     --primary-foreground: 210 40% 2%;
+    /* Four points lighter than --primary, not equal to it. At 52% the brand
+       tint bottomed out at 4.35:1 on a card at `bg-primary/20` — the deepest
+       tint the gate now bounds — so the orange has to come up off the surface
+       colour to hold AA all the way down. 4.68:1 there, 6.12:1 on the plain
+       background. */
+    --primary-text: 17 100% 56%;
     --secondary: 215 21% 16%;
     --secondary-foreground: 210 40% 98%;
     --muted: 220 19% 18%;
     --muted-foreground: 215 20% 72%;
+    --muted-foreground-subtle: 215 20% 60%;
     --accent: 218 20% 22%;
     --accent-foreground: 210 40% 98%;
     --destructive: 0 65% 40%;
     --destructive-foreground: 210 40% 98%;
+    /* --destructive itself as text on the dark background is only 2.62:1.
+       60% → 64%: on `bg-destructive/12` (the admin console's BUG pill) over a
+       card, 60% measured 4.48:1 — under AA by 0.02. 64% is 5.08:1 there. */
+    --destructive-text: 0 72% 64%;
+    --success-text: 142 60% 62%;
+    --warning-text: 45 90% 62%;
+    /* See the light-mode note. Lighter than --chart-2 is not needed for
+       contrast here (the dark surfaces are dark enough either way); it is
+       declared so the token exists in both themes and the gate can name it. */
+    --info-text: 200 94% 62%;
     --border: 220 19% 20%;
-    --input: 220 19% 20%;
+    --input: 220 19% 40%;
     --ring: 17 100% 52%;
     --glass: 220 40% 14%;
     --surface: 222 31% 12%;
@@ -130,12 +202,6 @@ body::before {
   z-index: -1;
 }
 
-/* Ensure third-party widgets stay visible */
-.bmc-btn,
-.bmc-button {
-  z-index: 60 !important;
-}
-
 /* ─── Accessibility ──────────────────────────────────────── */
 
 /* Skip-to-content link — visible only when focused */
@@ -156,6 +222,15 @@ body::before {
   top: 1rem;
   outline: 2px solid hsl(var(--foreground));
   outline-offset: 2px;
+}
+
+/* Coarse-pointer target floor (WCAG 2.5.8). Applied by IconButton so a
+   visually small icon button still gets a 44x44 touch target on phones. */
+@media (pointer: coarse) {
+  .touch-44 {
+    min-height: 44px;
+    min-width: 44px;
+  }
 }
 
 /* Global visible focus fallback for any interactive element that doesn't
@@ -204,16 +279,28 @@ textarea:focus-visible {
     0 0 0 1px rgba(148, 163, 184, 0.20);
 }
 
+/* Light mode stops are darkened so every one of them clears 3:1 against
+   --background at the large display sizes this gradient is used for. The
+   original (brighter) stops stay in dark mode, where they already pass. */
 .text-gradient {
+  background-image: linear-gradient(
+    120deg,
+    #e04000,
+    #f04a00,
+    #ff5500
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.dark .text-gradient {
   background-image: linear-gradient(
     120deg,
     #ff5500,
     #ff7a26,
     #ff8a3d
   );
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
 }
 
 @keyframes fadeIn {

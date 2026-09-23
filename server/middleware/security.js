@@ -3,18 +3,23 @@ import logger from '../lib/logger.js';
 import { safeError } from '../lib/safe-error.js';
 
 /**
- * Content-Security-Policy directives shared by every page. `frameSrc` is
- * 'none' everywhere except the admin console (see securityHeaders below):
- * the console embeds SoundCloud's player widget, and that allowance must
- * not leak to user-facing pages.
+ * Content-Security-Policy directives shared by every page.
+ *
+ * Exported so `tests/security-headers.test.js` can assert the no-third-party
+ * posture directly: the app loads no analytics, no tag manager and no external
+ * fonts or widgets, so the only script and style sources are our own origin
+ * plus `'unsafe-inline'`.
+ *
+ * `frameSrc` is `'none'` here and stays that way on every user-facing page.
+ * The admin console is the single exception — see `securityHeaders` below.
  */
-const BASE_CSP_DIRECTIVES = {
+export const cspDirectives = {
   defaultSrc: ["'self'"],
-  styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
-  scriptSrc: ["'self'", "'unsafe-inline'", "https://cdnjs.buymeacoffee.com"], // unsafe-inline required for Next.js static export bootstrap scripts
+  styleSrc: ["'self'", "'unsafe-inline'"],
+  scriptSrc: ["'self'", "'unsafe-inline'"], // unsafe-inline required for Next.js static export bootstrap scripts
   imgSrc: ["'self'", "https:", "data:"], // Allow images from any HTTPS source
   connectSrc: ["'self'", "https://api.soundcloud.com", "https://secure.soundcloud.com", "https://api-v2.soundcloud.com", "ws://localhost:*", "wss:"],
-  fontSrc: ["'self'", "data:", "https://fonts.gstatic.com"],
+  fontSrc: ["'self'", "data:"], // next/font self-hosts the webfonts into the static export
   objectSrc: ["'none'"],
   mediaSrc: ["'self'"],
   frameSrc: ["'none'"],
@@ -31,8 +36,8 @@ function buildHelmet(directives) {
   });
 }
 
-const defaultHeaders = buildHelmet(BASE_CSP_DIRECTIVES);
-const adminHeaders = buildHelmet({ ...BASE_CSP_DIRECTIVES, frameSrc: [ADMIN_FRAME_SRC] });
+const defaultHeaders = buildHelmet(cspDirectives);
+const adminHeaders = buildHelmet({ ...cspDirectives, frameSrc: [ADMIN_FRAME_SRC] });
 
 /** True for the admin console document and its sub-paths, never for /api. */
 export function isAdminPagePath(path) {

@@ -2,12 +2,14 @@ import express from 'express';
 import { createPkcePair } from '../lib/pkce.js';
 import { signSession, unsignSession, parseSessionData, createSessionCookieOptions } from '../lib/session.js';
 import { encrypt } from '../lib/crypto.js';
-import { soundcloudClient } from '../lib/soundcloud-client.js';
+import { soundcloudClient, signOut, forgetRecentRotation } from '../lib/soundcloud-client.js';
+import { disconnectUser } from '../lib/account-lifecycle.js';
 import prisma from '../lib/prisma.js';
 import logger from '../lib/logger.js';
 import { safeError } from '../lib/safe-error.js';
 import { logOperation } from '../lib/analytics.js';
 import { authenticateUser } from '../middleware/auth.js';
+import { heavyOperationRateLimiter } from '../middleware/rateLimiter.js';
 import { invalidateCachedAuth } from '../lib/auth-cache.js';
 import { requestCache } from '../lib/request-cache.js';
 import { dropSnapshots } from '../lib/snapshot-cache.js';
@@ -136,13 +138,21 @@ router.get('/callback', async (req, res) => {
         username: userInfo.username,
         displayName: userInfo.display_name,
         avatarUrl: userInfo.avatar_url,
+        // A successful login is what the inactive-account purge measures, and
+        // it un-disconnects an account the user (or SoundCloud) had cut loose:
+        // reconnecting must clear the stamp, or the retention job would delete
+        // a user who just came back.
+        lastLoginAt: new Date(),
+        disconnectedAt: null,
         updatedAt: new Date()
       },
       create: {
         soundcloudId: userInfo.id,
         username: userInfo.username,
         displayName: userInfo.display_name,
-        avatarUrl: userInfo.avatar_url
+        avatarUrl: userInfo.avatar_url,
+        lastLoginAt: new Date(),
+        disconnectedAt: null
       }
     });
 
@@ -183,7 +193,10 @@ router.get('/callback', async (req, res) => {
       soundcloudId: user.soundcloudId,
       action: 'auth-login',
       status: 'success',
-      metadata: { username: user.username },
+      // No metadata. The privacy page describes the operation log as ids plus
+      // device/browser/OS, and `username` here was a second copy of a column
+      // the `users` row already holds — nothing read it, and it outlived the
+      // description it was supposed to match.
     });
 
     // Clear PKCE verifier and app origin cookies
@@ -240,6 +253,33 @@ router.post('/logout', async (req, res) => {
 });
 
 /**
+ * POST /api/auth/disconnect
+ *
+ * Hand the SoundCloud grant back and destroy the stored tokens, without
+ * deleting the account. The user row survives, stamped with disconnectedAt,
+ * so logging back in restores the connection — but if they do not, the
+ * retention job removes the row (and everything cascading from it) six days
+ * later. See server/lib/account-lifecycle.js.
+ *
+ * It is a POST under /api, so rejectUntrustedOrigin already refuses it from a
+ * foreign origin (tests/routes/account-deletion.test.js). It takes no body, so the
+ * empty-body fail-closed layer that guards the other mutations does not apply
+ * here — the Origin check is the guard.
+ */
+router.post('/disconnect', authenticateUser, async (req, res) => {
+  try {
+    await disconnectUser(req.user.id, { accessToken: req.accessToken, reason: 'user' });
+    // Same call shape as logout: the cookie is host-only with a default path,
+    // so it clears with no options.
+    res.clearCookie('session');
+    res.json({ success: true });
+  } catch (error) {
+    logger.error('Account disconnect error:', safeError(error));
+    res.status(500).json({ error: 'Failed to disconnect' });
+  }
+});
+
+/**
  * DELETE /api/auth/account
  * Permanently delete the authenticated user's account and everything keyed to
  * it. Every per-user table relates to users with onDelete: Cascade (tokens,
@@ -253,22 +293,152 @@ router.delete('/account', authenticateUser, async (req, res) => {
     if (req.body?.confirm !== 'DELETE') {
       return res.status(400).json({ error: 'Confirmation required: send { "confirm": "DELETE" }' });
     }
-    const { id, soundcloudId } = req.user;
+    const { id } = req.user;
+    // Hand the grant back before the row goes, so deleting an account also
+    // drops the authorization on SoundCloud's side rather than leaving a live
+    // grant pointing at data we no longer hold. Never throws.
+    await signOut(req.accessToken);
     await prisma.user.delete({ where: { id } });
     // The user row and its tokens are gone; drop the memo and any cached
     // library payloads so nothing survives the deletion in process memory.
+    // The auth memo holds DECRYPTED tokens for 30s and the rotation memo holds
+    // the last refresh's pair for a minute, so without these two a request
+    // arriving inside the window would keep working — and writing — against an
+    // account whose row no longer exists. tests/routes/account-deletion.test.js
+    // asserts both through this route, not by calling them directly.
     invalidateCachedAuth(id);
+    forgetRecentRotation(id);
     requestCache.invalidateUser(id);
     dropInvalidationMarks(id);
     await dropSnapshots(id);
     // Deliberately not logOperation: the operation_logs rows (and their FK
     // target) were just deleted with the account.
-    logger.info(`[account] Deleted account and all data for soundcloudId ${soundcloudId}`);
+    // No identifier: the point of the route is that nothing about this person
+    // is kept, and a log line naming them would outlive the rows it names.
+    logger.info('[account] deleted account');
     res.clearCookie('session');
     res.json({ success: true });
   } catch (error) {
     logger.error('Account deletion error:', safeError(error));
     res.status(500).json({ error: 'Failed to delete account' });
+  }
+});
+
+/**
+ * GET /api/auth/export
+ *
+ * Everything this service stores about the authenticated user, as one JSON
+ * download. Deliberately a full dump rather than a summary — the point is that
+ * a person can see the actual rows, not a description of them.
+ *
+ * Three invariants:
+ *   1. Every query is scoped to req.user.id. There is no id parameter to
+ *      tamper with, and nothing here reads a foreign row.
+ *   2. The token record contributes its expiry only. `encrypted` and `refresh`
+ *      are AES-GCM ciphertext of live credentials and never leave the server,
+ *      exported or not.
+ *   3. Every per-user table is here. The privacy policy and the account page
+ *      both promise "everything keyed to your account", so a table that stores
+ *      per-user rows and is missing from this list makes that promise false.
+ *      The list is not maintained by hand: tests/routes/export.test.js derives
+ *      it from prisma/schema.prisma the way the deletion-cascade test does, so
+ *      a per-user table added later cannot quietly fall out of the export.
+ * All three are asserted by tests/routes/export.test.js.
+ *
+ * BigInt columns (soundcloudId on the vote/survey tables, growth target ids)
+ * serialize through the BigInt.prototype.toJSON patch in server/index.js.
+ */
+router.get('/export', authenticateUser, heavyOperationRateLimiter, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const scope = { where: { userId } };
+
+    // A delegate can be absent from the generated client when the model
+    // belongs to a feature branch that has not landed here yet; asking for it
+    // would throw and cost the caller their whole export. An absent table has
+    // no rows to export either way, so it contributes an empty array.
+    const optional = (delegate, args = scope) =>
+      (delegate ? delegate.findMany(args) : Promise.resolve([]));
+
+    const [
+      token,
+      operationLogs,
+      growthActions,
+      feedback,
+      rebrandVotes,
+      surveyResponses,
+      betaSignups,
+      libraryCacheState,
+      libraryCachePages,
+      chatConversations,
+      indexedLikes,
+      indexedPlaylistTracks,
+      librarySnapshots,
+    ] = await Promise.all([
+      prisma.token.findFirst({ where: { userId }, select: { expiresAt: true } }),
+      prisma.operationLog.findMany(scope),
+      prisma.growthAction.findMany(scope),
+      // No `select`, deliberately: `adminNote` is in the export even though
+      // GET /api/feedback/mine hides it. The two disagree on purpose. /mine is
+      // a convenience list in the UI; this file is the data-subject export,
+      // and a note an operator wrote about a person is still that person's
+      // data, so leaving it out would make "everything keyed to your account"
+      // untrue. The practical consequence, worth knowing before writing one:
+      // an admin note is visible to the person it is about, on request.
+      optional(prisma.feedback),
+      prisma.rebrandVote.findMany(scope),
+      prisma.surveyResponse.findMany(scope),
+      prisma.betaSignup.findMany(scope),
+      prisma.libraryCacheState.findMany(scope),
+      prisma.libraryCachePage.findMany({
+        where: { userId },
+        select: { resource: true, pageIndex: true, itemCount: true, items: true },
+      }),
+      // The library-chat and library-index tables. They are declared in this
+      // schema (so `prisma db push` does not drop them) and the privacy policy
+      // lists them as stored and keyed to the account, so the export has to
+      // carry them or the promise it makes is false. `chat_messages` has no
+      // userId of its own — it hangs off the conversation, and is included
+      // that way, which is also how the deletion cascade reaches it.
+      optional(prisma.chat_conversations, {
+        where: { userId },
+        include: { chat_messages: true },
+      }),
+      optional(prisma.indexed_likes),
+      optional(prisma.indexed_playlist_tracks),
+      optional(prisma.library_snapshots),
+    ]);
+
+    const { id, soundcloudId, username, displayName, avatarUrl, createdAt, lastLoginAt } = req.user;
+
+    const payload = {
+      // 2: added chatConversations (with their messages), indexedLikes,
+      // indexedPlaylistTracks and librarySnapshots.
+      schemaVersion: 2,
+      generatedAt: new Date().toISOString(),
+      user: { id, soundcloudId, username, displayName, avatarUrl, createdAt, lastLoginAt },
+      // Expiry only — see the invariant above.
+      token: token ? { expiresAt: token.expiresAt } : null,
+      operationLogs,
+      growthActions,
+      feedback,
+      rebrandVotes,
+      surveyResponses,
+      betaSignups,
+      libraryCacheState,
+      libraryCachePages,
+      chatConversations,
+      indexedLikes,
+      indexedPlaylistTracks,
+      librarySnapshots,
+    };
+
+    const day = new Date().toISOString().slice(0, 10);
+    res.setHeader('Content-Disposition', `attachment; filename="track-toolkit-export-${day}.json"`);
+    res.json(payload);
+  } catch (error) {
+    logger.error('Account export error:', safeError(error));
+    res.status(500).json({ error: 'Failed to build export' });
   }
 });
 

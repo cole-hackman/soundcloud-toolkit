@@ -489,10 +489,30 @@ export async function __resetCacheCoordinationForTests({ settleMs = 25 } = {}) {
   ];
   inFlightLoads.clear();
   revalidating.clear();
+
+  if (pending.length > 0) {
+    await Promise.race([
+      Promise.allSettled(pending),
+      new Promise((resolve) => setTimeout(resolve, settleMs)),
+    ]);
+  }
+
+  // AFTER the settle, not before, and this order is the whole point.
+  //
+  // Draining `pending` runs the very continuations that write a collection
+  // into `requestCache`, so clearing the payload cache first would clear it
+  // and then watch the previous test's data be written straight back in. A
+  // suite that wiped the cache itself before calling this saw exactly that:
+  // its next test was served a playlist list it never stubbed, and the
+  // assertion that failed was about totals in an unrelated test one run in
+  // thirty. Wiping here, once, after everything has landed, is what makes
+  // "the caches are empty" true rather than merely attempted — and it is why
+  // callers no longer need a `requestCache.invalidateUser` of their own.
+  //
+  // `invalidatedAt` is cleared last too. It is the mark that makes a
+  // background revalidate discard a result taken before a mutation; clearing
+  // it while such a refresh is still in flight re-authorises the stale write
+  // this function exists to prevent.
   invalidatedAt.clear();
-  if (pending.length === 0) return;
-  await Promise.race([
-    Promise.allSettled(pending),
-    new Promise((resolve) => setTimeout(resolve, settleMs)),
-  ]);
+  requestCache.clear();
 }

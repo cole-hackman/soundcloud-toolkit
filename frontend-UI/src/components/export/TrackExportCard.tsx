@@ -3,7 +3,16 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Download, Loader2 } from "lucide-react";
-import { Button, EmptyState, InlineAlert, LoadingSpinner } from "@/components/ui";
+import {
+  Button,
+  Card,
+  EmptyState,
+  InlineAlert,
+  LoadingSpinner,
+  SectionHeading,
+  Select,
+  useAnnounce,
+} from "@/components/ui";
 import {
   buildDatedFilename,
   buildExportContent,
@@ -15,6 +24,11 @@ import {
 import { ExportSection } from "./ExportSection";
 
 const PREVIEW_LINE_COUNT = 10;
+const PREVIEW_LABEL = `Preview, first ${PREVIEW_LINE_COUNT} lines`;
+const PREVIEW_BOX_CLASS =
+  "mt-3 max-h-48 overflow-y-auto rounded-xl border border-border bg-muted/30 p-3 " +
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring " +
+  "focus-visible:ring-offset-2 focus-visible:ring-offset-background";
 // A little slack over PREVIEW_LINE_COUNT so blank/filtered lines still
 // leave enough real lines to fill the preview — but nowhere near the full
 // (possibly tens-of-thousands-long) library.
@@ -61,6 +75,8 @@ export function TrackExportCard({
   const [format, setFormat] = useState<TrackExportFormat>("title-artist");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  const announce = useAnnounce();
+
   const fetchAndPrepare = async () => {
     setPhase("loading");
     setErrorMessage(null);
@@ -70,13 +86,18 @@ export function TrackExportCard({
       const loaded = await loadTracks();
       if (loaded.length === 0) {
         setPhase("empty");
+        announce(emptyTitle);
         return;
       }
       setTracks(loaded);
       setPhase("ready");
+      announce(`${loaded.length.toLocaleString()} track${loaded.length === 1 ? "" : "s"} ready to download.`);
     } catch (err) {
       console.error(`${title} export fetch failed:`, err);
       setPhase("error");
+      // No `announce` here: the message renders in `InlineAlert variant="error"`,
+      // which is `role="alert"` and is spoken on insertion. Announcing as well
+      // says it twice.
       setErrorMessage("Couldn't load data. Check your connection and try again.");
     }
   };
@@ -104,14 +125,11 @@ export function TrackExportCard({
       {extraControls}
 
       <div className="mt-4">
-        <label htmlFor={`${filenamePrefix}-format`} className="text-xs font-medium text-muted-foreground">
-          Format
-        </label>
-        <select
+        <Select
+          label="Format"
           id={`${filenamePrefix}-format`}
           value={format}
           onChange={(e) => setFormat(e.target.value as TrackExportFormat)}
-          className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
           disabled={isLoading}
         >
           {(Object.keys(TRACK_FORMAT_LABELS) as TrackExportFormat[]).map((key) => (
@@ -119,7 +137,7 @@ export function TrackExportCard({
               {TRACK_FORMAT_LABELS[key]}
             </option>
           ))}
-        </select>
+        </Select>
       </div>
 
       {phase === "error" && errorMessage && (
@@ -136,7 +154,10 @@ export function TrackExportCard({
             description={emptyDescription}
             action={
               emptyLinkHref && emptyLinkLabel ? (
-                <Link href={emptyLinkHref} className="text-sm font-medium text-primary hover:underline">
+                <Link
+                  href={emptyLinkHref}
+                  className="inline-flex min-h-11 items-center rounded-lg px-3 text-sm font-semibold text-primary-text hover:bg-accent hover:text-accent-foreground hover:underline"
+                >
                   {emptyLinkLabel}
                 </Link>
               ) : undefined
@@ -147,7 +168,10 @@ export function TrackExportCard({
 
       {phase === "ready" && (
         <div className="mt-4">
-          <p className="text-sm font-medium text-foreground">
+          {/* `role="status"` is on the count alone. Wrapping the block put the
+              caption and the ten-line `<pre>` inside an implicitly atomic live
+              region, so changing Format re-read the whole preview. */}
+          <p role="status" className="text-sm font-medium text-foreground">
             {tracks.length.toLocaleString()} track{tracks.length === 1 ? "" : "s"} ready
           </p>
           {tracks.length > 5000 && (
@@ -155,8 +179,15 @@ export function TrackExportCard({
               Large list — download may take a moment to generate.
             </p>
           )}
-          <div className="mt-3 max-h-48 overflow-y-auto rounded-xl border border-border bg-muted/30 p-3">
-            <p className="mb-2 text-xs font-medium text-muted-foreground">
+          {/* `tabIndex={0}` because this box scrolls: ten preview lines do not
+              fit `max-h-48` once the titles are long enough to wrap, and a
+              scrollable region that nothing can focus is unreachable from the
+              keyboard (WCAG 2.1.1, axe `scrollable-region-focusable`). It is
+              the one non-interactive element that has to be focusable, which
+              is what the rule exemption below is for. */}
+          {/* eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex */}
+          <div tabIndex={0} role="group" aria-label={PREVIEW_LABEL} className={PREVIEW_BOX_CLASS}>
+            <p className="mb-2 text-sm font-medium text-muted-foreground">
               Preview (first {PREVIEW_LINE_COUNT} lines)
             </p>
             <pre className="whitespace-pre-wrap font-mono text-xs leading-relaxed text-foreground">
@@ -172,7 +203,7 @@ export function TrackExportCard({
       )}
 
       {isLoading && (
-        <div className="mt-6 flex flex-col items-center gap-3 py-6">
+        <div role="status" className="mt-6 flex flex-col items-center gap-3 py-6">
           <LoadingSpinner />
           <p className="max-w-sm text-center text-sm text-muted-foreground">
             Fetching… This may take a while for large libraries.
@@ -184,7 +215,7 @@ export function TrackExportCard({
         <Button onClick={fetchAndPrepare} disabled={isLoading || fetchDisabled} className="gap-2">
           {isLoading ? (
             <>
-              <Loader2 className="h-4 w-4 animate-spin" />
+              <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
               Fetching…
             </>
           ) : phase === "ready" ? (
@@ -196,7 +227,7 @@ export function TrackExportCard({
 
         {phase === "ready" && (
           <Button variant="secondary" onClick={handleDownload} className="gap-2">
-            <Download className="h-4 w-4" />
+            <Download aria-hidden="true" className="h-4 w-4" />
             Download
           </Button>
         )}
@@ -211,9 +242,7 @@ export function TrackExportCard({
   );
 
   if (embedded) {
-    return (
-      <EmbeddedPanel>{body}</EmbeddedPanel>
-    );
+    return <EmbeddedPanel title={title}>{body}</EmbeddedPanel>;
   }
 
   return (
@@ -223,10 +252,16 @@ export function TrackExportCard({
   );
 }
 
-function EmbeddedPanel({ children }: { children: React.ReactNode }) {
+/**
+ * `embedded` drops `ExportSection`, and with it the only `<h2>` on the page —
+ * leaving the sub-page's `<h1>` with nothing under it and the export controls
+ * in no section at all. The heading comes back here.
+ */
+function EmbeddedPanel({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-2xl border-2 border-gray-200 bg-white p-6 dark:border-border dark:bg-card">
+    <Card className="p-6">
+      <SectionHeading>{title}</SectionHeading>
       {children}
-    </div>
+    </Card>
   );
 }

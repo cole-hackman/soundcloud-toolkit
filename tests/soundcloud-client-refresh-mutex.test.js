@@ -8,7 +8,8 @@ jest.unstable_mockModule('../server/lib/prisma.js', () => ({
   default: { token: { update: tokenUpdate } },
 }));
 
-const { soundcloudClient } = await import('../server/lib/soundcloud-client.js');
+const { soundcloudClient, clearRecentRotations } =
+  await import('../server/lib/soundcloud-client.js');
 const { runWithTokenContext } = await import('../server/lib/token-context.js');
 
 const ORIGINAL_FETCH = global.fetch;
@@ -16,6 +17,8 @@ const ORIGINAL_FETCH = global.fetch;
 let resolveAllFetches;
 beforeEach(() => {
   tokenUpdate.mockClear();
+  // The rotation memo is module state and outlives a single test.
+  clearRecentRotations();
   // Track all fetch calls and their resolvers so we can control when they settle.
   const fetchResolvers = [];
 
@@ -67,8 +70,12 @@ test('a later refresh for the same user is NOT served from a stale in-flight ent
   resolveAllFetches();
   await firstRun;
 
+  // A DIFFERENT refresh token, because SoundCloud rotated it: this is what a
+  // later request genuinely presents. (Re-presenting 'rt' is now answered from
+  // the rotation memo rather than re-spent upstream — see the test below and
+  // tests/routes/token-refresh.test.js.)
   const secondRun = runWithTokenContext({ userId: 'user-1' }, () =>
-    soundcloudClient.refreshTokensAndPersist('rt')
+    soundcloudClient.refreshTokensAndPersist('fresh-r')
   );
   await Promise.resolve();
   resolveAllFetches();
@@ -76,6 +83,55 @@ test('a later refresh for the same user is NOT served from a stale in-flight ent
 
   // the map must be cleared on settle, so the second call exchanges again
   expect(global.fetch).toHaveBeenCalledTimes(2);
+});
+
+test('a FAILED refresh does not poison later attempts for that user', async () => {
+  // The reason the in-flight entry is cleared in a `finally`. A failure also
+  // records nothing in the rotation memo, so the same token is exchanged
+  // again rather than being served a result that never existed.
+  const quiet = jest.spyOn(console, 'warn').mockImplementation(() => {});
+  try {
+    global.fetch = jest.fn()
+      .mockResolvedValueOnce(new Response('upstream unavailable', { status: 503 }))
+      .mockResolvedValueOnce(new Response(
+        JSON.stringify({ access_token: 'fresh-a', refresh_token: 'fresh-r', expires_in: 3600 }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      ));
+
+    await expect(runWithTokenContext({ userId: 'user-1' }, () =>
+      soundcloudClient.refreshTokensAndPersist('rt')
+    )).rejects.toThrow();
+
+    const second = await runWithTokenContext({ userId: 'user-1' }, () =>
+      soundcloudClient.refreshTokensAndPersist('rt')
+    );
+
+    expect(second.access_token).toBe('fresh-a');
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+  } finally {
+    quiet.mockRestore();
+  }
+});
+
+test('a refresh token already spent by an earlier exchange is not re-presented upstream', async () => {
+  // The sequential case the mutex never covered: the same captured pair is
+  // handed to two calls in a row. Re-presenting it would be answered
+  // `invalid_grant`, which the revocation detector reads as "the user revoked
+  // us". It is served from what the first exchange produced instead.
+  const first = await runWithTokenContext({ userId: 'user-1' }, async () => {
+    const pending = soundcloudClient.refreshTokensAndPersist('rt');
+    await Promise.resolve();
+    resolveAllFetches();
+    return pending;
+  });
+
+  const second = await runWithTokenContext({ userId: 'user-1' }, () =>
+    soundcloudClient.refreshTokensAndPersist('rt')
+  );
+
+  expect(second).toEqual(first);
+  expect(global.fetch).toHaveBeenCalledTimes(1);
+  expect(tokenUpdate).toHaveBeenCalledTimes(1);
 });
 
 test('different users refresh independently and are not serialized together', async () => {

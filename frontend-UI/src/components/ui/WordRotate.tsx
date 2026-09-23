@@ -11,6 +11,9 @@ interface WordRotateProps {
 
 /**
  * Rotates through an array of words with a smooth vertical slide + fade transition.
+ *
+ * Under `prefers-reduced-motion: reduce` the first word is rendered statically
+ * and no interval is ever started — WCAG 2.3.3, and the rotation is decorative.
  */
 export function WordRotate({
   words,
@@ -19,9 +22,20 @@ export function WordRotate({
 }: WordRotateProps) {
   const [index, setIndex] = useState(0);
   const [visible, setVisible] = useState(true);
+  const [reducedMotion, setReducedMotion] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
+    const query = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const sync = () => setReducedMotion(query.matches);
+    sync();
+    query.addEventListener("change", sync);
+    return () => query.removeEventListener("change", sync);
+  }, []);
+
+  useEffect(() => {
+    if (reducedMotion) return;
+
     const cycle = () => {
       // Fade out
       setVisible(false);
@@ -37,7 +51,11 @@ export function WordRotate({
       clearInterval(interval);
       if (timerRef.current) clearTimeout(timerRef.current);
     };
-  }, [words, duration]);
+  }, [words, duration, reducedMotion]);
+
+  if (reducedMotion) {
+    return <span className={cn("inline-block", className)}>{words[0]}</span>;
+  }
 
   return (
     <span

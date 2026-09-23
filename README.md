@@ -14,8 +14,9 @@ figure is from August 2026 and has not been re-measured since)
 Numbers come from the production `operation_log` table (see
 [docs/internal/ANALYSIS.md](docs/internal/ANALYSIS.md) for methodology).
 
-Live at [soundcloudtoolkit.com](https://soundcloudtoolkit.com) — the domain
-move is still outstanding; see "Rebrand follow-ups" below.
+Live at [tracktoolkit.com](https://tracktoolkit.com). The old
+`soundcloudtoolkit.com` hostnames 301/308 to it; what is left of the move is
+listed under "Rebrand follow-ups" below.
 
 <!-- SCREENSHOT: dashboard after login, showing the tool grid grouped as
 Playlists / Likes & Social / Library & Export / Discovery & Links. A ~10s GIF
@@ -41,28 +42,32 @@ it up in bulk.
 Twenty tools hang off one dashboard, grouped as Playlists, Likes & Social,
 Library & Export, and Discovery & Links. Underneath them:
 
-- The frontend is a Next.js static export on Vercel. The backend is an Express
-  app on DigitalOcean acting as an OAuth2 + PKCE proxy: the browser never sees
-  SoundCloud tokens. Tokens are AES-256-GCM-encrypted at rest in Postgres, and
-  every SoundCloud call is made server-side with the user's decrypted token.
-  The threat model, CSRF layering, and session-lifetime limitations are written
-  up in [docs/SECURITY.md](docs/SECURITY.md).
+- The frontend is a Next.js static export. One Express app on Azure App
+  Service serves it and the API from the same origin, acting as an OAuth2 +
+  PKCE proxy: the browser never sees SoundCloud tokens. Tokens are
+  AES-256-GCM-encrypted at rest in Postgres, and every SoundCloud call is made
+  server-side with the user's decrypted token. The page loads nothing from a
+  third party — no analytics, no tag manager, no widget or font CDN — and the
+  CSP names no third-party script, style or font source. The threat model,
+  CSRF layering, and session-lifetime limitations are written up in
+  [docs/SECURITY.md](docs/SECURITY.md).
 - A request flows: HMAC-signed session cookie → user and token lookup → the
   SoundCloud client wrapper → SoundCloud's API, with automatic token refresh
   on 401 and backoff on 429.
 - Bulk writes run sequentially in 100-track batches with ~300 ms delays.
   Merges dedupe by track ID, filter out blocked and non-streamable tracks, and
   split into numbered playlists at SoundCloud's 500-track cap.
-- State lives in Postgres (Neon): users, encrypted tokens, a per-operation
-  log, and follow-action history. URL-resolve caching and background-job
-  tracking are in-memory, per-process.
+- State lives in Postgres (Azure Database for PostgreSQL): users, encrypted
+  tokens, a per-operation log, and follow-action history. URL-resolve caching
+  and background-job tracking are in-memory, per-process.
 - Rate limiting is the most common failure point — SoundCloud's limits are
   undocumented.
 
 ## Running it
 
-Requires Node 18+, a Postgres database (Neon works), and a SoundCloud OAuth
-app (client ID and secret from developers.soundcloud.com).
+Requires Node 18+, a Postgres database, and a SoundCloud OAuth app (client ID
+and secret from developers.soundcloud.com). Production runs Azure Database for
+PostgreSQL Flexible Server; any Postgres 14+ works for development.
 
     git clone https://github.com/cole-hackman/tracktoolkit
     cd soundcloud-toolkit
@@ -91,13 +96,14 @@ you already follow.
 
 ## Tradeoffs
 
-**Static-export frontend with a separate Express API.** Vercel serves the
-frontend as static files; the API runs on a $5/month DigitalOcean instance.
-What it bought: near-zero hosting cost and no server rendering to operate.
-What it cost: Next.js API routes are unavailable (all server logic lives in
-Express), and sessions ride cross-site cookies — `SameSite=None` across the
-`www.` and `api.` subdomains with a strict CORS allowlist. Getting those
-cookies right was the most fragile part of the deployment.
+**Static-export frontend served by the Express API.** Express serves
+`frontend-UI/out/` as static files and `/api` from the same Azure App Service
+origin. What it bought: cheap hosting, no server rendering to operate, and a
+same-site `Lax` session cookie. What it cost: Next.js API routes are
+unavailable, so all server logic lives in Express. The earlier split — Vercel
+for the frontend, DigitalOcean for the API — needed `SameSite=None` cookies
+across the `www.` and `api.` subdomains with a strict CORS allowlist, and
+getting those right was the most fragile part of that deployment.
 
 **Server-enforced caps on the follow/discovery tool.** SoundCloud flags
 aggressive follow activity. The caps live in the backend — 50 follows per 24
@@ -125,18 +131,21 @@ slow, and that's the predictable complaint.
   branch whose schema is missing production tables would drop those tables —
   the sharpest foot-gun in the repo.
 - Observability is application logs plus the in-database operation log. No
-  metrics, no alerting, no error tracker. The only scheduled automation is a
-  GitHub Actions cron pinging `/health` every five minutes.
-- 176 tests across 26 suites pass locally (crypto, merge logic, validation, the
-  follow engine, the API client wrapper, plus route-level authz/CSRF boundary
-  tests under `tests/routes/`), but no CI runs them on push, and the frontend
-  has no tests.
+  metrics, no alerting, no error tracker. Scheduled automation is a GitHub
+  Actions cron pinging `/health` every five minutes.
+- The Jest suite (crypto, merge logic, validation, the follow engine, the API
+  client wrapper, plus route-level authz/CSRF boundary tests under
+  `tests/routes/`) runs in CI on every push to `main`, and a failure blocks
+  the deploy. The frontend checks — `tsc`, `next lint`, the colour-contrast
+  gate and the Playwright suite — are not in CI yet and are run by hand.
 
 ## What I'd do next
 
 1. Surface what a merge filtered out. The counts already come back in the API
    response; the UI drops them on the floor.
-2. Wire the existing Jest suite into CI — the tests exist, nothing runs them.
+2. Put the frontend checks in CI too. The backend suite gates the deploy; the
+   Playwright/axe suite, `tsc`, lint and the contrast gate still depend on
+   somebody remembering to run them.
 3. Move background-job state from memory into Postgres so a restart doesn't
    orphan running follow sessions.
 4. Finish the AI library chat on `feature/ai-library-chat` — the index tables
@@ -177,8 +186,15 @@ is left is outside the repository and has to be done by hand, in this order:
 
 ## Stack
 
-Next.js 15 · React 18 · TypeScript · Tailwind CSS · Express · Prisma ·
+Next.js 15 · React 18 · TypeScript · Tailwind CSS 3.4 · Express · Prisma ·
 PostgreSQL (Azure Flexible Server) · Azure App Service
+
+The frontend has a Playwright suite with `@axe-core/playwright`
+(`frontend-UI/e2e/`): every user-facing page is audited for serious and
+critical accessibility violations and for horizontal overflow at 1280, 430,
+390 and 360 px. The admin console is not in it. Alongside that, a
+colour-contrast gate over the design tokens (`npm run contrast`) — neither is
+wired into CI yet, so both are run by hand before a merge.
 
 ## License
 

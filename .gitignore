@@ -70,6 +70,8 @@ __pycache__/
 # Local git worktrees
 .worktrees/
 
+# SDD task briefs/reports for in-flight branch work (not part of the shipped repo)
+.superpowers/
 # Working notes from other sessions belong in ~/Developer/tracktoolkit-notes, never in the repo
 /reports/
 /research_notes/

@@ -7,7 +7,8 @@ import {
   ArrowLeft,
   Shuffle,
   Save,
-  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
   Trash2,
   Music,
   Download,
@@ -15,20 +16,24 @@ import {
   MoreVertical,
   Copy,
   ArrowRightLeft,
-  X,
   Heart,
   Search,
 } from "lucide-react";
 import {
   Button,
   BulkReviewDetails,
+  Card,
   ConfirmDialog,
+  Dialog,
   EmptyState,
+  Field,
+  IconButton,
   InlineAlert,
   Input,
   LoadingSpinner,
   PageContainer,
   PageHeader,
+  Select,
   Skeleton,
 } from "@/components/ui";
 import { apiFetch } from "@/lib/api";
@@ -39,6 +44,7 @@ import {
   usePlaylistsQuery,
   useLikesQuery,
 } from "@/lib/queries";
+import { asArray } from "@/lib/api-shape";
 
 interface Playlist {
   id: number;
@@ -67,6 +73,63 @@ type TransferAction = "move" | "duplicate";
 
 type BannerState = { tone: "success" | "warning" | "error"; text: string } | null;
 
+/**
+ * Row actions are visible at every width, full stop.
+ *
+ * They used to be `opacity-0 group-hover:opacity-100 sm:opacity-100`: on a
+ * touch screen that is an invisible but fully tappable cluster sitting on top
+ * of every row — a stray touch reordered or removed a track with nothing on
+ * screen to explain it. There is no hover-reveal to preserve on the other
+ * side of it either, because from `sm` up the cluster was already permanently
+ * visible; reintroducing one would have been a regression for mouse users, so
+ * the reveal is gone rather than moved.
+ */
+const ROW_ACTIONS_CLASS = "flex shrink-0 items-center gap-1";
+
+/**
+ * The download affordance for a track row. Both states carry visible text —
+ * the old chip said "DL" and put the real meaning in a `title`, which is
+ * invisible to touch users and unreliable for a screen reader.
+ */
+function DownloadChip({
+  track,
+  busy,
+  onDownload,
+}: {
+  track: Track;
+  busy: boolean;
+  onDownload: (track: Track) => void;
+}) {
+  const downloadable = Boolean(track.downloadable) || track.downloadable === "true";
+  if (!downloadable) return null;
+
+  if (!track.download_url) {
+    return (
+      <span className="inline-flex min-h-6 flex-shrink-0 items-center gap-1 rounded bg-gray-100 px-2 py-0.5 text-xs font-medium text-muted-foreground-subtle dark:bg-gray-800">
+        <Download className="w-3 h-3" aria-hidden="true" />
+        No download link
+      </span>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onDownload(track);
+      }}
+      onMouseDown={(e) => e.stopPropagation()}
+      disabled={busy}
+      aria-label={`Download ${track.title}`}
+      className="inline-flex min-h-6 flex-shrink-0 items-center gap-1 rounded bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800 transition hover:bg-green-200 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-green-900/30 dark:text-green-300 dark:hover:bg-green-900/50"
+    >
+      <Download className="w-3 h-3" aria-hidden="true" />
+      {busy ? "Starting…" : "Download"}
+    </button>
+  );
+}
+
 export default function PlaylistModifierPage() {
   const queryClient = useQueryClient();
   const [selectedPlaylist, setSelectedPlaylist] = useState<Playlist | null>(null);
@@ -75,7 +138,11 @@ export default function PlaylistModifierPage() {
   const [trackFilter, setTrackFilter] = useState<TrackFilter>("all");
   const [loadError, setLoadError] = useState(false);
   const [tracksError, setTracksError] = useState(false);
-  const [openMenuTrackId, setOpenMenuTrackId] = useState<number | null>(null);
+  // The row's overflow actions live in a `Dialog variant="sheet"` rather than
+  // a hand-rolled popover: the old menu was absolutely positioned inside the
+  // virtualized scroller, so it was clipped by the scroll container on every
+  // row but the first few, and it carried no menu semantics at all.
+  const [actionsTrack, setActionsTrack] = useState<Track | null>(null);
   const [transfer, setTransfer] = useState<{
     action: TransferAction;
     track: Track;
@@ -130,7 +197,7 @@ export default function PlaylistModifierPage() {
 
   const playlistsQuery = usePlaylistsQuery();
   const playlists = useMemo(
-    () => (playlistsQuery.data?.collection || []) as unknown as Playlist[],
+    () => asArray<Playlist>(playlistsQuery.data?.collection),
     [playlistsQuery.data?.collection],
   );
   const selectedPlaylistQuery = usePlaylistDetailQuery(selectedPlaylist?.id ?? 0, {
@@ -144,7 +211,7 @@ export default function PlaylistModifierPage() {
   // Parse liked tracks into Track[] shape
   const likedTracks: Track[] = useMemo(() => {
     if (!isLikedTracksView || !likesQuery.data?.collection) return [];
-    return (likesQuery.data.collection as unknown as Array<{ track?: Track } & Track>).map(
+    return asArray<{ track?: Track } & Track>(likesQuery.data.collection).map(
       (item) => {
         const t = item.track || item;
         return {
@@ -196,25 +263,6 @@ export default function PlaylistModifierPage() {
   }, [banner]);
 
   useEffect(() => {
-    const onDoc = (e: MouseEvent) => {
-      const t = e.target;
-      if (t instanceof Element && t.closest("[data-track-menu]")) return;
-      setOpenMenuTrackId(null);
-    };
-    document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
-  }, []);
-
-  useEffect(() => {
-    if (!transfer) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setTransfer(null);
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [transfer]);
-
-  useEffect(() => {
     if (playlistsQuery.isError) {
       setLoadError(true);
     }
@@ -235,7 +283,7 @@ export default function PlaylistModifierPage() {
     }
 
     if (selectedPlaylistQuery.data) {
-      setTracks((selectedPlaylistQuery.data.tracks || []) as unknown as Track[]);
+      setTracks(asArray<Track>(selectedPlaylistQuery.data.tracks));
       setTracksError(false);
     }
   }, [selectedPlaylistQuery.data, selectedPlaylistQuery.isError]);
@@ -288,7 +336,7 @@ export default function PlaylistModifierPage() {
 
   const openTransferModal = (action: TransferAction, track: Track) => {
     if (!selectedPlaylist && !isLikedTracksView) return;
-    setOpenMenuTrackId(null);
+    setActionsTrack(null);
     setTransfer({ action, track });
     setAlsoUnlike(false);
     if (isLikedTracksView) {
@@ -407,6 +455,9 @@ export default function PlaylistModifierPage() {
     }
   };
 
+  const actionsTrackIndex =
+    actionsTrack !== null ? trackIndexById.get(actionsTrack.id) ?? -1 : -1;
+
   const transferTargetOptions = isLikedTracksView
     ? playlists
     : transfer?.action === "move"
@@ -517,7 +568,7 @@ export default function PlaylistModifierPage() {
 
         {!selectedPlaylist && !isLikedTracksView ? (
           /* Playlist Selection */
-          <div className="bg-white dark:bg-card rounded-2xl p-6 border-2 border-gray-200 dark:border-border">
+          <Card variant="outline" className="rounded-2xl p-4 sm:p-6">
             <h2 className="text-xl font-bold mb-4 text-foreground">
               Select a Playlist to Modify
             </h2>
@@ -535,15 +586,13 @@ export default function PlaylistModifierPage() {
                 title="Couldn't load your playlists"
                 description="The backend may be unreachable. Retry to refresh the list."
                 action={
-                  <button
-                    type="button"
+                  <Button
                     onClick={() => {
                       playlistsQuery.refetch();
                     }}
-                    className="px-4 py-2 rounded-lg text-sm font-semibold bg-gradient-to-r from-[#FF5500] to-[#E64A00] text-white hover:shadow-md transition"
                   >
                     Retry
-                  </button>
+                  </Button>
                 }
               />
             ) : playlists.length === 0 ? (
@@ -555,13 +604,14 @@ export default function PlaylistModifierPage() {
               <div className="grid md:grid-cols-2 gap-4">
                 {/* Liked Tracks virtual entry */}
                 <button
+                  type="button"
                   onClick={selectLikedTracks}
-                  className="flex items-center gap-4 p-4 rounded-xl bg-gradient-to-br from-red-50 to-orange-50 dark:from-red-950/20 dark:to-orange-950/20 border-2 border-transparent hover:border-primary transition-all text-left col-span-full"
+                  className="flex min-h-16 items-center gap-3 sm:gap-4 p-3 sm:p-4 rounded-xl bg-gradient-to-br from-red-50 to-orange-50 dark:from-red-950/20 dark:to-orange-950/20 border-2 border-transparent hover:border-primary transition-all text-left col-span-full"
                 >
-                  <div className="w-16 h-16 rounded-lg bg-gradient-to-br from-[#FF5500] to-[#E64A00] flex items-center justify-center flex-shrink-0">
-                    <Heart className="w-8 h-8 text-white" />
+                  <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-lg bg-gradient-to-br from-[#FF5500] to-[#E64A00] flex items-center justify-center flex-shrink-0">
+                    <Heart className="w-6 h-6 sm:w-8 sm:h-8 text-white" aria-hidden="true" />
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <div className="font-semibold text-foreground">Liked Tracks</div>
                     <div className="text-sm text-muted-foreground">
                       Browse and add liked tracks to your playlists
@@ -571,20 +621,21 @@ export default function PlaylistModifierPage() {
                 {playlists.map((playlist) => (
                   <button
                     key={playlist.id}
+                    type="button"
                     onClick={() => selectPlaylist(playlist)}
-                    className="flex items-center gap-4 p-4 rounded-xl bg-gray-50 dark:bg-secondary/20 border-2 border-transparent hover:border-primary transition-all text-left"
+                    className="flex min-h-16 items-center gap-3 sm:gap-4 p-3 sm:p-4 rounded-xl bg-gray-50 dark:bg-secondary/20 border-2 border-transparent hover:border-primary transition-all text-left"
                   >
                     <img
                       src={playlist.coverUrl || playlist.artwork_url || "/brand/icon-192.png"}
-                      alt={playlist.title}
+                      alt=""
                       width={64}
                       height={64}
                       loading="lazy"
                       decoding="async"
-                      className="w-16 h-16 rounded-lg object-cover"
+                      className="w-12 h-12 sm:w-16 sm:h-16 rounded-lg object-cover flex-shrink-0"
                     />
-                    <div>
-                      <div className="font-semibold text-foreground">
+                    <div className="min-w-0">
+                      <div className="font-semibold text-foreground truncate">
                         {playlist.title}
                       </div>
                       <div className="text-sm text-muted-foreground">
@@ -595,21 +646,23 @@ export default function PlaylistModifierPage() {
                 ))}
               </div>
             )}
-          </div>
+          </Card>
         ) : isLikedTracksView ? (
           /* Liked Tracks View */
           <div>
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center gap-4">
-                <button
+            <div className="flex flex-col gap-3 mb-6 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
+                <Button
+                  variant="ghost"
+                  size="sm"
                   onClick={goBackToList}
-                  className="inline-flex items-center gap-2 text-muted-foreground transition hover:text-primary"
+                  className="self-start text-muted-foreground hover:text-primary-text"
                 >
-                  <ArrowLeft className="h-4 w-4" />
+                  <ArrowLeft className="h-4 w-4" aria-hidden="true" />
                   Back to playlists
-                </button>
+                </Button>
                 <div className="flex items-center gap-2">
-                  <Heart className="h-5 w-5 text-[#FF5500]" />
+                  <Heart className="h-5 w-5 shrink-0 text-[#FF5500]" aria-hidden="true" />
                   <h2 className="text-2xl font-bold text-foreground">
                     Liked Tracks
                   </h2>
@@ -617,45 +670,55 @@ export default function PlaylistModifierPage() {
               </div>
             </div>
 
-            <div className="bg-white dark:bg-card rounded-2xl p-6 border-2 border-gray-200 dark:border-border">
+            <Card variant="outline" className="rounded-2xl p-4 sm:p-6">
               {/* Search and filter controls */}
-              <div className="flex items-center gap-3 mb-4 flex-wrap">
-                <div className="relative flex-1 min-w-[200px]">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                  <Input
-                    type="text"
-                    value={likedSearch}
-                    onChange={(e) => setLikedSearch(e.target.value)}
-                    placeholder="Search liked tracks..."
-                    className="pl-9 h-10 bg-secondary/20 border-border"
-                  />
-                </div>
+              <div className="grid grid-cols-1 gap-3 mb-4 sm:grid-cols-2 lg:grid-cols-3">
+                <Field label="Search liked tracks">
+                  {(field) => (
+                    <div className="relative">
+                      <Search
+                        className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground"
+                        aria-hidden="true"
+                      />
+                      <Input
+                        {...field}
+                        type="search"
+                        value={likedSearch}
+                        onChange={(e) => setLikedSearch(e.target.value)}
+                        placeholder="Title or artist"
+                        className="pl-9 h-11 bg-secondary/20 border-border"
+                      />
+                    </div>
+                  )}
+                </Field>
                 {likedGenres.length > 0 && (
-                  <select
+                  <Select
+                    label="Genre"
                     value={likedGenreFilter}
                     onChange={(e) => setLikedGenreFilter(e.target.value)}
-                    className="h-10 px-3 border-2 border-border rounded-lg text-sm text-foreground bg-secondary/20 focus:border-primary focus:outline-none max-w-[150px] truncate"
+                    className="bg-secondary/20"
                   >
                     <option value="All">All Genres</option>
                     {likedGenres.map((g) => (
                       <option key={g} value={g}>{g}</option>
                     ))}
-                  </select>
+                  </Select>
                 )}
-                <select
+                <Select
+                  label="Duration"
                   value={likedDurationFilter}
                   onChange={(e) => setLikedDurationFilter(e.target.value)}
-                  className="h-10 px-3 border-2 border-border rounded-lg text-sm text-foreground bg-secondary/20 focus:border-primary focus:outline-none"
+                  className="bg-secondary/20"
                 >
                   <option value="All">All Durations</option>
                   <option value="< 3 mins">&lt; 3 mins</option>
                   <option value="3-5 mins">3-5 mins</option>
                   <option value="5-10 mins">5-10 mins</option>
                   <option value="> 10 mins">&gt; 10 mins</option>
-                </select>
+                </Select>
               </div>
 
-              <div className="text-sm text-muted-foreground mb-2">
+              <div className="text-sm text-muted-foreground mb-2" role="status">
                 {filteredLikedTracks.length} of {likedTracks.length} tracks
               </div>
 
@@ -672,15 +735,7 @@ export default function PlaylistModifierPage() {
                 <EmptyState
                   title="Couldn't load your liked tracks"
                   description="The backend may be unreachable. Retry to refresh."
-                  action={
-                    <button
-                      type="button"
-                      onClick={() => likesQuery.refetch()}
-                      className="px-4 py-2 rounded-lg text-sm font-semibold bg-gradient-to-r from-[#FF5500] to-[#E64A00] text-white hover:shadow-md transition"
-                    >
-                      Retry
-                    </button>
-                  }
+                  action={<Button onClick={() => likesQuery.refetch()}>Retry</Button>}
                 />
               ) : likedTracks.length === 0 ? (
                 <EmptyState
@@ -695,111 +750,76 @@ export default function PlaylistModifierPage() {
                   description="Try adjusting your search or filters."
                 />
               ) : (
-                <div className="space-y-2 max-h-[600px] overflow-y-auto">
+                <div className="space-y-2 max-h-[60dvh] overflow-y-auto">
                   {filteredLikedTracks.map((track) => (
                     <div
                       key={track.id}
-                      className="flex items-center gap-4 p-3 rounded-xl bg-gray-50 dark:bg-secondary/20 group"
+                      className="flex items-center gap-3 sm:gap-4 p-3 rounded-xl bg-gray-50 dark:bg-secondary/20"
                     >
                       <img
                         src={track.artwork_url || "/brand/icon-192.png"}
-                        alt={track.title}
+                        alt=""
                         width={48}
                         height={48}
                         loading="lazy"
                         decoding="async"
-                        className="w-12 h-12 rounded-lg object-cover"
+                        className="w-12 h-12 shrink-0 rounded-lg object-cover"
                       />
                       <div className="flex-1 min-w-0">
-                        <div className="font-semibold text-foreground truncate flex items-center gap-2">
-                          {track.title}
-                          {(Boolean(track.downloadable) || track.downloadable === "true") && track.download_url && (
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleDownload(track);
-                              }}
-                              onMouseDown={(e) => e.stopPropagation()}
-                              disabled={downloadingTrackId === track.id}
-                              title="Download track"
-                              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-xs font-medium flex-shrink-0 hover:bg-green-200 dark:hover:bg-green-900/50 transition disabled:cursor-not-allowed disabled:opacity-60"
-                            >
-                              <Download className="w-3 h-3" /> DL
-                            </button>
-                          )}
+                        {/* `truncate` belongs on the title, not on this flex
+                            row — see the note on the editor row below. */}
+                        <div className="flex min-w-0 items-center gap-2 font-semibold text-foreground">
+                          <span className="min-w-0 truncate">{track.title}</span>
+                          <DownloadChip
+                            track={track}
+                            busy={downloadingTrackId === track.id}
+                            onDownload={handleDownload}
+                          />
                         </div>
                         <div className="text-sm text-muted-foreground truncate">
                           {track.user?.username} •{" "}
                           {formatDuration(track.duration)}
                         </div>
                       </div>
-                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 sm:opacity-100 transition">
-                        <div className="relative" data-track-menu>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setOpenMenuTrackId(
-                                openMenuTrackId === track.id ? null : track.id
-                              )
-                            }
-                            className="p-2 hover:bg-gray-200 dark:hover:bg-secondary/40 rounded text-foreground"
-                            title="Add to playlist"
-                            aria-expanded={openMenuTrackId === track.id}
-                            aria-haspopup="true"
-                          >
-                            <MoreVertical className="w-4 h-4" />
-                          </button>
-                          {openMenuTrackId === track.id && (
-                            <div className="absolute right-0 top-full z-30 mt-1 w-52 rounded-xl border-2 border-gray-200 dark:border-border bg-white dark:bg-card shadow-lg py-1 text-left">
-                              <button
-                                type="button"
-                                className="w-full px-3 py-2 text-sm text-left hover:bg-gray-100 dark:hover:bg-secondary/40 flex items-center gap-2 text-foreground"
-                                onClick={() => openTransferModal("move", track)}
-                              >
-                                <ArrowRightLeft className="w-4 h-4 shrink-0" />
-                                Add to playlist…
-                              </button>
-                              <button
-                                type="button"
-                                className="w-full px-3 py-2 text-sm text-left hover:bg-gray-100 dark:hover:bg-secondary/40 flex items-center gap-2 text-foreground"
-                                onClick={() => openTransferModal("duplicate", track)}
-                              >
-                                <Copy className="w-4 h-4 shrink-0" />
-                                Duplicate to playlist…
-                              </button>
-                            </div>
-                          )}
-                        </div>
+                      <div className={ROW_ACTIONS_CLASS}>
+                        <IconButton
+                          label={`More actions for ${track.title}`}
+                          size="sm"
+                          onClick={() => setActionsTrack(track)}
+                        >
+                          <MoreVertical className="w-4 h-4" aria-hidden="true" />
+                        </IconButton>
                       </div>
                     </div>
                   ))}
                 </div>
               )}
-            </div>
+            </Card>
           </div>
         ) : selectedPlaylist ? (
           /* Track Editor */
           <div>
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center gap-4">
-                <button
+            <div className="flex flex-col gap-3 mb-6 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
+                <Button
+                  variant="ghost"
+                  size="sm"
                   onClick={goBackToList}
-                  className="inline-flex items-center gap-2 text-muted-foreground transition hover:text-primary"
+                  className="self-start text-muted-foreground hover:text-primary-text"
                 >
-                  <ArrowLeft className="h-4 w-4" />
+                  <ArrowLeft className="h-4 w-4" aria-hidden="true" />
                   Back to playlists
-                </button>
-                <h2 className="text-2xl font-bold text-foreground">
+                </Button>
+                <h2 className="min-w-0 truncate text-2xl font-bold text-foreground">
                   {selectedPlaylist.title}
                 </h2>
               </div>
-              <div className="flex gap-3">
+              <div className="grid grid-cols-2 gap-2 sm:flex sm:shrink-0 sm:gap-3">
                 <Button
                   onClick={shuffleTracks}
                   variant="outline"
                 >
-                  <Shuffle className="w-4 h-4" />
+                  <Shuffle className="w-4 h-4" aria-hidden="true" />
                   Shuffle
                 </Button>
                 <Button
@@ -807,33 +827,36 @@ export default function PlaylistModifierPage() {
                   disabled={saving}
                 >
                   {saving ? (
-                    <LoadingSpinner size="sm" className="w-4 h-4 border-white" />
+                    <LoadingSpinner size="sm" className="w-4 h-4 text-white" />
                   ) : (
-                    <Save className="w-4 h-4" />
+                    <Save className="w-4 h-4" aria-hidden="true" />
                   )}
                   Save Changes
                 </Button>
               </div>
             </div>
 
-            <div className="bg-white dark:bg-card rounded-2xl p-6 border-2 border-gray-200 dark:border-border">
+            <Card variant="outline" className="rounded-2xl p-4 sm:p-6">
               {/* Filter pills */}
               {!loadingTracks && tracks.length > 0 && (
-                <div className="flex items-center gap-2 mb-4 flex-wrap">
+                <div role="group" aria-label="Filter tracks" className="flex items-center gap-2 mb-4 flex-wrap">
                   {([
-                    { key: "all" as TrackFilter, label: "All", count: tracks.length },
-                    { key: "downloadable" as TrackFilter, label: "⬇ Downloadable", count: downloadCount },
-                    { key: "buylink" as TrackFilter, label: "🔗 Buy Link", count: buyLinkCount },
-                  ]).map(({ key, label, count }) => (
+                    { key: "all" as TrackFilter, icon: null, label: "All", count: tracks.length },
+                    { key: "downloadable" as TrackFilter, icon: "⬇", label: "Downloadable", count: downloadCount },
+                    { key: "buylink" as TrackFilter, icon: "🔗", label: "Buy Link", count: buyLinkCount },
+                  ]).map(({ key, icon, label, count }) => (
                     <button
                       key={key}
+                      type="button"
+                      aria-pressed={trackFilter === key}
                       onClick={() => setTrackFilter(key)}
-                      className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all ${
+                      className={`inline-flex min-h-9 items-center gap-1 px-3 py-1.5 rounded-full text-sm font-medium transition-all ${
                         trackFilter === key
-                          ? "bg-primary text-white"
+                          ? "bg-primary text-primary-foreground"
                           : "bg-gray-100 dark:bg-secondary/20 text-muted-foreground hover:bg-gray-200 dark:hover:bg-secondary/40"
                       }`}
                     >
+                      {icon ? <span aria-hidden="true">{icon}</span> : null}
                       {label} ({count})
                     </button>
                   ))}
@@ -853,13 +876,7 @@ export default function PlaylistModifierPage() {
                   title="Couldn’t load tracks for this playlist"
                   description="The playlist data could not be fetched. Retry to try again."
                   action={
-                    <button
-                      type="button"
-                      onClick={() => selectedPlaylistQuery.refetch()}
-                      className="px-4 py-2 rounded-lg text-sm font-semibold bg-gradient-to-r from-[#FF5500] to-[#E64A00] text-white hover:shadow-md transition"
-                    >
-                      Retry
-                    </button>
+                    <Button onClick={() => selectedPlaylistQuery.refetch()}>Retry</Button>
                   }
                 />
               ) : tracks.length === 0 ? (
@@ -874,7 +891,7 @@ export default function PlaylistModifierPage() {
                   description="Try a different filter."
                 />
               ) : (
-                <div ref={listScrollRef} className="max-h-[600px] overflow-y-auto">
+                <div ref={listScrollRef} className="max-h-[60dvh] overflow-y-auto">
                 <div style={{ height: rowVirtualizer.getTotalSize(), position: "relative" }}>
                   {rowVirtualizer.getVirtualItems().map((virtualRow) => {
                     const track = filteredTracks[virtualRow.index];
@@ -894,53 +911,50 @@ export default function PlaylistModifierPage() {
                       className="pb-2"
                     >
                     <div
-                      className="flex items-center gap-4 p-3 rounded-xl bg-gray-50 dark:bg-secondary/20 group"
+                      className="flex items-center gap-3 sm:gap-4 p-3 rounded-xl bg-gray-50 dark:bg-secondary/20"
                     >
-                      <span className="w-8 text-center text-sm text-muted-foreground/70">
+                      <span className="hidden sm:block w-8 text-center text-sm text-muted-foreground-subtle">
                         {globalIndex + 1}
                       </span>
                       <img
                         src={track.artwork_url || "/brand/icon-192.png"}
-                        alt={track.title}
+                        alt=""
                         width={48}
                         height={48}
                         loading="lazy"
                         decoding="async"
-                        className="w-12 h-12 rounded-lg object-cover"
+                        className="w-12 h-12 shrink-0 rounded-lg object-cover"
                       />
                       <div className="flex-1 min-w-0">
-                        <div className="font-semibold text-foreground truncate flex items-center gap-2">
-                          {track.title}
-                          {(Boolean(track.downloadable) || track.downloadable === "true") && track.download_url && (
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleDownload(track);
-                              }}
-                              onMouseDown={(e) => e.stopPropagation()}
-                              disabled={downloadingTrackId === track.id}
-                              title="Download track" 
-                              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-xs font-medium flex-shrink-0 hover:bg-green-200 dark:hover:bg-green-900/50 transition disabled:cursor-not-allowed disabled:opacity-60"
-                            >
-                              <Download className="w-3 h-3" /> DL
-                            </button>
-                          )}
-                          {(Boolean(track.downloadable) || track.downloadable === "true") && !track.download_url && (
-                            <span title="Downloadable (no direct link)" className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 text-xs font-medium flex-shrink-0">
-                              <Download className="w-3 h-3" /> DL
-                            </span>
-                          )}
+                        {/* `truncate` used to sit on this flex row, which put
+                            `white-space: nowrap` on the anonymous flex item
+                            holding the bare title text. That item's
+                            `min-width: auto` then resolved to its full
+                            nowrap min-content width, so the title never
+                            shrank — and the `shrink-0` chips after it were
+                            pushed past the row's edge and clipped by the same
+                            `overflow: hidden`. Invisible, untappable, still
+                            in the Tab order, and invisible to a scrollWidth
+                            check precisely because the overflow is hidden.
+                            Truncating the title itself is what makes room. */}
+                        <div className="flex min-w-0 items-center gap-2 font-semibold text-foreground">
+                          <span className="min-w-0 truncate">{track.title}</span>
+                          <DownloadChip
+                            track={track}
+                            busy={downloadingTrackId === track.id}
+                            onDownload={handleDownload}
+                          />
                           {track.purchase_url && (
                             <a
                               href={track.purchase_url}
                               target="_blank"
                               rel="noopener noreferrer"
                               onClick={(e) => e.stopPropagation()}
-                              title={track.purchase_title || "Buy / External link"}
-                              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 text-xs font-medium flex-shrink-0 hover:bg-blue-200 dark:hover:bg-blue-900/50 transition"
+                              aria-label={`${track.purchase_title || "Buy"} — opens ${track.title} on an external site`}
+                              className="inline-flex min-h-6 items-center gap-1 px-2 py-0.5 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 text-xs font-medium flex-shrink-0 hover:bg-blue-200 dark:hover:bg-blue-900/50 transition"
                             >
-                              <ExternalLink className="w-3 h-3" /> {track.purchase_title || "Buy"}
+                              <ExternalLink className="w-3 h-3" aria-hidden="true" />{" "}
+                              {track.purchase_title || "Buy"}
                             </a>
                           )}
                         </div>
@@ -949,63 +963,44 @@ export default function PlaylistModifierPage() {
                           {formatDuration(track.duration)}
                         </div>
                       </div>
-                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 sm:opacity-100 transition">
-                        <div className="relative" data-track-menu>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setOpenMenuTrackId(
-                                openMenuTrackId === track.id ? null : track.id
-                              )
-                            }
-                            className="p-2 hover:bg-gray-200 dark:hover:bg-secondary/40 rounded text-foreground"
-                            title="More actions"
-                            aria-expanded={openMenuTrackId === track.id}
-                            aria-haspopup="true"
-                          >
-                            <MoreVertical className="w-4 h-4" />
-                          </button>
-                          {openMenuTrackId === track.id && (
-                            <div className="absolute right-0 top-full z-30 mt-1 w-52 rounded-xl border-2 border-gray-200 dark:border-border bg-white dark:bg-card shadow-lg py-1 text-left">
-                              <button
-                                type="button"
-                                className="w-full px-3 py-2 text-sm text-left hover:bg-gray-100 dark:hover:bg-secondary/40 flex items-center gap-2 text-foreground"
-                                onClick={() => openTransferModal("move", track)}
-                              >
-                                <ArrowRightLeft className="w-4 h-4 shrink-0" />
-                                Move to playlist…
-                              </button>
-                              <button
-                                type="button"
-                                className="w-full px-3 py-2 text-sm text-left hover:bg-gray-100 dark:hover:bg-secondary/40 flex items-center gap-2 text-foreground"
-                                onClick={() => openTransferModal("duplicate", track)}
-                              >
-                                <Copy className="w-4 h-4 shrink-0" />
-                                Duplicate to playlist…
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                        <button
+                      <div className={ROW_ACTIONS_CLASS}>
+                        <IconButton
+                          label={`More actions for ${track.title}`}
+                          size="sm"
+                          onClick={() => setActionsTrack(track)}
+                        >
+                          <MoreVertical className="w-4 h-4" aria-hidden="true" />
+                        </IconButton>
+                        {/* Reorder and remove stay in the sheet on a phone —
+                            four 44px targets plus the artwork do not fit a
+                            360px row. */}
+                        <IconButton
+                          label="Move up"
+                          size="sm"
+                          className="hidden sm:inline-flex"
                           onClick={() => moveTrack(globalIndex, "up")}
                           disabled={globalIndex === 0}
-                          className="p-2 hover:bg-gray-200 dark:hover:bg-secondary/40 rounded disabled:opacity-30"
                         >
-                          <ArrowUpDown className="w-4 h-4 rotate-180" />
-                        </button>
-                        <button
+                          <ArrowUp className="w-4 h-4" aria-hidden="true" />
+                        </IconButton>
+                        <IconButton
+                          label="Move down"
+                          size="sm"
+                          className="hidden sm:inline-flex"
                           onClick={() => moveTrack(globalIndex, "down")}
                           disabled={globalIndex === tracks.length - 1}
-                          className="p-2 hover:bg-gray-200 dark:hover:bg-secondary/40 rounded disabled:opacity-30"
                         >
-                          <ArrowUpDown className="w-4 h-4" />
-                        </button>
-                        <button
+                          <ArrowDown className="w-4 h-4" aria-hidden="true" />
+                        </IconButton>
+                        <IconButton
+                          label="Remove from playlist"
+                          size="sm"
+                          variant="destructive"
+                          className="hidden sm:inline-flex"
                           onClick={() => removeTrack(track.id)}
-                          className="p-2 hover:bg-red-100 dark:hover:bg-red-900/20 rounded text-red-500"
                         >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                          <Trash2 className="w-4 h-4" aria-hidden="true" />
+                        </IconButton>
                       </div>
                     </div>
                     </div>
@@ -1014,107 +1009,161 @@ export default function PlaylistModifierPage() {
                 </div>
                 </div>
               )}
-            </div>
+            </Card>
           </div>
         ) : null}
-      {transfer && (selectedPlaylist || isLikedTracksView) && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="transfer-dialog-title"
-          onClick={(e) => {
-            if (e.target === e.currentTarget && !transferLoading) setTransfer(null);
-          }}
-        >
-          <div
-            className="bg-white dark:bg-card rounded-2xl border-2 border-gray-200 dark:border-border max-w-md w-full p-6 shadow-xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3
-              id="transfer-dialog-title"
-              className="text-lg font-bold text-foreground mb-2"
+
+      <Dialog
+        open={actionsTrack !== null}
+        onClose={() => setActionsTrack(null)}
+        title="Track actions"
+        subtitle={actionsTrack?.title}
+        variant="sheet"
+        size="sm"
+      >
+        {actionsTrack ? (
+          <div className="grid gap-2">
+            <Button
+              variant="outline"
+              className="w-full justify-start"
+              onClick={() => openTransferModal("move", actionsTrack)}
             >
-              {transfer.action === "move"
-                ? "Move track to playlist"
-                : "Duplicate track to playlist"}
-            </h3>
-            <p
-              className="text-sm text-muted-foreground mb-4 truncate"
-              title={transfer.track.title}
+              <ArrowRightLeft className="w-4 h-4 shrink-0" aria-hidden="true" />
+              {isLikedTracksView ? "Add to playlist…" : "Move to playlist…"}
+            </Button>
+            <Button
+              variant="outline"
+              className="w-full justify-start"
+              onClick={() => openTransferModal("duplicate", actionsTrack)}
             >
-              {transfer.track.title}
-            </p>
-            {transferTargetOptions.length === 0 ? (
-              <p className="text-sm text-red-600 dark:text-red-400 mb-4">
-                No target playlist available. Create another playlist on SoundCloud first.
-              </p>
-            ) : (
-              <label className="block mb-4">
-                <span className="text-sm font-medium text-foreground mb-1 block">
-                  Target playlist
-                </span>
-                <select
-                  className="w-full rounded-lg border-2 border-gray-200 dark:border-border bg-white dark:bg-background px-3 py-2 text-foreground"
-                  value={transferTargetId === "" ? "" : String(transferTargetId)}
-                  onChange={(e) =>
-                    setTransferTargetId(
-                      e.target.value ? Number(e.target.value) : ""
-                    )
-                  }
-                  disabled={transferLoading}
+              <Copy className="w-4 h-4 shrink-0" aria-hidden="true" />
+              Duplicate to playlist…
+            </Button>
+            {!isLikedTracksView && (
+              <>
+                <Button
+                  variant="outline"
+                  className="w-full justify-start"
+                  disabled={actionsTrackIndex <= 0}
+                  onClick={() => moveTrack(actionsTrackIndex, "up")}
                 >
-                  {transferTargetOptions.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.title} ({p.track_count} tracks)
-                    </option>
-                  ))}
-                </select>
-              </label>
+                  <ArrowUp className="w-4 h-4 shrink-0" aria-hidden="true" />
+                  Move up
+                </Button>
+                <Button
+                  variant="outline"
+                  className="w-full justify-start"
+                  disabled={actionsTrackIndex < 0 || actionsTrackIndex === tracks.length - 1}
+                  onClick={() => moveTrack(actionsTrackIndex, "down")}
+                >
+                  <ArrowDown className="w-4 h-4 shrink-0" aria-hidden="true" />
+                  Move down
+                </Button>
+                <Button
+                  variant="destructive"
+                  className="w-full justify-start"
+                  onClick={() => {
+                    const id = actionsTrack.id;
+                    setActionsTrack(null);
+                    removeTrack(id);
+                  }}
+                >
+                  <Trash2 className="w-4 h-4 shrink-0" aria-hidden="true" />
+                  Remove from playlist
+                </Button>
+              </>
             )}
-            <p className="text-xs text-muted-foreground mb-4">
-              {isLikedTracksView
-                ? "The track will be added to the selected playlist."
-                : transfer.action === "move"
-                  ? "The track is added to the target playlist first, then removed from this one."
-                  : "The track is copied to the end of the target playlist. Playlists you don't own aren't listed."}
-            </p>
-            {isLikedTracksView && (
-              <label className="flex items-center gap-2 mb-4 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={alsoUnlike}
-                  onChange={(e) => setAlsoUnlike(e.target.checked)}
-                  className="w-4 h-4 rounded border-gray-300 dark:border-border text-primary focus:ring-primary accent-primary"
-                />
-                <span className="text-sm text-foreground">
-                  Also unlike this track
-                </span>
-              </label>
-            )}
-            <div className="flex justify-end gap-3">
-              <button
-                type="button"
-                className="px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-border text-foreground hover:bg-gray-50 dark:hover:bg-secondary/40 disabled:opacity-50"
-                onClick={() => !transferLoading && setTransfer(null)}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={transferSubmitDisabled || transferTargetOptions.length === 0}
-                onClick={() => void submitTransfer()}
-                className="px-4 py-2 rounded-lg bg-gradient-to-r from-[#FF5500] to-[#E64A00] text-white font-semibold hover:shadow-md disabled:opacity-50 flex items-center gap-2"
-              >
-                {transferLoading ? (
-                  <LoadingSpinner size="sm" className="w-4 h-4 border-white" />
-                ) : null}
-                {transfer.action === "move" ? "Move" : "Duplicate"}
-              </button>
-            </div>
           </div>
+        ) : null}
+      </Dialog>
+
+      <Dialog
+        open={transfer !== null && (selectedPlaylist !== null || isLikedTracksView)}
+        onClose={() => {
+          if (!transferLoading) setTransfer(null);
+        }}
+        title={
+          transfer?.action === "move"
+            ? isLikedTracksView
+              ? "Add track to playlist"
+              : "Move track to playlist"
+            : "Duplicate track to playlist"
+        }
+        subtitle={transfer?.track.title}
+        size="sm"
+        variant="sheet"
+        description={
+          isLikedTracksView
+            ? "The track will be added to the selected playlist."
+            : transfer?.action === "move"
+              ? "The track is added to the target playlist first, then removed from this one."
+              : "The track is copied to the end of the target playlist. Playlists you don't own aren't listed."
+        }
+        footer={
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end sm:gap-3">
+            <Button
+              variant="outline"
+              disabled={transferLoading}
+              onClick={() => setTransfer(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              disabled={transferSubmitDisabled || transferTargetOptions.length === 0}
+              onClick={() => void submitTransfer()}
+            >
+              {transferLoading ? (
+                <LoadingSpinner size="sm" className="w-4 h-4 text-white" />
+              ) : null}
+              {transfer?.action === "move"
+                ? isLikedTracksView
+                  ? "Add"
+                  : "Move"
+                : "Duplicate"}
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-4">
+          {transferTargetOptions.length === 0 ? (
+            <InlineAlert variant="error">
+              No target playlist available. Create another playlist on SoundCloud first.
+            </InlineAlert>
+          ) : (
+            <Select
+              label="Target playlist"
+              value={transferTargetId === "" ? "" : String(transferTargetId)}
+              onChange={(e) =>
+                setTransferTargetId(e.target.value ? Number(e.target.value) : "")
+              }
+              disabled={transferLoading}
+            >
+              {transferTargetOptions.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.title} ({p.track_count} tracks)
+                </option>
+              ))}
+            </Select>
+          )}
+          {isLikedTracksView && (
+            <div className="flex items-center gap-3">
+              <input
+                type="checkbox"
+                id="playlist-modifier-also-unlike"
+                checked={alsoUnlike}
+                onChange={(e) => setAlsoUnlike(e.target.checked)}
+                className="h-6 w-6 shrink-0 cursor-pointer accent-primary"
+              />
+              <label
+                htmlFor="playlist-modifier-also-unlike"
+                className="cursor-pointer select-none text-sm font-semibold text-foreground"
+              >
+                Also unlike this track
+              </label>
+            </div>
+          )}
         </div>
-      )}
+      </Dialog>
       <ConfirmDialog
         open={trackToRemove !== null}
         title="Remove track?"

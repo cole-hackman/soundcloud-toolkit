@@ -10,7 +10,11 @@ Track Toolkit (formerly SoundCloud Toolkit — SoundCloud's API Terms of Use for
 
 ### Backend (`server/`)
 - **Node.js** with **Express.js** — HTTP server, routing, middleware
-- **Prisma ORM** with **PostgreSQL** (Neon recommended) — data persistence
+- **Prisma ORM** with **PostgreSQL** — data persistence. Production is **Azure
+  Database for PostgreSQL Flexible Server** (`tracktoolkit-pg`, PG 17), since
+  the 2026-09-20 cutover in `docs/internal/MIGRATION.md`. Neon is the legacy
+  database, left intact as the rollback until decommission — nothing reads or
+  writes it (it is unused, not set read-only)
 - **`express-validator`** — input validation middleware
 - **`helmet`** — security headers (CSP, HSTS, etc.)
 - **`express-rate-limit`** — per-IP rate limiting
@@ -22,12 +26,31 @@ Track Toolkit (formerly SoundCloud Toolkit — SoundCloud's API Terms of Use for
 - **Jest** — unit testing (`tests/`)
 
 ### Frontend (`frontend-UI/`)
-- **Next.js 15** (React 18) — app router, static export (`output: 'export'`)
+- **Next.js 15** (React 18) — app router, static export (`output: 'export'`), `trailingSlash: true`
 - **TypeScript**
-- **Tailwind CSS v4** — utility styling
-- **shadcn/ui** (custom components in `src/components/ui/`) — Button, Card, Input, LoadingSpinner, EmptyState, Skeleton
-- **Space Grotesk** + **Plus Jakarta Sans** — fonts via `next/font`
-- Deployed as static export on **Vercel**
+- **Tailwind CSS 3.4** with `frontend-UI/tailwind.config.ts` — **not v4**. Colors
+  are `hsl(var(--token))` against the tokens in `src/app/globals.css`; every
+  pair the app relies on is checked by `npm run contrast`, which exits 1 below
+  its threshold. Nothing runs it automatically — it is a manual pre-merge step,
+  not part of `next build` and not in the deploy workflow
+- **shadcn/ui** (custom components in `src/components/ui/`) — Button, Card,
+  Input, LoadingSpinner, EmptyState, Skeleton, plus the accessibility
+  primitives added on `feat/trust-and-mobile`: `Field`, `Select`, `Dialog`
+  (+ `variant="sheet"`/`"drawer"`), `IconButton`, `InlineAlert`, `ProgressBar`,
+  `SectionHeading`, `SelectableRow`/`SelectableList`, `SelectionBanner`,
+  `PageContainer`, `PageHeader`, `ResultPanel`, `LiveRegion`, `useAnnounce`,
+  `useDialog`
+- **Space Grotesk** + **Plus Jakarta Sans** — fonts via `next/font`, self-hosted into the export
+- **Playwright + `@axe-core/playwright`** (`frontend-UI/e2e/`) — the end-to-end
+  suite runs against the built static export at 1280/430/390/360, asserting
+  zero serious or critical axe violations, no horizontal overflow, and the
+  keyboard behaviour of the shared primitives. `npm run test:e2e`
+- Built to `frontend-UI/out/` and served by the Express backend from one origin on **Azure App Service**
+- **No third-party scripts and no analytics.** No Google Analytics, no Vercel
+  Analytics or Speed Insights, no tag manager, no widget CDN, no external font
+  host. The CSP in `server/middleware/security.js` names no third-party script,
+  style or font source (only SoundCloud, in `connectSrc`), and
+  `tests/security-headers.test.js` fails if one is added back
 
 ---
 
@@ -41,14 +64,14 @@ soundcloud-tool/
 │   │   ├── api.js                # Core tools — playlists, likes, followings, reposts, resolve, library, transfer/compare/clone, exports, proxy-download
 │   │   ├── growth.js             # Growth/discovery suite — /growth/* (discover, engage, analytics, history, follow-backs, reverse, stats)
 │   │   ├── admin.js              # Admin dashboard — stats, operations, catalog, feedback (every route is authenticateUser + adminAuth)
-│   │   ├── auth.js               # OAuth2+PKCE login/callback, session /me, logout, account deletion
-│   │   └── feedback.js           # Rebrand name vote — status + submit
+│   │   ├── auth.js               # OAuth2+PKCE login/callback, session /me, logout, disconnect, export, account deletion
+│   │   └── feedback.js           # In-app feedback form (POST /, GET /mine) + the retired rebrand name vote
 │   ├── lib/
 │   │   ├── soundcloud-client.js  # SoundCloud API wrapper — token exchange, pagination, 401 refresh, 429 backoff, 30s fetch timeout
 │   │   ├── session.js            # signSession/unsignSession (HMAC-SHA256, timing-safe), parseSessionData (iat/TTL), SESSION_TTL_MS
 │   │   ├── crypto.js             # encrypt() / decrypt() using AES-256-GCM
 │   │   ├── pkce.js               # createPkcePair() — code verifier + SHA256 challenge
-│   │   ├── prisma.js             # Prisma singleton + transient-connection retry extension (Neon idle drops)
+│   │   ├── prisma.js             # Prisma singleton + transient-connection retry extension (idle drops)
 │   │   ├── logger.js             # Sanitizing logger — redacts secrets in messages AND data, all levels
 │   │   ├── safe-error.js         # Client-safe error payload builder
 │   │   ├── analytics.js          # logOperation() → OperationLog; operation timers, client info
@@ -71,13 +94,16 @@ soundcloud-tool/
 │   │   ├── download-utils.js     # Download URL + CDN redirect allowlists
 │   │   ├── growth-engine.js      # Discovery scoring, follow budget, background engagement jobs
 │   │   ├── growth-scheduler.js   # Daily follow-back check scheduler (GROWTH_AUTOCHECK)
+│   │   ├── account-lifecycle.js  # disconnectUser() — sign-out, token deletion, cache teardown
+│   │   ├── retention.js          # Daily purge job + runRetentionOnce() + lifetime-user snapshot
 │   │   └── token-context.js      # AsyncLocalStorage token context for refresh propagation
 │   ├── middleware/
 │   │   ├── auth.js               # authenticateUser() — session cookie → DB user → decrypted tokens
 │   │   ├── adminAuth.js          # adminAuth() — req.user.soundcloudId ∈ ADMIN_IDS; fails closed when unset
 │   │   ├── security.js           # securityHeaders, preventKeyLeakage, validateEnv, rejectUntrustedOrigin
-│   │   ├── validation.js         # express-validator rule sets (merge, bulk-unlike, resolve, growth, survey, etc.)
-│   │   └── rateLimiter.js        # Five rate limiters: api, auth, heavy, library-read, health
+│   │   ├── validation.js         # express-validator rule sets (merge, bulk-unlike, resolve, growth, survey, feedback, etc.)
+│   │   └── rateLimiter.js        # Five per-IP limiters (api, auth, heavy, library-read, health) plus
+│   │                             #   createUserLimiter() and the two per-USER feedback limiters
 │   └── package.json
 ├── frontend-UI/
 │   ├── src/
@@ -105,36 +131,75 @@ soundcloud-tool/
 │   │   │   │   ├── growth/
 │   │   │   │   ├── export/
 │   │   │   │   ├── downloads/
+│   │   │   │   ├── feedback/     # In-app "Send feedback" form + the user's own last 20
+│   │   │   │   ├── account/      # Export, disconnect, delete — the three exits, in one place
+│   │   │   │   ├── AppGroupLayout.tsx
 │   │   │   │   └── layout.tsx    # App shell with sidebar and auth guard
 │   │   │   ├── admin/            # Admin console (page.tsx + layout.tsx); UI lives in components/admin/
 │   │   │   ├── login/page.tsx
 │   │   │   ├── about/page.tsx
 │   │   │   ├── privacy/page.tsx
-│   │   │   ├── layout.tsx        # Root layout
+│   │   │   ├── terms/page.tsx    # Terms of service. GOVERNING_LAW_STATE is a "[STATE]" placeholder Cole must fill
+│   │   │   ├── faq/page.tsx      # FAQ + FAQPage structured data (the old names are allowed in its title/meta)
+│   │   │   ├── accessibility/page.tsx  # Statement + the KNOWN_ISSUES list
+│   │   │   ├── extension/connected/    # Landing page for the browser-extension OAuth hand-off
+│   │   │   ├── not-found.tsx     # 404 (the static export writes out/404.html; Express answers 404)
+│   │   │   ├── layout.tsx        # Root layout — site-wide metadata + StructuredData
+│   │   │   │                     #   Every page is "use client", so per-route <title>/description/
+│   │   │   │                     #   canonical live in a sibling server `layout.tsx` (about,
+│   │   │   │                     #   accessibility, faq, login, privacy, terms, admin, and (app)
+│   │   │   │                     #   which sets noindex). Inside (app), `usePageTitle` sets the
+│   │   │   │                     #   per-tool title at runtime.
 │   │   │   └── page.tsx          # Landing page
 │   │   ├── components/
-│   │   │   ├── ui/               # shadcn-style primitive components
-│   │   │   ├── admin/            # Admin console — AdminConsole shell, typed react-query hooks, views/ (Overview, Operations, Performance, Catalog, Archive)
+│   │   │   ├── ui/               # Primitives. Forms: Field, Select, Input. Overlays: Dialog (+ useDialog),
+│   │   │   │                     #   ConfirmDialog. Controls: Button, IconButton. Feedback: InlineAlert,
+│   │   │   │                     #   ProgressBar, ResultPanel, LiveRegion + useAnnounce, EmptyState, Skeleton.
+│   │   │   │                     #   Layout: PageContainer, PageHeader, SectionHeading, Card.
+│   │   │   │                     #   Lists: SelectableRow/SelectableList, TrackRow, SelectionBanner,
+│   │   │   │                     #   BulkReviewDetails
+│   │   │   ├── admin/            # Admin console — AdminConsole shell, typed react-query hooks, views/ (Overview, Operations, Performance, Catalog, Feedback, Archive)
+│   │   │   ├── export/           # ListExportCard / TrackExportCard / ExportBackLink
 │   │   │   ├── AppShell.tsx      # Sidebar layout wrapper
+│   │   │   ├── AppLayout.tsx     # Auth guard + react-error-boundary wrapper
+│   │   │   ├── AppErrorFallback.tsx  # "Something went wrong" — what the e2e crash guard looks for
+│   │   │   ├── StructuredData.tsx    # JSON-LD (no third-party script; inline only)
 │   │   │   ├── RebrandBanner.tsx  # Site-wide "now Track Toolkit" strip (localStorage-gated)
 │   │   │   ├── RebrandAnnouncement.tsx      # Auth gate for the one-time rebrand modal
 │   │   │   ├── RebrandAnnouncementModal.tsx # The modal itself
 │   │   │   ├── WhatsNewModal.tsx  # Feature announcement (yields to the rebrand modal)
-│   │   │   ├── Providers.tsx     # Context aggregator
-│   │   │   └── Analytics.tsx     # Google Analytics integration
+│   │   │   ├── SupportLink.tsx   # mailto: link to the shared support address
+│   │   │   └── Providers.tsx     # Context aggregator
 │   │   ├── contexts/
 │   │   │   ├── AuthContext.tsx   # isAuthenticated, user, login(), logout()
 │   │   │   └── ThemeContext.tsx
-│   │   └── lib/utils.ts
+│   │   └── lib/
+│   │       ├── support.ts        # SUPPORT_EMAIL — the one definition; never hardcode the address
+│   │       ├── nav.ts            # The tool list behind the sidebar, the dashboard and the FAQ
+│   │       ├── usePageTitle.ts   # Per-route <title> for the (app) tools. A "use client" page
+│   │       │                     #   cannot export `metadata`; a sibling server layout.tsx can,
+│   │       │                     #   and that is where a new PUBLIC route's title/description/
+│   │       │                     #   canonical go (see the app/layout.tsx note above)
+│   │       ├── rebrand.ts        # REBRAND_ANNOUNCEMENT_VERSION + the localStorage gates
+│   │       ├── api.ts / api-shape.ts  # fetch wrapper + the `asArray` degraded-payload guards
+│   │       └── utils.ts          # cn()
+│   ├── e2e/                      # Playwright: a11y (axe), mobile (overflow), long-titles, drawer,
+│   │                             #   sidebar, navigation, loading, degraded-payloads, primitives,
+│   │                             #   account, feedback + fixtures/ (api.ts mock, ready.ts settle markers)
+│   ├── scripts/contrast-check.mjs  # `npm run contrast` — the colour-token gate
+│   ├── playwright.config.ts      # Four projects: desktop 1280, m430, m390, m360. E2E_PORT
 │   ├── next.config.js            # Static export config, API rewrites for dev
-│   ├── tailwind.config.ts
+│   ├── tailwind.config.ts        # Tailwind 3.4 — the tokens live in src/app/globals.css
 │   └── package.json
 ├── tests/                        # Jest suites — lib units plus tests/routes/ (supertest authz/CSRF boundaries)
 ├── prisma/
-│   └── schema.prisma             # Single source of truth for the schema (16 models)
+│   └── schema.prisma             # Single source of truth for the schema (18 models)
+├── infra/                        # Azure as code — main.bicep, deploy.sh, main.cutover.bicepparam, README.md
+├── .github/workflows/            # azure-deploy.yml (every push to main), keep-api-warm.yml
 ├── docs/                         # Engineering review, SECURITY.md, perf audit, plans, incidents,
 │                                 #   sql/ migrations, api.json (SoundCloud's upstream spec)
-├── .do/app.yaml                  # DigitalOcean App Platform deployment config
+├── .do/app.yaml, vercel.json     # RETIRED — the pre-cutover DigitalOcean and Vercel configs,
+│                                 #   kept as rollback until those accounts are decommissioned
 ├── package.json                  # Root scripts (dev, build, server, test)
 ├── docs/internal/                # STATE.md (session state + decisions — read first), MIGRATION.md,
 │                                 #   ANALYSIS.md, DATA-COLLECTION.md, NOTES.md, TERMS-CHECK.md
@@ -148,17 +213,26 @@ soundcloud-tool/
 
 ### Request Flow
 
+One origin. Express serves the static export **and** `/api` from the same
+Azure App Service instance, so there is no browser hop between a frontend host
+and a backend host and no cross-site request in the picture.
+
 ```
-Browser ──HTTPS──▶ Vercel (Next.js static)
+Browser ──HTTPS──▶ https://tracktoolkit.com  (Azure App Service, Linux B1)
                         │
-                        │  fetch('/api/...', { credentials: 'include' })
+                        │  Express (server/index.js)
+                        ├── GET /            ──▶ frontend-UI/out/  (Next.js static export)
                         │
+                        │  fetch('/api/...', { credentials: 'include' })  — same origin
                         ▼
-              Express Backend (DigitalOcean / Render / Railway)
+                   /api/* routes
                         │
                  [authenticateUser middleware]
                  Session cookie ──▶ DB lookup ──▶ decrypt tokens
-                        │
+                        │                            │
+                        │                            ▼
+                        │              Azure PostgreSQL Flexible Server
+                        │              (tracktoolkit-pg, PG 17)
                         ▼
               soundcloud-client.js
                         │
@@ -170,6 +244,10 @@ Browser ──HTTPS──▶ Vercel (Next.js static)
                         ▼
               JSON response ──▶ Express ──▶ Browser
 ```
+
+The retired hostnames (`www.tracktoolkit.com`, `soundcloudtoolkit.com`,
+`www.`, `api.`) are bound to the same app and 301/308 to the apex from
+`server/middleware/legacy-redirect.js`.
 
 ### Authentication & Session Flow (OAuth2 + PKCE)
 
@@ -207,15 +285,27 @@ Browser ──HTTPS──▶ Vercel (Next.js static)
 |-----------|-----|------|
 | `httpOnly` | true | true |
 | `secure` | false | true |
-| `sameSite` | `lax` | `none` |
+| `sameSite` | `lax` | `lax` (`SESSION_COOKIE_SAMESITE=lax`) |
 | `domain` | (none) | (none) — host-only cookie |
 | `maxAge` | 7 days | 7 days |
 
-`SameSite=None` is required in production because the frontend (Vercel) and backend (DigitalOcean) are on different subdomains. The cookie is **host-only** — `createSessionCookieOptions()` in `server/lib/session.js` sets no `domain`, so it is scoped to `api.soundcloudtoolkit.com` and reaches the API cross-site purely through `SameSite=None; Secure`. `SESSION_COOKIE_SAMESITE=lax` switches it to `Lax` for a same-origin deployment (Azure).
+The cookie is **host-only**: `createSessionCookieOptions()` in
+`server/lib/session.js` sets no `domain`, so it is scoped to
+`tracktoolkit.com` and nothing else.
+
+Production runs `SameSite=Lax`, set explicitly through
+`SESSION_COOKIE_SAMESITE=lax`. It can, because the frontend and the API are
+one origin — there is no cross-site request to carry the cookie on. The code
+still defaults to `none` when the variable is unset, which is the split-host
+value the app shipped with before the Azure cutover; the deployment sets `lax`
+rather than relying on that default, so the value is visible in
+`infra/main.cutover.bicepparam` instead of implied.
 
 ### CSRF & Origin Enforcement
 
-Because production cookies are `SameSite=None`, CSRF is handled in two layers:
+`SameSite=Lax` is now the first line of defence, but it is not treated as the
+only one — the value is an environment variable, and the two layers below were
+built when it was `None`. Both stay:
 
 1. **`rejectUntrustedOrigin`** (`server/middleware/security.js`, mounted on `/api`
    in `server/index.js`) rejects `POST`/`PUT`/`PATCH`/`DELETE` whose `Origin`
@@ -236,7 +326,7 @@ expires.
 
 ## Data Model
 
-The schema (`prisma/schema.prisma`) has **16 models**, not two:
+The schema (`prisma/schema.prisma`) has **18 models**, not two:
 
 | Model | Purpose |
 |-------|---------|
@@ -245,12 +335,14 @@ The schema (`prisma/schema.prisma`) has **16 models**, not two:
 | `OperationLog` | Per-operation analytics record — action, status, duration, track/playlist ids |
 | `Track` / `Playlist` | Harvested music catalog (populated opportunistically from resolved/browsed content) |
 | `GrowthAction` | Follow/like actions taken by the growth suite, plus follow-back outcomes |
+| `Feedback` | In-app feedback form submissions — login-required, stored only here (no email, no webhook). `messageHash` (sha256 of the normalized message) backs a 24-hour per-user duplicate check; `status` is `new\|seen\|done\|spam` and `adminNote` is admin-only |
 | `RebrandVote` | Rebrand name-vote responses — the vote is closed, rows retained read-only (`@@unique([userId, campaignId])`) |
 | `BetaSignup` | The retired SongSwipe beta survey — retained read-only for history |
 | `SurveyResponse` | The retired monetization survey — retained read-only for history |
 | `chat_conversations` / `chat_messages` | AI library chat (owned by `feature/ai-library-chat`; declared here so `prisma db push` does not drop them) |
 | `indexed_likes` / `indexed_playlist_tracks` / `library_snapshots` | Library indexing for that same feature — same db-push caveat |
 | `LibraryCachePage` / `LibraryCacheState` | Persistent tier of the library cache — one row per 200-item page plus a sync-state row. **Not** the same thing as `library_snapshots` above |
+| `Metric` | Counters that must outlive the rows they were computed from. One key today: `lifetime_distinct_users`, snapshotted as the first step of every retention run — before any delete in that run. Deliberately **not** per-user, so it is absent from the deletion cascade by design |
 
 The two models this app touches on every request are detailed below.
 
@@ -263,9 +355,15 @@ The two models this app touches on every request are detailed below.
 | `username` | `String` | SC username (URL slug) |
 | `displayName` | `String?` | Display name (may differ from username) |
 | `avatarUrl` | `String?` | Profile picture URL |
+| `lastLoginAt` | `DateTime?` | Stamped by the OAuth callback on every login. Drives the dormant-account purge; null on rows predating the column, which fall back to `updatedAt` |
+| `disconnectedAt` | `DateTime?` | Set by `POST /api/auth/disconnect` or by revocation detection; cleared on the next successful login. Rows still stamped after 6 days are deleted by the retention job |
 | `createdAt` | `DateTime` | Auto |
 | `updatedAt` | `DateTime` | Auto |
 | `tokens` | `Token[]` | One-to-many relation (effectively one per user) |
+
+Both new columns are indexed (`@@index([lastLoginAt])`, `@@index([disconnectedAt])`)
+so the daily retention sweep is a range scan rather than a full table scan.
+Additive SQL: `docs/sql/2026-09-account-lifecycle.sql` (**not applied**).
 
 ### `Token` (`tokens` table)
 
@@ -297,8 +395,14 @@ All endpoints (except `/health`, `/`, and auth redirects) require a valid `sessi
 | `GET` | `/api/auth/callback` | Exchanges OAuth code; sets session cookie; redirects to `/dashboard` |
 | `POST` | `/api/auth/logout` | Clears `session` cookie; returns `{ success: true }` |
 | `GET` | `/api/auth/me` | Returns `{ userId, username, avatarUrl, displayName }` from session |
+| `POST` | `/api/auth/disconnect` | Hands the SoundCloud grant back (`signOut`), deletes the `Token` row, stamps `User.disconnectedAt`, drops every cache keyed to the user, clears the session cookie. The account survives; logging back in clears the stamp |
+| `GET` | `/api/auth/export` | The caller's full data export as a JSON attachment (`heavyOperationRateLimiter`). Token ciphertext is never included — only `expiresAt` |
 
-Rate limited: `authRateLimiter` (5 requests / 15 min)
+Rate limited: `authRateLimiter` (5 requests / 15 min) on `/login` + `/callback` only
+
+`POST /api/auth/disconnect` takes **no body**, so the empty-body fail-closed
+CSRF layer has nothing to act on — `rejectUntrustedOrigin` is the whole guard.
+`tests/routes/account-deletion.test.js` asserts a cross-site POST gets 403.
 
 ### User Profile
 
@@ -432,6 +536,60 @@ All `/growth/*` routes are `authenticateUser`; the write-heavy ones also carry
 | `POST` | `/api/growth/reverse` | Unfollow previously followed targets (does not refund budget) |
 | `GET` | `/api/growth/stats` | Aggregate growth counters |
 
+### Feedback (`routes/feedback.js`)
+
+The live in-app "Send feedback" form. Login-required by decision, so every row
+is attributable — which is what lets the write path get away with a honeypot
+and a per-user limiter instead of a captcha. Storage is Postgres and nothing
+else: no email delivery, no webhook, no third-party widget.
+
+Not to be confused with the retired rebrand name vote, which lives in the same
+route file under `/survey` and is documented further down.
+
+| Method | Path | Body / Query | Description |
+|--------|------|--------------|-------------|
+| `POST` | `/api/feedback` | `{ type: 'bug'\|'feature'\|'other', message: string (10–2000), page?: '/route', email?: string, website?: string }` | Records one submission. **201** `{ id, createdAt }`; **400** on an invalid body; **409** `{ error: 'You already sent this recently' }` when the same user sent the same message inside 24h; **202** `{ accepted: true }` — and no row — when the `website` honeypot is filled |
+| `GET` | `/api/feedback/mine` | — | The user's own last 20, newest first: `{ items: [{ id, type, page, status, createdAt }] }`. `adminNote` and `message` are deliberately not selected |
+
+**Middleware order is load-bearing**:
+`authenticateUser, validateFeedback, feedbackHourlyLimiter, feedbackDailyLimiter, handler`.
+The validator runs **before** the limiters, for the same reason
+`validateRebrandVote` runs before the closed-campaign gate: a cross-site
+form-encoded post parses to an empty `req.body` under `express.json()` and
+dies at the validator with a 400. Putting the limiters first would also let a
+forged request burn a real user's feedback budget.
+`tests/routes/feedback.test.js` asserts that order directly.
+
+`feedbackHourlyLimiter` (5/hour) and `feedbackDailyLimiter` (20/24h) are the
+only **per-user** limiters in `rateLimiter.js` — every other tier is per-IP.
+They are built by `createUserLimiter()`, which keys on `req.user.id` and only
+falls back to `req.ip`. That fallback is unreachable behind `authenticateUser`;
+it exists so the key is never `undefined`. Mount one of these in *front* of
+`authenticateUser` and it silently becomes a per-IP limiter again.
+
+The honeypot answers **202**, not 400, so automation cannot learn which field
+gave it away, and its counter is `logger.debug` (a no-op outside development)
+so spam cannot fill the log in place of the table. The `message` and `email`
+never appear in any log line.
+
+Three details in `validateFeedback` that look incidental and are not:
+
+- `page` and `email` use `optional({ nullable: true, checkFalsy: true })`, so
+  an empty string means **absent**, not malformed. The form posts `''` for an
+  input the user never touched; without `checkFalsy` that rejected an
+  otherwise valid submission, and the route stores `null`.
+- `message` runs `stripControlChars` as a `customSanitizer` **before**
+  `.isLength({ min: 10 })`. Measuring first would let ten control characters
+  satisfy the minimum and then collapse to an empty stored message. The route
+  strips again as belt-and-braces; the function is idempotent and exported
+  from `validation.js` so there is one definition, not two that drift.
+- Every field leads with `.isString()`, including `type` and `email` where it
+  looks redundant. express-validator 7 applies a validator **element-wise to
+  an array**, so `{ type: ['bug'] }` satisfies `.isIn()` and
+  `{ email: ['a@b.co'] }` satisfies `.isEmail()`; both then reach Prisma as
+  arrays and 500. `.isString()` checks the value as a whole and is the only
+  thing that closes that door.
+
 ### Admin (`routes/admin.js`)
 
 Every admin route runs `authenticateUser` **then** `adminAuth`. `adminAuth`
@@ -451,6 +609,15 @@ is registered without the pair.
 | `GET` | `/api/admin/catalog/playlists` | Harvested playlists with period touches; `q`, sort, paging, `format=csv` |
 | `GET` | `/api/admin/catalog/artists` | Catalog rolled up by artist: tracks, touches, not-playable share, unresolved; `format=csv` |
 | `POST` | `/api/admin/catalog/re-resolve` | `{ trackIds }` (1–200): forced refetch through the enrichment path with the admin's token. `heavyOperationRateLimiter`; logged as `admin-re-resolve` |
+| `GET` | `/api/admin/rebrand/summary` | Rebrand name-vote tally + write-in counts |
+| `GET` | `/api/admin/rebrand` | Rebrand vote list (write-in names, feature requests) |
+| `GET` | `/api/admin/feedback/summary` | Retired beta-survey aggregates (API only) |
+| `GET` | `/api/admin/feedback` | Retired beta-survey response list (API only) |
+| `GET` | `/api/admin/feedback/beta-emails` | CSV export of beta opt-in emails (API only) |
+| `GET` | `/api/admin/feedback-items` | Live feedback inbox — `?status=&type=&page=1&pageSize=50` (capped at 200); `{ items, total, page, pageSize }`, newest first, sender attached |
+| `GET` | `/api/admin/feedback-items/summary` | `{ total, unread, byStatus, byType }` — every bucket seeded at zero |
+| `PATCH` | `/api/admin/feedback-items/:id` | Triage: `{ status?, adminNote? }`. 400 on an empty patch, 404 when the row is gone |
+| `GET` | `/api/admin/feedback-items.csv` | CSV attachment of the filtered set (`?status=&type=`) |
 
 `/catalog/tracks` also accepts `access=not_playable` (blocked ∪ preview ∪ gone),
 sorts on `duration`, `firstSeen` and `lastSeen`, and `format=csv` (the
@@ -458,11 +625,27 @@ current filter set, up to 10,000 rows, no COUNT query). The CSV writer and
 the day-filling helpers (`periodDayCount`, `fillDays`) are shared by
 `/daily` and `/catalog/daily`. `tests/routes/admin-catalog.test.js` covers
 the re-resolve guards and the CSV contract.
-| `GET` | `/api/admin/rebrand/summary` | Rebrand name-vote tally + write-in counts |
-| `GET` | `/api/admin/rebrand` | Rebrand vote list (write-in names, feature requests) |
-| `GET` | `/api/admin/feedback/summary` | Retired beta-survey aggregates (API only) |
-| `GET` | `/api/admin/feedback` | Retired beta-survey response list (API only) |
-| `GET` | `/api/admin/feedback/beta-emails` | CSV export of beta opt-in emails (API only) |
+
+**`/feedback/*` and `/feedback-items*` are different tables.** `/feedback/*`
+is the retired SongSwipe beta survey (`BetaSignup`); `/feedback-items*` is the
+live in-app feedback form (`Feedback`). The path spelling is the only thing
+keeping them apart, so do not "tidy" one into the other.
+
+**`/feedback-items.csv` guards against formula injection.** `message` and
+`adminNote` are free text, and Excel / Sheets / LibreOffice execute a cell that
+opens with `=`, `+`, `-`, `@`, tab or CR — so a report reading
+`=HYPERLINK("http://evil...")` would fire when an admin opens the export. Cells
+starting with any of those get a leading apostrophe, and `\r` is in the
+quote-trigger class so a lone carriage return cannot split one report into two
+rows. The older `feedback/beta-emails` export does **not** have this guard yet
+(its fields are far less free-form) — that is a known follow-up.
+
+The `PATCH` writes `status` and `adminNote` and nothing else — no admin action
+can rewrite what a user said. An empty patch is refused rather than issued as a
+no-op write, because `updatedAt` is `@updatedAt` and would move anyway, making
+the row look freshly triaged. The list filters accept only the enumerated
+`status`/`type` values; anything else is dropped rather than passed to Prisma,
+so a typo returns everything instead of nothing.
 
 The three `/feedback/*` routes serve the retired SongSwipe beta survey. The
 console's Archive view reads `/feedback/summary` and links the beta-emails CSV;
@@ -473,9 +656,10 @@ the response list is reachable by URL only.
 `/admin` is a tabbed console, not one scrolling page: **Overview** (alert
 strip, KPI tiles, activity trend, outcome bar, feature usage/reach, errors),
 **Operations** (the searchable log with an inspector drawer), **Performance**
-(the `readLatency` p95 ranking and write health), **Catalog** and **Archive**
-(closed rebrand vote, retired beta survey). The active view is the URL hash
-(`/admin#operations`); keys 1–5 switch views. Catalog has its own sub-views
+(the `readLatency` p95 ranking and write health), **Catalog**, **Feedback**
+(the live in-app inbox) and **Archive** (closed rebrand vote, retired beta
+survey). The active view is the URL hash
+(`/admin#operations`); keys 1–6 switch views. Catalog has its own sub-views
 in the hash (`#catalog/tracks|playlists|artists|health`): the touches
 time-series, genre/access bars that filter, Tracks with optional
 duration/first-seen/last-seen columns and CSV export, Playlists, the Artists
@@ -493,6 +677,15 @@ needs through the hooks in `queries.ts` (react-query; live views re-poll every
 30 s while the tab is visible and keep stale data on screen while refetching —
 never a skeleton flash). Archive queries are all-time and never poll.
 
+**Feedback is a view, not a panel in Archive.** `views/FeedbackView.tsx` reads
+the four `/api/admin/feedback-items*` routes: status tabs (with counts from
+`/summary`), a type filter, 25-per-page paging with the total, a clamped
+message body that expands in place, the three triage buttons, an admin-note
+field that saves on blur and skips a no-op write, the unread badge and the CSV
+link. It takes **no period** — it is a queue, not a time series, and an
+untriaged report from six weeks ago is still untriaged. Archive is closed,
+read-only history; this is the console's one working queue.
+
 The console uses the app's HSL tokens and `ThemeContext` (no private theme),
 plus JetBrains Mono via `next/font` from `app/admin/layout.tsx` for readouts.
 Access: `AdminConsole` gates on `user.isAdmin` from `/api/auth/me` before any
@@ -504,6 +697,174 @@ admins. Server-side `adminAuth` remains the real boundary.
 | Method | Path | Description |
 |--------|------|-------------|
 | `DELETE` | `/api/auth/account` | Delete the account and cascade-delete all owned rows |
+
+### Account lifecycle & retention
+
+There are three exits, not two. **Logout** forgets the session cookie and
+nothing else — the encrypted token pair stays and the next login picks it back
+up. **Delete** (`DELETE /api/auth/account`) is irreversible. **Disconnect**
+(`POST /api/auth/disconnect`) is the middle: `disconnectUser()` in
+[`lib/account-lifecycle.js`](server/lib/account-lifecycle.js) hands the grant
+back via `signOut`, deletes the `Token` row, stamps `User.disconnectedAt`, and
+drops every cache derived from that grant. The account survives — logging back
+in clears the stamp — but the retention job deletes the row after 6 days.
+
+**It must call `invalidateCachedAuth`.** `lib/auth-cache.js` memoizes the
+*decrypted* token pair for 30 seconds; without that call a request inside the
+window would keep working against tokens that no longer exist. Same landmine
+as the refresh path. It runs in a `finally` immediately after the token
+delete, so no later failure in the teardown can leave the memo holding
+credentials whose row is already gone.
+
+**Revocation is detected, not merely handled — but only when the user comes
+back.** A user revoking the app from SoundCloud's own settings never tells this
+service, and nothing here asks: detection happens inside a token refresh, which
+happens only when a request the user made comes back 401. Someone who revokes
+and never returns is never detected, and their rows live until the 24-month
+dormancy sweep. A proactive sweep is the fix and is a known follow-up
+(`docs/internal/TERMS-CHECK.md`, finding B, item 4).
+
+`refreshTokensAndPersist` — the single refresh choke point — treats exactly two
+response shapes as candidates for revocation and runs the teardown with
+`reason: 'revoked'`: `invalid_grant` in a JSON body on a 400/401, and a 401
+with an **empty** body. **A 401 with a non-empty non-JSON body does not count**
+— that shape is an HTML error page from a proxy or WAF far more often than a
+revocation, and acting on it would destroy a live user's tokens over someone
+else's infrastructure. 429, every 5xx, timeouts and network errors are excluded
+for the same reason. The thrown error is unchanged, so callers still see the
+generic "Token refresh failed".
+
+**`invalid_grant` alone is NOT enough, and this is the landmine.** SoundCloud
+rotates the refresh token on every exchange, so a token that has already been
+spent is refused with exactly the same `invalid_grant`. A route captures
+`req.accessToken`/`req.refreshToken` once and hands that same pair to every
+`scRequest` it makes (only `paginate` rotates its local copy), so at an hourly
+access-token expiry the second call in any two-call route — the merge loop, a
+fan-out dashboard read — re-presents a token the first call consumed. Reading
+that as revocation deletes a live user's freshly rotated pair and starts the
+six-day account-deletion clock.
+
+Two things stop it. They are **not** equal partners:
+
+- **`_resolveInvalidGrant` is the correctness mechanism.** It re-reads the
+  stored pair before believing the error. If the stored refresh token is still
+  the one presented, nothing rotated it and the grant really is gone →
+  teardown. If the database has moved on, it is a spent token → hand the
+  caller the current pair so its retry succeeds, disconnect nothing. If the
+  row cannot be read at all — missing, or the database is down — the answer is
+  "do not know", and "do not know" never means revoked. Neutering only this
+  and keeping the memo still tears users down; neutering only the memo tears
+  nobody down. **Do not remove it as redundant.**
+- **The rotation memo is an optimisation.** `rememberRotation` /
+  `readRecentRotation` keep the last exchange's result for 60s
+  (`SC_ROTATION_MEMO_TTL_MS`) keyed by the refresh token it spent, so the
+  second call is answered without a network round trip at all. The in-flight
+  mutex beside it only collapses refreshes that *overlap*; this covers the
+  sequential case, which is the common one. It holds plaintext tokens, so it
+  is dropped by `disconnectUser` and by `DELETE /api/auth/account`, exactly
+  like the auth memo. The recovery path deliberately does **not** write it: its
+  database read and its return are separated by an await, so a write there
+  could land after a disconnect had already forgotten it.
+
+**Every SoundCloud call must run inside a token context**, or the same teardown
+arrives by a different door. `authenticateUser` opens one with
+`runWithTokenContext`; anything that runs from a timer has to open its own.
+`growth-scheduler.js` did not, so its daily crawl refreshed with no `userId`,
+rotated the token upstream, and — having nowhere to store the replacement —
+left the row holding a token SoundCloud had already spent. The user's next
+request presented exactly that token, the comparison above correctly found it
+equal to the stored one, and the account was torn down. `_refreshAndPersistNow`
+now **refuses** a context-free exchange instead of rotating and discarding, so
+a caller that forgets fails loudly rather than costing somebody their account.
+
+**One worker is a correctness constraint here, not a performance one.** Inside
+one process the in-flight map holds its entry until the persist completes, so a
+second caller either joins that promise or reads the rotated row. Across
+processes there is no such ordering: two instances present the same token, the
+loser reads the row before the winner's `token.update` lands, finds it still
+equal to what it presented, and disconnects a live user. `infra/main.bicep`
+pins `numberOfWorkers: 1`. Raising it needs a database-side guard first — a
+compare-and-swap on `refresh`, or a `rotatedAt` the loser can compare against.
+
+`tests/routes/token-refresh.test.js` covers all of this against a mock
+SoundCloud that rotates and refuses spent tokens the way the real one does;
+`tests/growth-scheduler.test.js` covers the scheduler's context.
+
+**Retention** ([`lib/retention.js`](server/lib/retention.js)) runs 10 minutes
+after boot and then every `RETENTION_INTERVAL_MS`. A snapshot step plus eight
+purges, each one bulk statement, each isolated — a step that throws is logged
+(`[retention] <step> removed N`) and the rest still run; `runRetentionOnce()`
+never rejects, so the interval cannot die. It is exported for tests and for a
+REPL.
+
+| # | Step | Window |
+|---|------|--------|
+| 0 | Lifetime-user snapshot → `Metric.lifetime_distinct_users` | every run, **first** |
+| 1 | `LibraryCachePage` (by `createdAt`) + `LibraryCacheState` (by `updatedAt`) | `CACHE_TTL_DAYS` (7) |
+| 2 | Users still stamped `disconnectedAt` | 6 days (constant, see below) |
+| 3 | Dormant users (`lastLoginAt`, or `updatedAt` when null) | `INACTIVE_MONTHS` (24) |
+| 4 | `OperationLog` purge | `OPLOG_RETENTION_DAYS` (365) |
+| 5 | `GrowthAction` | 365 days |
+| 6 | `Feedback` (guarded on `prisma.feedback`) | 730 days |
+| 7 | `BetaSignup.email` → null | every run |
+| 8 | Catalog `gone` rows lose their metadata | every run |
+
+Three things that look arbitrary but are not:
+
+- **Step 0 runs first, before any delete in the run — not merely before the
+  log purge.** The user sweeps at steps 2 and 3 cascade into `operation_logs`
+  too, so snapshotting after them would drop exactly the departing users the
+  all-time figure exists to remember. It is `SELECT COUNT(DISTINCT "userId")`
+  via `$queryRaw` (one row out of Postgres, matching the admin aggregates),
+  monotonic — a run only ever raises it — and admin `/stats` surfaces it as
+  `lifetimeUsers` (null before the first run).
+  Every user delete also logs `[retention] <step> will remove N users` before
+  it runs. That is useful while a sweep is happening, but it is **not a
+  preview** — the line lands microseconds before the delete it describes, in
+  the same pass. To see the numbers before anything is destroyed, set
+  `RETENTION_DRY_RUN=true`: the job runs on its normal schedule, performs
+  every count, logs the same `will remove N users` lines plus a
+  `would remove N` per step, and issues no write at all.
+  `RETENTION_ENABLED=false` is **not** the way to do this — it schedules
+  nothing, so it produces silence, which reads exactly like "there was nothing
+  to delete". `tests/retention-dry-run.test.js` mocks the client with a Proxy
+  that records any `delete*`/`update*`/`upsert`/`create*`, plus `$executeRaw`
+  and `$transaction`, on **any** delegate — including ones that file has never
+  heard of — and fails if the set is non-empty under the flag. It is worded
+  that way because the first version listed nine method names, and a rogue
+  `user.delete` or `$executeRaw DELETE` left it green.
+- **The disconnect window is 6 days, and a constant, not an env var.** The
+  SoundCloud terms' deletion deadline is *7* days; the window is one day short
+  of it on purpose, because the sweep is daily and the real worst case is the
+  grace period plus up to one `RETENTION_INTERVAL_MS`. At 7 that worst case was
+  up to 8 days — past the ceiling. At 6 it is ≈7 and inside it. It is a
+  constant so it cannot be pushed past the deadline from a deployment
+  dashboard, and `RETENTION_INTERVAL_MS` is clamped to 24h in code for the same
+  reason — it would otherwise spend the margin the sixth day buys, from an env
+  var and with no signal. See `docs/internal/TERMS-CHECK.md` finding B.
+- **`INACTIVE_MONTHS` is calendar months in UTC.** Local-time `setMonth` shifts
+  the cutoff by an hour across a DST boundary, making the same input produce
+  different cutoffs depending on host timezone and time of year.
+
+`GET /api/auth/export` is the read side of the same story: every row keyed to
+the caller, as a dated JSON attachment. The `Token` record contributes
+`expiresAt` only — `encrypted` and `refresh` are excluded at the `select`, so
+the ciphertext never leaves Postgres. Note that `req.user` is the full row
+**with its `tokens` relation included**, which is why the route names fields
+explicitly instead of spreading it.
+
+**"Every row keyed to the caller" is an invariant, not a description.** The
+policy and the account page both promise exactly that, so a per-user table
+missing from the export makes a published statement false — which is how the
+four cross-branch tables (`chat_conversations` with its `chat_messages`,
+`indexed_likes`, `indexed_playlist_tracks`, `library_snapshots`) came to be
+absent for a while. `tests/routes/export.test.js` now derives the per-user
+model list from `prisma/schema.prisma` the way
+`tests/account-deletion-cascade.test.js` does and fails naming any model that
+is neither queried nor on the explicit `EXPORT_EXCEPTIONS` list (today: `Token`,
+which is exported as expiry only). A model whose delegate is absent from the
+generated client contributes an empty array rather than a 500. `schemaVersion`
+is `2` since those four were added.
 
 > `docs/api.json` is **SoundCloud's own OpenAPI spec** (68 upstream paths under
 > `https://api.soundcloud.com`), kept as a reference for what the upstream API
@@ -517,9 +878,11 @@ The product renamed from **SoundCloud Toolkit** ("SC Toolkit" in the UI) to
 **Track Toolkit**, because SoundCloud's API Terms of Use forbid "SoundCloud" in
 an app's name *or* its domain. References to SoundCloud that describe the
 platform, the OAuth connection, the API or the trademark position stay — only
-product-owned naming moved. The live domain has NOT moved yet; every
-`soundcloudtoolkit.com` reference in this repo is deliberate until it does (see
-"Rebrand follow-ups" in README.md).
+product-owned naming moved. **The domain has moved**: `tracktoolkit.com` is
+canonical since 2026-09-20, and the remaining `soundcloudtoolkit.com`
+references are the legacy hostnames bound to the same app for the 301 (see
+Domain Strategy below) plus the historical record in
+`docs/internal/MIGRATION.md`.
 
 Two announcements carry the change, both gated in **localStorage only** — no
 server call, no table, same posture as `lib/whatsNew.ts`:
@@ -564,7 +927,12 @@ invariant `tests/routes/feedback-authz.test.js` guards. Putting the gate first
 would retire that coverage along with the vote.
 
 Nothing collected is deleted. `RebrandVote` rows stay, and the admin read
-paths still serve the full tally and both write-in fields:
+paths still serve the full tally and both write-in fields.
+
+These four are the **closed vote**, not the live feedback form — that is
+`POST /api/feedback` and `GET /api/feedback/mine`, documented under
+[Feedback](#feedback-routesfeedbackjs) above. Both live in
+`routes/feedback.js`; only the vote is retired.
 
 | Method | Path | Description |
 |--------|------|-------------|
@@ -746,12 +1114,12 @@ clone, and every bulk write.
 |----------|----------|-------------|
 | `SOUNDCLOUD_CLIENT_ID` | Yes | OAuth app client ID |
 | `SOUNDCLOUD_CLIENT_SECRET` | Yes | OAuth app client secret (never sent to browser) |
-| `SOUNDCLOUD_REDIRECT_URI` | Yes | Must match app registration (e.g., `https://api.soundcloudtoolkit.com/api/auth/callback`) |
+| `SOUNDCLOUD_REDIRECT_URI` | Yes | Must match the SoundCloud app registration. Production: `https://tracktoolkit.com/api/auth/callback` |
 | `SESSION_SECRET` | Yes | ≥32 chars; used for HMAC-SHA256 session signing |
 | `ENCRYPTION_KEY` | Yes | Exactly 32 chars; used for AES-256-GCM token encryption |
-| `DATABASE_URL` | Yes | PostgreSQL connection string |
-| `APP_URL` | Yes | Primary frontend origin (e.g., `https://www.soundcloudtoolkit.com`) |
-| `APP_URLS` | Yes | Comma-separated CORS allowlist (e.g., `https://www.soundcloudtoolkit.com,https://api.soundcloudtoolkit.com`) |
+| `DATABASE_URL` | Yes | PostgreSQL connection string. Production reads it from Key Vault `tracktoolkit-kv/database-url` (Azure Flexible Server, `?sslmode=require&connection_limit=10&pool_timeout=30`) |
+| `APP_URL` | Yes | Canonical origin, and the target of the legacy-host redirects. Production: `https://tracktoolkit.com` |
+| `APP_URLS` | Yes | Comma-separated CORS allowlist. Production is the single origin `https://tracktoolkit.com` — the app is same-origin, so there is nothing else to allow |
 | `NODE_ENV` | Yes | `development` or `production` |
 | `PORT` | No | HTTP port (default 3001) |
 | `SURVEY_ENABLED` | No | Kill switch for a **future** in-app survey. It no longer affects the rebrand name vote, which is closed in code (`REBRAND_VOTE_CONCLUDED`) and cannot be switched back on from the environment |
@@ -759,9 +1127,16 @@ clone, and every bulk write.
 | `GROWTH_AUTOCHECK` | No | Set to `false` to disable the daily growth follow-back scheduler |
 | `ADMIN_IDS` | No | Comma-separated SoundCloud numeric user IDs allowed into `/api/admin/*`. Unset or empty = **nobody** (fails closed) |
 | `SC_FETCH_TIMEOUT_MS` | No | AbortController deadline on every SoundCloud fetch (default `30000`) |
+| `SC_ROTATION_MEMO_TTL_MS` | No | How long the refresh-rotation memo in `soundcloud-client.js` keeps the last exchange's plaintext pair (default `60000`). It exists so a route's second SoundCloud call is not told its already-spent refresh token means "revoked". Lowering it costs an extra refused exchange per multi-call request at a token boundary; raising it keeps decrypted tokens in memory longer. It is **not** the safety net — `_resolveInvalidGrant` is — so a wrong value here degrades latency, not correctness |
 | `CHROME_EXTENSION_IDS` | No | Comma-separated extension IDs allowed as credentialed origins (CORS + `rejectUntrustedOrigin`) |
 | `SESSION_COOKIE_SAMESITE` | No | `lax`, `none` or `strict` for the session cookie. Unset keeps the historical default (`none` in production). Same-origin hosting sets `lax` |
 | `LEGACY_REDIRECT_HOSTS` | No | Comma-separated hostnames Express redirects to `APP_URL` (301 GET/HEAD, 308 otherwise). Unset disables the middleware |
+| `RETENTION_ENABLED` | No | Set to `false` to disable the daily retention purge. **Defaults to on** — a retention policy that is off by default is not a policy. Do not use this to preview a sweep: it schedules nothing, so it logs nothing, and the silence is indistinguishable from "nothing to delete". Use `RETENTION_DRY_RUN` |
+| `RETENTION_DRY_RUN` | No | Exactly `true` (case-insensitive, trimmed; `1` and `yes` are deliberately **not** accepted) makes each scheduled run count everything and write nothing — every step logs `would remove N`, the user sweeps still log `will remove N users`, and no delete, update or upsert is issued. Intended for the first deploy after a retention change: read the counts, satisfy yourself, then remove the variable. **Set it in the App Service configuration, not in Bicep** — `infra/main.bicep` declares `appSettings` as a complete list with no parameter for this flag, and ARM replaces the whole list, so any `infra/deploy.sh` run silently ends the dry run. Code deploys are safe: the GitHub workflow is a zip deploy and does not touch settings |
+| `RETENTION_INTERVAL_MS` | No | Sweep period (default 24h), **clamped to a 24h maximum in code** (`resolveIntervalMs`) and logged when a larger value is refused. First run is always 10 min after boot. Compliance-relevant, not a tuning knob: a longer period would eat the day of margin the 6-day disconnect window buys against the terms' 7-day deletion deadline, so it is enforced rather than documented. Lowering it is always allowed |
+| `CACHE_TTL_DAYS` | No | Library-cache page/state lifetime in days (default `7`) |
+| `INACTIVE_MONTHS` | No | Dormant-account window in **calendar months** (default `24`) |
+| `OPLOG_RETENTION_DAYS` | No | `OperationLog` lifetime in days (default `365`) |
 
 ### Frontend (`frontend-UI/.env.local`)
 
@@ -800,8 +1175,35 @@ npx prisma studio         # Open GUI at localhost:5555
 cd frontend-UI
 npm run dev          # Next.js dev server with turbopack
 npm run build        # Static export → frontend-UI/out/
-npm run lint         # ESLint
+npm run lint         # ESLint (npx tsc --noEmit && next lint)
+npm run contrast     # Colour-token gate — exits 1 if any pair is under threshold
+npm run test:e2e     # Playwright against out/ — run `npm run build` first
 ```
+
+The full check before claiming a change is done: `npm test` at the repo root,
+then from `frontend-UI` `npm run lint`, `npm run build`, `npm run contrast`,
+`npm run test:e2e`. `test:e2e` runs against `out/`, so a stale build tests
+stale code.
+
+**E2E port, and the orphan that eats an afternoon.** The harness serves
+`frontend-UI/out/` on `E2E_PORT` (default 4173), and `webServer` is configured
+with `reuseExistingServer: true` so a hand-started server survives a run. That
+flag adopts *anything* already listening — an aborted run's leftover, or
+another worktree's harness serving a different checkout's `out/`. Such a server
+answers `/` with a healthy 200, so Playwright is satisfied, and the whole suite
+then runs against someone else's HTML and fails in ways that describe code you
+are not editing.
+
+`e2e/global-setup.mjs` refuses to start in that case: the static server exposes
+`/__e2e/identity` carrying the absolute `out/` path it is serving, and the run
+aborts unless that matches this checkout. The message names the command:
+
+```bash
+lsof -nP -iTCP:$E2E_PORT -sTCP:LISTEN   # find the process holding the port
+E2E_PORT=4211 npm run test:e2e          # or just use another port
+```
+
+Two checkouts running the suite at once need different `E2E_PORT` values.
 
 ---
 
@@ -822,6 +1224,39 @@ Error:
 { "error": "Human-readable message" }
 { "error": "Validation failed", "details": [{ "field": "...", "message": "..." }] }
 ```
+
+### UI Primitives — the sanctioned way to build a control
+
+These are not suggestions. Every page on `feat/trust-and-mobile` was converted
+to them, the axe suite passes because of them, and a hand-rolled equivalent
+re-introduces the defect the primitive exists to prevent.
+
+- **Forms use `Field`** (`components/ui/Field.tsx`) — it owns the `<label
+  htmlFor>` association, the error text and the `aria-describedby` wiring.
+  `Field labelHidden` when a visible label genuinely does not fit (the three
+  toolbar search boxes); never a placeholder as the only label. Raw
+  `<select>` → `Select`.
+- **Overlays use `Dialog`** (`components/ui/Dialog.tsx`, `variant="sheet"` /
+  `"drawer"`) — focus trap, Escape, focus return, `aria-modal` and an
+  accessible name from the heading. `ConfirmDialog` wraps it for the
+  destructive-confirm case.
+- **Icon-only controls use `IconButton`** with a `label` — never a bare
+  `<button>` with a glyph, and never `title` as the accessible name.
+- **Announce async results with `useAnnounce`** — it writes into the single
+  `LiveRegion` mounted by `AppShell`, outside `<main>` so a route change
+  cannot unmount it mid-announcement. Long operations also render a
+  `ProgressBar` when there is something determinate to count.
+- Errors are `InlineAlert variant="error"` (already `role="alert"`); lists of
+  selectable things are `SelectableRow`/`SelectableList` (a real checkbox,
+  `min-w-0` on the root); page chrome is `PageContainer` + `PageHeader`, which
+  owns the single `h1`.
+
+Colours go through the HSL tokens in `globals.css` — never a raw hex (except
+the brand gradient) and never an alpha-modified text colour
+(`text-muted-foreground/70`); use `text-muted-foreground-subtle`. `*-text`
+tokens (`primary-text`, `destructive-text`, `success-text`, `warning-text`,
+`info-text`) are the ones safe for small text; the plain `--primary`,
+`--destructive` and `--chart-*` are surfaces and graphics.
 
 ### Authentication Middleware Pattern
 
@@ -881,7 +1316,10 @@ const res = await fetch(`${API_BASE}/api/endpoint`, {
 
 ### Login Pre-warming
 
-Before the OAuth redirect, the frontend pings `/health` (with 1.2s timeout) to wake up a cold-start serverless backend and reduce OAuth callback latency.
+Before the OAuth redirect, the frontend pings `/health` (with a 1.2s timeout) to
+warm the backend and reduce OAuth callback latency. It was written for a
+free-tier dyno that slept; App Service has `alwaysOn`, so it now buys much
+less — the timeout means it costs nothing either way, so it stays.
 
 ---
 
@@ -895,9 +1333,30 @@ Before the OAuth redirect, the frontend pings `/health` (with 1.2s timeout) to w
 
 4. **Reposts API Inconsistency**: SoundCloud's V2 reposts endpoint is unreliable (sometimes returns 0 even when the user has reposts). The multi-fallback chain mitigates this but adds latency and complexity.
 
-5. **Cross-Origin Cookie Requirement**: Production uses `SameSite=None; Secure` cookies. This requires HTTPS on both frontend and backend. Local dev with HTTP uses `SameSite=Lax` and same-origin rewrites in `next.config.js`.
+5. **Session cookie lifetime, not cross-origin**: the cross-site cookie
+   requirement is gone — production is one origin with `SameSite=Lax; Secure`.
+   What remains is that there is **no server-side session revocation list**:
+   logout clears the cookie, but a previously exfiltrated cookie stays valid
+   until its signed `iat` passes `SESSION_TTL_MS` (7 days). The `none` default
+   in `resolveSessionSameSite` is still in the code for a split-host
+   deployment, so `SESSION_COOKIE_SAMESITE=lax` is set explicitly rather than
+   left implied. Local dev uses `Lax` over HTTP with the `next.config.js`
+   rewrites.
 
-6. **In-Memory URL Cache**: The `/api/resolve` cache is per-process and resets on restart. Not shared across multiple server instances. Cache TTL is 5 minutes. (The *library* cache — likes/playlists/followings/followers/reposts — is different: since the 2026-09 performance work it has a Postgres tier underneath that survives restarts. See `docs/performance-audit-2026-09.md`. Its invalidation marks are per-process, though: at `instance_count > 1` a second instance can republish a pre-mutation snapshot as `complete`, so the durable tier is only safe single-instance. See the header comment in `server/lib/social-cache.js`.)
+6. **In-Memory URL Cache**: The `/api/resolve` cache is per-process and resets on restart. Not shared across multiple server instances. Cache TTL is 5 minutes. (The *library* cache — likes/playlists/followings/followers/reposts — is different: since the 2026-09 performance work it has a Postgres tier underneath that survives restarts. See `docs/performance-audit-2026-09.md`. Its invalidation marks are per-process, though: with more than one worker a second instance can republish a pre-mutation snapshot as `complete`, so the durable tier is only safe single-instance — which is why `infra/main.bicep` pins `capacity: 1` and `numberOfWorkers: 1`. See the header comment in `server/lib/social-cache.js`.)
+
+   **The single worker is now load-bearing for more than the cache.** The
+   revocation classifier (`_resolveInvalidGrant` in
+   `server/lib/soundcloud-client.js`) decides whether a grant is gone by
+   comparing the refresh token presented against the one in the row. Within one
+   process the in-flight refresh map guarantees the row has been updated before
+   any second caller reads it; across processes it does not, so two instances
+   presenting the same token at a 401 can have the loser read a pre-update row,
+   find it equal to what it presented, and **disconnect a live user**. The
+   worst case of scaling out is therefore a destroyed account, not a stale
+   list. Before raising `numberOfWorkers`, put a database-side guard on the
+   rotation — a compare-and-swap on `tokens.refresh`, or a `rotatedAt` the
+   loser can compare against.
 
 7. **Static Export Limitation**: `next export` doesn't support Next.js API routes. All server logic must live in the Express backend. The frontend is pure client-side React.
 
@@ -913,30 +1372,31 @@ Before the OAuth redirect, the frontend pings `/health` (with 1.2s timeout) to w
 
 ### Architecture
 
+One app, one origin. The Vercel + DigitalOcean + Neon split was retired at the
+2026-09-20 cutover; `docs/internal/MIGRATION.md` is the record of it and
+`infra/README.md` is the operator reference.
+
 | Component | Platform | Notes |
 |-----------|----------|-------|
-| Frontend | **Vercel** | Auto-deploys from git; static export |
-| Backend | **DigitalOcean App Platform** (`.do/app.yaml` included) or Render/Railway/Fly.io | Node.js; set all env vars in platform dashboard |
-| Database | **Neon** PostgreSQL | Serverless pooling; use `DATABASE_URL` from Neon console |
+| Frontend + backend | **Azure App Service** (`tracktoolkit`, Linux B1, Node 22) | One Express process serves `/api` and `frontend-UI/out/`. **One worker, pinned** — `capacity: 1` on the plan and `numberOfWorkers: 1` on the site (`infra/main.bicep`), because the library cache's invalidation marks are per-process (see `server/lib/social-cache.js`) |
+| Database | **Azure Database for PostgreSQL Flexible Server** (`tracktoolkit-pg`, PG 17, Burstable B1ms) | `DATABASE_URL` comes from Key Vault `tracktoolkit-kv` |
+| Secrets | **Azure Key Vault** (`tracktoolkit-kv`) | RBAC; the app reads by reference, so no secret is in the App Service config |
+| Infrastructure | **Bicep** (`infra/main.bicep`, `infra/deploy.sh`) | `infra/main.cutover.bicepparam` is the live parameter set |
+
+Retired, kept only as rollback until decommission: the DigitalOcean app
+(`.do/app.yaml`), the Vercel project (`vercel.json`) and the Neon database.
+None of the three is in the serving path.
 
 ### Domain Strategy
 
-**Post-cutover target (this branch, `prep/domain-switch`):**
-
-- One origin, `https://tracktoolkit.com` (apex is canonical), on Azure App
-  Service — Express serves both `/api` and the static export
-  (`infra/main.cutover.bicepparam`).
+- One origin, `https://tracktoolkit.com` — the apex is canonical.
 - `www.tracktoolkit.com`, `soundcloudtoolkit.com`, `www.soundcloudtoolkit.com`
   and `api.soundcloudtoolkit.com` are bound to the same app and 301/308 to the
   apex via `server/middleware/legacy-redirect.js` (`LEGACY_REDIRECT_HOSTS`).
+  301 for `GET`/`HEAD`, 308 otherwise, path and query preserved.
 - Session cookie is host-only and `SameSite=Lax` (`SESSION_COOKIE_SAMESITE=lax`);
   the OAuth redirect URI is `https://tracktoolkit.com/api/auth/callback`.
-
-**Until then (live today):**
-
-- Frontend: `https://www.soundcloudtoolkit.com` → Vercel
-- Backend: `https://api.soundcloudtoolkit.com` → DigitalOcean
-- Session cookies are host-only (no `Domain` attribute) on `api.soundcloudtoolkit.com`; the browser sends them cross-site from `www.` only because of `SameSite=None; Secure`
+- Each of the five hostnames has an App Service managed certificate.
 
 ### Production Environment Differences vs Dev
 
@@ -944,16 +1404,40 @@ Before the OAuth redirect, the frontend pings `/health` (with 1.2s timeout) to w
 |---------|-----|------|
 | Rate limiters | Disabled | Enabled |
 | Cookie `secure` | false | true |
-| Cookie `sameSite` | `lax` | `none` |
+| Cookie `sameSite` | `lax` | `lax` |
 | API base URL | `http://localhost:3001` (via `NEXT_PUBLIC_API_BASE`) | Same-origin (`''`) |
-| CORS | Includes localhost | Strict subdomain allowlist |
+| CORS | Includes localhost | `APP_URLS` — `https://tracktoolkit.com` only |
 | Error messages | Sanitized but more verbose | Generic "Something went wrong" |
 | Static file serving | Not used (Next.js dev server) | `frontend-UI/out/` served by Express |
 
-### DigitalOcean Config (`.do/app.yaml`)
-
-Defines the service with build command (`npm run build`), run command (`npm run server`), and environment variable references. Adjust `instance_size` and `instance_count` for scale.
-
 ### CI/CD
 
-No automated CI/CD pipeline is configured. Deployments are manual pushes to the platform (DigitalOcean/Render) or via Vercel's git integration for the frontend.
+**`main` deploys itself.** `.github/workflows/azure-deploy.yml` runs on every
+push to `main` (PR #52, 2026-09-22, which replaced DigitalOcean's
+`deploy_on_push`). It builds on Linux so the Prisma engine matches the App
+Service image, runs the Jest suite, builds the Next.js static export, and
+ships one zip. Oryx is disabled on the app
+(`SCM_DO_BUILD_DURING_DEPLOYMENT=false`), so what the workflow zips is exactly
+what runs.
+
+Two consequences worth holding onto:
+
+- **Merging to `main` is deploying.** Anything that has to happen before the
+  code runs — the two unapplied files in `docs/sql/`, an App Service setting —
+  has to happen *before* the merge, not after it.
+- Pushes that only touch `**.md`, `docs/**`, `infra/**`, `.gitignore` or
+  `LICENSE` skip the run. Infrastructure changes go through `infra/deploy.sh`
+  instead, and manual `workflow_dispatch` stays for redeploys and for
+  deploying a non-`main` ref.
+
+Auth is OIDC through the `azure` GitHub environment: `AZURE_CLIENT_ID`,
+`AZURE_TENANT_ID` and `AZURE_SUBSCRIPTION_ID` are repository *variables*, not
+secrets — they are identifiers, and there is no long-lived credential.
+
+`.github/workflows/keep-api-warm.yml` curls `https://tracktoolkit.com/health`
+every five minutes. It existed to keep a free-tier dyno awake and is redundant
+now that App Service has `alwaysOn`; it is kept as an external uptime probe
+and is marked for retirement in its own header.
+
+The frontend has no separate pipeline: it is built inside that same workflow
+and served by Express. There is no Vercel deployment any more.

@@ -31,7 +31,7 @@ function CopyButton({ text, label }: { text: string; label: string }) {
   };
   return (
     <SmallButton onClick={copy} aria-label={label} className="h-7 px-2">
-      {done ? <Check className="h-3.5 w-3.5 text-chart-3" aria-hidden="true" /> : <Copy className="h-3.5 w-3.5" aria-hidden="true" />}
+      {done ? <Check className="h-3.5 w-3.5 text-success-text" aria-hidden="true" /> : <Copy className="h-3.5 w-3.5" aria-hidden="true" />}
       {done ? "Copied" : "Copy"}
     </SmallButton>
   );
@@ -57,7 +57,7 @@ function IdList({ title, ids, tone }: { title: string; ids: unknown[]; tone: Ton
         ))}
       </ul>
       {all.length > shown.length && (
-        <button type="button" onClick={() => setExpanded(true)} className="mt-2 font-mono text-[11px] text-primary hover:underline">
+        <button type="button" onClick={() => setExpanded(true)} className="mt-2 font-mono text-[11px] text-primary-text hover:underline">
           Show all {fmtInt(all.length)}
         </button>
       )}
@@ -195,7 +195,7 @@ export function OperationDrawer({ op, onClose, onFilterUser }: Props) {
 
           {(op.errorCode || op.errorMessage) && (
             <section className="rounded-lg border border-destructive/40 bg-destructive/[0.08] p-3">
-              <Eyebrow className="text-[10px] tracking-[0.1em] text-destructive">Error · {op.errorCode || "no code"}</Eyebrow>
+              <Eyebrow className="text-[10px] tracking-[0.1em] text-destructive-text">Error · {op.errorCode || "no code"}</Eyebrow>
               <p className="mt-1.5 break-words font-mono text-[12px] leading-relaxed text-foreground">{op.errorMessage || "No message recorded."}</p>
             </section>
           )}

@@ -11,17 +11,48 @@ const ORIGINAL_SESSION_SECRET = process.env.SESSION_SECRET;
 process.env.ENCRYPTION_KEY = 'x'.repeat(32);
 process.env.SESSION_SECRET = 's'.repeat(40);
 
-const tokenUpdate = jest.fn().mockResolvedValue({});
+// A deliberately faithful little fake of the `tokens` row, because the whole
+// point of the fix under test is that the refresh path CONSULTS the stored
+// pair before believing SoundCloud's `invalid_grant`. A mock that always
+// answers with the row the request started from would make the two cases that
+// matter indistinguishable — which is exactly the bug.
+let storedTokenRow;
+
+const tokenUpdate = jest.fn(async (args) => {
+  storedTokenRow = {
+    encrypted: args.data.encrypted,
+    refresh: args.data.refresh,
+    expiresAt: args.data.expiresAt,
+  };
+  return {};
+});
+const tokenFindUnique = jest.fn(async () => storedTokenRow ?? null);
+const tokenDeleteMany = jest.fn(async () => { storedTokenRow = null; return { count: 1 }; });
+const userUpdate = jest.fn().mockResolvedValue({});
 const findUnique = jest.fn();
 
 jest.unstable_mockModule('../../server/lib/prisma.js', () => ({
-  default: { user: { findUnique }, token: { update: tokenUpdate } },
+  default: {
+    user: { findUnique, update: userUpdate },
+    token: { update: tokenUpdate, deleteMany: tokenDeleteMany, findUnique: tokenFindUnique },
+  },
+}));
+// account-lifecycle drops the durable library tier on disconnect; that tier is
+// not what this suite is about, and it would otherwise try to reach Postgres.
+jest.unstable_mockModule('../../server/lib/snapshot-cache.js', () => ({
+  dropSnapshots: jest.fn().mockResolvedValue(undefined),
+  readSnapshot: jest.fn(),
+  writeSnapshot: jest.fn(),
+  invalidateSnapshot: jest.fn().mockResolvedValue({ count: 0 }),
+  SNAPSHOT_RESOURCES: ['likes', 'playlists', 'followings', 'followers', 'reposts'],
 }));
 
 const { encrypt } = await import('../../server/lib/crypto.js');
 const { signSession } = await import('../../server/lib/session.js');
 const { authenticateUser } = await import('../../server/middleware/auth.js');
-const { soundcloudClient } = await import('../../server/lib/soundcloud-client.js');
+const { clearAuthCache } = await import('../../server/lib/auth-cache.js');
+const { soundcloudClient, clearRecentRotations } =
+  await import('../../server/lib/soundcloud-client.js');
 
 const KEY = process.env.ENCRYPTION_KEY;
 
@@ -36,6 +67,22 @@ app.get('/probe', authenticateUser, async (req, res) => {
   }
 });
 
+// The shape every multi-call route has: authenticateUser captures the pair
+// once and BOTH calls are handed that same captured pair. `paginate` rotates
+// its local copy after a refresh; nothing else does, so the second call here
+// presents a refresh token the first one already spent. This is the merge loop
+// (routes/api.js) and every fan-out dashboard read, in eight lines.
+app.get('/two-calls', authenticateUser, async (req, res) => {
+  try {
+    const first = await soundcloudClient.scRequest('/me', req.accessToken, req.refreshToken);
+    if (req.query.cold) clearRecentRotations();   // as if the memo had expired
+    const second = await soundcloudClient.scRequest('/me/playlists', req.accessToken, req.refreshToken);
+    res.json({ ok: true, first, second });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 function sessionCookie(userId = 'user-1') {
   const value = JSON.stringify({ userId, soundcloudId: 111, iat: Date.now() });
   return `session=${encodeURIComponent(signSession(value, process.env.SESSION_SECRET))}`;
@@ -43,8 +90,19 @@ function sessionCookie(userId = 'user-1') {
 
 const originalFetch = global.fetch;
 
+/** Move the clock forward for TTL assertions, without fake timers. */
+let clockSpy = null;
+function advanceClock(ms) {
+  const base = clockSpy ? Date.now() : Date.now();
+  clockSpy?.mockRestore();
+  clockSpy = jest.spyOn(Date, 'now').mockImplementation(() => base + ms);
+}
+
 beforeEach(() => {
   tokenUpdate.mockClear();
+  tokenDeleteMany.mockClear();
+  tokenFindUnique.mockClear();
+  userUpdate.mockClear();
   findUnique.mockClear();
   findUnique.mockResolvedValue({
     id: 'user-1',
@@ -54,6 +112,17 @@ beforeEach(() => {
       refresh: encrypt('good-refresh', KEY),
     }],
   });
+  // The database agrees with what authenticateUser just handed out, and the
+  // access token is past its expiry — the ordinary hourly boundary.
+  storedTokenRow = {
+    encrypted: encrypt('stale-access', KEY),
+    refresh: encrypt('good-refresh', KEY),
+    expiresAt: new Date(Date.now() - 60_000),
+  };
+  clearAuthCache();
+  clearRecentRotations();
+  clockSpy?.mockRestore();
+  clockSpy = null;
   global.fetch = jest.fn();
 });
 
@@ -114,6 +183,347 @@ describe('401 → refresh → persist → retry, through the real middleware', (
     expect(res.body.error).toBe('Token refresh failed');
     expect(res.body.error).not.toMatch(/good-refresh|fresh-access/);
     expect(tokenUpdate).not.toHaveBeenCalled();
+  });
+});
+
+describe('revocation detection at the refresh choke point', () => {
+  // The distinction that matters: SoundCloud saying "this grant is gone" must
+  // tear the connection down, and SoundCloud merely being unwell must not.
+
+  test('invalid_grant destroys the stored tokens and stamps disconnectedAt', async () => {
+    fetch
+      .mockReturnValueOnce(Promise.resolve(new Response('', { status: 401 })))
+      .mockReturnValueOnce(Promise.resolve(new Response(
+        JSON.stringify({ error: 'invalid_grant', error_description: 'revoked' }),
+        { status: 400 }
+      )));
+
+    const res = await request(app).get('/probe').set('Cookie', sessionCookie());
+
+    // The request still fails exactly as it always has.
+    expect(res.body.error).toBe('Token refresh failed');
+
+    expect(tokenDeleteMany).toHaveBeenCalledWith({ where: { userId: 'user-1' } });
+    const update = userUpdate.mock.calls[0][0];
+    expect(update.where).toEqual({ id: 'user-1' });
+    expect(update.data.disconnectedAt).toBeInstanceOf(Date);
+
+    // Nothing was persisted as a "refreshed" pair.
+    expect(tokenUpdate).not.toHaveBeenCalled();
+  });
+
+  test('a 401 with an empty body counts as revocation', async () => {
+    fetch
+      .mockReturnValueOnce(Promise.resolve(new Response('', { status: 401 })))
+      .mockReturnValueOnce(Promise.resolve(new Response('', { status: 401 })));
+
+    await request(app).get('/probe').set('Cookie', sessionCookie());
+
+    expect(tokenDeleteMany).toHaveBeenCalledWith({ where: { userId: 'user-1' } });
+    expect(userUpdate).toHaveBeenCalled();
+  });
+
+  test('a 401 carrying an HTML error page deletes nothing', async () => {
+    // A proxy or WAF in front of the token endpoint, not SoundCloud saying
+    // the grant is gone. Destroying tokens over this would be an outage.
+    fetch
+      .mockReturnValueOnce(Promise.resolve(new Response('', { status: 401 })))
+      .mockReturnValueOnce(Promise.resolve(new Response(
+        '<html><head><title>401 Authorization Required</title></head></html>',
+        { status: 401 }
+      )));
+
+    const res = await request(app).get('/probe').set('Cookie', sessionCookie());
+
+    expect(res.body.error).toBe('Token refresh failed');
+    expect(tokenDeleteMany).not.toHaveBeenCalled();
+    expect(userUpdate).not.toHaveBeenCalled();
+  });
+
+  test('a 503 deletes nothing — SoundCloud being down is not revocation', async () => {
+    fetch
+      .mockReturnValueOnce(Promise.resolve(new Response('', { status: 401 })))
+      .mockReturnValueOnce(Promise.resolve(new Response('upstream unavailable', { status: 503 })));
+
+    const res = await request(app).get('/probe').set('Cookie', sessionCookie());
+
+    expect(res.body.error).toBe('Token refresh failed');
+    expect(tokenDeleteMany).not.toHaveBeenCalled();
+    expect(userUpdate).not.toHaveBeenCalled();
+  });
+
+  test('a 429 deletes nothing either', async () => {
+    fetch
+      .mockReturnValueOnce(Promise.resolve(new Response('', { status: 401 })))
+      .mockReturnValueOnce(Promise.resolve(new Response('slow down', { status: 429 })));
+
+    await request(app).get('/probe').set('Cookie', sessionCookie());
+
+    expect(tokenDeleteMany).not.toHaveBeenCalled();
+    expect(userUpdate).not.toHaveBeenCalled();
+  });
+
+  test('a 400 that is not invalid_grant deletes nothing', async () => {
+    fetch
+      .mockReturnValueOnce(Promise.resolve(new Response('', { status: 401 })))
+      .mockReturnValueOnce(Promise.resolve(new Response(
+        JSON.stringify({ error: 'invalid_client' }), { status: 400 }
+      )));
+
+    await request(app).get('/probe').set('Cookie', sessionCookie());
+
+    expect(tokenDeleteMany).not.toHaveBeenCalled();
+    expect(userUpdate).not.toHaveBeenCalled();
+  });
+
+  test('a network failure during refresh deletes nothing', async () => {
+    fetch
+      .mockReturnValueOnce(Promise.resolve(new Response('', { status: 401 })))
+      // mockImplementationOnce, not mockReturnValueOnce: a rejected promise
+      // built at setup time is unhandled until the call happens.
+      .mockImplementationOnce(() => Promise.reject(new Error('ECONNRESET')));
+
+    await request(app).get('/probe').set('Cookie', sessionCookie());
+
+    expect(tokenDeleteMany).not.toHaveBeenCalled();
+    expect(userUpdate).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * A SoundCloud that behaves the way the real one does at a token boundary:
+ * every exchange ROTATES the refresh token, and a refresh token that has
+ * already been spent is refused with `400 {"error":"invalid_grant"}` — the
+ * very same answer it gives for a grant the user revoked. Telling those two
+ * apart is the whole of what these tests are about.
+ */
+function mockRotatingSoundCloud({ expiresIn = 3600, revokeAfterFirstExchange = false } = {}) {
+  const spent = new Set();
+  const state = { oauthCalls: 0, presented: [], apiCalls: [] };
+  let issued = 0;
+
+  global.fetch = jest.fn(async (url, options = {}) => {
+    const target = String(url);
+
+    if (target.includes('/oauth/token')) {
+      state.oauthCalls += 1;
+      const presented = new URLSearchParams(String(options.body)).get('refresh_token');
+      state.presented.push(presented);
+      if (spent.has(presented) || (revokeAfterFirstExchange && issued > 0)) {
+        return new Response(JSON.stringify({ error: 'invalid_grant' }), { status: 400 });
+      }
+      spent.add(presented);
+      issued += 1;
+      return new Response(JSON.stringify({
+        access_token: `access-${issued}`,
+        refresh_token: `refresh-${issued}`,
+        expires_in: expiresIn,
+      }), { status: 200 });
+    }
+
+    const auth = options.headers?.Authorization || '';
+    state.apiCalls.push({ target, auth });
+    // Only the pair the request captured at the start has expired.
+    if (auth === 'OAuth stale-access') return new Response('', { status: 401 });
+    return new Response(JSON.stringify({ endpoint: target }), { status: 200 });
+  });
+
+  return state;
+}
+
+describe('a spent refresh token is not a revocation', () => {
+  // Before this guard, the sequence below cost a live user their tokens and a
+  // `disconnectedAt` stamp — six days from an account deletion — on an
+  // ordinary hourly access-token expiry. It needs no revocation, no outage and
+  // no unusual timing: two SoundCloud calls in one request is enough.
+
+  test('two sequential calls in one request: the second does not report revocation', async () => {
+    const sc = mockRotatingSoundCloud();
+
+    const res = await request(app).get('/two-calls').set('Cookie', sessionCookie());
+
+    expect(res.status).toBe(200);
+    // Nothing was torn down.
+    expect(tokenDeleteMany).not.toHaveBeenCalled();
+    expect(userUpdate).not.toHaveBeenCalled();
+    // And the spent token is never even re-presented: the rotation memo
+    // answers the second call, so there is exactly one exchange.
+    expect(sc.presented).toEqual(['good-refresh']);
+    expect(sc.oauthCalls).toBe(1);
+    // Both calls actually got their data.
+    expect(res.body.first.endpoint).toContain('/me');
+    expect(res.body.second.endpoint).toContain('/me/playlists');
+  });
+
+  test('with the memo gone, the database settles it and the retry still succeeds', async () => {
+    // The cross-request shape: a long-running job, a second process, or simply
+    // more than a minute between the two calls. The memo cannot help, so the
+    // spent token IS re-presented and comes back invalid_grant — and the
+    // stored pair, which has moved on, is what proves it is not a revocation.
+    const sc = mockRotatingSoundCloud();
+
+    const res = await request(app).get('/two-calls?cold=1').set('Cookie', sessionCookie());
+
+    expect(res.status).toBe(200);
+    expect(sc.presented).toEqual(['good-refresh', 'good-refresh']);
+    expect(sc.oauthCalls).toBe(2);       // the second was refused
+    expect(tokenFindUnique).toHaveBeenCalledWith({ where: { userId: 'user-1' } });
+    expect(tokenDeleteMany).not.toHaveBeenCalled();
+    expect(userUpdate).not.toHaveBeenCalled();
+    // Nothing was written a second time: the stored access token was reused.
+    expect(tokenUpdate).toHaveBeenCalledTimes(1);
+  });
+
+  test('when the stored access token has expired too, the CURRENT refresh token is used', async () => {
+    const sc = mockRotatingSoundCloud({ expiresIn: 1 });
+
+    const res = await request(app).get('/two-calls?cold=1').set('Cookie', sessionCookie());
+
+    expect(res.status).toBe(200);
+    // Third exchange presents the pair the database actually holds.
+    expect(sc.presented).toEqual(['good-refresh', 'good-refresh', 'refresh-1']);
+    expect(tokenDeleteMany).not.toHaveBeenCalled();
+    expect(userUpdate).not.toHaveBeenCalled();
+    expect(tokenUpdate).toHaveBeenCalledTimes(2);
+  });
+
+  test('when the CURRENT refresh token is refused too, that IS a revocation', async () => {
+    // The other half of the guard: not disconnecting must not become never
+    // disconnecting. Here the stored pair is refused on its own merits.
+    const sc = mockRotatingSoundCloud({ expiresIn: 1, revokeAfterFirstExchange: true });
+
+    const res = await request(app).get('/two-calls?cold=1').set('Cookie', sessionCookie());
+
+    expect(res.status).toBe(500);
+    expect(res.body.error).toBe('Token refresh failed');
+    expect(sc.presented).toEqual(['good-refresh', 'good-refresh', 'refresh-1']);
+    expect(tokenDeleteMany).toHaveBeenCalledWith({ where: { userId: 'user-1' } });
+    expect(userUpdate.mock.calls[0][0].data.disconnectedAt).toBeInstanceOf(Date);
+  });
+
+  test('two overlapping refreshes still collapse onto one exchange', async () => {
+    // The case the in-flight mutex has always covered. It must keep working:
+    // two concurrent 401s must not turn into a second exchange presenting a
+    // token the first one is in the middle of spending.
+    const sc = mockRotatingSoundCloud();
+
+    const [a, b] = await Promise.all([
+      request(app).get('/probe').set('Cookie', sessionCookie()),
+      request(app).get('/probe').set('Cookie', sessionCookie()),
+    ]);
+
+    expect(a.status).toBe(200);
+    expect(b.status).toBe(200);
+    expect(sc.oauthCalls).toBe(1);
+    expect(tokenDeleteMany).not.toHaveBeenCalled();
+    expect(userUpdate).not.toHaveBeenCalled();
+  });
+
+  test('a database failure while classifying invalid_grant deletes nothing', async () => {
+    // Destroying an account must rest on positive evidence. If the stored pair
+    // cannot be read, the answer is "do not know", and "do not know" must not
+    // mean "revoked".
+    tokenFindUnique.mockRejectedValueOnce(new Error('db down'));
+    fetch
+      .mockReturnValueOnce(Promise.resolve(new Response('', { status: 401 })))
+      .mockReturnValueOnce(Promise.resolve(new Response(
+        JSON.stringify({ error: 'invalid_grant' }), { status: 400 }
+      )));
+
+    const res = await request(app).get('/probe').set('Cookie', sessionCookie());
+
+    expect(res.body.error).toBe('Token refresh failed');
+    expect(tokenDeleteMany).not.toHaveBeenCalled();
+    expect(userUpdate).not.toHaveBeenCalled();
+  });
+
+  test('a background job cannot strand the stored pair and get the user torn down', async () => {
+    // C1-b, end to end. The growth scheduler runs from a boot-time timer, so
+    // its SoundCloud calls have no AsyncLocalStorage store. Before the fix the
+    // context-free exchange rotated the token upstream and discarded the
+    // replacement, leaving the row holding a spent token; the user's very next
+    // request then presented it, and because the stored token WAS the one
+    // presented, the classifier concluded "revoked" — correctly, on a false
+    // premise — and destroyed the account's tokens.
+    //
+    // This drives the two halves in order: a context-free call, then the user
+    // coming back. The database fake is shared, so the second half really does
+    // read whatever the first half left behind.
+    mockRotatingSoundCloud();
+
+    // Half one: a SoundCloud call from outside any request. The assertion is
+    // deliberately about the OUTCOME, not the mechanism — whether the client
+    // refuses (today) or exchanges and discards (before the fix) is its
+    // business; what must hold is that the user does not pay for it.
+    await soundcloudClient.getFollowers('stale-access', 'good-refresh').catch(() => {});
+
+    // Half two: the user comes back, and their stored pair is still usable.
+    const res = await request(app).get('/probe').set('Cookie', sessionCookie());
+
+    expect(res.status).toBe(200);
+    expect(tokenDeleteMany).not.toHaveBeenCalled();
+    expect(userUpdate).not.toHaveBeenCalled();
+  });
+
+  test('an expired memo entry is not served, and the database still saves it', async () => {
+    // The memo's 60s TTL is a stated property. Without this, an entry that
+    // never expires passes every other test in the suite.
+    const sc = mockRotatingSoundCloud();
+
+    const first = await request(app).get('/probe').set('Cookie', sessionCookie());
+    expect(first.status).toBe(200);
+    expect(sc.oauthCalls).toBe(1);
+
+    advanceClock(61_000);
+    clearAuthCache();   // the auth memo has its own, shorter TTL
+
+    // The same spent token, presented after the memo should have let go of it.
+    const second = await request(app).get('/probe').set('Cookie', sessionCookie());
+
+    expect(second.status).toBe(200);
+    expect(sc.oauthCalls).toBe(2);              // not answered from the memo
+    expect(tokenDeleteMany).not.toHaveBeenCalled();
+    expect(userUpdate).not.toHaveBeenCalled();
+  });
+
+  test('the recovery path does not write the memo after the row could have gone', async () => {
+    // The read in _resolveInvalidGrant and the value it returns are separated
+    // by an await, so a disconnect can complete in between — delete the row,
+    // then forget the memo. A memo write on that path would land after the
+    // forget and serve a live pair against a row that no longer exists.
+    // Observable form: the recovery must leave the memo empty, so a later
+    // caller presenting the same spent token goes back to the database
+    // instead of being handed something from memory.
+    const sc = mockRotatingSoundCloud();
+
+    const first = await request(app).get('/two-calls?cold=1').set('Cookie', sessionCookie());
+    expect(first.status).toBe(200);
+    expect(sc.oauthCalls).toBe(2);   // the recovery read, not a third exchange
+
+    clearAuthCache();
+    const second = await request(app).get('/probe').set('Cookie', sessionCookie());
+
+    expect(second.status).toBe(200);
+    // Three, not two: the recovery remembered nothing, so this went upstream
+    // and then to the database again.
+    expect(sc.oauthCalls).toBe(3);
+    expect(tokenDeleteMany).not.toHaveBeenCalled();
+  });
+
+  test('no stored token row at all deletes nothing and stamps nothing', async () => {
+    // Already disconnected, or already deleted. Re-running the teardown would
+    // only restart the six-day deletion clock on a row that may not exist.
+    storedTokenRow = null;
+    fetch
+      .mockReturnValueOnce(Promise.resolve(new Response('', { status: 401 })))
+      .mockReturnValueOnce(Promise.resolve(new Response(
+        JSON.stringify({ error: 'invalid_grant' }), { status: 400 }
+      )));
+
+    await request(app).get('/probe').set('Cookie', sessionCookie());
+
+    expect(tokenDeleteMany).not.toHaveBeenCalled();
+    expect(userUpdate).not.toHaveBeenCalled();
   });
 });
 

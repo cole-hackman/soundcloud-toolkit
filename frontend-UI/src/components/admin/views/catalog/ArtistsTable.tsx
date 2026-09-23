@@ -91,7 +91,7 @@ export function ArtistsTable({ period, enabled, onOpenArtist }: Props) {
                         <button
                           type="button"
                           onClick={() => onOpenArtist(a.artistName ?? "")}
-                          className="truncate text-left text-foreground hover:text-primary hover:underline"
+                          className="truncate text-left text-foreground hover:text-primary-text hover:underline"
                           title="Open this artist's tracks"
                         >
                           {a.artistName}
@@ -102,7 +102,7 @@ export function ArtistsTable({ period, enabled, onOpenArtist }: Props) {
                       {a.artistId != null && <div className="font-mono text-[10px] text-muted-foreground">#{String(a.artistId)}</div>}
                     </td>
                     <td className={cn(tdClass, "text-right font-mono tabular-nums text-foreground/80")}>{fmtInt(a.tracks)}</td>
-                    <td className={cn(tdClass, "text-right font-mono font-semibold tabular-nums text-primary")}>{fmtInt(a.touches)}</td>
+                    <td className={cn(tdClass, "text-right font-mono font-semibold tabular-nums text-primary-text")}>{fmtInt(a.touches)}</td>
                     <td className={tdClass}>
                       <div className="flex items-center gap-2">
                         <span className="relative h-[14px] min-w-0 flex-1 overflow-hidden rounded-[3px] bg-muted/60">
@@ -114,7 +114,7 @@ export function ArtistsTable({ period, enabled, onOpenArtist }: Props) {
                         </span>
                       </div>
                     </td>
-                    <td className={cn(tdClass, "text-right font-mono tabular-nums", a.unresolved > 0 ? "text-chart-4" : "text-muted-foreground")}>{fmtInt(a.unresolved)}</td>
+                    <td className={cn(tdClass, "text-right font-mono tabular-nums", a.unresolved > 0 ? "text-warning-text" : "text-muted-foreground")}>{fmtInt(a.unresolved)}</td>
                     <td className={cn(tdClass, "whitespace-nowrap font-mono text-[11px] text-muted-foreground")} title={fmtAbsolute(a.last_touched)}>
                       {a.last_touched ? timeAgo(a.last_touched) : "—"}
                     </td>

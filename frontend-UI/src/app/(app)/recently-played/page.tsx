@@ -1,18 +1,23 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useId, useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Radio, Music, Loader2, Search, SquarePlus, History } from "lucide-react";
+import { Loader2, Search, SquarePlus, History } from "lucide-react";
 import {
   Button,
+  Card,
   EmptyState,
+  Field,
   InlineAlert,
   Input,
   LoadingSpinner,
   PageContainer,
   PageHeader,
+  Select,
+  SelectableList,
   Skeleton,
   TrackRow,
+  useAnnounce,
 } from "@/components/ui";
 import { apiFetch } from "@/lib/api";
 import {
@@ -22,6 +27,7 @@ import {
   usePlaylistsQuery,
 } from "@/lib/queries";
 import { useDebouncedValue } from "@/lib/useDebouncedValue";
+import { asArray } from "@/lib/api-shape";
 
 interface Track {
   id: number;
@@ -40,6 +46,8 @@ interface Playlist {
 
 export default function RecentlyPlayedPage() {
   const queryClient = useQueryClient();
+  const announce = useAnnounce();
+  const modeGroupLabelId = useId();
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState("");
@@ -57,11 +65,11 @@ export default function RecentlyPlayedPage() {
   });
 
   const tracks = useMemo(
-    () => (recentlyPlayedQuery.data?.collection || []) as unknown as Track[],
+    () => asArray<Track>(recentlyPlayedQuery.data?.collection),
     [recentlyPlayedQuery.data?.collection],
   );
   const playlists = useMemo(
-    () => (playlistsQuery.data?.collection || []) as unknown as Playlist[],
+    () => asArray<Playlist>(playlistsQuery.data?.collection),
     [playlistsQuery.data?.collection],
   );
   const loading = recentlyPlayedQuery.isLoading;
@@ -99,6 +107,11 @@ export default function RecentlyPlayedPage() {
 
   const debouncedSearch = useDebouncedValue(search, 150);
 
+  useEffect(() => {
+    if (!recentlyPlayedQuery.isSuccess) return;
+    announce(`${tracks.length} recently played track${tracks.length === 1 ? "" : "s"} loaded`);
+  }, [recentlyPlayedQuery.isSuccess, tracks.length, announce]);
+
   const filteredTracks = useMemo(() => {
     const query = debouncedSearch.toLowerCase();
     return tracks.filter((t) =>
@@ -106,6 +119,13 @@ export default function RecentlyPlayedPage() {
       t.user?.username?.toLowerCase().includes(query)
     );
   }, [tracks, debouncedSearch]);
+
+  // Filtering is instant and silent; the debounce means this speaks once per
+  // pause rather than once per keystroke.
+  useEffect(() => {
+    if (!debouncedSearch) return;
+    announce(`${filteredTracks.length} track${filteredTracks.length === 1 ? "" : "s"} match`);
+  }, [debouncedSearch, filteredTracks.length, announce]);
 
   const handleSave = async () => {
     if (selected.size === 0) return;
@@ -125,13 +145,14 @@ export default function RecentlyPlayedPage() {
         if (response.ok) {
           await invalidatePlaylistCaches(queryClient);
           setNotice({ type: "success", text: "Playlist saved successfully." });
+          announce("Playlist saved", { assertive: true });
           setSelected(new Set());
         } else {
           setNotice({ type: "error", text: "Failed to create playlist." });
         }
       } else if (selectedPlaylistId) {
         if (selectedPlaylistQuery.data) {
-          const existingIds = ((selectedPlaylistQuery.data.tracks || []) as unknown as Track[]).map((t) => t.id);
+          const existingIds = (asArray<Track>(selectedPlaylistQuery.data.tracks)).map((t) => t.id);
           const mergedIds = [...existingIds, ...trackIds];
           const response = await apiFetch(`/api/playlists/${selectedPlaylistId}`, {
             method: "PUT",
@@ -141,6 +162,7 @@ export default function RecentlyPlayedPage() {
           if (response.ok) {
             await invalidatePlaylistCaches(queryClient, selectedPlaylistId);
             setNotice({ type: "success", text: "Playlist saved successfully." });
+            announce("Playlist saved", { assertive: true });
             setSelected(new Set());
           } else {
             setNotice({ type: "error", text: "Failed to update playlist." });
@@ -176,57 +198,73 @@ export default function RecentlyPlayedPage() {
 
         {loading ? (
           <div className="grid lg:grid-cols-3 gap-8">
-            <div className="lg:col-span-2 bg-white dark:bg-card rounded-2xl p-6 border-2 border-gray-200 dark:border-border">
+            <Card className="min-w-0 p-4 sm:p-6 lg:col-span-2">
               <div className="space-y-2">
                 {Array.from({ length: 8 }).map((_, i) => (
                   <Skeleton key={i} className="h-16 rounded-lg" />
                 ))}
               </div>
-            </div>
-            <div className="bg-white dark:bg-card rounded-2xl p-6 border-2 border-gray-200 dark:border-border h-fit">
+            </Card>
+            <Card className="h-fit min-w-0 p-4 sm:p-6">
               <Skeleton className="h-5 w-32 mb-4" />
               <Skeleton className="h-4 w-24 mb-4" />
               <Skeleton className="h-10 w-full rounded-lg" />
-            </div>
+            </Card>
           </div>
         ) : tracks.length === 0 ? (
-          <div className="bg-white dark:bg-card rounded-2xl p-8 border-2 border-gray-200 dark:border-border">
+          <Card className="p-4 sm:p-8">
             <EmptyState
               icon={<History className="w-12 h-12" />}
               title="No recently played tracks found"
               description="Go listen to some music on SoundCloud and come back!"
             />
-          </div>
+          </Card>
         ) : (
           <div className="grid lg:grid-cols-3 gap-8">
             {/* Track list */}
-            <div className="lg:col-span-2 bg-white dark:bg-card rounded-2xl p-6 border-2 border-gray-200 dark:border-border">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="relative flex-1">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/70" />
-                  <Input
-                    type="text"
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    placeholder="Search tracks..."
-                    className="pl-10"
-                  />
-                </div>
-                <button
+            <Card className="min-w-0 p-4 sm:p-6 lg:col-span-2">
+              <div className="mb-4 flex flex-wrap items-center gap-2">
+                <Field
+                  label="Search recently played tracks"
+                  labelHidden
+                  className="min-w-0 flex-1"
+                >
+                  {(field) => (
+                    <div className="relative">
+                      <Search
+                        aria-hidden="true"
+                        className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground-subtle"
+                      />
+                      <Input
+                        {...field}
+                        type="search"
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                        placeholder="Search tracks…"
+                        className="h-11 pl-10"
+                      />
+                    </div>
+                  )}
+                </Field>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  nowrap
                   onClick={selectAll}
-                  className="text-sm text-primary hover:text-primary/80 font-medium whitespace-nowrap"
+                  className="shrink-0 text-primary-text"
                 >
                   {selected.size === filteredTracks.length ? "Deselect All" : "Select All"}
-                </button>
+                </Button>
               </div>
 
-              <div className="space-y-2 max-h-[600px] overflow-y-auto">
+              <SelectableList className="max-h-[60dvh] overflow-y-auto">
                 {filteredTracks.map((track) => {
                   const isSelected = selected.has(track.id);
                   const subtitle = `${track.user?.username || "Unknown"} • ${formatDuration(track.duration)}`;
-                  
+
                   return (
                     <TrackRow
+                      as="li"
                       key={track.id}
                       track={{
                         ...track,
@@ -237,63 +275,80 @@ export default function RecentlyPlayedPage() {
                     />
                   );
                 })}
-              </div>
-            </div>
+              </SelectableList>
+            </Card>
 
             {/* Save panel */}
-            <div className="bg-white dark:bg-card rounded-2xl p-6 border-2 border-gray-200 dark:border-border h-fit sticky top-24">
-              <h2 className="text-lg font-bold text-foreground mb-4">
-                Save to Playlist
-              </h2>
-              <p className="text-sm text-muted-foreground mb-4">
-                {selected.size} track{selected.size !== 1 ? "s" : ""} selected
-              </p>
+            <Card className="h-fit min-w-0 space-y-4 p-4 sm:p-6 lg:sticky lg:top-24">
+              <div>
+                <h2 className="text-lg font-bold text-foreground">Save to Playlist</h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {selected.size} track{selected.size !== 1 ? "s" : ""} selected
+                </p>
+              </div>
 
-              <div className="flex gap-2 mb-4">
-                <button
-                  onClick={() => setMode("new")}
-                  className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition ${
-                    mode === "new" ? "bg-primary text-white" : "bg-gray-100 dark:bg-secondary/50 text-muted-foreground"
-                  }`}
+              <div>
+                <span
+                  id={modeGroupLabelId}
+                  className="mb-2 block text-sm font-semibold text-foreground"
                 >
-                  New Playlist
-                </button>
-                <button
-                  onClick={() => setMode("existing")}
-                  className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition ${
-                    mode === "existing" ? "bg-primary text-white" : "bg-gray-100 dark:bg-secondary/50 text-muted-foreground"
-                  }`}
-                >
-                  Existing
-                </button>
+                  Save to
+                </span>
+                <div role="group" aria-labelledby={modeGroupLabelId} className="flex gap-2">
+                  <button
+                    type="button"
+                    aria-pressed={mode === "new"}
+                    onClick={() => setMode("new")}
+                    className={`min-h-11 flex-1 px-3 py-2 rounded-lg text-sm font-medium transition ${
+                      mode === "new" ? "bg-primary text-primary-foreground" : "bg-gray-100 dark:bg-secondary/50 text-muted-foreground"
+                    }`}
+                  >
+                    New Playlist
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={mode === "existing"}
+                    onClick={() => setMode("existing")}
+                    className={`min-h-11 flex-1 px-3 py-2 rounded-lg text-sm font-medium transition ${
+                      mode === "existing" ? "bg-primary text-primary-foreground" : "bg-gray-100 dark:bg-secondary/50 text-muted-foreground"
+                    }`}
+                  >
+                    Existing
+                  </button>
+                </div>
               </div>
 
               {mode === "new" ? (
-                <input
-                  type="text"
-                  value={newPlaylistName}
-                  onChange={(e) => setNewPlaylistName(e.target.value)}
-                  placeholder="Playlist name (optional)"
-                  className="w-full px-3 py-2 border-2 border-gray-200 dark:border-border rounded-lg text-sm text-foreground bg-gray-50 dark:bg-secondary/20 focus:border-primary focus:outline-none mb-4"
-                />
+                <Field label="Playlist name" hint="Optional — a dated name is used if you leave it blank.">
+                  {(field) => (
+                    <Input
+                      {...field}
+                      type="text"
+                      value={newPlaylistName}
+                      onChange={(e) => setNewPlaylistName(e.target.value)}
+                      placeholder="Recently Played"
+                      className="h-11"
+                    />
+                  )}
+                </Field>
               ) : loadingPlaylists ? (
-                <div className="flex items-center gap-2 py-3 mb-4 text-sm text-muted-foreground/70">
+                <div className="flex items-center gap-2 py-3 text-sm text-muted-foreground-subtle">
                   <LoadingSpinner size="sm" />
                   Loading playlists…
                 </div>
               ) : (
-                <select
+                <Select
+                  label="Playlist"
                   value={selectedPlaylistId || ""}
                   onChange={(e) => setSelectedPlaylistId(Number(e.target.value))}
-                  className="w-full px-3 py-2 border-2 border-gray-200 dark:border-border rounded-lg text-sm text-foreground bg-gray-50 dark:bg-secondary/20 focus:border-primary focus:outline-none mb-4"
                 >
-                  <option value="">Choose a playlist...</option>
+                  <option value="">Choose a playlist…</option>
                   {playlists.map((pl) => (
                     <option key={pl.id} value={pl.id}>
                       {pl.title} ({pl.track_count} tracks)
                     </option>
                   ))}
-                </select>
+                </Select>
               )}
 
               <Button
@@ -313,7 +368,7 @@ export default function RecentlyPlayedPage() {
                   </>
                 )}
               </Button>
-            </div>
+            </Card>
           </div>
         )}
     </PageContainer>

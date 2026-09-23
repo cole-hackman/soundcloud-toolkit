@@ -2,16 +2,17 @@
 
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
+import { SupportLink } from "@/components/SupportLink";
 
 export default function AboutPage() {
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <main id="main-content" tabIndex={-1} className="min-h-screen bg-background text-foreground focus:outline-none">
       <div className="max-w-4xl mx-auto px-6 py-10 md:py-16">
         <article className="rounded-xl border border-border bg-surface p-8 shadow-elevation-1 md:p-12 dark:glass-card">
           <div className="mb-6">
             <Link
               href="/"
-              className="inline-flex items-center gap-2 text-sm font-medium text-muted-foreground transition hover:text-primary"
+              className="inline-flex items-center gap-2 text-sm font-medium text-muted-foreground transition hover:text-primary-text"
             >
               <ArrowLeft className="h-4 w-4" />
               Home
@@ -29,6 +30,16 @@ export default function AboutPage() {
               Created by music lovers, for music lovers, we understand the
               frustration of managing large music libraries and the limitations
               of native SoundCloud features.
+            </p>
+            <p className="text-sm text-muted-foreground">
+              Formerly SoundCloud Toolkit — same product, new name. See the{" "}
+              <Link
+                href="/faq/#rebrand"
+                className="font-medium text-foreground underline underline-offset-2 transition hover:text-primary-text"
+              >
+                rebrand FAQ
+              </Link>{" "}
+              for why it changed.
             </p>
 
             <section>
@@ -125,7 +136,7 @@ export default function AboutPage() {
 
             <section>
               <h2 className="text-2xl font-bold mb-4 text-foreground">
-                Free &amp; Open
+                Free to Use
               </h2>
               <p>
                 Track Toolkit is completely free to use. We&apos;re committed to
@@ -161,6 +172,26 @@ export default function AboutPage() {
               </p>
             </section>
 
+            <section>
+              <h2 className="text-2xl font-bold mb-4 text-foreground">
+                Contact
+              </h2>
+              <p>
+                Questions, bug reports, or feature requests —{" "}
+                <SupportLink subject="Track Toolkit support">
+                  email us
+                </SupportLink>
+                . See the{" "}
+                <Link
+                  href="/faq"
+                  className="font-medium text-foreground underline underline-offset-2 transition hover:text-primary-text"
+                >
+                  FAQ
+                </Link>{" "}
+                for quick answers first.
+              </p>
+            </section>
+
             <div className="pt-6 border-t border-border">
               <p className="text-sm text-muted-foreground">
                 <strong className="text-foreground">Note:</strong> Track Toolkit is
@@ -172,6 +203,6 @@ export default function AboutPage() {
           </div>
         </article>
       </div>
-    </div>
+    </main>
   );
 }

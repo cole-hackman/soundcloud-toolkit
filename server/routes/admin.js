@@ -5,9 +5,15 @@ import logger from '../lib/logger.js';
 import { safeError } from '../lib/safe-error.js';
 import { authenticateUser } from '../middleware/auth.js';
 import { adminAuth } from '../middleware/adminAuth.js';
+import {
+  FEEDBACK_STATUSES,
+  FEEDBACK_TYPES,
+  validateFeedbackPatch,
+  validateAdminReResolve,
+} from '../middleware/validation.js';
 import { getAnalyticsWriteHealth, logOperation } from '../lib/analytics.js';
+import { LIFETIME_METRIC_KEY } from '../lib/retention.js';
 import { heavyOperationRateLimiter } from '../middleware/rateLimiter.js';
-import { validateAdminReResolve } from '../middleware/validation.js';
 import { enrichTrackIds } from '../lib/enrichment.js';
 
 const router = express.Router();
@@ -210,6 +216,14 @@ router.get('/stats', authenticateUser, adminAuth, async (req, res) => {
       ],
     };
 
+    // All-time distinct users, snapshotted by the retention job before it
+    // purges operation logs — so the headline figure does not shrink when rows
+    // age out of the 12-month window. Null until the job has run once, and
+    // soft-failing: a missing metrics table must not 500 the whole dashboard.
+    const lifetimeMetricQuery = prisma.metric
+      ? prisma.metric.findUnique({ where: { key: LIFETIME_METRIC_KEY } }).catch(() => null)
+      : Promise.resolve(null);
+
     const [
       totalUsers,
       newUsers,
@@ -223,6 +237,7 @@ router.get('/stats', authenticateUser, adminAuth, async (req, res) => {
       topErrors,
       avgLatencyRows,
       perActionLatencyRows,
+      lifetimeMetric,
     ] = await Promise.all([
       prisma.user.count(),
       prisma.user.count({ where: { createdAt: { gte: cutoff } } }),
@@ -305,6 +320,7 @@ router.get('/stats', authenticateUser, adminAuth, async (req, res) => {
         ORDER BY p95 DESC
         LIMIT 25
       `,
+      lifetimeMetricQuery,
     ]);
 
     const operationsCount = agg._count.id ?? 0;
@@ -374,6 +390,9 @@ router.get('/stats', authenticateUser, adminAuth, async (req, res) => {
 
     res.json({
       totalUsers,
+      // Null before the retention job's first run; a number afterwards, and
+      // never lower than totalUsers' historical peak.
+      lifetimeUsers: lifetimeMetric ? Number(lifetimeMetric.value) : null,
       newUsers,
       tracksProcessed,
       operationsCount,
@@ -1237,6 +1256,212 @@ router.get('/feedback/beta-emails', authenticateUser, adminAuth, async (req, res
   } catch (err) {
     logger.error('[admin/feedback/beta-emails] Error:', safeError(err));
     res.status(500).json({ error: 'Failed to export beta emails' });
+  }
+});
+
+/* ------------------------------------------------------------------------ *
+ * Feedback inbox — the LIVE in-app feedback form (Feedback model).
+ *
+ * Named /feedback-items rather than /feedback because /feedback above is
+ * already taken by the retired SongSwipe beta survey (BetaSignup), which is
+ * kept read-only for history. Two different tables, two different eras; the
+ * path spelling is what keeps them from colliding.
+ * ------------------------------------------------------------------------ */
+
+/** Page size ceiling, so one query cannot pull the whole table. */
+const FEEDBACK_PAGE_SIZE_MAX = 200;
+const FEEDBACK_PAGE_SIZE_DEFAULT = 50;
+
+/**
+ * Build the Prisma `where` from the query string. Only the two enumerated
+ * columns are filterable — an unrecognised value is dropped rather than passed
+ * through, so a typo returns everything instead of nothing and no arbitrary
+ * string reaches the query.
+ */
+function feedbackWhere(query) {
+  const where = {};
+  if (typeof query.status === 'string' && FEEDBACK_STATUSES.includes(query.status)) {
+    where.status = query.status;
+  }
+  if (typeof query.type === 'string' && FEEDBACK_TYPES.includes(query.type)) {
+    where.type = query.type;
+  }
+  return where;
+}
+
+/**
+ * GET /api/admin/feedback-items?status=&type=&page=1&pageSize=50
+ * The inbox itself — newest first, with the sender attached.
+ */
+router.get('/feedback-items', authenticateUser, adminAuth, async (req, res) => {
+  try {
+    const page = Math.max(parseInt(req.query.page) || 1, 1);
+    const pageSize = Math.min(
+      Math.max(parseInt(req.query.pageSize) || FEEDBACK_PAGE_SIZE_DEFAULT, 1),
+      FEEDBACK_PAGE_SIZE_MAX
+    );
+    const where = feedbackWhere(req.query);
+
+    const [rows, total] = await Promise.all([
+      prisma.feedback.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+        include: {
+          user: { select: { username: true, displayName: true, avatarUrl: true } },
+        },
+      }),
+      prisma.feedback.count({ where }),
+    ]);
+
+    res.json({
+      items: rows.map(r => ({
+        id: r.id,
+        type: r.type,
+        message: r.message,
+        page: r.page,
+        email: r.email,
+        status: r.status,
+        adminNote: r.adminNote,
+        clientInfo: r.clientInfo,
+        createdAt: r.createdAt.toISOString(),
+        user: {
+          username: r.user?.username ?? null,
+          displayName: r.user?.displayName ?? null,
+          avatarUrl: r.user?.avatarUrl ?? null,
+        },
+        soundcloudId: r.soundcloudId,
+      })),
+      total,
+      page,
+      pageSize,
+    });
+  } catch (err) {
+    logger.error('[admin/feedback-items] Error:', safeError(err));
+    res.status(500).json({ error: 'Failed to fetch feedback' });
+  }
+});
+
+/**
+ * GET /api/admin/feedback-items/summary
+ * Counts for the inbox header. `unread` is the one that matters day to day.
+ */
+router.get('/feedback-items/summary', authenticateUser, adminAuth, async (req, res) => {
+  try {
+    const [total, unread, byStatusRows, byTypeRows] = await Promise.all([
+      prisma.feedback.count(),
+      prisma.feedback.count({ where: { status: 'new' } }),
+      prisma.feedback.groupBy({ by: ['status'], _count: { id: true } }),
+      prisma.feedback.groupBy({ by: ['type'], _count: { id: true } }),
+    ]);
+
+    // Seed every known key at zero so the client can render a stable set of
+    // buckets instead of hiding the ones that happen to be empty today.
+    const byStatus = Object.fromEntries(FEEDBACK_STATUSES.map(s => [s, 0]));
+    for (const row of byStatusRows) byStatus[row.status] = row._count.id;
+
+    const byType = Object.fromEntries(FEEDBACK_TYPES.map(t => [t, 0]));
+    for (const row of byTypeRows) byType[row.type] = row._count.id;
+
+    res.json({ total, unread, byStatus, byType });
+  } catch (err) {
+    logger.error('[admin/feedback-items/summary] Error:', safeError(err));
+    res.status(500).json({ error: 'Failed to fetch feedback summary' });
+  }
+});
+
+/**
+ * PATCH /api/admin/feedback-items/:id
+ * Triage only: status and adminNote are the sole writable columns. Nothing the
+ * user wrote is editable from here, and an empty patch is refused rather than
+ * issued as a no-op write — `updatedAt` is `@updatedAt`, so a write with no
+ * changes would still move it and make the row look freshly triaged.
+ */
+router.patch(
+  '/feedback-items/:id',
+  authenticateUser,
+  adminAuth,
+  validateFeedbackPatch,
+  async (req, res) => {
+    try {
+      const data = {};
+      if (req.body.status !== undefined) data.status = req.body.status;
+      // hasOwn, not truthiness: `adminNote: null` is how a note gets cleared.
+      if (Object.hasOwn(req.body, 'adminNote')) data.adminNote = req.body.adminNote ?? null;
+
+      if (Object.keys(data).length === 0) {
+        return res.status(400).json({ error: 'Provide status or adminNote' });
+      }
+
+      const updated = await prisma.feedback.update({
+        where: { id: req.params.id },
+        data,
+        select: {
+          id: true, type: true, page: true, status: true,
+          adminNote: true, createdAt: true, updatedAt: true,
+        },
+      });
+
+      res.json(updated);
+    } catch (err) {
+      // Prisma "record not found" — a stale row in an open inbox tab.
+      if (err && err.code === 'P2025') {
+        return res.status(404).json({ error: 'Feedback not found' });
+      }
+      logger.error('[admin/feedback-items/:id] Error:', safeError(err));
+      res.status(500).json({ error: 'Failed to update feedback' });
+    }
+  }
+);
+
+/**
+ * GET /api/admin/feedback-items.csv?status=
+ * The whole filtered set as a CSV attachment, for reading somewhere other than
+ * the dashboard. Leading BOM so Excel opens the UTF-8 as UTF-8.
+ */
+router.get('/feedback-items.csv', authenticateUser, adminAuth, async (req, res) => {
+  try {
+    const where = feedbackWhere(req.query);
+
+    const rows = await prisma.feedback.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      include: {
+        user: { select: { username: true } },
+      },
+    });
+
+    // Same shape as the beta-emails export, plus a formula guard: `message`
+    // and `adminNote` are free text, and Excel / Sheets / LibreOffice execute
+    // a cell that opens with =, +, -, @, tab or CR. Prefixing an apostrophe
+    // makes the cell literal text; the apostrophe is not shown by the
+    // spreadsheet and the raw CSV still reads plainly.
+    const escape = (v) => {
+      let s = v === null || v === undefined ? '' : String(v);
+      if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
+      // \r joins the class: a lone CR is a row break to some parsers, so a
+      // message containing one must stay inside its quoted field.
+      return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const header = [
+      'id', 'createdAt', 'type', 'status', 'username', 'soundcloudId',
+      'page', 'email', 'message', 'adminNote',
+    ];
+    const lines = [header.join(',')];
+    for (const r of rows) {
+      lines.push([
+        r.id, r.createdAt.toISOString(), r.type, r.status, r.user?.username ?? '',
+        r.soundcloudId, r.page, r.email, r.message, r.adminNote,
+      ].map(escape).join(','));
+    }
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="feedback.csv"');
+    res.send(`﻿${lines.join('\n')}`);
+  } catch (err) {
+    logger.error('[admin/feedback-items.csv] Error:', safeError(err));
+    res.status(500).json({ error: 'Failed to export feedback' });
   }
 });
 

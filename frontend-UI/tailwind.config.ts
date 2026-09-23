@@ -29,7 +29,9 @@ export default {
         },
         primary: {
           DEFAULT: 'hsl(var(--primary))',
-          foreground: 'hsl(var(--primary-foreground))'
+          foreground: 'hsl(var(--primary-foreground))',
+          /* `text-primary-text` — the orange to use when it IS the text. */
+          text: 'hsl(var(--primary-text))'
         },
         secondary: {
           DEFAULT: 'hsl(var(--secondary))',
@@ -37,7 +39,9 @@ export default {
         },
         muted: {
           DEFAULT: 'hsl(var(--muted))',
-          foreground: 'hsl(var(--muted-foreground))'
+          foreground: 'hsl(var(--muted-foreground))',
+          /* `text-muted-foreground-subtle` — replaces `text-muted-foreground/NN`. */
+          'foreground-subtle': 'hsl(var(--muted-foreground-subtle))'
         },
         accent: {
           DEFAULT: 'hsl(var(--accent))',
@@ -45,7 +49,29 @@ export default {
         },
         destructive: {
           DEFAULT: 'hsl(var(--destructive))',
-          foreground: 'hsl(var(--destructive-foreground))'
+          foreground: 'hsl(var(--destructive-foreground))',
+          /* `text-destructive-text` — readable error text in both themes. */
+          text: 'hsl(var(--destructive-text))'
+        },
+        success: {
+          text: 'hsl(var(--success-text))'
+        },
+        warning: {
+          text: 'hsl(var(--warning-text))'
+        },
+        /* `text-info-text` — the readable sibling of --chart-2, for the
+           admin console's `info` tone. --chart-2 itself stays a data-viz
+           colour. */
+        info: {
+          text: 'hsl(var(--info-text))'
+        },
+        /* Categorical chip tones — see the block in globals.css. `foreground`
+           is shared because all three are dark surfaces carrying white. */
+        tone: {
+          foreground: 'hsl(var(--tone-foreground))',
+          download: 'hsl(var(--tone-download))',
+          purchase: 'hsl(var(--tone-purchase))',
+          match: 'hsl(var(--tone-match))'
         },
         glass: 'hsl(var(--glass))',
         surface: 'hsl(var(--surface))',

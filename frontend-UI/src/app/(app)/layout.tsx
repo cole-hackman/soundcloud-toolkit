@@ -1,91 +1,19 @@
-"use client";
+import type { Metadata } from "next";
+import { AppGroupLayout } from "./AppGroupLayout";
 
-import { useEffect } from "react";
-import { usePathname } from "next/navigation";
-import { AppLayout } from "@/components/AppLayout";
-import { AppShell } from "@/components/AppShell";
-import { RebrandAnnouncement } from "@/components/RebrandAnnouncement";
-import { apiFetch } from "@/lib/api";
-
-const TOOL_SLUGS: Record<string, string> = {
-  "/dashboard": "dashboard",
-  "/combine": "combine",
-  "/library-audit": "library-audit",
-  "/downloads": "downloads",
-  "/export": "export",
-  "/export/likes": "export",
-  "/export/playlists": "export",
-  "/export/followings": "export",
-  "/export/reposts": "export",
-  "/likes-to-playlist": "likes",
-  "/playlist-modifier": "modifier",
-  "/link-resolver": "resolver",
-  "/activity-to-playlist": "activity",
-  "/like-manager": "like-manager",
-  "/following-manager": "following-manager",
-  "/following-library": "following-library",
-  "/playlist-health-check": "health-check",
-  "/playlist-keyword-search": "playlist-keyword-search",
-  "/batch-link-resolver": "batch-resolver",
-  "/playlist-cloner": "playlist-cloner",
-  "/playlist-compare": "playlist-compare",
-  "/genre-search": "genre-search",
-  "/repost-manager": "repost-manager",
-  "/growth": "growth",
-  "/recently-played": "recently-played",
+// The authenticated tool routes carry a signed-in user's session state and
+// have nothing to offer a search index; keep them out of it.
+export const metadata: Metadata = {
+  robots: {
+    index: false,
+    follow: false,
+  },
 };
 
-const LAST_TOOLS_KEY = "sc-toolkit-last-tools";
-const MAX_RECENT = 3;
-
-function updateRecentTools(pathname: string) {
-  const slug = TOOL_SLUGS[pathname];
-  if (!slug) return;
-  try {
-    const stored = localStorage.getItem(LAST_TOOLS_KEY);
-    const prev: string[] = stored ? JSON.parse(stored) : [];
-    const next = [slug, ...prev.filter((s) => s !== slug)].slice(0, MAX_RECENT);
-    localStorage.setItem(LAST_TOOLS_KEY, JSON.stringify(next));
-  } catch {
-    // ignore
-  }
-}
-
-function logFeatureOpen(pathname: string) {
-  const feature = TOOL_SLUGS[pathname];
-  if (!feature) return;
-
-  // This intentionally contains no URL parameters, SoundCloud content, or
-  // device data. The server links it only to the signed-in account so the
-  // admin can measure distinct feature reach.
-  void apiFetch("/api/events", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ feature }),
-  }).catch(() => undefined);
-}
-
-export default function AppRouteLayout({
+export default function AppLayoutRoot({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const pathname = usePathname();
-
-  useEffect(() => {
-    if (!pathname) return;
-    updateRecentTools(pathname);
-    logFeatureOpen(pathname);
-  }, [pathname]);
-
-  return (
-    <AppLayout>
-      {/* One-time rebrand notice. Mounted here rather than on the dashboard so
-          it also greets a returning user who deep-links straight to a tool.
-          The dashboard holds "What's new" back until this is acknowledged, so
-          the two never stack. */}
-      <RebrandAnnouncement />
-      <AppShell>{children}</AppShell>
-    </AppLayout>
-  );
+  return <AppGroupLayout>{children}</AppGroupLayout>;
 }

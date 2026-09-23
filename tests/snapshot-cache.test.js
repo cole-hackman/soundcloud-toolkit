@@ -130,6 +130,26 @@ describe('writeSnapshot / readSnapshot', () => {
     expect(await snapshot.readSnapshot('u1', 'likes')).toBeNull();
   });
 
+  test('a page set short of what the state row counted is NOT served', async () => {
+    // The retention sweep ages page rows by `createdAt` and the state row by
+    // `updatedAt` — different columns, so the pages can be purged while a
+    // 'complete' state row survives. Serving what is left would silently hand
+    // back a library with a hole in it; a null costs one crawl.
+    const quiet = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      await snapshot.writeSnapshot('u1', 'likes', Array.from({ length: 450 }, (_, i) => ({ id: i })));
+      expect(state.rows.get('u1::likes').pagesSynced).toBe(3);
+
+      // One page disappears; the state row still says 'complete' with three.
+      const pages = state.pages.get('u1::likes');
+      state.pages.set('u1::likes', pages.filter((p) => p.pageIndex !== 1));
+
+      expect(await snapshot.readSnapshot('u1', 'likes')).toBeNull();
+    } finally {
+      quiet.mockRestore();
+    }
+  });
+
   test('truncation survives the round trip', async () => {
     await snapshot.writeSnapshot('u1', 'likes', [{ id: 1 }], { truncated: true });
     const read = await snapshot.readSnapshot('u1', 'likes');

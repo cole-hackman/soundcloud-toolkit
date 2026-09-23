@@ -123,6 +123,19 @@ export async function readSnapshot(userId, resource, { maxAgeMs } = {}) {
       orderBy: { pageIndex: 'asc' },
     });
     if (pages.length === 0) return null;
+    // The state row says how many pages a complete snapshot has. If fewer came
+    // back, this is not that snapshot and must not be served as the user's
+    // whole library — a missing page is silent data loss, where a null is one
+    // slow crawl. `writeSnapshot` writes pages and state in one transaction,
+    // so they agree at write time; what can separate them afterwards is the
+    // retention sweep, which ages pages by `createdAt` and the state row by
+    // `updatedAt` — different columns, so the pages can go first.
+    if (state.pagesSynced > 0 && pages.length !== state.pagesSynced) {
+      logger.warn('[snapshot-cache] incomplete page set, ignoring snapshot', {
+        resource, expected: state.pagesSynced, found: pages.length,
+      });
+      return null;
+    }
 
     const items = [];
     for (const page of pages) {

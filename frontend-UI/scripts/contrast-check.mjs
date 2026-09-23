@@ -9,9 +9,10 @@
 //
 // WHERE IT RUNS: by hand. Nothing invokes it automatically — `npm run build`
 // is `next build` alone, and the GitHub workflow runs the Jest suite and the
-// build, not this. It is part of the manual pre-merge checklist in CLAUDE.md.
-// Do not describe it anywhere as a check that "fails the build" unless someone
-// has actually wired it into one.
+// build, not this. CLAUDE.md's "Development Commands / Frontend" section names
+// it in the run-before-you-claim-done line, which is the whole of the process
+// around it. Do not describe it anywhere as a check that "fails the build"
+// unless someone has actually wired it into one.
 //
 // WHAT IT DOES NOT COVER — read this before quoting its score.
 // It compares *token pairs*. It cannot see a call site, so a green run is
@@ -195,7 +196,14 @@ for (const [label, parsed] of [["TONE_SOFT", ADMIN_TONES], ["TONE_TEXT", ADMIN_T
   if (tones.join(",") !== EXPECTED_TONES.join(",")) {
     throw new Error(
       `${label} tones are [${tones}], expected [${EXPECTED_TONES}]. ` +
-      'Add the new tone to EXPECTED_TONES here once you have checked it passes.',
+      // Order matters as well as membership, so this fires for a reorder too —
+      // in which case nothing was added and there is nothing to check. Name
+      // both possibilities rather than sending the reader to edit a list that
+      // is already correct.
+      'If a tone was added or renamed, update EXPECTED_TONES once you have ' +
+      'checked its numbers. If the same six were only reordered, reorder ' +
+      'EXPECTED_TONES to match — the order is what makes a dropped entry an ' +
+      'error instead of a quietly shorter table.',
     );
   }
 }

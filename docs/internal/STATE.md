@@ -114,9 +114,21 @@ Read `docs/internal/MIGRATION.md` ("CUTOVER DONE") for that story.
    draft of this list said to do that. It would have produced no counts, and
    the first real sweep would then have deleted as it logged.)
 
-   With `RETENTION_DRY_RUN=true` the job runs on its normal schedule — first
-   run 10 minutes after boot — performs every count, and writes nothing at
-   all. In the App Service log stream, look for:
+   **Set it in the Azure portal, on the App Service** (Settings →
+   Environment variables → App settings), *not* in Bicep.
+   `infra/main.bicep` declares `appSettings` as a complete list with no
+   parameter for this flag, and ARM replaces the whole list on deploy — so
+   **any `infra/deploy.sh` run silently ends the dry run** and the next sweep
+   is real. Code deploys are safe: the GitHub workflow is a zip deploy
+   (`azure/webapps-deploy@v3`) and does not touch settings. If an infra change
+   is needed while the dry run is up, re-add the setting straight afterwards
+   and check the boot line below before trusting it.
+
+   With the flag set, the job runs on its normal schedule — first run 10
+   minutes after boot — performs every count, and writes nothing at all. The
+   boot line names the mode, so it is checkable at a glance:
+   `[retention] Daily purge scheduled in DRY RUN mode`. In the App Service log
+   stream, look for:
 
    ```
    [retention] DRY RUN (RETENTION_DRY_RUN=true) — counting only, nothing is written
@@ -132,7 +144,10 @@ Read `docs/internal/MIGRATION.md` ("CUTOVER DONE") for that story.
    expect — the user sweeps cascade across every per-user table and are
    irreversible — then delete the variable and let the next run do it for
    real. `tests/retention-dry-run.test.js` is what asserts the flag issues no
-   write; it fails if any mutating Prisma method is reached.
+   write: it mocks the client with a Proxy that records any
+   `delete*`/`update*`/`upsert`/`create*` call, plus `$executeRaw` and
+   `$transaction`, on **any** delegate — including ones the test has never
+   heard of — and fails if the set is non-empty.
 3. **Fill `GOVERNING_LAW_STATE` in `frontend-UI/src/app/terms/page.tsx`.** It
    ships as the literal string `[STATE]` and is visible on the page. Only Cole
    can decide it.
@@ -293,6 +308,12 @@ Read `docs/internal/MIGRATION.md` ("CUTOVER DONE") for that story.
   counts everything, logs every line a real sweep would, and issues no write.
   It accepts exactly `true`; `1` and `yes` are refused on purpose, because a
   dry run that silently became real is the failure that matters here.
+- **A portal-set `RETENTION_DRY_RUN` does not survive `infra/deploy.sh`.**
+  `infra/main.bicep` declares `appSettings` as a complete list with no
+  parameter for the flag, and ARM replaces the list wholesale, so an infra
+  redeploy ends the dry run with no signal beyond the next boot line. Zip
+  deploys (the GitHub workflow) leave settings alone. Anything else the
+  operator sets by hand on the App Service has the same exposure.
 - **The 6-day disconnect window is a constant on purpose, and
   `RETENTION_INTERVAL_MS` is clamped to 24h in code.** SoundCloud's terms give
   7 days; the sweep is daily, so the real worst case is the window plus up to

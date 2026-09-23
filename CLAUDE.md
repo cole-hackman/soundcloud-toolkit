@@ -761,11 +761,15 @@ Three things that look arbitrary but are not:
   the same pass. To see the numbers before anything is destroyed, set
   `RETENTION_DRY_RUN=true`: the job runs on its normal schedule, performs
   every count, logs the same `will remove N users` lines plus a
-  `would remove N` per step, and issues no `deleteMany`, `updateMany` or
-  `upsert` at all. `RETENTION_ENABLED=false` is **not** the way to do this —
-  it schedules nothing, so it produces silence, which reads exactly like
-  "there was nothing to delete". `tests/retention-dry-run.test.js` fails if
-  any mutating client method is reached while the flag is set.
+  `would remove N` per step, and issues no write at all.
+  `RETENTION_ENABLED=false` is **not** the way to do this — it schedules
+  nothing, so it produces silence, which reads exactly like "there was nothing
+  to delete". `tests/retention-dry-run.test.js` mocks the client with a Proxy
+  that records any `delete*`/`update*`/`upsert`/`create*`, plus `$executeRaw`
+  and `$transaction`, on **any** delegate — including ones that file has never
+  heard of — and fails if the set is non-empty under the flag. It is worded
+  that way because the first version listed nine method names, and a rogue
+  `user.delete` or `$executeRaw DELETE` left it green.
 - **The disconnect window is 6 days, and a constant, not an env var.** The
   SoundCloud terms' deletion deadline is *7* days; the window is one day short
   of it on purpose, because the sweep is daily and the real worst case is the
@@ -1051,7 +1055,7 @@ clone, and every bulk write.
 | `SESSION_COOKIE_SAMESITE` | No | `lax`, `none` or `strict` for the session cookie. Unset keeps the historical default (`none` in production). Same-origin hosting sets `lax` |
 | `LEGACY_REDIRECT_HOSTS` | No | Comma-separated hostnames Express redirects to `APP_URL` (301 GET/HEAD, 308 otherwise). Unset disables the middleware |
 | `RETENTION_ENABLED` | No | Set to `false` to disable the daily retention purge. **Defaults to on** — a retention policy that is off by default is not a policy. Do not use this to preview a sweep: it schedules nothing, so it logs nothing, and the silence is indistinguishable from "nothing to delete". Use `RETENTION_DRY_RUN` |
-| `RETENTION_DRY_RUN` | No | Exactly `true` (case-insensitive, trimmed; `1` and `yes` are deliberately **not** accepted) makes each scheduled run count everything and write nothing — every step logs `would remove N`, the user sweeps still log `will remove N users`, and no delete, update or upsert is issued. Intended for the first deploy after a retention change: read the counts, satisfy yourself, then remove the variable |
+| `RETENTION_DRY_RUN` | No | Exactly `true` (case-insensitive, trimmed; `1` and `yes` are deliberately **not** accepted) makes each scheduled run count everything and write nothing — every step logs `would remove N`, the user sweeps still log `will remove N users`, and no delete, update or upsert is issued. Intended for the first deploy after a retention change: read the counts, satisfy yourself, then remove the variable. **Set it in the App Service configuration, not in Bicep** — `infra/main.bicep` declares `appSettings` as a complete list with no parameter for this flag, and ARM replaces the whole list, so any `infra/deploy.sh` run silently ends the dry run. Code deploys are safe: the GitHub workflow is a zip deploy and does not touch settings |
 | `RETENTION_INTERVAL_MS` | No | Sweep period (default 24h), **clamped to a 24h maximum in code** (`resolveIntervalMs`) and logged when a larger value is refused. First run is always 10 min after boot. Compliance-relevant, not a tuning knob: a longer period would eat the day of margin the 6-day disconnect window buys against the terms' 7-day deletion deadline, so it is enforced rather than documented. Lowering it is always allowed |
 | `CACHE_TTL_DAYS` | No | Library-cache page/state lifetime in days (default `7`) |
 | `INACTIVE_MONTHS` | No | Dormant-account window in **calendar months** (default `24`) |
@@ -1262,7 +1266,7 @@ less — the timeout means it costs nothing either way, so it stays.
    left implied. Local dev uses `Lax` over HTTP with the `next.config.js`
    rewrites.
 
-6. **In-Memory URL Cache**: The `/api/resolve` cache is per-process and resets on restart. Not shared across multiple server instances. Cache TTL is 5 minutes. (The *library* cache — likes/playlists/followings/followers/reposts — is different: since the 2026-09 performance work it has a Postgres tier underneath that survives restarts. See `docs/performance-audit-2026-09.md`. Its invalidation marks are per-process, though: at `instance_count > 1` a second instance can republish a pre-mutation snapshot as `complete`, so the durable tier is only safe single-instance. See the header comment in `server/lib/social-cache.js`.)
+6. **In-Memory URL Cache**: The `/api/resolve` cache is per-process and resets on restart. Not shared across multiple server instances. Cache TTL is 5 minutes. (The *library* cache — likes/playlists/followings/followers/reposts — is different: since the 2026-09 performance work it has a Postgres tier underneath that survives restarts. See `docs/performance-audit-2026-09.md`. Its invalidation marks are per-process, though: with more than one worker a second instance can republish a pre-mutation snapshot as `complete`, so the durable tier is only safe single-instance — which is why `infra/main.bicep` pins `capacity: 1` and `numberOfWorkers: 1`. See the header comment in `server/lib/social-cache.js`.)
 
 7. **Static Export Limitation**: `next export` doesn't support Next.js API routes. All server logic must live in the Express backend. The frontend is pure client-side React.
 

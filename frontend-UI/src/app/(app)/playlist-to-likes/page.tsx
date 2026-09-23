@@ -154,8 +154,23 @@ export default function PlaylistToLikesPage() {
         }
         const results = Array.isArray(data.results) ? data.results : [];
         liked += results.filter((r: { status: string }) => r.status === "ok").length;
-        failed += results.filter((r: { status: string }) => r.status !== "ok").length;
+        failed += results.filter((r: { status: string }) => r.status === "error").length;
         setProgress({ done: Math.min(i + batch.length, ids.length), total: ids.length });
+
+        // SoundCloud's like limit was hit and the server stopped this batch.
+        // Every later batch would fail the same way, so stop here too.
+        if (data.rateLimited === true) {
+          if (liked > 0) {
+            await queryClient.invalidateQueries({ queryKey: queryKeys.likes() });
+            await invalidatePlaylistCaches(queryClient, selectedPlaylist?.id ?? null);
+          }
+          const text =
+            `SoundCloud is limiting likes on your account right now. ` +
+            `Liked ${liked} of ${ids.length} tracks before it stopped — try the rest again later.`;
+          setNotice({ type: "error", text });
+          announce(text, { assertive: true });
+          return;
+        }
       }
 
       // Liked tracks changed the user's likes; refresh caches that show them.

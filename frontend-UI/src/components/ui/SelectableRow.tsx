@@ -84,6 +84,14 @@ export function SelectableRow({
         className,
       )}
     >
+      {/* The `onMouseDown` records modifier state for shift-click range
+          selection and nothing else — the row's actual control is the real
+          `<input type="checkbox">` this label is bound to, which carries the
+          keyboard path (`onKeyDown` clears the remembered modifier, `onChange`
+          toggles). `jsx-a11y/no-noninteractive-element-interactions` treats a
+          `<label>` as non-interactive and cannot see the association, so the
+          exemption is stated here rather than by leaving the rule at "warn". */}
+      {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions */}
       <label
         htmlFor={inputId}
         onMouseDown={(event) => {

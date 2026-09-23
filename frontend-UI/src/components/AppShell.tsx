@@ -453,7 +453,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           mid-announcement. */}
       <LiveRegion />
 
-      {/* Desktop sidebar */}
+      {/* Desktop sidebar.
+          The pointer handlers only peek the collapsed rail open while the
+          mouse is over it; the keyboard equivalent is the `onFocusCapture` /
+          `onBlurCapture` pair immediately below, and the rail's own
+          "Collapse sidebar" control is the explicit, non-hover path for
+          everyone. `jsx-a11y/no-noninteractive-element-interactions` cannot
+          see that the same state has a keyboard route, so the exemption is
+          stated here rather than by leaving the rule at "warn". */}
+      {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions */}
       <aside
         ref={asideRef}
         className={cn(

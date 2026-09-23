@@ -176,7 +176,7 @@ export default function FaqPage() {
             <div className="mb-6">
               <Link
                 href="/"
-                className="inline-flex items-center gap-2 text-sm font-medium text-muted-foreground transition hover:text-primary"
+                className="inline-flex items-center gap-2 text-sm font-medium text-muted-foreground transition hover:text-primary-text"
               >
                 <ArrowLeft className="h-4 w-4" />
                 Home
@@ -215,14 +215,14 @@ export default function FaqPage() {
                     No. See the{" "}
                     <Link
                       href="/privacy"
-                      className="font-medium text-foreground underline underline-offset-2 transition hover:text-primary"
+                      className="font-medium text-foreground underline underline-offset-2 transition hover:text-primary-text"
                     >
                       Privacy Policy
                     </Link>{" "}
                     for exactly what&apos;s stored, and the{" "}
                     <Link
                       href="/account/"
-                      className="font-medium text-foreground underline underline-offset-2 transition hover:text-primary"
+                      className="font-medium text-foreground underline underline-offset-2 transition hover:text-primary-text"
                     >
                       Account page
                     </Link>{" "}
@@ -243,7 +243,7 @@ export default function FaqPage() {
                     (Settings &rarr; Connected apps), or disconnect from the{" "}
                     <Link
                       href="/account/"
-                      className="font-medium text-foreground underline underline-offset-2 transition hover:text-primary"
+                      className="font-medium text-foreground underline underline-offset-2 transition hover:text-primary-text"
                     >
                       Account page
                     </Link>{" "}
@@ -256,7 +256,7 @@ export default function FaqPage() {
                     Open the{" "}
                     <Link
                       href="/account/"
-                      className="font-medium text-foreground underline underline-offset-2 transition hover:text-primary"
+                      className="font-medium text-foreground underline underline-offset-2 transition hover:text-primary-text"
                     >
                       Account page
                     </Link>{" "}
@@ -271,7 +271,7 @@ export default function FaqPage() {
                     are deleted from our database. See the{" "}
                     <Link
                       href="/privacy"
-                      className="font-medium text-foreground underline underline-offset-2 transition hover:text-primary"
+                      className="font-medium text-foreground underline underline-offset-2 transition hover:text-primary-text"
                     >
                       Privacy Policy
                     </Link>{" "}
@@ -306,7 +306,7 @@ export default function FaqPage() {
                     operations you run. The{" "}
                     <Link
                       href="/privacy"
-                      className="font-medium text-foreground underline underline-offset-2 transition hover:text-primary"
+                      className="font-medium text-foreground underline underline-offset-2 transition hover:text-primary-text"
                     >
                       Privacy Policy
                     </Link>{" "}
@@ -330,7 +330,7 @@ export default function FaqPage() {
                     Use the{" "}
                     <Link
                       href="/feedback/"
-                      className="font-medium text-foreground underline underline-offset-2 transition hover:text-primary"
+                      className="font-medium text-foreground underline underline-offset-2 transition hover:text-primary-text"
                     >
                       feedback form
                     </Link>{" "}

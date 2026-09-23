@@ -1,71 +1,167 @@
 # STATE
 
 ## Now
-**Cut over.** Track Toolkit runs on Azure at https://tracktoolkit.com against
-the Azure `tracktoolkit` database (2026-09-20). soundcloudtoolkit.com (apex,
-www, api) 301/308 to it. DigitalOcean is frozen (broken DATABASE_URL), Vercel
-and Neon untouched — all three are the rollback until a one-week soak ends.
-Verified end to end (browser login + playlists, 2026-09-20 19:44). Open:
-Search Console change of address (Cole, two clicks), soak, decommission.
-Read `docs/internal/MIGRATION.md` ("CUTOVER DONE") first.
+**`feat/trust-and-mobile` is complete and waiting on Cole's review and merge.**
+Briefs 1 through 16, with 16 split into 16a, 16b and 16c: the trust surfaces
+(privacy, terms, FAQ, accessibility statement, feedback, account), the
+accessibility and mobile sweep of every page, the account-lifecycle and
+retention work, and a test suite that went from nothing to a Playwright + axe
+end-to-end suite. `main` is merged in, so the branch also carries the Azure
+deploy CI and the rebuilt admin console.
+
+At the close, all green: `npm test` 58 suites / 622 tests; `npx tsc --noEmit`
+and `next lint` clean with the four jsx-a11y rules back at `error`;
+`npm run contrast` 115 pairs (1 documented near miss); `npm run test:e2e` 528
+passed / 112 skipped, with no `fixme` left anywhere in the suite.
+
+**Two things must happen before the merge, not after it** — `main` deploys to
+App Service on every push, so merging *is* deploying. See Next, items 1 and 2.
+
+What to check on the live site once it is deployed:
+- `curl -sI https://tracktoolkit.com/nope` → **404**, not 200. The static
+  export's 404 used to be served with a 200.
+- `curl -sI https://tracktoolkit.com/sc-toolkit` → **301** to `/faq/#rebrand`
+  (same for `/soundcloud-toolkit` and `/rebrand`).
+- `/faq` in Google's Rich Results Test → FAQPage detected, no errors.
+- Open the landing page with the network panel on **third-party** filter:
+  zero requests. No analytics, no font host, no widget CDN.
+- On **Cole's own account only**: `/account` → Download my data (a dated JSON
+  attachment, no token ciphertext in it) and Disconnect (which hands the grant
+  back to SoundCloud and deletes the token row — you will have to log in
+  again). Do not exercise either against anyone else's account.
+- `curl -sI https://tracktoolkit.com/ | grep -i content-security-policy` →
+  `frame-src 'none'`, no third-party script/style/font source. The `/admin`
+  document is the one exception and adds `frame-src https://w.soundcloud.com`
+  and nothing else.
+
+Before this branch: Track Toolkit runs on Azure at https://tracktoolkit.com
+against the Azure `tracktoolkit` database (cut over 2026-09-20).
+soundcloudtoolkit.com (apex, www, api) 301/308 to it. DigitalOcean is frozen
+(broken DATABASE_URL); Vercel and Neon are untouched and are the rollback.
+Read `docs/internal/MIGRATION.md` ("CUTOVER DONE") for that story.
 
 ## Just done
-- Embedded SoundCloud player in the catalog (expanded track row + Health
-  rows), with `frame-src https://w.soundcloud.com` applied to the `/admin`
-  document only — `securityHeaders` now dispatches on `isAdminPagePath`;
-  every other page keeps `frame-src 'none'` (test pins it).
-- Catalog view extended: playlists and artists roll-up listings, per-day
-  touch series, CSV export of any filtered list, optional duration/seen
-  columns, distinct-tracks counter, and Health with the console's first
-  write — `POST /api/admin/catalog/re-resolve` (forced enrichment, ≤200 ids,
-  heavy limiter, logged). `enrichTrackIds` gained a `force` option.
-- Admin console rebuilt (`frontend-UI/src/components/admin/`): five tabbed
-  views instead of one 1,600-line scroll, react-query polling that keeps
-  stale data visible, the previously unrendered `readLatency` p95 table, an
-  accessible inspector drawer, app tokens + ThemeContext instead of a private
-  theme, `isAdmin` on AuthContext and a sidebar link for admins. Rendered and
-  checked in Chromium against mocked admin responses (dark, light, mobile).
-- 2026-09-21 branch cleanup: PR #46 + #47 merged (`llms.txt`, then rewritten
-  for Track Toolkit / tracktoolkit.com), PR #27 closed, nine remote branches
-  deleted (all seven merged feature branches plus the dead `initialized` and
-  `backup-remote-main`). Kept: `feature/ai-library-chat` (owns production
-  tables), `codex-branding` (archived runner-up logo), PR #28 (stale draft),
-  and `claude/modest-thompson-pukoby` (created by another session).
-- Internal docs moved out of the repo root into `docs/internal/` (this file,
-  MIGRATION.md, ANALYSIS.md, DATA-COLLECTION.md, NOTES.md, TERMS-CHECK.md);
-  every reference updated. Root is README, CLAUDE.md, AGENTS.md, LICENSE.
-- ec6688b (PR #43) — branding hand-off on the live origin: JSON-LD logo →
-  `/brand/icon-512.png`, README follow-ups current; verified on
-  https://tracktoolkit.com: all /brand assets + manifest 200 with correct
-  types, og:image/canonical/apple-touch-icon in the served head, landing nav
-  and login show the mark, opengraph.xyz renders the new card; GitHub social
-  preview uploaded. Sidebar/dark/mobile screenshots still owed (needs a login
-  in the automation window).
-- c9af1df — PR #41: Track Toolkit identity shipped (three-bar mark, wordmarks,
-  maskable icons, opaque touch icon, 1200x630 og-image, generated Logo.tsx,
-  legacy icon files replaced in place; see Decisions 2026-09-20 "Logo").
-- 8731b98 / 50b659e — PR #39 and PR #40 merged after review (391 tests,
-  tsc, lint, build, boot) and a diff-scoped security review; review record
-  posted on #39. Deploy workflow run from main: success.
-- 4fed15c — `server/scripts/rotate-encryption-key.js` + tests; exercised
-  on the rehearsal DB (4089 rows there and back, idempotent re-run).
-- Key Vault `download-allowlist` now holds the real 3-id list (resolved).
-- Part 4 dry run: legacy-host redirects verified live on Azure with
-  `prep/domain-switch` deployed then reverted; `SESSION_COOKIE_SAMESITE=lax`.
-- 646dd20 — /health 200, login 302 to SoundCloud, Postgres password rotated.
+`feat/trust-and-mobile`, one line per phase, in the order they landed:
+
+- **Harness** — `jsx-a11y` strict preset in `eslint.config.mjs` and a
+  Playwright + `@axe-core/playwright` suite at 1280/430/390/360 against the
+  built export. Four rules started at `warn` with their counts; they end at
+  `error`.
+- **Support + SEO** — `lib/support.ts` as the one definition of the support
+  address, per-route metadata and canonicals, `noindex` on app routes, a real
+  **404 status** from Express (the static export answered 200), and 301
+  aliases `/sc-toolkit`, `/soundcloud-toolkit`, `/rebrand` → `/faq/#rebrand`.
+- **Legal and explanatory pages** — `/terms` (with `GOVERNING_LAW_STATE` left
+  as a marked placeholder), `/faq` with FAQPage structured data, the
+  accessibility statement rewritten to what is true, and the privacy policy
+  rewritten to what the code actually does.
+- **No analytics, no third-party scripts** — every tracker and external font
+  host removed, the CSP tightened to match, and
+  `tests/security-headers.test.js` failing if one comes back.
+- **Design tokens to AA** — dark text on the brand orange, `--primary-text`,
+  `--destructive-text`, `--muted-foreground-subtle`, a readable control
+  border, `prefers-reduced-motion` respected, and `npm run contrast` as the
+  gate that keeps them there.
+- **Primitives** — `Button`/`Input`/`Field`/`Select`/`IconButton`, then
+  `Dialog` + `useDialog`, `LiveRegion` + `useAnnounce`, `ProgressBar`,
+  `SectionHeading`, `SelectableRow`/`SelectableList`, `PageHeader` (titles and
+  focus).
+- **App shell** — the mobile drawer became a real dialog (focus trap, Escape,
+  focus return), navs are named, the collapsed rail expands from the keyboard,
+  and the Info group gained FAQ, feedback, account and terms.
+- **Feedback** — `Feedback` model + additive SQL, a validated
+  `POST /api/feedback` with a honeypot, per-user limiters and a 24-hour
+  duplicate check, `GET /api/feedback/mine`, the `/feedback` page, entry
+  points, and the admin inbox.
+- **Account lifecycle** — `POST /api/auth/disconnect` with a real SoundCloud
+  sign-out, revocation detection at the single refresh choke point,
+  `GET /api/auth/export`, and the daily retention job with its lifetime-user
+  snapshot. `/account` collects the three exits in one page.
+- **The page sweep (batches A–D)** — every tool page: labelled fields, named
+  icon controls, real checkboxes, progress that is announced, status that is a
+  word and not only a hue, and no horizontal overflow at 360.
+- **Shared-primitive and token round (16a)** — the destructive hover, the
+  brand tint and subtle text brought to AA with the gate extended to composite
+  tints; `min-w-0` on the `SelectableRow` root; `Field labelHidden`; the
+  download chips onto tokens.
+- **Safety and coverage round (16b)** — the disconnect window cut to **6
+  days** and `RETENTION_INTERVAL_MS` clamped to 24h in code; payloads checked
+  rather than cast; every route given a settle marker; a guard for a row that
+  scrolls *inside* its list.
+- **Close-out (16c)** — the bulk-review panel made keyboard-reachable,
+  `frame-src` added to the CSP sweep, the admin console's tone colours brought
+  to AA with the console added to the contrast gate, and this documentation.
+  Then a review round: `RETENTION_DRY_RUN` built (the "deploy inert and read
+  the counts" procedure this file described had no implementation behind it),
+  the contrast gate changed from holding a *copy* of `TONE_SOFT` to parsing
+  the real map out of `primitives.tsx`, and three public or load-bearing
+  claims rewritten to what the branch can evidence.
+- **Merged from `main` along the way**: the Azure deploy workflow (PR #52) and
+  the rebuilt admin console, with the Feedback inbox re-implemented as a view
+  inside it.
 
 ## Next
-1. Search Console → soundcloudtoolkit.com property → Settings → Change of
-   address → select tracktoolkit.com → Validate & update (Cole).
-2. Watch Azure for a week: `/health`, Log Analytics errors, Search Console
-   coverage on both properties.
-3. After a week: decommission DigitalOcean app, then Vercel, keep Neon a
-   month; rotate the SoundCloud client secret.
-4. Branding leftovers outside the web app (Cole): SoundCloud OAuth app
-   name "Track Toolkit" + `frontend-UI/public/brand/icon-512.png` as its
-   icon; Chrome extension icons from `docs/brand/extension/` + listing
-   renamed — only then may the two legacy icon files go. GitHub social
-   preview is done.
+1. **Apply the two SQL files to Azure Postgres BEFORE merging.** `main`
+   deploys on push, so the merge ships the code that reads these:
+   `docs/sql/2026-09-feedback.sql` (the `feedback` table) and
+   `docs/sql/2026-09-account-lifecycle.sql` (`users."lastLoginAt"`,
+   `users."disconnectedAt"`, the `metrics` table). Both are re-runnable. Both
+   files now name the database and the command. **Not Neon** — Neon is the
+   legacy database and nothing reads it.
+2. **First deploy with `RETENTION_DRY_RUN=true`.** Not
+   `RETENTION_ENABLED=false` — that schedules nothing, so it logs nothing, and
+   the silence reads exactly like "there was nothing to delete". (An earlier
+   draft of this list said to do that. It would have produced no counts, and
+   the first real sweep would then have deleted as it logged.)
+
+   **Set it in the Azure portal, on the App Service** (Settings →
+   Environment variables → App settings), *not* in Bicep.
+   `infra/main.bicep` declares `appSettings` as a complete list with no
+   parameter for this flag, and ARM replaces the whole list on deploy — so
+   **any `infra/deploy.sh` run silently ends the dry run** and the next sweep
+   is real. Code deploys are safe: the GitHub workflow is a zip deploy
+   (`azure/webapps-deploy@v3`) and does not touch settings. If an infra change
+   is needed while the dry run is up, re-add the setting straight afterwards
+   and check the boot line below before trusting it.
+
+   With the flag set, the job runs on its normal schedule — first run 10
+   minutes after boot — performs every count, and writes nothing at all. The
+   boot line names the mode, so it is checkable at a glance:
+   `[retention] Daily purge scheduled in DRY RUN mode`. In the App Service log
+   stream, look for:
+
+   ```
+   [retention] DRY RUN (RETENTION_DRY_RUN=true) — counting only, nothing is written
+   [retention] disconnected-users will remove N users
+   [retention] inactive-users will remove N users
+   [retention] operation-logs would remove N
+   ...
+   [retention] DRY RUN complete — no rows were deleted or updated
+   ```
+
+   The `will remove N users` lines are word-for-word what a real sweep prints,
+   so the numbers need no translation. Satisfy yourself they are what you
+   expect — the user sweeps cascade across every per-user table and are
+   irreversible — then delete the variable and let the next run do it for
+   real. `tests/retention-dry-run.test.js` is what asserts the flag issues no
+   write: it mocks the client with a Proxy that records any
+   `delete*`/`update*`/`upsert`/`create*` call, plus `$executeRaw` and
+   `$transaction`, on **any** delegate — including ones the test has never
+   heard of — and fails if the set is non-empty.
+3. **Fill `GOVERNING_LAW_STATE` in `frontend-UI/src/app/terms/page.tsx`.** It
+   ships as the literal string `[STATE]` and is visible on the page. Only Cole
+   can decide it.
+4. Search Console → soundcloudtoolkit.com property → Settings → Change of
+   address → tracktoolkit.com → Validate & update (Cole; still outstanding
+   from the cutover).
+5. **Decommission Neon by the end of October.** The privacy policy tells users
+   their data is deleted on the stated schedule, and a full copy of the old
+   database sitting in a second vendor is a promise not kept. DigitalOcean and
+   Vercel go first; Neon last.
+6. Branding leftovers outside the web app (Cole): SoundCloud OAuth app name
+   "Track Toolkit" + `frontend-UI/public/brand/icon-512.png` as its icon;
+   Chrome extension icons from `docs/brand/extension/` + listing renamed —
+   only then may the two legacy icon files go.
 
 ## Decisions
 - **Logo: the `claude-branding` shifted-bar mark** (2026-09-20). Three
@@ -158,7 +254,87 @@ Read `docs/internal/MIGRATION.md` ("CUTOVER DONE") first.
 - Database client commands for the cutover run in `docker run postgres:17`,
   not the Homebrew libpq (its `pg_dump` hangs against Neon) (2026-09-19).
 
+### From `feat/trust-and-mobile` (2026-09-22)
+- **No third-party scripts and no analytics. At all.** Not Google Analytics,
+  not Vercel Analytics or Speed Insights, not a tag manager, not a widget CDN,
+  not an external font host. The privacy policy says so in plain words, the
+  CSP is the enforcement, and `tests/security-headers.test.js` fails if a host
+  is added back. Measuring usage happens in `OperationLog`, which is ours and
+  is disclosed.
+- **Feedback lives at `/feedback` and is stored in Postgres and nowhere else.**
+  No email delivery, no webhook, no third-party form widget. It requires login
+  by decision, which is what lets the write path use a honeypot and a per-user
+  limiter instead of a captcha, and what makes every row attributable.
+- **Primary buttons are dark text on `#FF5500`**, not white. White on the
+  brand orange is 3.29:1; the dark navy `--primary-foreground` is 5.45:1. This
+  is the most visible single consequence of the AA work and it is deliberate —
+  do not "fix" it back to white.
+- **The light-mode gradient stops are darkened** (`#e04000`/`#f04a00`/
+  `#ff5500`) so the headline clears 3:1 on the cream background as large text.
+  The earlier stops did not. Do not lighten them again.
+- **`OperationLog` is kept 12 months, with a lifetime snapshot underneath it.**
+  The row-level detail ages out; `Metric.lifetime_distinct_users` is
+  snapshotted as the first step of every retention run — before any delete in
+  that run — so the all-time user figure is never silently rewritten downward
+  by its own purge.
+- **Inactive accounts are deleted after 24 months** of no login
+  (`INACTIVE_MONTHS`, calendar months in UTC).
+- **The music catalog is kept and disclosed.** `Track` and `Playlist` rows
+  harvested from resolved and browsed content stay; the privacy policy says
+  they exist and why. Rows marked `gone` lose their metadata on every
+  retention run.
+- **GDPR is treated as not applying** — Cole operates as an individual, not as
+  a business targeting the EU, and there is no EU representative line anywhere.
+  Export, deletion and a contact address are built for **everyone** regardless,
+  because they are the right thing to offer, not because a statute compels them.
+- **The old names are allowed in the FAQ page title and meta description**
+  (and in structured-data `alternateName`), so someone searching "SoundCloud
+  Toolkit" finds the rebrand explanation. That is the one place product-owned
+  naming may carry the old name; nowhere else.
+
 ## Landmines
+- **The retention job deletes users by `disconnectedAt` and `lastLoginAt`.**
+  `server/lib/retention.js` step 2 deletes every user still stamped
+  `disconnectedAt` after 6 days, and step 3 deletes users whose `lastLoginAt`
+  (or `updatedAt`, when null) is older than `INACTIVE_MONTHS`. Both cascade
+  through every per-user table. **Never reuse either column for a soft-disable,
+  a suspension, a "needs re-auth" flag or anything else.** Writing
+  `disconnectedAt` to mean "paused" would delete those accounts in under a
+  week, silently, with no user-facing signal.
+- **`RETENTION_ENABLED=false` is not a preview.** It schedules nothing, so it
+  logs nothing, and "no counts appeared" is indistinguishable from "there was
+  nothing to delete" — follow that as a dry run and you will enable the job
+  believing it is inert. `RETENTION_DRY_RUN=true` is the preview: it runs,
+  counts everything, logs every line a real sweep would, and issues no write.
+  It accepts exactly `true`; `1` and `yes` are refused on purpose, because a
+  dry run that silently became real is the failure that matters here.
+- **A portal-set `RETENTION_DRY_RUN` does not survive `infra/deploy.sh`.**
+  `infra/main.bicep` declares `appSettings` as a complete list with no
+  parameter for the flag, and ARM replaces the list wholesale, so an infra
+  redeploy ends the dry run with no signal beyond the next boot line. Zip
+  deploys (the GitHub workflow) leave settings alone. Anything else the
+  operator sets by hand on the App Service has the same exposure.
+- **The 6-day disconnect window is a constant on purpose, and
+  `RETENTION_INTERVAL_MS` is clamped to 24h in code.** SoundCloud's terms give
+  7 days; the sweep is daily, so the real worst case is the window plus up to
+  one interval. At 7 days that was up to 8 — past the ceiling. Neither number
+  may be raised from a deployment dashboard. See
+  `docs/internal/TERMS-CHECK.md` finding B.
+- **`Field` / `Dialog` / `IconButton` are the only sanctioned way to build a
+  form control, an overlay or an icon-only button.** A hand-rolled
+  `<label>`+`<input>` loses the `htmlFor` association, a hand-rolled `fixed
+  inset-0` div is not a dialog (no focus trap, no Escape, no accessible name),
+  and a bare `<button>` with a glyph has no name. Each of those was a real
+  axe violation on this branch; the primitives are what closed them, and the
+  e2e suite passes because pages go through them.
+- **The two SQL files in `docs/sql/` must run before the branch is deployed.**
+  `2026-09-feedback.sql` and `2026-09-account-lifecycle.sql`. Prisma queries
+  against the `feedback` table, `users."lastLoginAt"`, `users."disconnectedAt"`
+  or `metrics` return a 500 until they have. Both are re-runnable, both target
+  **Azure**, and `main` deploys on push — so "after the merge" is too late.
+- **`.superpowers/` is git-ignored scratch**, not part of the repo. The task
+  briefs, reports and review diffs for this branch live there. Nothing in it
+  ships, nothing in it is authoritative, and it is not on any other machine.
 - The Azure app (and any stack pointed at a COPY of the tokens table) will
   refresh SoundCloud tokens on use; refresh tokens are single-use, so the
   other stack loses that account until its owner logs in again. Do not run
@@ -230,18 +406,26 @@ Read `docs/internal/MIGRATION.md` ("CUTOVER DONE") first.
   past #ff8a3d; earlier #ffd28f failed contrast on the cream background.
 - `frontend-UI` logo assets have spaces in filenames ("/sc toolkit
   transparent .png") — referenced verbatim in code; renaming breaks pages.
-- No CI runs the Jest suite on push. `npm test` is manual, from the repo root
-  (not from frontend-UI, which has no test script).
+- CI runs `npm test` on every push to `main` (`.github/workflows/azure-deploy.yml`),
+  and a failure blocks the deploy. It does **not** run the frontend checks —
+  `tsc`, `next lint`, `npm run contrast` and `npm run test:e2e` are still
+  manual, from `frontend-UI`. The workflow also skips entirely for pushes that
+  only touch `**.md`, `docs/**`, `infra/**`, `.gitignore` or `LICENSE`, so a
+  docs-only push is never "verified by CI".
 - Survey localStorage keys are namespaced by `SURVEY_CAMPAIGN_ID`. Deploying a
   new survey while the old campaign id is still set in the environment means
   anyone who hit "Don't show again" on the previous survey never sees the new
   one. Bump or unset it with every survey swap.
-- Additive schema changes go in as raw SQL via the Neon console (see
-  `docs/sql/`), generated with `prisma migrate diff`. That sidesteps the
-  `db push` drop hazard above entirely — SQL cannot drop what it does not
-  mention. It does leave Prisma's migration history and the database out of
-  step, which is inert while this project uses `db push` (no migration table)
-  and would only matter on a switch to `prisma migrate`.
+- Additive schema changes go in as raw SQL against **Azure Postgres** (see
+  `docs/sql/`; each file names the database and the command), generated with
+  `prisma migrate diff` and then made re-runnable. Not Neon — Neon is the
+  legacy database and nothing reads it. This sidesteps the `db push` drop
+  hazard above entirely: SQL cannot drop what it does not mention. It does
+  leave Prisma's migration history and the database out of step, which is
+  inert while this project uses `db push` (no migration table) and would only
+  matter on a switch to `prisma migrate`. Keep the generated form exactly —
+  an `@updatedAt` column gets `TIMESTAMP(3) NOT NULL` with **no** default,
+  and adding one makes a later diff report drift.
 - Forced-choice + favourites-on-top is a known bias in the live vote: people
   who just want the modal gone click the top option, which is exactly what the
   result is meant to test. Read the top-two margin as soft. Randomising option

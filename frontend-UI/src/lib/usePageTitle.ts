@@ -6,10 +6,19 @@ import { PRODUCT_NAME } from "@/lib/rebrand";
 /**
  * Sets `document.title` for a client-rendered tool page.
  *
- * Only the root layout can export `metadata` under `output: 'export'`, so
- * every page in the app group otherwise shares one title — which makes tabs,
- * bookmarks and browser history indistinguishable, and means a screen reader
- * announces the same name for every navigation.
+ * A `"use client"` page cannot export `metadata`, and every page here is one.
+ * The public routes get around that with a sibling **server** `layout.tsx`
+ * that exports it — `about/`, `accessibility/`, `faq/`, `login/`, `privacy/`,
+ * `terms/` and `admin/` each have one, and that is where a new public route's
+ * title, description and canonical belong. (This is not "only the root layout
+ * may export metadata", which this comment used to say and which would send
+ * you to ship a route with no title and no canonical.)
+ *
+ * The tool pages in the `(app)` group are the exception: their shared layout
+ * sets `robots: noindex`, so there is nothing for a per-route `metadata` to
+ * earn — but they still need distinct *tab* titles, or bookmarks and browser
+ * history are indistinguishable and a screen reader announces the same name
+ * for every navigation. That is what this hook is for.
  *
  * The previous title is restored on unmount so a page that renders this
  * conditionally cannot leave a stale name behind, rather than keeping the name

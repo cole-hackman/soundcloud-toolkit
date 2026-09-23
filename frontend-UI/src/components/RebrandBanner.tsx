@@ -95,7 +95,7 @@ export function RebrandBanner() {
         </p>
         <Link
           href="/faq/#rebrand"
-          className="shrink-0 whitespace-nowrap text-xs font-medium text-foreground underline underline-offset-2 transition hover:text-primary sm:text-sm"
+          className="shrink-0 whitespace-nowrap text-xs font-medium text-foreground underline underline-offset-2 transition hover:text-primary-text sm:text-sm"
         >
           Read the FAQ
         </Link>

@@ -98,7 +98,7 @@ export function PerformanceView({ period, enabled, onInspectAction }: Props) {
                           {row.name}
                         </span>
                       ) : (
-                        <button type="button" onClick={() => onInspectAction(row.action)} className="truncate text-left text-foreground/90 hover:text-primary hover:underline" title={`Inspect ${row.name} operations`}>
+                        <button type="button" onClick={() => onInspectAction(row.action)} className="truncate text-left text-foreground/90 hover:text-primary-text hover:underline" title={`Inspect ${row.name} operations`}>
                           {row.name}
                         </button>
                       )}
@@ -153,7 +153,7 @@ export function PerformanceView({ period, enabled, onInspectAction }: Props) {
             <dl className="grid grid-cols-2 gap-x-4 gap-y-4">
               <div>
                 <dt className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">Write failures</dt>
-                <dd className={cn("mt-1 font-display text-2xl font-semibold tabular-nums", wh.failures > 0 ? "text-destructive" : "text-chart-3")}>{fmtInt(wh.failures)}</dd>
+                <dd className={cn("mt-1 font-display text-2xl font-semibold tabular-nums", wh.failures > 0 ? "text-destructive-text" : "text-success-text")}>{fmtInt(wh.failures)}</dd>
               </div>
               <div>
                 <dt className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">Last write</dt>
@@ -163,7 +163,7 @@ export function PerformanceView({ period, enabled, onInspectAction }: Props) {
               </div>
               {wh.failures > 0 && (
                 <div className="col-span-2 rounded-lg border border-destructive/40 bg-destructive/[0.08] p-3">
-                  <dt className="font-mono text-[10px] uppercase tracking-[0.1em] text-destructive">Last failure · {wh.lastFailureAt ? timeAgo(wh.lastFailureAt) : "—"}</dt>
+                  <dt className="font-mono text-[10px] uppercase tracking-[0.1em] text-destructive-text">Last failure · {wh.lastFailureAt ? timeAgo(wh.lastFailureAt) : "—"}</dt>
                   <dd className="mt-1 break-words font-mono text-[12px] text-foreground">{wh.lastFailureMessage || "No message captured."}</dd>
                 </div>
               )}

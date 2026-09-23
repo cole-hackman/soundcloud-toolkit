@@ -60,7 +60,7 @@ export function ArchiveView({ enabled }: { enabled: boolean }) {
         hint="Closed 2026-09-10. The write path answers 410; rows are retained."
         action={
           summary ? (
-            <span className="inline-flex items-center gap-1.5 rounded-md bg-chart-3/12 px-2 py-1 font-mono text-[11px] font-semibold text-chart-3">
+            <span className="inline-flex items-center gap-1.5 rounded-md bg-chart-3/12 px-2 py-1 font-mono text-[11px] font-semibold text-success-text">
               <Trophy className="h-3.5 w-3.5" aria-hidden="true" />
               {REBRAND_NAME_LABELS[DECIDED_NAME]} · {fmtInt(winnerCount)} of {fmtInt(summary.total)}
             </span>
@@ -138,7 +138,7 @@ export function ArchiveView({ enabled }: { enabled: boolean }) {
               <tbody>
                 {shownVotes.map((v) => (
                   <tr key={v.id} className="align-top hover:bg-primary/[0.04]">
-                    <td className={cn(tdClass, "max-w-[150px] truncate font-mono text-[12px] font-medium text-primary")}>@{v.user.username}</td>
+                    <td className={cn(tdClass, "max-w-[150px] truncate font-mono text-[12px] font-medium text-primary-text")}>@{v.user.username}</td>
                     <td className={cn(tdClass, "whitespace-nowrap", v.nameChoice === DECIDED_NAME ? "font-semibold text-foreground" : "text-foreground/80")}>
                       {REBRAND_NAME_LABELS[v.nameChoice] || v.nameChoice}
                     </td>

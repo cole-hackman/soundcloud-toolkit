@@ -346,7 +346,12 @@ export default function Dashboard() {
       }}
     >
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+        /* The Google Fonts @import that used to be here is deleted. This file
+           is a design reference, not shipped code, but the app loads no
+           external font host at all — next/font self-hosts the webfonts into
+           the static export and the CSP in server/middleware/security.js names
+           no third-party style or font source. Leaving the line here invited
+           someone to copy it into something that does ship. */
         @keyframes fadeSlideUp {
           from { opacity: 0; transform: translateY(16px); }
           to { opacity: 1; transform: translateY(0); }

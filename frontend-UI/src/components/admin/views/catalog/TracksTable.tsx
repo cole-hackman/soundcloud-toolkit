@@ -66,7 +66,7 @@ function TrackOpsRow({ trackId, title, permalinkUrl, colSpan }: { trackId: strin
           <ul className="divide-y divide-border/40">
             {q.data.map((op) => (
               <li key={op.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-1.5 text-[12px]">
-                <span className="font-mono font-medium text-primary">@{op.user.username}</span>
+                <span className="font-mono font-medium text-primary-text">@{op.user.username}</span>
                 <span className="text-foreground/90">{op.actionName}</span>
                 <StatusPill status={op.status} />
                 <span className="font-mono text-[11px] text-muted-foreground" title={fmtAbsolute(op.createdAt)}>{timeAgo(op.createdAt)}</span>
@@ -239,7 +239,7 @@ export function TracksTable({ period, enabled, summary, filter, onFilterChange }
                       </td>
                       <td className={cn(tdClass, "max-w-[280px]")}>
                         <div className="flex min-w-0 items-center gap-1.5">
-                          <span className={cn("truncate", t.title ? "text-foreground" : "font-mono text-chart-4")}>{t.title || `#${id} (unresolved)`}</span>
+                          <span className={cn("truncate", t.title ? "text-foreground" : "font-mono text-warning-text")}>{t.title || `#${id} (unresolved)`}</span>
                           {t.permalinkUrl && (
                             <a
                               href={t.permalinkUrl}
@@ -247,24 +247,24 @@ export function TracksTable({ period, enabled, summary, filter, onFilterChange }
                               rel="noreferrer"
                               onClick={(e) => e.stopPropagation()}
                               aria-label="Open on SoundCloud"
-                              className="shrink-0 text-muted-foreground hover:text-primary"
+                              className="shrink-0 text-muted-foreground hover:text-primary-text"
                             >
                               <ExternalLink className="h-3 w-3" aria-hidden="true" />
                             </a>
                           )}
                         </div>
-                        {t.resolveStatus !== "resolved" && <span className="font-mono text-[10px] text-chart-4">{t.resolveStatus}</span>}
+                        {t.resolveStatus !== "resolved" && <span className="font-mono text-[10px] text-warning-text">{t.resolveStatus}</span>}
                       </td>
                       <td className={cn(tdClass, "max-w-[180px] truncate text-foreground/80")}>{t.artistName || "—"}</td>
-                      <td className={cn(tdClass, "font-mono text-[11px]", t.genreNormalized ? "text-muted-foreground" : "text-chart-4")}>{t.genreNormalized || "(none)"}</td>
+                      <td className={cn(tdClass, "font-mono text-[11px]", t.genreNormalized ? "text-muted-foreground" : "text-warning-text")}>{t.genreNormalized || "(none)"}</td>
                       <td className={cn(tdClass, "font-mono text-[11px]")}>
-                        <span className={cn("inline-flex items-center gap-1.5", accessTone(t.access) === "ok" ? "text-chart-3" : accessTone(t.access) === "danger" ? "text-destructive" : "text-muted-foreground")}>
+                        <span className={cn("inline-flex items-center gap-1.5", accessTone(t.access) === "ok" ? "text-success-text" : accessTone(t.access) === "danger" ? "text-destructive-text" : "text-muted-foreground")}>
                           <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-current" />
                           {t.access || "unknown"}
                         </span>
                       </td>
                       {cols.has("duration") && <td className={cn(tdClass, "text-right font-mono tabular-nums text-muted-foreground")}>{fmtMs(t.durationMs)}</td>}
-                      <td className={cn(tdClass, "text-right font-mono font-semibold tabular-nums text-primary")}>{fmtInt(t.touches)}</td>
+                      <td className={cn(tdClass, "text-right font-mono font-semibold tabular-nums text-primary-text")}>{fmtInt(t.touches)}</td>
                       <td className={cn(tdClass, "text-right font-mono tabular-nums text-foreground/80")}>{fmtInt(t.users)}</td>
                       <td className={cn(tdClass, "whitespace-nowrap font-mono text-[11px] text-muted-foreground")} title={fmtAbsolute(t.last_touched)}>
                         {t.last_touched ? timeAgo(t.last_touched) : "—"}

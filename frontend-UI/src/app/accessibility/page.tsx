@@ -6,16 +6,50 @@ import { SupportLink } from "@/components/SupportLink";
 
 const LAST_REVIEWED = "2026-09-22";
 
-// Seeded from the audit that drove this rewrite. Task 16 will prune this
-// list as each item is fixed — remove an entry only once it's actually
-// resolved, not when it merely looks fixed.
+/**
+ * Only what is still true. Five entries were seeded here when this page was
+ * written and all five are now fixed, so all five are gone:
+ *
+ *  - the mobile drawer is a real `Dialog` with a focus trap, Escape and focus
+ *    return (`components/AppShell.tsx`);
+ *  - every bulk operation reports progress, with a `ProgressBar` where there
+ *    is something determinate to count and an announcement where there is not;
+ *  - icon-only controls are `IconButton` (or a link with an `aria-label`);
+ *  - every field has a name, through `Field` / `Select`;
+ *  - the orange-as-text problem is fixed at the token level (`--primary-text`)
+ *    and held there by `npm run contrast`, which exits non-zero below 4.5:1.
+ *
+ * Add an entry the moment something is found, and remove one only once it is
+ * actually resolved — not when it merely looks resolved. An empty list would
+ * be a claim of full conformance, which is not what the section above says.
+ *
+ * The remaining entry covers every instance of one pattern, not one page.
+ * `bg-primary/10` + `text-primary` on an icon measures 2.75:1 and appears on
+ * the dashboard tiles, four places on the public landing page (`app/page.tsx`
+ * — the feature cards and the step markers), the "What's new" modal, and two
+ * result rows (batch-link-resolver, growth). Naming only the dashboard while
+ * the same thing sits on the page most visitors see first would understate
+ * it on the one page where understating is the exposure.
+ */
 const KNOWN_ISSUES: string[] = [
-  "The mobile navigation drawer is not yet a proper dialog for screen readers.",
-  "Some bulk operations do not announce progress as they run.",
-  "Some icon-only buttons lack accessible names.",
-  "Some form fields lack visible labels.",
-  "Orange text on light backgrounds is below 4.5:1 contrast in places.",
+  "Small brand-orange icons on tinted discs — on the home page's feature " +
+    "cards and numbered steps, the dashboard tiles, and a few result rows — " +
+    "sit below the 3:1 minimum for non-text contrast. Each one is decorative " +
+    "and repeats a heading or a number printed right beside it, so nothing is " +
+    "available only from the icon.",
 ];
+
+/**
+ * Manual testing Cole has personally done, in his own words. **Empty on
+ * purpose** — nothing on this branch performed a manual screen-reader or
+ * keyboard pass, so listing one would be a claim the project cannot evidence,
+ * which is the failure this page exists to avoid making.
+ *
+ * Add entries here as they actually happen ("VoiceOver on iOS 18, Safari,
+ * dashboard and combine, 2026-10-04"). The page renders a plain admission
+ * while the list is empty, and drops it as soon as it is not.
+ */
+const MANUAL_TESTING: string[] = [];
 
 export default function AccessibilityPage() {
   return (
@@ -71,12 +105,37 @@ export default function AccessibilityPage() {
               </h2>
               <ul className="list-disc list-inside space-y-2 ml-4">
                 <li>
-                  Automated axe checks at 1280px, 430px, 390px, and 360px
-                  viewport widths
+                  Automated axe checks on every page you can reach as a
+                  signed-in user, at 1280px, 430px, 390px and 360px, run
+                  before each release. The admin console isn&apos;t in that
+                  suite
                 </li>
-                <li>Keyboard-only walkthroughs of every page and tool</li>
-                <li>VoiceOver testing on iOS</li>
+                <li>
+                  Automated keyboard checks in the same suite, for the parts
+                  every page is built from: dialogs trap focus and give it
+                  back, Tab wraps inside them, Escape closes them, the sidebar
+                  opens and closes from the keyboard, and long titles
+                  don&apos;t push controls off a phone screen
+                </li>
+                <li>
+                  A colour-contrast check over the colours we define, run
+                  before each release. It compares colours as we define them,
+                  not every way a page might combine them, so an unusual
+                  combination in one component can still slip through
+                </li>
+                {MANUAL_TESTING.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
               </ul>
+              {MANUAL_TESTING.length === 0 && (
+                <p className="mt-4">
+                  Those are all automated. We haven&apos;t yet done a
+                  hands-on pass with a screen reader, or a full keyboard
+                  walkthrough by a person — so if you use one and something
+                  is wrong, there&apos;s a good chance we haven&apos;t caught
+                  it, and we&apos;d genuinely like to hear.
+                </p>
+              )}
             </section>
 
             <section>
@@ -106,14 +165,15 @@ export default function AccessibilityPage() {
                 <SupportLink subject="Accessibility issue on Track Toolkit">
                   Email us
                 </SupportLink>{" "}
-                with what you were trying to do and what happened, or use the{" "}
+                with what you were trying to do and what happened — email
+                needs no account. If you&apos;re signed in, the{" "}
                 <Link
                   href="/feedback/"
-                  className="font-medium text-foreground underline underline-offset-2 transition hover:text-primary"
+                  className="font-medium text-foreground underline underline-offset-2 transition hover:text-primary-text"
                 >
                   feedback form
-                </Link>
-                .
+                </Link>{" "}
+                works too.
               </p>
             </section>
           </div>

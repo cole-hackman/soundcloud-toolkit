@@ -568,7 +568,7 @@ export default function Home() {
                     {faq.linkHref && faq.linkLabel && (
                       <Link
                         href={faq.linkHref}
-                        className="mt-2 inline-block text-sm font-medium text-foreground underline underline-offset-2 transition hover:text-primary"
+                        className="mt-2 inline-block text-sm font-medium text-foreground underline underline-offset-2 transition hover:text-primary-text"
                       >
                         {faq.linkLabel}
                       </Link>
@@ -580,7 +580,7 @@ export default function Home() {
             <div className="mt-8 text-center">
               <Link
                 href="/faq"
-                className="text-sm font-medium text-foreground underline underline-offset-2 transition hover:text-primary"
+                className="text-sm font-medium text-foreground underline underline-offset-2 transition hover:text-primary-text"
               >
                 More questions →
               </Link>

@@ -28,6 +28,15 @@ export function useElementWidth<T extends HTMLElement>(fallback = 600) {
 
 /* ── Sparkline ─────────────────────────────────────────────────────────── */
 
+/**
+ * Call sites pass a `--chart-*` colour and keep it, while every *text* use of
+ * those tokens in the console moved to the `*-text` siblings on 2026-09-22.
+ * That is deliberate: a spark has to match the series it summarises, and it is
+ * a decorative restatement of the number printed beside it — there is nothing
+ * in it that is only available from the line. Under 1.4.11 that makes it
+ * exempt rather than a 3:1 graphic. If a spark ever becomes the only way to
+ * read a value, it needs a `*-text` colour and a gate row.
+ */
 export function Sparkline({
   values,
   width = 96,

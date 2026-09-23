@@ -30,17 +30,24 @@ const eslintConfig = [
       "react/no-unescaped-entities": "off",
       "@next/next/no-img-element": "off",
 
-      // jsx-a11y strict-preset baseline (2026-09-22, Task 1 of
-      // feat/trust-and-mobile). These rules fire on existing code that this
-      // task does not fix; each is downgraded to "warn" with the count of
-      // violations at the time it was set, so the baseline stays visible and
-      // later phases can turn them back to "error" as they clean up their
-      // pages. Do not add a rule here without a count — an uncounted "warn"
-      // can silently regress.
-      "jsx-a11y/label-has-associated-control": "warn", // 18 at baseline
-      "jsx-a11y/click-events-have-key-events": "warn", // 12 at baseline
-      "jsx-a11y/no-static-element-interactions": "warn", // 11 at baseline
-      "jsx-a11y/no-noninteractive-element-interactions": "warn", // 3 at baseline
+      // These four were downgraded to "warn" at the start of
+      // feat/trust-and-mobile (18 / 12 / 11 / 3 violations) so the branch
+      // could see the baseline while it worked through it. At the end of the
+      // branch the counts are 0 / 0 / 1 / 2, the three survivors are stated
+      // as `eslint-disable-next-line` at their call sites with the reason
+      // written beside them (GlareHover's decorative pointer gloss, the
+      // desktop rail's hover-peek which has a focus equivalent, and
+      // SelectableRow's `<label>` bound to a real checkbox), and all four
+      // rules are back at "error".
+      //
+      // Anything new that trips them is a build failure, which is the point:
+      // a "warn" that nobody is counting down is indistinguishable from the
+      // rule being off. If one has to go back to "warn", put the count beside
+      // it again — an uncounted "warn" regresses silently.
+      "jsx-a11y/label-has-associated-control": "error",
+      "jsx-a11y/click-events-have-key-events": "error",
+      "jsx-a11y/no-static-element-interactions": "error",
+      "jsx-a11y/no-noninteractive-element-interactions": "error"
     },
   },
 ];

@@ -4,12 +4,42 @@
 // Parses the `:root` (light) and `.dark` blocks for `--name: H S% L%;`
 // declarations, computes the WCAG 2.x contrast ratio for a fixed list of
 // foreground/background pairs in both themes, prints a table and exits 1 if
-// any pair is under its threshold. No dependencies on purpose: this runs in
-// CI and in `npm run contrast` without an install step.
+// any pair is under its threshold. No dependencies on purpose, so it runs from
+// `npm run contrast` with no install step.
+//
+// WHERE IT RUNS: by hand. Nothing invokes it automatically — `npm run build`
+// is `next build` alone, and the GitHub workflow runs the Jest suite and the
+// build, not this. CLAUDE.md's "Development Commands / Frontend" section names
+// it in the run-before-you-claim-done line, which is the whole of the process
+// around it. Do not describe it anywhere as a check that "fails the build"
+// unless someone has actually wired it into one.
+//
+// WHAT IT DOES NOT COVER — read this before quoting its score.
+// It compares *token pairs*. It cannot see a call site, so a green run is
+// evidence that the tokens can be combined safely, not that every component
+// combines them that way. Two consequences worth naming:
+//
+//  1. Until 2026-09-22 it held no admin-console pair at all, and reported
+//     "All 73 pass" the whole time the console's own `TONE_SOFT` map was
+//     rendering a 10px pill at 1.43:1. The ADMIN_* block near the bottom now
+//     covers that map — every tone, both halves, over the three surfaces a
+//     console pill lands on. It covers it by READING `primitives.tsx`, not by
+//     restating it here: the first version of this block was a hand-copied
+//     replica, and a replica cannot notice its original changing. Regressing
+//     `TONE_SOFT.ok` back to `text-chart-3` left it printing 115 passing pairs.
+//  2. It still cannot catch a component that reaches past the tone maps for a
+//     raw `--chart-*` or `--primary`. The console's views were swept onto the
+//     `*-text` tokens in the same change, and the only deliberate survivors
+//     are the three `<Sparkline className="text-chart-*">` call sites in
+//     OverviewView (see the note on `Sparkline` in components/admin/charts.tsx).
+//     Nothing here would notice a new one.
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
 const CSS = fileURLToPath(new URL("../src/app/globals.css", import.meta.url));
+const ADMIN_PRIMITIVES = fileURLToPath(
+  new URL("../src/components/admin/primitives.tsx", import.meta.url),
+);
 
 /** Pairs checked in both themes: [foreground, background, threshold, note]. */
 const PAIRS = [
@@ -101,6 +131,97 @@ const TINTED_PAIRS = [
   ["tone-foreground", "tone-purchase", 0.9, "background", 4.5, "purchase-link chip hover"],
 ];
 
+/**
+ * The admin console's tone system, READ FROM
+ * `src/components/admin/primitives.tsx` rather than restated here.
+ *
+ * `TONE_SOFT` is `bg-<tint>/<alpha> text-<ink>` and `TONE_TEXT` is the ink on
+ * its own; `TONE_BG` is bars and dots, which are graphical and not gated.
+ *
+ * This is parsed, not copied, and that is the whole point. The first version
+ * of this block was a hand-written replica of `TONE_SOFT`, which meant the
+ * gate was checking a copy: editing `primitives.tsx` to put a chart colour
+ * back on 10px text left it reporting 115 passing pairs and exiting 0. A gate
+ * that names a file it cannot see is worse than no gate, because the score
+ * gets quoted. Parsing costs ten lines and the divergence becomes impossible
+ * rather than merely discouraged.
+ *
+ * The class→token mapping is identity by construction: `text-primary-text` is
+ * `hsl(var(--primary-text))` in tailwind.config.ts, `bg-chart-3` is
+ * `--chart-3`, and so on, so stripping the utility prefix gives the custom
+ * property name. A class whose token is not in globals.css throws by name
+ * from `token()`, which is the right failure — it means the two files have
+ * drifted.
+ */
+function parseToneMap(source, name, { classesPerTone = 2 } = {}) {
+  const block = source.match(
+    new RegExp(`export const ${name}: Record<Tone, string> = \\{([\\s\\S]*?)\\n\\};`),
+  );
+  if (!block) {
+    throw new Error(
+      `${name} not found in components/admin/primitives.tsx. This gate reads that map ` +
+      'rather than duplicating it; if it was renamed or reshaped, update the parser — ' +
+      'do not re-inline the values, which is the bug this replaced.',
+    );
+  }
+  const entries = [];
+  for (const [, tone, classes] of block[1].matchAll(/^\s*(\w+):\s*"([^"]+)",\s*$/gm)) {
+    const words = classes.trim().split(/\s+/);
+    if (words.length !== classesPerTone) {
+      throw new Error(`${name}.${tone} has ${words.length} classes, expected ${classesPerTone}: "${classes}"`);
+    }
+    const ink = classes.match(/(?:^|\s)text-([a-z0-9-]+)(?=\s|$)/);
+    if (!ink) throw new Error(`${name}.${tone} has no text- class: "${classes}"`);
+    if (classesPerTone === 1) {
+      entries.push([tone, ink[1]]);
+      continue;
+    }
+    const bg = classes.match(/(?:^|\s)bg-([a-z0-9-]+)(?:\/(\d+))?(?=\s|$)/);
+    if (!bg) throw new Error(`${name}.${tone} has no bg- class: "${classes}"`);
+    // No `/NN` means an opaque fill: the surface under it is irrelevant.
+    entries.push([tone, ink[1], bg[1], bg[2] ? Number(bg[2]) / 100 : 1]);
+  }
+  return entries;
+}
+
+/** The six tones, in the order the type declares them. A tone that disappears
+ *  or is renamed has to be noticed here rather than quietly shrink the table. */
+const EXPECTED_TONES = ["primary", "ok", "warn", "danger", "info", "muted"];
+
+const primitives = await readFile(ADMIN_PRIMITIVES, "utf8");
+const ADMIN_TONES = parseToneMap(primitives, "TONE_SOFT");
+const ADMIN_TONE_TEXT = parseToneMap(primitives, "TONE_TEXT", { classesPerTone: 1 });
+for (const [label, parsed] of [["TONE_SOFT", ADMIN_TONES], ["TONE_TEXT", ADMIN_TONE_TEXT]]) {
+  const tones = parsed.map(([tone]) => tone);
+  if (tones.join(",") !== EXPECTED_TONES.join(",")) {
+    throw new Error(
+      `${label} tones are [${tones}], expected [${EXPECTED_TONES}]. ` +
+      // Order matters as well as membership, so this fires for a reorder too —
+      // in which case nothing was added and there is nothing to check. Name
+      // both possibilities rather than sending the reader to edit a list that
+      // is already correct.
+      'If a tone was added or renamed, update EXPECTED_TONES once you have ' +
+      'checked its numbers. If the same six were only reordered, reorder ' +
+      'EXPECTED_TONES to match — the order is what makes a dropped entry an ' +
+      'error instead of a quietly shorter table.',
+    );
+  }
+}
+
+/**
+ * The surfaces a console pill lands on. `Panel` is `bg-card/85` over the page,
+ * so `card` and `background` bracket it in both themes — but the third base is
+ * not bracketed by anything: the unread row in the Feedback inbox adds a
+ * `bg-primary/[0.05]` brand wash on top (`views/FeedbackView.tsx`), and a tint
+ * over a tint lands on a colour neither of the other two names. It is modelled
+ * rather than assumed, because assuming was the failure mode.
+ */
+const ADMIN_BASES = [
+  ["background", null],
+  ["card", null],
+  ["card+unread", ["primary", 0.05, "card"]],
+];
+
 /** Light-mode `.text-gradient` stops, large text only (3:1). */
 const GRADIENT_STOPS = ["#e04000", "#f04a00", "#ff5500"];
 
@@ -185,11 +306,17 @@ function token(theme, tokens, name) {
   return hslToRgb(tokens[name]);
 }
 
+/** `<theme>:<pair>` of every row already emitted, so a derived admin row that
+ *  restates a PAIRS entry is dropped rather than duplicated. */
+const seen = new Set();
+
 for (const [theme, tokens] of Object.entries(themes)) {
   for (const [fg, bg, min, note] of PAIRS) {
+    const pair = `${fg} / ${bg}`;
+    seen.add(`${theme}:${pair}`);
     rows.push({
       theme,
-      pair: `${fg} / ${bg}`,
+      pair,
       value: ratio(token(theme, tokens, fg), token(theme, tokens, bg)),
       min,
       note,
@@ -208,6 +335,46 @@ for (const [theme, tokens] of Object.entries(themes)) {
       min,
       note,
     });
+  }
+  // `TONE_TEXT` ink on a plain surface (the Stat tile's aside, the Mini
+  // value). Rows the PAIRS list already carries are skipped so the table does
+  // not print the same measurement twice under two names — `seen` is keyed on
+  // theme and pair, not on the tone, because two tones can share an ink.
+  for (const [tone, ink] of ADMIN_TONE_TEXT) {
+    for (const base of ["background", "card"]) {
+      const pair = `${ink} / ${base}`;
+      if (seen.has(`${theme}:${pair}`)) continue;
+      seen.add(`${theme}:${pair}`);
+      rows.push({
+        theme,
+        pair,
+        value: ratio(token(theme, tokens, ink), token(theme, tokens, base)),
+        min: 4.5,
+        note: `admin console TONE_TEXT (${tone})`,
+      });
+    }
+  }
+  for (const [tone, ink, tint, alpha] of ADMIN_TONES) {
+    // An opaque fill hides whatever is under it, so one base says everything.
+    const bases = alpha === 1 ? ADMIN_BASES.slice(1, 2) : ADMIN_BASES;
+    for (const [baseName, nested] of bases) {
+      const base = nested
+        ? composite(
+            token(theme, tokens, nested[0]),
+            token(theme, tokens, nested[2]),
+            nested[1],
+          )
+        : token(theme, tokens, baseName);
+      const surface =
+        alpha === 1 ? token(theme, tokens, tint) : composite(token(theme, tokens, tint), base, alpha);
+      rows.push({
+        theme,
+        pair: `admin ${tone}: ${ink} / ${tint}@${Math.round(alpha * 100)} on ${baseName}`,
+        value: ratio(token(theme, tokens, ink), surface),
+        min: 4.5,
+        note: "admin console TONE_SOFT pill",
+      });
+    }
   }
 }
 for (const stop of GRADIENT_STOPS) {

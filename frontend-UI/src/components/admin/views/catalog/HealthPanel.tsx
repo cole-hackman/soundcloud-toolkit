@@ -138,7 +138,7 @@ export function HealthPanel({ period, enabled, summary, state, onStateChange }: 
         )}
         {lastResult && !reResolve.isPending && !reResolve.isError && (
           <div role="status" className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-chart-3/30 bg-chart-3/[0.06] px-3 py-2 font-mono text-[12px] text-foreground">
-            <CheckCircle2 className="h-4 w-4 text-chart-3" aria-hidden="true" />
+            <CheckCircle2 className="h-4 w-4 text-success-text" aria-hidden="true" />
             Re-resolved {fmtInt(lastResult.requested)}: {fmtInt(lastResult.fetched)} came back from SoundCloud, {fmtInt(lastResult.missing)} did not.
             <span className="text-muted-foreground">{timeAgo(new Date(lastResult.at).toISOString())} · lists refresh automatically</span>
           </div>
@@ -193,9 +193,9 @@ export function HealthPanel({ period, enabled, summary, state, onStateChange }: 
                     </td>
                     <td className={cn(tdClass, "max-w-[300px]")}>
                       <div className="flex min-w-0 items-center gap-1.5">
-                        <span className={cn("truncate", t.title ? "text-foreground" : "font-mono text-chart-4")}>{t.title || `#${id}`}</span>
+                        <span className={cn("truncate", t.title ? "text-foreground" : "font-mono text-warning-text")}>{t.title || `#${id}`}</span>
                         {t.permalinkUrl && (
-                          <a href={t.permalinkUrl} target="_blank" rel="noreferrer" aria-label="Open on SoundCloud" className="shrink-0 text-muted-foreground hover:text-primary">
+                          <a href={t.permalinkUrl} target="_blank" rel="noreferrer" aria-label="Open on SoundCloud" className="shrink-0 text-muted-foreground hover:text-primary-text">
                             <ExternalLink className="h-3 w-3" aria-hidden="true" />
                           </a>
                         )}
@@ -204,11 +204,11 @@ export function HealthPanel({ period, enabled, summary, state, onStateChange }: 
                     </td>
                     <td className={cn(tdClass, "max-w-[180px] truncate text-foreground/80")}>{t.artistName || "—"}</td>
                     <td className={cn(tdClass, "font-mono text-[11px]")}>
-                      <span className={meta.kind === "access" ? "text-destructive" : "text-chart-4"}>{meta.kind === "access" ? t.access : t.resolveStatus}</span>
-                      {meta.kind === "access" && t.resolveStatus !== "resolved" && <span className="ml-1.5 text-chart-4">{t.resolveStatus}</span>}
+                      <span className={meta.kind === "access" ? "text-destructive-text" : "text-warning-text"}>{meta.kind === "access" ? t.access : t.resolveStatus}</span>
+                      {meta.kind === "access" && t.resolveStatus !== "resolved" && <span className="ml-1.5 text-warning-text">{t.resolveStatus}</span>}
                     </td>
                     <td className={cn(tdClass, "text-right font-mono tabular-nums text-muted-foreground")}>{fmtInt(t.resolveAttempts)}</td>
-                    <td className={cn(tdClass, "text-right font-mono font-semibold tabular-nums text-primary")}>{fmtInt(t.touches)}</td>
+                    <td className={cn(tdClass, "text-right font-mono font-semibold tabular-nums text-primary-text")}>{fmtInt(t.touches)}</td>
                     <td className={cn(tdClass, "whitespace-nowrap font-mono text-[11px] text-muted-foreground")} title={fmtAbsolute(t.lastSeenAt)}>
                       {t.lastSeenAt ? timeAgo(t.lastSeenAt) : "—"}
                     </td>
@@ -219,7 +219,7 @@ export function HealthPanel({ period, enabled, summary, state, onStateChange }: 
                           aria-pressed={isPlaying}
                           aria-label={isPlaying ? "Close player" : `Play ${t.title || `track ${id}`} here`}
                           onClick={() => setPlaying(isPlaying ? null : id)}
-                          className={cn("inline-flex h-6 w-6 items-center justify-center rounded", isPlaying ? "bg-primary/15 text-primary" : "text-muted-foreground hover:text-primary")}
+                          className={cn("inline-flex h-6 w-6 items-center justify-center rounded", isPlaying ? "bg-primary/15 text-primary-text" : "text-muted-foreground hover:text-primary-text")}
                         >
                           {isPlaying ? <X className="h-3.5 w-3.5" aria-hidden="true" /> : <Play className="h-3.5 w-3.5" aria-hidden="true" />}
                         </button>

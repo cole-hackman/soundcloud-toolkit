@@ -59,6 +59,12 @@ export default {
         warning: {
           text: 'hsl(var(--warning-text))'
         },
+        /* `text-info-text` — the readable sibling of --chart-2, for the
+           admin console's `info` tone. --chart-2 itself stays a data-viz
+           colour. */
+        info: {
+          text: 'hsl(var(--info-text))'
+        },
         /* Categorical chip tones — see the block in globals.css. `foreground`
            is shared because all three are dark surfaces carrying white. */
         tone: {

@@ -57,9 +57,18 @@
        measured 3.89:1. */
     --destructive-text: 0 72% 45%;
     /* Status colors used as small text. The raw Tailwind green/amber utilities
-       measured 2.0-3.5:1 on the light background. */
-    --success-text: 142 71% 29%;
+       measured 2.0-3.5:1 on the light background.
+       29% → 26%: the admin console's soft status pills put this on a
+       `bg-chart-3/12` tint, where 29% measured 4.37:1. 26% is 5.19:1 there
+       and 5.72:1 on the plain page. */
+    --success-text: 142 71% 26%;
     --warning-text: 35 90% 30%;
+    /* The blue of the `info` tone, as text. --chart-2 is a data-viz colour
+       (a bar clears the 3:1 graphical bar at 4.02:1 on a card) and was being
+       used for 10-12px labels in the admin console; this is the readable
+       sibling, chosen the same way as --success-text above: it has to hold on
+       `bg-chart-2/12` as well as on a plain surface. */
+    --info-text: 200 94% 32%;
     --border: 215 18% 82%;
     /* 1.4.11 non-text contrast: a control border must reach 3:1 (3.37:1). */
     --input: 215 18% 55%;
@@ -118,10 +127,16 @@
     --accent-foreground: 210 40% 98%;
     --destructive: 0 65% 40%;
     --destructive-foreground: 210 40% 98%;
-    /* --destructive itself as text on the dark background is only 2.62:1. */
-    --destructive-text: 0 72% 60%;
+    /* --destructive itself as text on the dark background is only 2.62:1.
+       60% → 64%: on `bg-destructive/12` (the admin console's BUG pill) over a
+       card, 60% measured 4.48:1 — under AA by 0.02. 64% is 5.08:1 there. */
+    --destructive-text: 0 72% 64%;
     --success-text: 142 60% 62%;
     --warning-text: 45 90% 62%;
+    /* See the light-mode note. Lighter than --chart-2 is not needed for
+       contrast here (the dark surfaces are dark enough either way); it is
+       declared so the token exists in both themes and the gate can name it. */
+    --info-text: 200 94% 62%;
     --border: 220 19% 20%;
     --input: 220 19% 40%;
     --ring: 17 100% 52%;

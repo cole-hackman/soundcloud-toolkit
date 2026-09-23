@@ -17,8 +17,26 @@
  *     the run. Not just before the operation-log purge: the user sweeps
  *     cascade into operation_logs too, so counting after them would drop the
  *     departing users from the all-time figure that exists to remember them.
- *   - Every user delete logs its size before it runs, so the first production
- *     sweep is reviewable from the logs rather than only from its aftermath.
+ *   - Every user delete logs its size before it runs. That is useful *during*
+ *     a run, but it is not a preview: the line lands microseconds before the
+ *     delete it describes, in the same pass. Reviewing before anything is
+ *     destroyed is what RETENTION_DRY_RUN is for — see below.
+ *
+ * RETENTION_DRY_RUN=true makes a scheduled run count everything and write
+ * nothing: every step reports `would remove N`, the user sweeps still print
+ * their `will remove N users` line, and no deleteMany, updateMany or upsert is
+ * issued at all. It exists because "deploy inert, read the counts, then
+ * enable" was the intended first-production-run procedure and there was no way
+ * to actually do it — RETENTION_ENABLED=false schedules nothing, so it
+ * produces silence, which reads exactly like "nothing to delete".
+ * tests/retention-dry-run.test.js mocks the client with a Proxy that records
+ * every call whose method starts with delete/update/upsert/create, plus
+ * $executeRaw and $transaction, on ANY delegate — declared by that file or
+ * not — and fails if the set is non-empty under the flag. That phrasing is
+ * load-bearing: the first version listed nine method names and a rogue
+ * user.delete, rebrandVote.deleteMany, metric.deleteMany or $executeRaw
+ * DELETE all left it green, because the mock had no such property and runStep
+ * swallows the TypeError.
  *
  * Windows (env-overridable where the brief calls for it):
  *   library cache   CACHE_TTL_DAYS         7 days
@@ -88,6 +106,22 @@ function monthsAgo(now, months) {
 }
 
 /**
+ * True when this run must report what it would do and change nothing.
+ *
+ * Read per run rather than captured at import, so a long-lived process picks
+ * up an App Service setting change on its next sweep, and so a test can flip
+ * it without re-importing the module.
+ *
+ * Strictly `'true'`: anything else — including `'1'`, `'yes'` and a typo — is
+ * a real run. A dry run that silently became real because someone wrote
+ * `RETENTION_DRY_RUN=1` is the failure this guards against, and refusing the
+ * near-misses is cheaper than accepting them.
+ */
+export function isRetentionDryRun(env = process.env) {
+  return String(env.RETENTION_DRY_RUN ?? '').trim().toLowerCase() === 'true';
+}
+
+/**
  * Run one step, logging its row count in the shape the whole job uses, and
  * swallowing its failure so the following steps still run.
  * @param {string} name  short identifier for the log line
@@ -103,6 +137,33 @@ async function runStep(name, fn, results, verb = 'removed') {
     const count = typeof outcome === 'number' ? outcome : (outcome?.count ?? 0);
     logger.info(`[retention] ${name} ${verb} ${count}`);
     results[name] = count;
+  } catch (error) {
+    logger.error(`[retention] ${name} failed:`, safeError(error));
+    results[name] = null;
+  }
+}
+
+/**
+ * A purge step, expressed as a PAIR: `count` is the read that says how many
+ * rows match, `mutate` is the write that acts on them.
+ *
+ * The pair is the whole mechanism behind the dry run, and it is deliberately
+ * not an `if (dryRun) return` inside each mutation. Structuring it this way
+ * means there is exactly **one** place in this file that can call `mutate`,
+ * so "no write happens in a dry run" is a property of nine lines rather than
+ * a promise repeated at nine call sites — and a tenth step added later cannot
+ * forget to honour the flag, because it has no mutation to run until it hands
+ * one to this function.
+ *
+ * `count` must describe the same rows as `mutate`. They take the same `where`
+ * at every call site below for that reason.
+ */
+async function purgeStep(name, { count, mutate }, results, dryRun) {
+  if (!dryRun) return runStep(name, mutate, results);
+  try {
+    const pending = await count();
+    logger.info(`[retention] ${name} would remove ${pending}`);
+    results[name] = pending;
   } catch (error) {
     logger.error(`[retention] ${name} failed:`, safeError(error));
     results[name] = null;
@@ -126,7 +187,7 @@ async function runStep(name, fn, results, verb = 'removed') {
  * one row per user to be counted in Node. `::int` because an uncast COUNT
  * arrives as BigInt.
  */
-async function snapshotLifetimeUsers() {
+async function snapshotLifetimeUsers(dryRun = false) {
   const rows = await prisma.$queryRaw(Prisma.sql`
     SELECT COUNT(DISTINCT "userId")::int AS count
     FROM operation_logs
@@ -136,6 +197,11 @@ async function snapshotLifetimeUsers() {
   const stored = await prisma.metric.findUnique({ where: { key: LIFETIME_METRIC_KEY } });
   const previous = stored ? Number(stored.value) : 0;
   const next = Math.max(previous, current);
+
+  // The upsert is a write, so a dry run skips it and reports the value it
+  // would have stored. Harmless to have written, but "changes nothing" has to
+  // mean nothing, or the flag is a judgement call instead of a guarantee.
+  if (dryRun) return next;
 
   await prisma.metric.upsert({
     where: { key: LIFETIME_METRIC_KEY },
@@ -150,17 +216,33 @@ async function snapshotLifetimeUsers() {
  * Delete users matching `where`, announcing the size of the sweep first.
  *
  * The count is not decoration. These deletes cascade across every per-user
- * table and are irreversible, so the first production run needs to be
- * reviewable from the logs alone — `will remove N users` before the fact is
- * what makes an unexpectedly large sweep visible rather than merely done.
- * The extra COUNT is negligible against an indexed range scan.
+ * table and are irreversible, so an unexpectedly large sweep has to be
+ * visible in the log as something other than its own aftermath. The extra
+ * COUNT is negligible against an indexed range scan.
+ *
+ * It is a running commentary, not a preview — the line is written
+ * microseconds before the delete, in the same pass, so by the time anyone
+ * reads it the rows are gone. Seeing the numbers *before* they are acted on
+ * is RETENTION_DRY_RUN's job (file header), which is why `count` and `mutate`
+ * below both emit the identical line: the dry run's log is the real sweep's
+ * log, not a differently-worded approximation of it.
  */
-async function sweepUsers(name, where, results) {
-  await runStep(name, async () => {
-    const pending = await prisma.user.count({ where });
-    logger.info(`[retention] ${name} will remove ${pending} users`);
-    return prisma.user.deleteMany({ where });
-  }, results);
+async function sweepUsers(name, where, results, dryRun) {
+  await purgeStep(name, {
+    count: async () => {
+      // The same line a real run prints, so the dry run's log is literally
+      // what the sweep would say — not a differently-worded approximation
+      // that has to be mentally translated before it can be trusted.
+      const pending = await prisma.user.count({ where });
+      logger.info(`[retention] ${name} will remove ${pending} users`);
+      return pending;
+    },
+    mutate: async () => {
+      const pending = await prisma.user.count({ where });
+      logger.info(`[retention] ${name} will remove ${pending} users`);
+      return prisma.user.deleteMany({ where });
+    },
+  }, results, dryRun);
 }
 
 /**
@@ -170,22 +252,32 @@ async function sweepUsers(name, where, results) {
  * @param {number} [now] epoch millis, injectable for deterministic tests
  * @returns {Promise<object>} per-step row counts (null where the step failed)
  */
-export async function runRetentionOnce(now = Date.now()) {
+export async function runRetentionOnce(now = Date.now(), { dryRun = isRetentionDryRun() } = {}) {
   const results = {};
+
+  if (dryRun) {
+    logger.info('[retention] DRY RUN (RETENTION_DRY_RUN=true) — counting only, nothing is written');
+  }
 
   // 0. Lifetime snapshot, FIRST — before the user deletes below, which cascade
   //    to operation_logs and would otherwise erase the very users this figure
   //    exists to remember.
-  await runStep('lifetime-users-metric', () => snapshotLifetimeUsers(), results, 'snapshot');
+  await runStep('lifetime-users-metric', () => snapshotLifetimeUsers(dryRun), results, 'snapshot');
 
   // 1. Library cache tier. Pages are immutable once written, so they age by
   //    createdAt; the state row is rewritten on every sync, so it ages by
   //    updatedAt.
   const cacheCutoff = daysAgo(now, numFromEnv('CACHE_TTL_DAYS', 7));
-  await runStep('library-cache-pages', () =>
-    prisma.libraryCachePage.deleteMany({ where: { createdAt: { lt: cacheCutoff } } }), results);
-  await runStep('library-cache-states', () =>
-    prisma.libraryCacheState.deleteMany({ where: { updatedAt: { lt: cacheCutoff } } }), results);
+  const cachePageWhere = { createdAt: { lt: cacheCutoff } };
+  await purgeStep('library-cache-pages', {
+    count: () => prisma.libraryCachePage.count({ where: cachePageWhere }),
+    mutate: () => prisma.libraryCachePage.deleteMany({ where: cachePageWhere }),
+  }, results, dryRun);
+  const cacheStateWhere = { updatedAt: { lt: cacheCutoff } };
+  await purgeStep('library-cache-states', {
+    count: () => prisma.libraryCacheState.count({ where: cacheStateWhere }),
+    mutate: () => prisma.libraryCacheState.deleteMany({ where: cacheStateWhere }),
+  }, results, dryRun);
 
   // 2. Accounts that disconnected and did not come back. Logging in clears
   //    disconnectedAt, so anything still stamped six days later is settled.
@@ -193,7 +285,7 @@ export async function runRetentionOnce(now = Date.now()) {
   //    fit inside the terms' 7-day deletion ceiling, not start at it.
   const disconnectedCutoff = daysAgo(now, DISCONNECTED_GRACE_DAYS);
   await sweepUsers('disconnected-users',
-    { disconnectedAt: { lt: disconnectedCutoff } }, results);
+    { disconnectedAt: { lt: disconnectedCutoff } }, results, dryRun);
 
   // 3. Dormant accounts. Rows created before lastLoginAt existed have it null;
   //    updatedAt is the best available proxy for those, and the OAuth callback
@@ -204,45 +296,53 @@ export async function runRetentionOnce(now = Date.now()) {
       { lastLoginAt: { lt: inactiveCutoff } },
       { AND: [{ lastLoginAt: null }, { updatedAt: { lt: inactiveCutoff } }] },
     ],
-  }, results);
+  }, results, dryRun);
 
   // 4. Aged operation logs. The snapshot that protects the all-time figure
   //    already ran as step 0.
   const oplogCutoff = daysAgo(now, numFromEnv('OPLOG_RETENTION_DAYS', 365));
-  await runStep('operation-logs', () =>
-    prisma.operationLog.deleteMany({ where: { createdAt: { lt: oplogCutoff } } }), results);
+  const oplogWhere = { createdAt: { lt: oplogCutoff } };
+  await purgeStep('operation-logs', {
+    count: () => prisma.operationLog.count({ where: oplogWhere }),
+    mutate: () => prisma.operationLog.deleteMany({ where: oplogWhere }),
+  }, results, dryRun);
 
   // 5. Growth history.
-  await runStep('growth-actions', () =>
-    prisma.growthAction.deleteMany({
-      where: { createdAt: { lt: daysAgo(now, GROWTH_RETENTION_DAYS) } },
-    }), results);
+  const growthWhere = { createdAt: { lt: daysAgo(now, GROWTH_RETENTION_DAYS) } };
+  await purgeStep('growth-actions', {
+    count: () => prisma.growthAction.count({ where: growthWhere }),
+    mutate: () => prisma.growthAction.deleteMany({ where: growthWhere }),
+  }, results, dryRun);
 
   // 6. Feedback. Guarded: the model arrives with the feedback feature, and the
   //    job must still run on a client generated without it.
-  await runStep('feedback', () => {
-    if (!prisma.feedback) return { count: 0 };
-    return prisma.feedback.deleteMany({
-      where: { createdAt: { lt: daysAgo(now, FEEDBACK_RETENTION_DAYS) } },
-    });
-  }, results);
+  const feedbackWhere = { createdAt: { lt: daysAgo(now, FEEDBACK_RETENTION_DAYS) } };
+  await purgeStep('feedback', {
+    count: () => (prisma.feedback ? prisma.feedback.count({ where: feedbackWhere }) : 0),
+    mutate: () => {
+      if (!prisma.feedback) return { count: 0 };
+      return prisma.feedback.deleteMany({ where: feedbackWhere });
+    },
+  }, results, dryRun);
 
   // 7. The retired beta survey's email column is the only free-text PII left
   //    in a read-only table. Nulling it every run is cheap and idempotent, and
   //    keeps the aggregate rows without keeping the addresses.
-  await runStep('beta-signup-emails', () =>
-    prisma.betaSignup.updateMany({
-      where: { email: { not: null } },
-      data: { email: null },
-    }), results);
+  const betaWhere = { email: { not: null } };
+  await purgeStep('beta-signup-emails', {
+    count: () => prisma.betaSignup.count({ where: betaWhere }),
+    mutate: () => prisma.betaSignup.updateMany({ where: betaWhere, data: { email: null } }),
+  }, results, dryRun);
 
   // 8. Catalog rows for tracks deleted upstream. The row stays as an opaque id
   //    so historical operations still resolve, but the cached metadata goes —
   //    keeping it is exactly the retention a delete-on-removal clause forbids
   //    (docs/internal/TERMS-CHECK.md, clause 2).
-  await runStep('catalog-gone-metadata', () =>
-    prisma.track.updateMany({
-      where: { access: 'gone', title: { not: null } },
+  const goneWhere = { access: 'gone', title: { not: null } };
+  await purgeStep('catalog-gone-metadata', {
+    count: () => prisma.track.count({ where: goneWhere }),
+    mutate: () => prisma.track.updateMany({
+      where: goneWhere,
       data: {
         title: null,
         artistName: null,
@@ -250,7 +350,12 @@ export async function runRetentionOnce(now = Date.now()) {
         genreNormalized: null,
         permalinkUrl: null,
       },
-    }), results);
+    }),
+  }, results, dryRun);
+
+  if (dryRun) {
+    logger.info('[retention] DRY RUN complete — no rows were deleted or updated');
+  }
 
   return results;
 }
@@ -295,7 +400,21 @@ export function resolveIntervalMs() {
 
 export function startRetentionScheduler() {
   if (process.env.RETENTION_ENABLED === 'false') {
-    logger.info('[retention] Disabled via RETENTION_ENABLED=false');
+    // Note for whoever is about to use this to "preview" a sweep: it does not.
+    // Nothing is scheduled, so no counts are logged, and silence here is
+    // indistinguishable from "there was nothing to delete". Set
+    // RETENTION_DRY_RUN=true instead — it runs, counts and logs, and writes
+    // nothing.
+    logger.info(
+      '[retention] Disabled via RETENTION_ENABLED=false — no run, and therefore no counts. ' +
+      (isRetentionDryRun()
+        // Both set. Disabled wins, which is the right precedence — but the
+        // operator has asked for a preview and is about to get silence, so
+        // say which flag is the one in the way.
+        ? 'RETENTION_DRY_RUN=true is also set and has no effect while this is false: ' +
+          'unset RETENTION_ENABLED to let the dry run happen.'
+        : 'Use RETENTION_DRY_RUN=true to see what a sweep would remove.'),
+    );
     return null;
   }
 
@@ -306,6 +425,10 @@ export function startRetentionScheduler() {
   setTimeout(run, INITIAL_DELAY_MS);
   const interval = setInterval(run, intervalMs);
   interval.unref?.();
-  logger.info('[retention] Daily purge scheduled');
+  logger.info(
+    isRetentionDryRun()
+      ? '[retention] Daily purge scheduled in DRY RUN mode (RETENTION_DRY_RUN=true) — it will count and log, and delete nothing'
+      : '[retention] Daily purge scheduled',
+  );
   return interval;
 }

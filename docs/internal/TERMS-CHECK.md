@@ -202,7 +202,7 @@ Seven-day limit, quote **fragment** as retrieved:
 | Mechanism | Where |
 |---|---|
 | A disconnect action exists | `POST /api/auth/disconnect` → `disconnectUser()` |
-| Revocation is detected without the user telling this app | `invalid_grant` at the refresh choke point runs the same teardown with `reason: 'revoked'` |
+| Revocation is detected **when the user next comes back** — not on its own | `invalid_grant` at the refresh choke point runs the same teardown with `reason: 'revoked'`. Detection is lazy: it only happens inside a token refresh, which only happens when a request the user made 401s. See "Detection latency" below — this is the weakest part of the position |
 | Credentials destroyed immediately | `tokens` row deleted, auth memo invalidated, library caches and durable snapshots dropped — synchronous, not deferred to the job |
 | Remaining rows removed after 6 days | retention step 2: `users.disconnectedAt < now - 6d` → `user.deleteMany`, cascading to operation logs, growth actions, votes, cache pages |
 | Reconnecting cancels the deletion | a successful OAuth callback sets `lastLoginAt` and clears `disconnectedAt` |
@@ -249,16 +249,38 @@ unverified, not about the arithmetic, which is now correct either way.
    user" reaches catalog rows enriched via that user's token. The schema still
    records no provenance, so as question 4 above already noted, the rule could
    not be enforced today even if it applies.
-4. **Detection latency.** Revocation is noticed only when a refresh is
-   attempted. A dormant user's revocation may go unnoticed for as long as the
-   session TTL; whether that meets either standard is unverified.
+4. **Detection latency — and the population it never reaches.** Revocation is
+   noticed only inside a token refresh, and a refresh only happens when a
+   request the user made comes back 401. **Someone who revokes in SoundCloud's
+   settings and never opens this app again is therefore never detected at
+   all.** Their `disconnectedAt` is never stamped, the 6-day clock never
+   starts, and every row keyed to them — tokens included — survives until the
+   dormancy sweep at `INACTIVE_MONTHS` (24 months). For that population the
+   7-day clause is not met, and it is not a latency of days but of up to two
+   years.
 
-The worst case is bounded by the job cadence: 6 days plus up to one
-`RETENTION_INTERVAL_MS`, so at the default 24h it lands at roughly 7 days and
-inside the ceiling. That is exactly the margin the sixth day buys, which makes
-`RETENTION_INTERVAL_MS` compliance-relevant rather than a tuning knob: raise it
-above 24h and the worst case crosses the deadline again even though the
-constant still says 6.
+   The 6-day window is therefore the worst case **only for users who come
+   back**. Nothing in the table above closes the other case, and the earlier
+   version of this document claimed otherwise — it said revocation was
+   detected "without the user telling this app", which is true only of a user
+   who is still using the app.
+
+   The fix is a proactive sweep: once a day, attempt a refresh for token rows
+   untouched for N days and run the teardown on a *genuine* `invalid_grant`.
+   It is deliberately not on this branch, because it must not ship before the
+   refresh path can tell a genuinely revoked grant from a refresh token that
+   has merely been spent — `_resolveInvalidGrant` in
+   `server/lib/soundcloud-client.js`. Without that, a daily sweep presenting
+   stale tokens would disconnect live users in bulk.
+
+The worst case for a returning user is bounded by the job cadence: 6 days plus
+up to one `RETENTION_INTERVAL_MS`, so at the default 24h it lands at roughly 7
+days and inside the ceiling. That is exactly the margin the sixth day buys,
+which is why `RETENTION_INTERVAL_MS` is **clamped to a 24h maximum in code**
+(`resolveIntervalMs` in `server/lib/retention.js`, which logs when it refuses a
+larger value) rather than merely documented as compliance-relevant. Lowering it
+is always allowed; raising it past the deadline is not possible from a
+deployment dashboard.
 
 ## Finding C — session-based caching (questions 1 and 3)
 

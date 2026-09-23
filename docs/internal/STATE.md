@@ -108,11 +108,34 @@ Read `docs/internal/MIGRATION.md` ("CUTOVER DONE") for that story.
    `users."disconnectedAt"`, the `metrics` table). Both are re-runnable. Both
    files now name the database and the command. **Not Neon** — Neon is the
    legacy database and nothing reads it.
-2. **First deploy with `RETENTION_DRY_RUN=true`.** Not
-   `RETENTION_ENABLED=false` — that schedules nothing, so it logs nothing, and
-   the silence reads exactly like "there was nothing to delete". (An earlier
-   draft of this list said to do that. It would have produced no counts, and
-   the first real sweep would then have deleted as it logged.)
+2. **Set `RETENTION_DRY_RUN=true` BEFORE the merge is pushed.** This is an
+   ordering instruction, not a suggestion, and the window is ten minutes.
+
+   Merging to `main` deploys, the App Service restarts, and the retention
+   job's first sweep runs **10 minutes after that boot**. A setting added
+   after the deploy finishes does not take effect until the *next* restart —
+   so if the flag arrives late, the first sweep is real and there is no
+   preview of it.
+
+   That first sweep is also the largest this job will ever perform.
+   `users."lastLoginAt"` is a brand-new column, so on the first run every
+   existing row has it as NULL and the dormancy rule falls back to
+   `updatedAt`. Every account with no activity in 24 months goes in one pass,
+   cascading across every per-user table, irreversibly. It is the one sweep
+   that most needs looking at before it happens, and the only one that cannot
+   be looked at afterwards.
+
+   So: set the flag, confirm the boot line below, then merge — or at the very
+   latest set it the moment the merge is pushed and confirm
+   `[retention] Daily purge scheduled in DRY RUN mode` in the log stream
+   well inside the ten minutes. If that line does not say DRY RUN, the setting
+   did not reach this boot: restart the App Service before the ten minutes are
+   up.
+
+   Not `RETENTION_ENABLED=false` — that schedules nothing, so it logs nothing,
+   and the silence reads exactly like "there was nothing to delete". (An
+   earlier draft of this list said to do that. It would have produced no
+   counts, and the first real sweep would then have deleted as it logged.)
 
    **Set it in the Azure portal, on the App Service** (Settings →
    Environment variables → App settings), *not* in Bicep.

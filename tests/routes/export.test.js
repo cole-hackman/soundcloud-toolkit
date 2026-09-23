@@ -165,6 +165,12 @@ describe('GET /api/auth/export — completeness, derived from the schema', () =>
   );
   const schema = readFileSync(schemaPath, 'utf8');
 
+  // Scope, stated so nobody assumes more than it checks: this recognises the
+  // one relation spelling today's schema uses, `@relation(fields: [userId]`.
+  // A per-user table whose foreign key is named something else, or that is
+  // reached only through a join table, is invisible to it — and to
+  // tests/account-deletion-cascade.test.js, which parses the same way. If a
+  // future model breaks that convention, both files need widening together.
   function perUserModels(source) {
     const names = [];
     const re = /model\s+(\w+)\s*\{([\s\S]*?)\n\}/g;
